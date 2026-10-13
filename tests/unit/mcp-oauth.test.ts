@@ -118,6 +118,9 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
                   data: () => ({
                     accessToken: token,
                     userId: 'user_colab_123',
+                    clientId: 'client_aaaaaaaaaaaaaaaaaaaaaaaa',
+                    sessionId: 'sess_active',
+                    authTime: Math.floor(Date.now() / 1000),
                     scopes: ['orders:read', 'customers:read'],
                     iss: 'https://api.dev.luisices.com.br',
                     aud: 'https://api.dev.luisices.com.br',
@@ -126,6 +129,12 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
                 }),
               }),
             };
+          }
+          if (colName === 'oauthSessions') {
+            return { doc: () => ({ get: async () => ({ exists: true, data: () => ({ userId: 'user_colab_123', clientId: 'client_aaaaaaaaaaaaaaaaaaaaaaaa', iss: 'https://api.dev.luisices.com.br', aud: 'https://api.dev.luisices.com.br', expiresAt: Date.now() + 3600000, active: true, revoked: false }) }) }) };
+          }
+          if (colName === 'oauthClients') {
+            return { doc: () => ({ get: async () => ({ exists: true, data: () => ({ enabled: true }) }) }) };
           }
           if (colName === 'userProfiles') {
             return {
@@ -156,6 +165,10 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
           }
           return { doc: () => ({ get: async () => ({ exists: false }) }) };
         },
+        runTransaction: async (work: any) => work({
+          get: async () => ({ exists: false, data: () => undefined }),
+          set: () => {},
+        }),
       };
 
       const result = await validateOAuthAccessToken('lui_oauth_at_valid_token_123', mockDb);
@@ -229,6 +242,9 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
                   exists: true,
                   data: () => ({
                     userId: 'user_suspended',
+                    clientId: 'client_bbbbbbbbbbbbbbbbbbbbbbbb',
+                    sessionId: 'session_suspended',
+                    authTime: Math.floor(Date.now() / 1000),
                     iss: 'https://api.dev.luisices.com.br',
                     aud: 'https://api.dev.luisices.com.br',
                     expiresAt: Date.now() + 3600000,
@@ -236,6 +252,12 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
                 }),
               }),
             };
+          }
+          if (colName === 'oauthSessions') {
+            return { doc: () => ({ get: async () => ({ exists: true, data: () => ({ userId: 'user_suspended', clientId: 'client_bbbbbbbbbbbbbbbbbbbbbbbb', iss: 'https://api.dev.luisices.com.br', aud: 'https://api.dev.luisices.com.br', active: true, revoked: false, expiresAt: Date.now() + 3600000 }) }) }) };
+          }
+          if (colName === 'oauthClients') {
+            return { doc: () => ({ get: async () => ({ exists: true, data: () => ({ enabled: true }) }) }) };
           }
           if (colName === 'userProfiles') {
             return {

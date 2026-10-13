@@ -276,8 +276,8 @@ function touchKeyUsage(db, keyHash) {
             .catch(() => {});
         }
       })
-      .catch((err) => {
-        console.warn(`[MCP] Falha não-bloqueante ao atualizar métricas do token OAuth ${keyHash}:`, err.message);
+      .catch(() => {
+        console.warn('[MCP] Falha não-bloqueante ao atualizar métricas do token OAuth.');
       });
     return;
   }

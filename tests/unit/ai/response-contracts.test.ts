@@ -139,6 +139,21 @@ describe('Precificação: origens, validação e paridade', () => {
     await expect(executor.executePricingEstimate({ unitCostRaw: 2, rawMaterialsCost: 3 }, scope)).rejects.toMatchObject({ code: 'invalid-argument' });
   });
 
+  it('mapeia materiais, horas e margem do contrato legado para unidades do motor', async () => {
+    const result = await executor.executePricingEstimate({
+      productName: 'Lote legado', quantity: 2, materialsCost: 40, laborHours: 1,
+      targetMarginPercent: 30, customizationCost: 0, setupTimeMinutes: 0,
+      paymentFeePercent: 0, wasteMarginPercent: 0,
+    }, scope);
+    expect(result.quantity).toBe(2);
+    expect(result.inputs.rawMaterialsCost).toMatchObject({ value: 20, source: 'argument' });
+    expect(result.inputs.laborTimeMinutes).toMatchObject({ value: 30, source: 'argument' });
+    expect(result.inputs.profitMarginPercent).toMatchObject({ value: 30, source: 'argument' });
+    expect(result.assumptions.join(' ')).toContain('argumento recebido');
+    await expect(executor.executePricingEstimate({ quantity: 2, materialsCost: -1 }, scope)).rejects.toMatchObject({ code: 'invalid-argument' });
+    await expect(executor.executePricingEstimate({ quantity: 2, laborHours: Number.POSITIVE_INFINITY }, scope)).rejects.toMatchObject({ code: 'invalid-argument' });
+  });
+
   it.each([null, '', ' ', -1, NaN, Infinity, -Infinity, 'inválido', false])('rejeita argumento inválido %s sem convertê-lo a custo zero', async (value) => {
     for (const field of ['unitCostRaw', 'rawMaterialsCost', 'customizationCost', 'laborTimeMinutes', 'setupTimeMinutes', 'profitMarginPercent', 'paymentFeePercent', 'wasteMarginPercent', 'quantity']) {
       await expect(executor.executePricingEstimate({ [field]: value }, scope)).rejects.toMatchObject({ code: 'invalid-argument' });

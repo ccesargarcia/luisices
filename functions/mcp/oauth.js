@@ -7,20 +7,84 @@ const crypto = require('crypto');
 const { COLLECTIONS, MCP_SCOPES } = require('./constants');
 const { getCallerScope } = require('../ai/authorization');
 
-function escapeHtml(str) {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+const APP_ORIGIN = () => process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard'
+  ? 'https://luisices.com.br' : 'https://dev.luisices.com.br';
+const OAUTH_ORIGIN = () => process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard'
+  ? 'https://api.luisices.com.br' : 'https://api.dev.luisices.com.br';
+const ALLOWED_SCOPES = new Set(Object.values(MCP_SCOPES).map((scope) => scope.id));
+const INTERNAL_OAUTH_CLIENT = Object.freeze({
+  clientId: 'chatgpt-mcp',
+  clientName: 'ChatGPT MCP (cliente interno legado)',
+  redirectUris: ['https://chatgpt.com/aip/g-mcp/oauth/callback'],
+  enabled: true,
+  tokenEndpointAuthMethod: 'none',
+  grantTypes: ['authorization_code', 'refresh_token'],
+  responseTypes: ['code'],
+});
+
+function isOAuthClientId(value) {
+  return value === INTERNAL_OAUTH_CLIENT.clientId || (typeof value === 'string' && /^client_[a-f0-9]{24}$/.test(value));
+}
+
+async function getOAuthClient(db, clientId, transaction) {
+  if (clientId === INTERNAL_OAUTH_CLIENT.clientId) return INTERNAL_OAUTH_CLIENT;
+  const ref = db.collection('oauthClients').doc(clientId);
+  const snap = transaction ? await transaction.get(ref) : await ref.get();
+  return snap.exists ? snap.data() : null;
+}
+
+function validRedirectUri(value) {
+  if (typeof value !== 'string' || value.length > 2048) return false;
+  try {
+    const uri = new URL(value);
+    if (uri.username || uri.password || uri.hash || value.includes('#') || /^(?:https?):\/\/[^/?#]*@/i.test(value) || uri.href !== value) return false;
+    if (uri.protocol === 'https:') return true;
+    return uri.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(uri.hostname) && Boolean(uri.port);
+  } catch (_err) {
+    return false;
+  }
+}
+
+function parseScopes(value) {
+  const scopes = [...new Set(String(value || '').trim().split(/\s+/).filter(Boolean))];
+  if (!scopes.length || scopes.some((scope) => !ALLOWED_SCOPES.has(scope))) return null;
+  return scopes;
+}
+
+function authError(res, status, error, description) {
+  return res.status(status).json({ error, error_description: description });
+}
+
+async function consumeOAuthRateLimit(db, key, limit, windowSeconds = 3600) {
+  if (!db || typeof db.runTransaction !== 'function') return false;
+  const bucket = crypto.createHash('sha256').update(String(key)).digest('hex');
+  const ref = db.collection('oauthRateLimits').doc(bucket);
+  return db.runTransaction(async (tx) => {
+    const now = Date.now();
+    const windowStart = Math.floor(now / (windowSeconds * 1000)) * windowSeconds * 1000;
+    const snap = await tx.get(ref);
+    const stored = snap.exists ? snap.data() : {};
+    const count = stored.windowStart === windowStart ? Number(stored.count) || 0 : 0;
+    if (count >= limit) return false;
+    tx.set(ref, { count: count + 1, windowStart, updatedAt: now });
+    return true;
+  });
+}
+
+async function applyEndpointRateLimit(req, res, db, bucket, limit) {
+  const address = req.ip || req.socket?.remoteAddress || 'unknown';
+  if (await consumeOAuthRateLimit(db, `${bucket}:${address}`, limit)) return true;
+  const secondsIntoWindow = Math.floor(Date.now() / 1000) % 3600;
+  res.setHeader('Retry-After', String(3600 - secondsIntoWindow));
+  authError(res, 429, 'slow_down', 'Limite de requisições OAuth excedido. Tente novamente mais tarde.');
+  return false;
 }
 
 /**
- * Metadata do Recurso Protegido (RFC 9723 / MCP Authorization draft)
+ * Metadata do Recurso Protegido (RFC 9728)
  */
 function getOauthProtectedResourceMetadata(baseUrl) {
-  const isProd = process.env.GCLOUD_PROJECT === 'papelaria-dashboard';
+  const isProd = process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard';
   const defaultDomain = isProd ? 'https://api.luisices.com.br' : 'https://api.dev.luisices.com.br';
   let origin = defaultDomain;
   try {
@@ -49,7 +113,7 @@ function getOauthProtectedResourceMetadata(baseUrl) {
  * Metadata do Servidor de Autorização OAuth 2.1 / OIDC (RFC 8414)
  */
 function getOauthAuthorizationServerMetadata(baseUrl) {
-  const isProd = process.env.GCLOUD_PROJECT === 'papelaria-dashboard';
+  const isProd = process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard';
   const defaultDomain = isProd ? 'https://api.luisices.com.br' : 'https://api.dev.luisices.com.br';
   let origin = defaultDomain;
   try {
@@ -73,7 +137,7 @@ function getOauthAuthorizationServerMetadata(baseUrl) {
     response_types_supported: ['code'],
     grant_types_supported: ['authorization_code', 'refresh_token'],
     code_challenge_methods_supported: ['S256'],
-    token_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic'],
+    token_endpoint_auth_methods_supported: ['none'],
     scopes_supported: allScopes,
     service_documentation: `${origin}/chatGptToolsEndpoint`,
   };
@@ -99,36 +163,50 @@ function calculateS256Challenge(codeVerifier) {
 async function handleOAuthRegister(req, res, db) {
   try {
     const body = req.body || {};
-    const clientName = body.client_name || 'ChatGPT MCP Client';
-    const redirectUris = Array.isArray(body.redirect_uris) && body.redirect_uris.length > 0
-      ? body.redirect_uris
-      : ['https://chatgpt.com/aip/g-mcp/oauth/callback'];
+    if (!db || !Array.isArray(body.redirect_uris) || body.redirect_uris.length < 1 || body.redirect_uris.length > 10) {
+      return authError(res, 400, 'invalid_client_metadata', 'Informe entre 1 e 10 redirect_uris válidos.');
+    }
+    if (body.redirect_uris.some((uri) => !validRedirectUri(uri)) || new Set(body.redirect_uris).size !== body.redirect_uris.length) {
+      return authError(res, 400, 'invalid_redirect_uri', 'Callback inválido; HTTPS é obrigatório, com HTTP permitido somente em loopback local.');
+    }
+    if (body.token_endpoint_auth_method && body.token_endpoint_auth_method !== 'none') {
+      return authError(res, 400, 'invalid_client_metadata', 'O servidor aceita somente clientes públicos com autenticação none.');
+    }
+    if (body.grant_types !== undefined && (!Array.isArray(body.grant_types) || body.grant_types.some((grant) => !['authorization_code', 'refresh_token'].includes(grant)) || !body.grant_types.includes('authorization_code'))) {
+      return authError(res, 400, 'invalid_client_metadata', 'O servidor aceita somente authorization_code e refresh_token.');
+    }
+    if (body.response_types !== undefined && (!Array.isArray(body.response_types) || body.response_types.some((type) => type !== 'code') || !body.response_types.includes('code'))) {
+      return authError(res, 400, 'invalid_client_metadata', 'O servidor aceita somente response_type=code.');
+    }
+    if (!await applyEndpointRateLimit(req, res, db, 'register', 60)) return undefined;
+    const clientName = String(body.client_name || 'ChatGPT MCP Client').slice(0, 120);
+    const redirectUris = body.redirect_uris;
+    const grantTypes = body.grant_types || ['authorization_code', 'refresh_token'];
+    const responseTypes = body.response_types || ['code'];
 
     const clientId = `client_${crypto.randomBytes(12).toString('hex')}`;
-    const clientSecret = `secret_${crypto.randomBytes(24).toString('hex')}`;
 
     const clientData = {
       clientId,
-      clientSecret,
       clientName,
       redirectUris,
       createdAt: new Date().toISOString(),
       expiresAt: 0,
+      enabled: true,
+      tokenEndpointAuthMethod: 'none',
+      grantTypes,
+      responseTypes,
     };
 
-    if (db) {
-      await db.collection('oauthClients').doc(clientId).set(clientData);
-    }
+    await db.collection('oauthClients').doc(clientId).set(clientData);
 
     return res.status(201).json({
       client_id: clientId,
-      client_secret: clientSecret,
       client_id_issued_at: Math.floor(Date.now() / 1000),
-      client_secret_expires_at: 0,
       client_name: clientName,
       redirect_uris: redirectUris,
-      grant_types: ['authorization_code', 'refresh_token'],
-      response_types: ['code'],
+      grant_types: grantTypes,
+      response_types: responseTypes,
       token_endpoint_auth_method: 'none',
     });
   } catch (err) {
@@ -141,169 +219,113 @@ async function handleOAuthRegister(req, res, db) {
  * Handling do fluxo de Autorização OAuth 2.1 (GET renderiza formulário, POST processa login)
  */
 async function handleOAuthAuthorize(req, res, db, getAuth) {
-  const query = req.method === 'GET' ? req.query : (req.body || {});
-  const responseType = query.response_type;
-  const clientId = query.client_id || 'chatgpt-mcp';
-  const redirectUri = query.redirect_uri;
-  const scope = query.scope || 'orders:read orders:draft orders:create customers:read pricing:estimate whatsapp:compose gallery:read';
-  const state = query.state || '';
-  const codeChallenge = query.code_challenge;
-  const codeChallengeMethod = query.code_challenge_method || 'S256';
-
-  if (!redirectUri) {
-    return res.status(400).send('Parâmetro obrigatório "redirect_uri" ausente.');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  let params = req.method === 'GET' ? req.query || {} : req.body || {};
+  const requestId = req.method === 'POST' ? params.request_id : null;
+  if (req.method === 'POST' && requestId && db) {
+    const pendingSnap = await db.collection('oauthAuthorizationRequests').doc(String(requestId)).get();
+    if (!pendingSnap.exists || pendingSnap.data().used || pendingSnap.data().expiresAt <= Date.now()) return authError(res, 400, 'invalid_request', 'Solicitação OAuth expirada ou já utilizada.');
+    const pending = pendingSnap.data();
+    params = { ...pending, response_type: 'code', client_id: pending.clientId, redirect_uri: pending.redirectUri, scope: pending.scope, code_challenge: pending.codeChallenge, code_challenge_method: pending.codeChallengeMethod, request_id: requestId };
+  }
+  const clientId = params.client_id;
+  const redirectUri = params.redirect_uri;
+  const scopes = parseScopes(params.scope || 'orders:read');
+  const state = String(params.state || '');
+  const challenge = params.code_challenge;
+  if (!db || !isOAuthClientId(clientId) || params.response_type !== 'code' || !validRedirectUri(redirectUri)
+      || !scopes || state.length > 1024 || !/^[A-Za-z0-9_-]{43,128}$/.test(String(challenge || ''))
+      || params.code_challenge_method !== 'S256') {
+    return authError(res, 400, 'invalid_request', 'Solicitação OAuth inválida; PKCE S256 é obrigatório.');
   }
 
-  if (responseType !== 'code') {
-    return res.status(400).send('Tipo de resposta inválido. Apenas response_type=code é aceito.');
-  }
-
-  if (!codeChallenge) {
-    return res.status(400).send('OAuth 2.1 exige verificação PKCE com parâmetro code_challenge.');
-  }
-
-  if (codeChallengeMethod !== 'S256') {
-    return res.status(400).send('Apenas o método de challenge S256 é suportado.');
-  }
-
-  // Renderização HTML da tela de consentimento e login no GET
   if (req.method === 'GET') {
-    const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Autorizar Conexão - Luisices Ateliê</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #0f172a; margin: 0; padding: 24px; display: flex; justify-content: center; align-items: center; min-height: 100vh; box-sizing: border-box; }
-    .card { background: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; width: 100%; max-width: 420px; padding: 28px; box-sizing: border-box; }
-    .brand { font-size: 20px; font-weight: 700; color: #db2777; margin-bottom: 4px; text-align: center; }
-    .subtitle { font-size: 14px; color: #64748b; text-align: center; margin-bottom: 24px; }
-    .form-group { margin-bottom: 16px; }
-    label { display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px; }
-    input[type="email"], input[type="password"] { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; outline: none; }
-    input:focus { border-color: #db2777; box-shadow: 0 0 0 3px rgba(219,39,119,0.15); }
-    .scopes-list { background: #f1f5f9; border-radius: 8px; padding: 12px; font-size: 12px; color: #475569; margin-bottom: 20px; line-height: 1.5; }
-    .btn { width: 100%; background: #db2777; color: #ffffff; border: none; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
-    .btn:hover { background: #be185d; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="brand">Luisices Ateliê</div>
-    <div class="subtitle">Conectar Assistente MCP / ChatGPT</div>
-    <form method="POST" action="/oauth/authorize">
-      <input type="hidden" name="response_type" value="${escapeHtml(responseType)}" />
-      <input type="hidden" name="client_id" value="${escapeHtml(clientId)}" />
-      <input type="hidden" name="redirect_uri" value="${escapeHtml(redirectUri)}" />
-      <input type="hidden" name="scope" value="${escapeHtml(scope)}" />
-      <input type="hidden" name="state" value="${escapeHtml(state)}" />
-      <input type="hidden" name="code_challenge" value="${escapeHtml(codeChallenge)}" />
-      <input type="hidden" name="code_challenge_method" value="${escapeHtml(codeChallengeMethod)}" />
-
-      <div class="form-group">
-        <label for="email">E-mail do Colaborador</label>
-        <input type="email" id="email" name="email" required placeholder="seu.email@luisices.com.br" />
-      </div>
-
-      <div class="form-group">
-        <label for="password">Senha de Acesso</label>
-        <input type="password" id="password" name="password" required placeholder="••••••••" />
-      </div>
-
-      <div class="scopes-list">
-        <strong>Permissões Solicitadas:</strong><br>
-        Acesso seguro ao assistente para consultar pedidos, clientes e orçamentos conforme as permissões de sua conta no Luisices.
-      </div>
-
-      <button type="submit" class="btn">Autorizar Conexão</button>
-    </form>
-  </div>
-</body>
-</html>`;
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.status(200).send(html);
+    if (!await applyEndpointRateLimit(req, res, db, 'authorize', 30)) return undefined;
+    const client = await getOAuthClient(db, clientId);
+    if (!client || client.enabled === false) return authError(res, 400, 'invalid_client', 'Cliente OAuth desconhecido ou desativado.');
+    if (client.tokenEndpointAuthMethod && client.tokenEndpointAuthMethod !== 'none') return authError(res, 400, 'invalid_client', 'Método de autenticação do cliente não suportado.');
+    if (client.grantTypes && !client.grantTypes.includes('authorization_code')) return authError(res, 400, 'unauthorized_client', 'Cliente não registrado para authorization_code.');
+    if (client.responseTypes && !client.responseTypes.includes('code')) return authError(res, 400, 'unauthorized_client', 'Cliente não registrado para response_type=code.');
+    if (!Array.isArray(client.redirectUris) || !client.redirectUris.includes(redirectUri)) return authError(res, 400, 'invalid_redirect_uri', 'Callback não cadastrado para este cliente.');
+    const requestId = `req_${crypto.randomBytes(24).toString('hex')}`;
+    await db.collection('oauthAuthorizationRequests').doc(requestId).set({
+      requestId, clientId, redirectUri, scope: scopes.join(' '), state, codeChallenge: challenge,
+      codeChallengeMethod: 'S256', used: false, expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+    const consentUrl = new URL('/oauth-consent', APP_ORIGIN());
+    consentUrl.searchParams.set('request_id', requestId);
+    return res.redirect(303, consentUrl.toString());
   }
 
-  // Processamento do login no POST
-  if (req.method === 'POST') {
-    const { email } = req.body || {};
-    if (!email) {
-      return res.status(400).send('E-mail do colaborador é obrigatório.');
-    }
+  if (req.method !== 'POST') return res.status(405).send('Método não permitido.');
+  if (!await applyEndpointRateLimit(req, res, db, 'consent', 30)) return undefined;
+  const consentRequestId = req.body?.request_id;
+  const authHeader = req.headers.authorization || req.headers.Authorization || '';
+  const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!idToken || typeof consentRequestId !== 'string' || !/^req_[a-f0-9]{48}$/.test(consentRequestId) || typeof getAuth !== 'function') return authError(res, 401, 'login_required', 'Entre na conta Luisices para autorizar a integração.');
 
-    try {
-      let userRecord = null;
-      if (typeof getAuth === 'function') {
-        try {
-          userRecord = await getAuth().getUserByEmail(email);
-        } catch (_authErr) {
-          // fallback para consulta no Firestore se getUserByEmail falhar
-        }
-      }
-
-      let userId = userRecord ? userRecord.uid : null;
-      let userProfile = null;
-
-      if (!userId) {
-        // Consulta no Firestore pelo e-mail
-        const usersSnap = await db.collection(COLLECTIONS.USERS).where('email', '==', String(email).toLowerCase().trim()).limit(1).get();
-        if (!usersSnap.empty) {
-          userId = usersSnap.docs[0].id;
-          userProfile = usersSnap.docs[0].data();
-        }
-      }
-
-      if (!userId) {
-        return res.status(401).send('Usuário não localizado no sistema Luisices.');
-      }
-
-      if (!userProfile) {
-        const userSnap = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-        if (!userSnap.exists) {
-          return res.status(403).send('Perfil de colaborador não encontrado.');
-        }
-        userProfile = userSnap.data();
-      }
-
-      if (userProfile.active === false || userProfile.status === 'paused') {
-        return res.status(403).send('Sua conta de colaborador está inativa ou pausada.');
-      }
-
-      if (userProfile.permissions && userProfile.permissions.mcpAccess === false) {
-        return res.status(403).send('Você não possui permissão para utilizar integrações MCP / ChatGPT.');
-      }
-
-      // Emissão do Código de Autorização OAuth (válido por 5 minutos)
-      const authCode = `lui_code_${crypto.randomBytes(24).toString('hex')}`;
-      const authCodeDoc = {
-        code: authCode,
-        clientId,
-        redirectUri,
-        userId,
-        userEmail: email,
-        scope,
-        codeChallenge,
-        codeChallengeMethod,
-        used: false,
-        expiresAt: Date.now() + 5 * 60 * 1000,
-        createdAt: new Date().toISOString(),
-      };
-
-      await db.collection('oauthAuthCodes').doc(authCode).set(authCodeDoc);
-
-      const redirectUrl = new URL(redirectUri);
-      redirectUrl.searchParams.set('code', authCode);
-      if (state) {
-        redirectUrl.searchParams.set('state', state);
-      }
-
-      return res.redirect(303, redirectUrl.toString());
-    } catch (authErr) {
-      console.error('[OAuth] Falha no processo de autorização:', authErr.message);
-      return res.status(401).send('Falha na autenticação do colaborador.');
-    }
+  let decoded;
+  try {
+    decoded = await getAuth().verifyIdToken(idToken, true);
+  } catch (_err) {
+    return authError(res, 401, 'login_required', 'A sessão Firebase é inválida, expirada ou revogada. Entre novamente.');
   }
+  if (!decoded?.uid) return authError(res, 401, 'login_required', 'A sessão Firebase não contém uma identidade válida.');
+  const profileRef = db.collection(COLLECTIONS.USERS).doc(decoded.uid);
+  const profileSnap = await profileRef.get();
+  if (!profileSnap.exists) return authError(res, 403, 'access_denied', 'Perfil de usuário não localizado.');
+  const profile = profileSnap.data();
+  if (!Number.isFinite(decoded.auth_time) || profile.active === false || ['paused', 'inactive', 'disabled'].includes(profile.status) || profile.permissions?.mcpAccess === false
+      || (profile.tokensValidAfterTime && decoded.auth_time <= profile.tokensValidAfterTime)) {
+    return authError(res, 403, 'access_denied', 'Conta inativa, sem permissão MCP ou com sessão revogada.');
+  }
+
+  const requestRef = db.collection('oauthAuthorizationRequests').doc(String(consentRequestId));
+  const code = `lui_code_${crypto.randomBytes(24).toString('hex')}`;
+  try {
+    await db.runTransaction(async (tx) => {
+      const requestSnap = await tx.get(requestRef);
+      if (!requestSnap.exists) throw new Error('invalid_authorization_request');
+      const stored = requestSnap.data();
+      if (stored.used || !Number.isFinite(stored.expiresAt) || stored.expiresAt <= Date.now()) throw new Error('invalid_authorization_request');
+      const [currentClient, currentProfileSnap] = await Promise.all([getOAuthClient(db, stored.clientId, tx), tx.get(profileRef)]);
+      if (!currentClient || currentClient.enabled === false || !currentProfileSnap.exists || !currentClient.redirectUris?.includes(stored.redirectUri)) throw new Error('invalid_authorization_request');
+      const currentProfile = currentProfileSnap.data();
+      if (currentProfile.active === false || ['paused', 'inactive', 'disabled'].includes(currentProfile.status)
+          || currentProfile.permissions?.mcpAccess === false || (currentProfile.tokensValidAfterTime && (!Number.isFinite(decoded.auth_time) || decoded.auth_time <= currentProfile.tokensValidAfterTime))) throw new Error('invalid_authorization_request');
+      const requestedScopes = parseScopes(stored.scope);
+      if (!requestedScopes || (currentProfile.role !== 'admin' && requestedScopes.some((scope) => scope === MCP_SCOPES.FINANCIAL_READ.id || scope === MCP_SCOPES.TEAM_READ.id))) throw new Error('invalid_scope');
+      tx.update(requestRef, { used: true, usedAt: Date.now(), userId: decoded.uid });
+      tx.set(db.collection('oauthAuthCodes').doc(code), {
+        code, clientId: stored.clientId, redirectUri: stored.redirectUri, userId: decoded.uid, authTime: decoded.auth_time,
+        userEmail: currentProfile.email || decoded.email || '', scope: stored.scope, codeChallenge: stored.codeChallenge,
+        codeChallengeMethod: 'S256', used: false, expiresAt: Date.now() + 5 * 60 * 1000,
+        createdAt: new Date().toISOString(), issuer: OAUTH_ORIGIN(),
+      });
+    });
+  } catch (err) {
+    if (err.message === 'invalid_scope') return authError(res, 403, 'access_denied', 'O perfil atual não permite um ou mais escopos administrativos solicitados.');
+    return authError(res, 400, 'invalid_request', 'Solicitação de consentimento expirada ou já utilizada. Inicie novamente a conexão.');
+  }
+  const requestSnap = await requestRef.get();
+  const stored = requestSnap.data();
+  const callback = new URL(stored.redirectUri);
+  callback.searchParams.set('code', code);
+  if (stored.state) callback.searchParams.set('state', stored.state);
+  return res.status(200).json({ redirect_uri: callback.toString() });
+}
+
+async function handleOAuthConsentInfo(req, res, db) {
+  const requestId = req.query?.request_id;
+  if (!requestId || typeof requestId !== 'string') return authError(res, 400, 'invalid_request', 'request_id obrigatório.');
+  const requestSnap = await db.collection('oauthAuthorizationRequests').doc(requestId).get();
+  if (!requestSnap.exists || requestSnap.data().used || requestSnap.data().expiresAt <= Date.now()) return authError(res, 400, 'invalid_request', 'Solicitação expirada ou já utilizada.');
+  const request = requestSnap.data();
+  const client = await getOAuthClient(db, request.clientId);
+  if (!client || client.enabled === false) return authError(res, 400, 'invalid_client', 'Cliente OAuth desativado.');
+  if (client.grantTypes && !client.grantTypes.includes('authorization_code')) return authError(res, 400, 'unauthorized_client', 'Cliente não registrado para authorization_code.');
+  return res.status(200).json({ client_name: client.clientName || 'Cliente MCP', scopes: parseScopes(request.scope) || [] });
 }
 
 /**
@@ -312,227 +334,108 @@ async function handleOAuthAuthorize(req, res, db, getAuth) {
 async function handleOAuthToken(req, res, db) {
   const body = req.body || {};
   const grantType = body.grant_type;
-  const isProd = process.env.GCLOUD_PROJECT === 'papelaria-dashboard';
-  const issuer = isProd ? 'https://api.luisices.com.br' : 'https://api.dev.luisices.com.br';
+  const issuer = OAUTH_ORIGIN();
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  if (!db || !await applyEndpointRateLimit(req, res, db, 'token', 120)) return undefined;
+  const tokenAuthorization = req.headers?.authorization || req.headers?.Authorization || '';
+  if (body.client_secret !== undefined || /^Basic\s/i.test(tokenAuthorization)) return authError(res, 401, 'invalid_client', 'O servidor aceita somente clientes públicos sem segredo.');
 
   if (grantType === 'authorization_code') {
-    const { code, redirect_uri, client_id, code_verifier } = body;
+    const { code, redirect_uri: redirectUri, client_id: clientId, code_verifier: verifier } = body;
+    if (typeof code !== 'string' || !code.startsWith('lui_code_') || !isOAuthClientId(clientId)
+        || !redirectUri || typeof verifier !== 'string') return authError(res, 400, 'invalid_request', 'code, client_id, redirect_uri e code_verifier válidos são obrigatórios.');
+    if (!/^[A-Za-z0-9._~-]{43,128}$/.test(String(verifier))) return authError(res, 400, 'invalid_grant', 'PKCE code_verifier inválido.');
+    const codeRef = db.collection('oauthAuthCodes').doc(code);
+    const registeredClient = await getOAuthClient(db, clientId);
+    if (!registeredClient || registeredClient.enabled === false || (registeredClient.tokenEndpointAuthMethod || 'none') !== 'none'
+        || registeredClient.grantTypes && !registeredClient.grantTypes.includes('authorization_code')) return authError(res, 400, 'invalid_client', 'Cliente OAuth desconhecido, desativado ou não suportado.');
+    if (!Array.isArray(registeredClient.redirectUris) || !registeredClient.redirectUris.includes(redirectUri)) return authError(res, 400, 'invalid_grant', 'redirect_uri não cadastrado para o cliente.');
 
-    if (!code) {
-      return res.status(400).json({ error: 'invalid_request', error_description: 'Parâmetro code é obrigatório.' });
-    }
-
-    if (!code_verifier) {
-      return res.status(400).json({ error: 'invalid_request', error_description: 'OAuth 2.1 exige o parâmetro code_verifier para validação PKCE.' });
-    }
-
-    const codeSnap = await db.collection('oauthAuthCodes').doc(code).get();
-    if (!codeSnap.exists) {
-      return res.status(400).json({ error: 'invalid_grant', error_description: 'Código de autorização inválido.' });
-    }
-
-    const codeData = codeSnap.data();
-
-    if (codeData.used) {
-      return res.status(400).json({ error: 'invalid_grant', error_description: 'Código de autorização já foi utilizado.' });
-    }
-
-    if (codeData.expiresAt < Date.now()) {
-      return res.status(400).json({ error: 'invalid_grant', error_description: 'Código de autorização expirado.' });
-    }
-
-    if (redirect_uri && codeData.redirectUri && redirect_uri !== codeData.redirectUri) {
-      return res.status(400).json({ error: 'invalid_grant', error_description: 'Incompatibilidade de redirect_uri.' });
-    }
-
-    // Validação estrita de PKCE (S256)
-    if (codeData.codeChallengeMethod === 'S256') {
-      const computedChallenge = calculateS256Challenge(code_verifier);
-      if (computedChallenge !== codeData.codeChallenge) {
-        return res.status(400).json({ error: 'invalid_grant', error_description: 'PKCE code_verifier inválido.' });
-      }
-    } else if (codeData.codeChallengeMethod === 'plain') {
-      if (code_verifier !== codeData.codeChallenge) {
-        return res.status(400).json({ error: 'invalid_grant', error_description: 'PKCE code_verifier inválido.' });
-      }
-    }
-
-    // Marca o código como utilizado para evitar reuso
-    await db.collection('oauthAuthCodes').doc(code).update({ used: true, usedAt: new Date().toISOString() });
-
-    // Consulta de status atualizado do usuário
-    const userSnap = await db.collection(COLLECTIONS.USERS).doc(codeData.userId).get();
-    if (!userSnap.exists) {
-      return res.status(400).json({ error: 'invalid_grant', error_description: 'Usuário proprietário do código não encontrado.' });
-    }
-
-    const userProfile = userSnap.data();
-    if (userProfile.active === false || userProfile.status === 'paused' || userProfile.permissions?.mcpAccess === false) {
-      return res.status(403).json({ error: 'access_denied', error_description: 'Conta de usuário inativa ou sem permissão MCP.' });
-    }
-
-    // Geração de tokens com vinculação ao usuário e criação de sessão rastreável
     const accessToken = `lui_oauth_at_${crypto.randomBytes(32).toString('hex')}`;
     const refreshToken = `lui_oauth_rt_${crypto.randomBytes(32).toString('hex')}`;
     const sessionId = `sess_${crypto.randomBytes(16).toString('hex')}`;
+    const now = Date.now();
     const expiresInSeconds = 3600;
-    const expiresAt = Date.now() + expiresInSeconds * 1000;
-    const finalClientId = client_id || codeData.clientId || 'chatgpt-mcp';
-    const clientName = (finalClientId && finalClientId.toLowerCase().includes('chatgpt'))
-      ? 'ChatGPT (OpenAI MCP)'
-      : 'Assistente MCP';
-
-    const tokenDoc = {
-      accessToken,
-      refreshToken,
-      sessionId,
-      clientId: finalClientId,
-      userId: codeData.userId,
-      userEmail: codeData.userEmail || userProfile.email || '',
-      userName: userProfile.displayName || userProfile.email || 'Usuário',
-      scope: codeData.scope,
-      scopes: (codeData.scope || '').split(' ').filter(Boolean),
-      iss: issuer,
-      aud: issuer,
-      createdAt: new Date().toISOString(),
-      expiresAt,
-    };
-
-    await db.collection('oauthAccessTokens').doc(accessToken).set(tokenDoc);
-
-    await db.collection('oauthRefreshTokens').doc(refreshToken).set({
-      refreshToken,
-      accessToken,
-      sessionId,
-      clientId: tokenDoc.clientId,
-      userId: codeData.userId,
-      userEmail: tokenDoc.userEmail,
-      scope: codeData.scope,
-      scopes: tokenDoc.scopes,
-      createdAt: new Date().toISOString(),
-      expiresAt: Date.now() + 30 * 24 * 3600 * 1000,
-      revoked: false,
-    });
-
-    // Registra sessão ativa para monitoramento e revogação por usuário e admin
-    const sessionDoc = {
-      sessionId,
-      accessToken,
-      refreshToken,
-      clientId: tokenDoc.clientId,
-      clientName,
-      userId: codeData.userId,
-      userEmail: tokenDoc.userEmail,
-      userName: tokenDoc.userName,
-      userRole: userProfile.role || 'funcionario',
-      scope: codeData.scope,
-      scopes: tokenDoc.scopes,
-      active: true,
-      revoked: false,
-      createdAt: new Date().toISOString(),
-      expiresAt: Date.now() + 30 * 24 * 3600 * 1000,
-      lastUsedAt: new Date().toISOString(),
-      totalCalls: 0,
-    };
-    await db.collection('oauthSessions').doc(sessionId).set(sessionDoc);
-
-    // Sinaliza no perfil do usuário que há uma sessão aberta via MCP
-    await db.collection(COLLECTIONS.USERS).doc(codeData.userId).update({
-      mcpSessionActive: true,
-      lastMcpConnectedAt: new Date().toISOString(),
-    }).catch(() => {});
-
-    return res.status(200).json({
-      access_token: accessToken,
-      token_type: 'Bearer',
-      expires_in: expiresInSeconds,
-      refresh_token: refreshToken,
-      scope: codeData.scope,
-    });
+    let resultScope = '';
+    try {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(codeRef);
+        if (!snap.exists) throw new Error('invalid_grant');
+        const data = snap.data();
+        const userRef = db.collection(COLLECTIONS.USERS).doc(data.userId);
+        const currentClient = await getOAuthClient(db, clientId, tx);
+        const userSnap = await tx.get(userRef);
+        if (!currentClient || !userSnap.exists) throw new Error('invalid_grant');
+        const profile = userSnap.data();
+        if (data.used || !Number.isFinite(data.expiresAt) || data.expiresAt <= now || data.issuer !== issuer || data.clientId !== clientId || data.redirectUri !== redirectUri
+            || currentClient.enabled === false || (currentClient.tokenEndpointAuthMethod || 'none') !== 'none'
+            || currentClient.grantTypes && !currentClient.grantTypes.includes('authorization_code')
+            || !currentClient.redirectUris?.includes(redirectUri) || profile.active === false || ['paused', 'inactive', 'disabled'].includes(profile.status)
+            || profile.permissions?.mcpAccess === false || (profile.tokensValidAfterTime && (!Number.isFinite(data.authTime) || data.authTime <= profile.tokensValidAfterTime))) throw new Error('invalid_grant');
+        if (data.codeChallengeMethod !== 'S256' || calculateS256Challenge(verifier) !== data.codeChallenge) throw new Error('invalid_grant');
+        const scopes = parseScopes(data.scope);
+        if (!scopes || (profile.role !== 'admin' && scopes.some((scope) => MCP_SCOPES.FINANCIAL_READ.id === scope || MCP_SCOPES.TEAM_READ.id === scope))) throw new Error('invalid_scope');
+        resultScope = scopes.join(' ');
+        const expiresAt = now + expiresInSeconds * 1000;
+        const refreshExpiresAt = now + 30 * 24 * 3600 * 1000;
+        const tokenDoc = { accessToken, refreshToken, sessionId, clientId, userId: data.userId, authTime: data.authTime, userEmail: profile.email || '', userName: profile.displayName || profile.email || 'Usuário', scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt };
+        const sessionDoc = { sessionId, accessToken, refreshToken, clientId, clientName: registeredClient.clientName || 'Cliente MCP', userId: data.userId, userEmail: tokenDoc.userEmail, userName: tokenDoc.userName, userRole: profile.role || 'user', scope: resultScope, scopes, active: true, revoked: false, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, lastUsedAt: new Date().toISOString(), totalCalls: 0 };
+        tx.update(codeRef, { used: true, usedAt: now });
+        tx.set(db.collection('oauthAccessTokens').doc(accessToken), tokenDoc);
+        tx.set(db.collection('oauthRefreshTokens').doc(refreshToken), { refreshToken, accessToken, sessionId, clientId, userId: data.userId, authTime: data.authTime, userEmail: tokenDoc.userEmail, scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, revoked: false });
+        tx.set(db.collection('oauthSessions').doc(sessionId), sessionDoc);
+      });
+    } catch (err) {
+      const invalidScope = err.message === 'invalid_scope';
+      return authError(res, invalidScope ? 400 : 400, invalidScope ? 'invalid_scope' : 'invalid_grant', invalidScope ? 'Escopo inválido ou reservado a administradores.' : 'Código expirado, utilizado, vinculado a outro cliente/callback ou PKCE inválido.');
+    }
+    return res.status(200).json({ access_token: accessToken, token_type: 'Bearer', expires_in: expiresInSeconds, refresh_token: refreshToken, scope: resultScope });
   }
 
   if (grantType === 'refresh_token') {
-    const { refresh_token, client_id } = body;
-    if (!refresh_token) {
-      return res.status(400).json({ error: 'invalid_request', error_description: 'Parâmetro refresh_token é obrigatório.' });
-    }
-
-    const refreshSnap = await db.collection('oauthRefreshTokens').doc(refresh_token).get();
-    if (!refreshSnap.exists) {
-      return res.status(400).json({ error: 'invalid_grant', error_description: 'Refresh token não encontrado.' });
-    }
-
-    const refreshData = refreshSnap.data();
-    if (refreshData.revoked) {
-      return res.status(400).json({ error: 'invalid_grant', error_description: 'Sessão MCP revogada pelo usuário ou administrador.' });
-    }
-
-    if (refreshData.expiresAt < Date.now()) {
-      return res.status(400).json({ error: 'invalid_grant', error_description: 'Refresh token expirado.' });
-    }
-
-    // Valida se a sessão associada foi revogada
-    if (refreshData.sessionId) {
-      const sessionSnap = await db.collection('oauthSessions').doc(refreshData.sessionId).get();
-      if (sessionSnap.exists) {
-        const sData = sessionSnap.data();
-        if (sData.active === false || sData.revoked) {
-          return res.status(400).json({ error: 'invalid_grant', error_description: 'Sessão MCP revogada pelo usuário ou administrador.' });
-        }
-      }
-    }
-
-    const userSnap = await db.collection(COLLECTIONS.USERS).doc(refreshData.userId).get();
-    if (!userSnap.exists) {
-      return res.status(400).json({ error: 'invalid_grant', error_description: 'Usuário não localizado.' });
-    }
-
-    const userProfile = userSnap.data();
-    if (userProfile.active === false || userProfile.status === 'paused' || userProfile.permissions?.mcpAccess === false) {
-      return res.status(403).json({ error: 'access_denied', error_description: 'Acesso suspenso para este colaborador.' });
-    }
-
+    const { refresh_token: oldRefreshToken, client_id: clientId } = body;
+    if (typeof oldRefreshToken !== 'string' || !oldRefreshToken.startsWith('lui_oauth_rt_') || !isOAuthClientId(clientId)) return authError(res, 400, 'invalid_request', 'refresh_token e client_id válidos são obrigatórios.');
+    const oldRef = db.collection('oauthRefreshTokens').doc(oldRefreshToken);
     const newAccessToken = `lui_oauth_at_${crypto.randomBytes(32).toString('hex')}`;
+    const newRefreshToken = `lui_oauth_rt_${crypto.randomBytes(32).toString('hex')}`;
+    const now = Date.now();
     const expiresInSeconds = 3600;
-    const expiresAt = Date.now() + expiresInSeconds * 1000;
-    const sessionId = refreshData.sessionId || `sess_${crypto.randomBytes(16).toString('hex')}`;
-
-    const tokenDoc = {
-      accessToken: newAccessToken,
-      refreshToken: refresh_token,
-      sessionId,
-      clientId: client_id || refreshData.clientId || 'chatgpt-mcp',
-      userId: refreshData.userId,
-      userEmail: userProfile.email,
-      userName: userProfile.displayName || userProfile.email || 'Usuário',
-      scope: refreshData.scope,
-      scopes: refreshData.scopes,
-      iss: issuer,
-      aud: issuer,
-      createdAt: new Date().toISOString(),
-      expiresAt,
-    };
-
-    await db.collection('oauthAccessTokens').doc(newAccessToken).set(tokenDoc);
-
-    // Atualiza último uso na sessão
-    if (refreshData.sessionId) {
-      await db.collection('oauthSessions').doc(refreshData.sessionId).update({
-        accessToken: newAccessToken,
-        lastUsedAt: new Date().toISOString(),
-      }).catch(() => {});
+    let resultScope = '';
+    try {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(oldRef);
+        if (!snap.exists) throw new Error('invalid_grant');
+        const refresh = snap.data();
+        const sessionRef = db.collection('oauthSessions').doc(refresh.sessionId);
+        const userRef = db.collection(COLLECTIONS.USERS).doc(refresh.userId);
+        const [sessionSnap, userSnap, client] = await Promise.all([tx.get(sessionRef), tx.get(userRef), getOAuthClient(db, clientId, tx)]);
+        if (!sessionSnap.exists || !userSnap.exists || !client) throw new Error('invalid_grant');
+        const session = sessionSnap.data();
+        const profile = userSnap.data();
+        if (refresh.revoked || !Number.isFinite(refresh.expiresAt) || refresh.expiresAt <= now || refresh.clientId !== clientId || refresh.iss !== issuer || refresh.aud !== issuer
+            || session.revoked || session.active === false || !Number.isFinite(session.expiresAt) || session.expiresAt <= now || session.userId !== refresh.userId
+            || session.refreshToken !== oldRefreshToken || session.clientId !== clientId || session.iss !== issuer || session.aud !== issuer
+            || client.enabled === false || (client.tokenEndpointAuthMethod || 'none') !== 'none'
+            || client.grantTypes && !client.grantTypes.includes('refresh_token')
+            || profile.active === false || ['paused', 'inactive', 'disabled'].includes(profile.status) || profile.permissions?.mcpAccess === false
+            || (profile.tokensValidAfterTime && (!Number.isFinite(refresh.authTime) || refresh.authTime <= profile.tokensValidAfterTime))) throw new Error('invalid_grant');
+        const scopes = parseScopes(refresh.scope);
+        if (!scopes || profile.role !== 'admin' && scopes.some((scope) => scope === MCP_SCOPES.FINANCIAL_READ.id || scope === MCP_SCOPES.TEAM_READ.id)) throw new Error('invalid_scope');
+        resultScope = scopes.join(' ');
+        const expiresAt = now + expiresInSeconds * 1000;
+        const refreshExpiresAt = Math.min(refresh.expiresAt, now + 30 * 24 * 3600 * 1000);
+        tx.update(oldRef, { revoked: true, replacedAt: now });
+        tx.set(db.collection('oauthAccessTokens').doc(newAccessToken), { accessToken: newAccessToken, refreshToken: newRefreshToken, sessionId: refresh.sessionId, clientId, userId: refresh.userId, authTime: refresh.authTime, userEmail: profile.email || '', userName: profile.displayName || profile.email || 'Usuário', scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt });
+        tx.set(db.collection('oauthRefreshTokens').doc(newRefreshToken), { refreshToken: newRefreshToken, accessToken: newAccessToken, sessionId: refresh.sessionId, clientId, userId: refresh.userId, authTime: refresh.authTime, userEmail: profile.email || '', scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, revoked: false });
+        tx.update(sessionRef, { accessToken: newAccessToken, refreshToken: newRefreshToken, lastUsedAt: new Date().toISOString() });
+      });
+    } catch (_err) {
+      return authError(res, 400, 'invalid_grant', 'Refresh token expirado, já utilizado, revogado ou vinculado a outro cliente/ambiente.');
     }
-
-    return res.status(200).json({
-      access_token: newAccessToken,
-      token_type: 'Bearer',
-      expires_in: expiresInSeconds,
-      refresh_token: refresh_token,
-      scope: refreshData.scope,
-    });
+    return res.status(200).json({ access_token: newAccessToken, token_type: 'Bearer', expires_in: expiresInSeconds, refresh_token: newRefreshToken, scope: resultScope });
   }
-
-  return res.status(400).json({ error: 'unsupported_grant_type', error_description: 'Grant type não suportado. Utilize authorization_code ou refresh_token.' });
+  return authError(res, 400, 'unsupported_grant_type', 'Utilize authorization_code ou refresh_token.');
 }
 
 /**
@@ -570,51 +473,29 @@ async function validateOAuthAccessToken(accessToken, db) {
     };
   }
 
-  // Checa se a sessão vinculada foi revogada
-  if (tokenData.sessionId) {
-    const sessionSnap = await db.collection('oauthSessions').doc(tokenData.sessionId).get();
-    if (sessionSnap.exists) {
-      const sData = sessionSnap.data();
-      if (sData.active === false || sData.revoked) {
-        return {
-          success: false,
-          status: 401,
-          code: 'SESSION_REVOKED',
-          message: 'Sessão MCP revogada pelo usuário ou administrador.',
-        };
-      }
-    }
+  if (!Number.isFinite(tokenData.expiresAt) || tokenData.expiresAt <= Date.now()) {
+    return { success: false, status: 401, code: 'TOKEN_EXPIRED', message: 'Token de acesso OAuth 2.1 expirado. Utilize o refresh token para renovar.' };
   }
 
-  if (tokenData.expiresAt < Date.now()) {
-    return {
-      success: false,
-      status: 401,
-      code: 'TOKEN_EXPIRED',
-      message: 'Token de acesso OAuth 2.1 expirado. Utilize o refresh token para renovar.',
-    };
+  const expectedIssuer = OAUTH_ORIGIN();
+  if (tokenData.iss !== expectedIssuer) {
+    return { success: false, status: 401, code: 'INVALID_ISSUER', message: 'Emissor (issuer) do token OAuth não confere com o ambiente.' };
+  }
+  if (tokenData.aud !== expectedIssuer) {
+    return { success: false, status: 401, code: 'INVALID_AUDIENCE', message: 'Público (audience) do token OAuth é inválido.' };
   }
 
-  const isProd = process.env.GCLOUD_PROJECT === 'papelaria-dashboard';
-  const expectedIssuer = isProd ? 'https://api.luisices.com.br' : 'https://api.dev.luisices.com.br';
-
-  if (tokenData.iss && tokenData.iss !== expectedIssuer) {
-    return {
-      success: false,
-      status: 401,
-      code: 'INVALID_ISSUER',
-      message: 'Emissor (issuer) do token OAuth não confere com o ambiente.',
-    };
+  if (!tokenData.sessionId) return { success: false, status: 401, code: 'SESSION_REQUIRED', message: 'Token OAuth sem sessão vinculada.' };
+  const sessionSnap = await db.collection('oauthSessions').doc(tokenData.sessionId).get();
+  if (!sessionSnap.exists) return { success: false, status: 401, code: 'SESSION_NOT_FOUND', message: 'Sessão OAuth vinculada não encontrada.' };
+  const sessionData = sessionSnap.data();
+  if (sessionData.active === false || sessionData.revoked || sessionData.userId !== tokenData.userId || sessionData.clientId !== tokenData.clientId
+      || !Number.isFinite(sessionData.expiresAt) || sessionData.expiresAt <= Date.now()) {
+    return { success: false, status: 401, code: 'SESSION_REVOKED', message: 'Sessão MCP revogada, expirada ou vinculada a outro cliente/ambiente.' };
   }
-
-  if (tokenData.aud && tokenData.aud !== expectedIssuer) {
-    return {
-      success: false,
-      status: 401,
-      code: 'INVALID_AUDIENCE',
-      message: 'Público (audience) do token OAuth é inválido.',
-    };
-  }
+  if (!isOAuthClientId(tokenData.clientId)) return { success: false, status: 401, code: 'INVALID_CLIENT', message: 'Token OAuth sem cliente vinculado.' };
+  const client = await getOAuthClient(db, tokenData.clientId);
+  if (!client || client.enabled === false) return { success: false, status: 401, code: 'INVALID_CLIENT', message: 'Cliente OAuth desativado ou removido.' };
 
   const userSnap = await db.collection(COLLECTIONS.USERS).doc(tokenData.userId).get();
   if (!userSnap.exists) {
@@ -627,7 +508,7 @@ async function validateOAuthAccessToken(accessToken, db) {
   }
 
   const userProfile = userSnap.data();
-  if (userProfile.active === false || userProfile.status === 'paused') {
+  if (userProfile.active === false || userProfile.status === 'paused' || userProfile.status === 'disabled' || userProfile.status === 'inactive') {
     return {
       success: false,
       status: 403,
@@ -645,12 +526,24 @@ async function validateOAuthAccessToken(accessToken, db) {
     };
   }
 
-  const scope = getCallerScope(tokenData.userId, userProfile);
+  if (userProfile.tokensValidAfterTime && (!Number.isFinite(tokenData.authTime) || tokenData.authTime <= userProfile.tokensValidAfterTime)) {
+    return { success: false, status: 401, code: 'SESSION_REVOKED', message: 'A autenticação Firebase desta sessão foi revogada.' };
+  }
 
-  // Garante que escopos padrão não restritos estejam presentes nos tokens OAuth válidos
-  const tokenScopes = Array.isArray(tokenData.scopes) ? [...tokenData.scopes] : [];
-  if (!tokenScopes.includes('orders:create') && (tokenScopes.includes('orders:read') || tokenScopes.includes('orders:draft') || tokenScopes.length === 0)) {
-    tokenScopes.push('orders:create');
+  const scope = getCallerScope(tokenData.userId, userProfile);
+  let tokenScopes;
+  if (Array.isArray(tokenData.scopes)) tokenScopes = [...new Set(tokenData.scopes)];
+  else if (tokenData.scope === undefined || tokenData.scope === null || tokenData.scope === '') tokenScopes = [];
+  else {
+    tokenScopes = parseScopes(tokenData.scope);
+    if (!tokenScopes) return { success: false, status: 401, code: 'INVALID_SCOPE', message: 'Token OAuth contém escopos desconhecidos.' };
+  }
+  if (tokenScopes.some((value) => !ALLOWED_SCOPES.has(value))) return { success: false, status: 401, code: 'INVALID_SCOPE', message: 'Token OAuth contém escopos desconhecidos.' };
+  if (userProfile.role !== 'admin' && tokenScopes.some((value) => value === MCP_SCOPES.FINANCIAL_READ.id || value === MCP_SCOPES.TEAM_READ.id)) {
+    return { success: false, status: 403, code: 'SCOPE_PERMISSION_DENIED', message: 'O perfil atual não permite os escopos administrativos deste token.' };
+  }
+  if (!await consumeOAuthRateLimit(db, `mcp-user:${tokenData.userId}`, 120)) {
+    return { success: false, status: 429, code: 'RATE_LIMIT_EXCEEDED', message: 'Limite de 120 chamadas MCP por hora excedido para esta conta.' };
   }
 
   return {
@@ -673,6 +566,7 @@ module.exports = {
   calculateS256Challenge,
   handleOAuthRegister,
   handleOAuthAuthorize,
+  handleOAuthConsentInfo,
   handleOAuthToken,
   validateOAuthAccessToken,
 };

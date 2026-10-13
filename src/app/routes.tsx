@@ -9,6 +9,7 @@ import { Register } from './pages/Register';
 import { Login } from './pages/Login';
 import { ResetPassword } from './pages/ResetPassword';
 import { AuthAction } from './pages/AuthAction';
+import { OAuthConsent } from './pages/OAuthConsent';
 import { OrdersProvider } from '../contexts/OrdersContext';
 import { UserSettingsProvider } from '../contexts/UserSettingsContext';
 import { canAccessPricing, canAccessArchivedOrders, canAccessEmails } from './types';
@@ -224,6 +225,11 @@ export const router = isCatalogSubdomain
       {
         path: '/action',
         element: <AuthAction />,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/oauth-consent',
+        element: <OAuthConsent />,
         errorElement: <ErrorBoundary />,
       },
       {

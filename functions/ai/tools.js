@@ -608,20 +608,29 @@ class AiToolsExecutor {
       inputs[field] = { value, source, label: labels[field], ...(configField ? { configurationField: configField } : {}) };
       return value;
     };
-    // Valida ambos os aliases; divergência é ambígua, não deve ser resolvida silenciosamente.
-    const alias = args.unitCostRaw !== undefined ? parse(args.unitCostRaw, 'unitCostRaw') : undefined;
-    const raw = args.rawMaterialsCost !== undefined ? parse(args.rawMaterialsCost, 'rawMaterialsCost') : undefined;
-    if (alias !== undefined && raw !== undefined && alias !== raw) invalid('unitCostRaw/rawMaterialsCost (valores divergentes)');
-    const rawCost = raw ?? alias ?? 15;
-    inputs.rawMaterialsCost = { value: rawCost, source: raw !== undefined || alias !== undefined ? 'argument' : 'default', label: labels.rawMaterialsCost, argumentFields: ['rawMaterialsCost', 'unitCostRaw'].filter((key) => args[key] !== undefined) };
-    const qty = read('quantity', 1, null, 1);
+    const qty = read('quantity', 1, null, 1, 100000);
     if (!Number.isSafeInteger(qty)) invalid('quantity');
-    const customCost = read('customizationCost', 5);
-    const laborTimeMinutes = read('laborTimeMinutes', 15);
-    const setupTimeMinutes = read('setupTimeMinutes', 0);
-    const profitMarginPercent = read('profitMarginPercent', studioSettings.defaultProfitMarginPercent, 'defaultProfitMarginPercent', 0, 95);
-    const paymentFeePercent = read('paymentFeePercent', studioSettings.defaultPaymentFeePercent, 'defaultPaymentFeePercent');
-    const wasteMarginPercent = read('wasteMarginPercent', studioSettings.defaultWasteMarginPercent, 'defaultWasteMarginPercent');
+    // Contrato legado: esses valores representam o lote inteiro; o motor calcula custo unitário.
+    const batchMaterials = args.materialsCost !== undefined ? parse(args.materialsCost, 'materialsCost', 0, 10000000) / qty : undefined;
+    const batchLaborMinutes = args.laborHours !== undefined ? parse(args.laborHours, 'laborHours', 0, 1000) * 60 / qty : undefined;
+    const targetMargin = args.targetMarginPercent !== undefined ? parse(args.targetMarginPercent, 'targetMarginPercent', 0, 95) : undefined;
+    if (batchMaterials !== undefined && args.rawMaterialsCost !== undefined && batchMaterials !== parse(args.rawMaterialsCost, 'rawMaterialsCost')) invalid('materialsCost/rawMaterialsCost (valores divergentes)');
+    if (batchMaterials !== undefined && args.unitCostRaw !== undefined && batchMaterials !== parse(args.unitCostRaw, 'unitCostRaw')) invalid('materialsCost/unitCostRaw (valores divergentes)');
+    if (batchLaborMinutes !== undefined && args.laborTimeMinutes !== undefined && batchLaborMinutes !== parse(args.laborTimeMinutes, 'laborTimeMinutes')) invalid('laborHours/laborTimeMinutes (valores divergentes)');
+    if (targetMargin !== undefined && args.profitMarginPercent !== undefined && targetMargin !== parse(args.profitMarginPercent, 'profitMarginPercent', 0, 95)) invalid('targetMarginPercent/profitMarginPercent (valores divergentes)');
+    const alias = args.unitCostRaw !== undefined ? parse(args.unitCostRaw, 'unitCostRaw', 0, 10000000) : undefined;
+    const raw = args.rawMaterialsCost !== undefined ? parse(args.rawMaterialsCost, 'rawMaterialsCost', 0, 10000000) : undefined;
+    if (alias !== undefined && raw !== undefined && alias !== raw) invalid('unitCostRaw/rawMaterialsCost (valores divergentes)');
+    const rawCost = batchMaterials ?? raw ?? alias ?? 15;
+    inputs.rawMaterialsCost = { value: rawCost, source: batchMaterials !== undefined || raw !== undefined || alias !== undefined ? 'argument' : 'default', label: labels.rawMaterialsCost, argumentFields: ['materialsCost', 'rawMaterialsCost', 'unitCostRaw'].filter((key) => args[key] !== undefined) };
+    const customCost = read('customizationCost', 5, null, 0, 10000000);
+    const laborTimeMinutes = batchLaborMinutes ?? read('laborTimeMinutes', 15, null, 0, 60000);
+    inputs.laborTimeMinutes = { value: laborTimeMinutes, source: batchLaborMinutes !== undefined ? 'argument' : (args.laborTimeMinutes !== undefined ? 'argument' : 'default'), label: labels.laborTimeMinutes, argumentFields: ['laborHours', 'laborTimeMinutes'].filter((key) => args[key] !== undefined) };
+    const setupTimeMinutes = read('setupTimeMinutes', 0, null, 0, 600000);
+    const profitMarginPercent = targetMargin ?? read('profitMarginPercent', studioSettings.defaultProfitMarginPercent, 'defaultProfitMarginPercent', 0, 95);
+    if (targetMargin !== undefined) inputs.profitMarginPercent = { value: targetMargin, source: 'argument', label: labels.profitMarginPercent, argumentFields: ['targetMarginPercent'] };
+    const paymentFeePercent = read('paymentFeePercent', studioSettings.defaultPaymentFeePercent, 'defaultPaymentFeePercent', 0, 100);
+    const wasteMarginPercent = read('wasteMarginPercent', studioSettings.defaultWasteMarginPercent, 'defaultWasteMarginPercent', 0, 1000);
     const sourceLabels = { argument: 'argumento recebido pela ferramenta (origem humana não comprovada)', configuration: 'configuração cadastrada', default: 'padrão assumido' };
     const assumptions = Object.values(inputs).map((input) => `${input.label}: ${input.value} — ${sourceLabels[input.source]}${input.invalidConfiguration ? ' (configuração inválida substituída)' : ''}.`);
 
