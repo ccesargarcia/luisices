@@ -104,13 +104,16 @@ export interface Order {
   cardColor?: string | null;      // Cor de destaque do card
   realCost?: number;       // Custo real da produção
   version?: number;        // Versão para controle de concorrência
-  source?: 'web' | 'alexa' | 'store' | string; // Origem do pedido (web, alexa, lojinha)
+  source?: 'web' | 'alexa' | 'store' | 'chatgpt-mcp' | 'chatgpt' | string; // Origem do pedido (web, alexa, lojinha, chatgpt)
   createdByUid?: string;   // UID do criador
   voiceDraftId?: string;   // Rascunho de voz de origem
   voiceConfirmationMode?: 'voice_confirm' | 'app_approval';
   isArchived?: boolean;    // Pedido arquivado (fora do painel principal para não poluir a tela)
   archivedAt?: string | null; // Data/hora do arquivamento em formato ISO
   archivedBy?: string | null; // UID do usuário que realizou o arquivamento
+  idempotencyKey?: string;
+  requiresFinancialApproval?: boolean;
+  financialWarning?: string | null;
 }
 
 
