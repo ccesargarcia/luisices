@@ -15,16 +15,17 @@ export function toCdnUrl(url?: string | null): string {
   const trimmed = url.trim();
   if (!trimmed) return '';
 
-  const cdnBase = import.meta.env.VITE_STORAGE_CDN_URL || 'https://cdn-dev.luisices.com.br';
+  const cdnBase = import.meta.env.VITE_STORAGE_CDN_URL;
+  if (!cdnBase) return trimmed;
+
   const cleanCdnBase = cdnBase.replace(/\/+$/, '');
 
-  // 1. Se já for uma URL do CDN próprio, padroniza
+  // 1. Se já for uma URL do CDN próprio, padroniza e remove query string (?alt=media&token=...)
   if (trimmed.startsWith(cleanCdnBase) || trimmed.includes('cdn.luisices.com.br') || trimmed.includes('cdn-dev.luisices.com.br')) {
     try {
       const parsed = new URL(trimmed);
       const cleanPath = parsed.pathname.replace(/^\/+/, '');
-      const search = parsed.search || '';
-      return `${cleanCdnBase}/${cleanPath}${search}`;
+      return `${parsed.origin}/${cleanPath}`;
     } catch {
       return trimmed;
     }
@@ -37,8 +38,7 @@ export function toCdnUrl(url?: string | null): string {
       const match = trimmed.match(/\/o\/(.+?)(\?.*)?$/);
       if (match && match[1]) {
         const rawPath = decodeURIComponent(match[1]);
-        const queryParams = match[2] || '';
-        return `${cleanCdnBase}/${rawPath}${queryParams}`;
+        return `${cleanCdnBase}/${rawPath}`;
       }
 
       // Padrão /o?name=<encodedPath>
