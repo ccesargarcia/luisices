@@ -76,12 +76,12 @@ export class FirebaseMcpService {
   /**
    * Define se um colaborador específico do sistema tem permissão para usar MCP/ChatGPT.
    */
-  async setUserEligibility(targetUid: string, eligible: boolean): Promise<{ success: boolean; targetUid: string; eligible: boolean }> {
-    const callable = httpsCallable<{ targetUid: string; eligible: boolean }, { success: boolean; targetUid: string; eligible: boolean }>(
+  async setUserEligibility(targetUid: string, eligible: boolean, scopes?: string[]): Promise<{ success: boolean; targetUid: string; eligible: boolean; scopes?: string[] }> {
+    const callable = httpsCallable<{ targetUid: string; eligible: boolean; scopes?: string[] }, { success: boolean; targetUid: string; eligible: boolean; scopes?: string[] }>(
       functions,
       'setUserMcpEligibility'
     );
-    const result = await callable({ targetUid, eligible });
+    const result = await callable({ targetUid, eligible, scopes });
     return result.data;
   }
 

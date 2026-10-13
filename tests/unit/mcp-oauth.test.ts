@@ -433,5 +433,99 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
       expect(result.code).toBe('SESSION_REVOKED');
       expect(result.message).toContain('revogada');
     });
+
+    it('deve filtrar automaticamente escopos administrativos para usuário não-admin sem falhar com erro', async () => {
+      const { handleOAuthAuthorize } = await import('../../functions/mcp/oauth.js');
+      let createdAuthCodeDoc: any = null;
+
+      const mockTx: any = {
+        get: async (ref: any) => {
+          if (ref.id === 'req_123456789012345678901234567890123456789012345678') {
+            return {
+              exists: true,
+              data: () => ({
+                requestId: 'req_123456789012345678901234567890123456789012345678',
+                clientId: 'chatgpt-mcp',
+                redirectUri: 'https://chatgpt.com/aip/g-mcp/oauth/callback',
+                scope: 'orders:read financial:read team:read',
+                codeChallenge: 'A_VALID_BASE64URL_S256_CODE_CHALLENGE_STRING_43',
+                codeChallengeMethod: 'S256',
+                expiresAt: Date.now() + 600000,
+                used: false,
+              }),
+            };
+          }
+          if (ref.id === 'user_func_001') {
+            return {
+              exists: true,
+              data: () => ({
+                uid: 'user_func_001',
+                email: 'funcionario@luisices.com.br',
+                role: 'funcionario', // não-admin
+                active: true,
+                permissions: { mcpAccess: true, mcpScopes: ['orders:read', 'customers:read'] },
+              }),
+            };
+          }
+          return { exists: false };
+        },
+        update: () => {},
+        set: (docRef: any, data: any) => {
+          createdAuthCodeDoc = data;
+        },
+      };
+
+      const mockDb: any = {
+        collection: (colName: string) => {
+          return {
+            doc: (docId: string) => ({
+              id: docId,
+              get: async () => mockTx.get({ id: docId }),
+            }),
+          };
+        },
+        runTransaction: async (cb: any) => cb(mockTx),
+      };
+
+      const mockGetAuth = () => ({
+        verifyIdToken: async () => ({
+          uid: 'user_func_001',
+          email: 'funcionario@luisices.com.br',
+          auth_time: Math.floor(Date.now() / 1000) - 10,
+        }),
+      });
+
+      const req: any = {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer mock_valid_firebase_id_token',
+        },
+        body: {
+          request_id: 'req_123456789012345678901234567890123456789012345678',
+        },
+      };
+
+      let resJson: any = null;
+      const res: any = {
+        setHeader: () => {},
+        status: (code: number) => ({
+          json: (data: any) => {
+            resJson = { code, ...data };
+            return resJson;
+          },
+        }),
+      };
+
+      await handleOAuthAuthorize(req, res, mockDb, mockGetAuth);
+
+      expect(resJson).toBeDefined();
+      expect(resJson.code).toBe(200);
+      expect(resJson.redirect_uri).toContain('code=lui_code_');
+      expect(createdAuthCodeDoc).toBeDefined();
+      // Deve ter mantido apenas 'orders:read' e filtrado os escopos de admin
+      expect(createdAuthCodeDoc.scope).not.toContain('financial:read');
+      expect(createdAuthCodeDoc.scope).not.toContain('team:read');
+      expect(createdAuthCodeDoc.scope).toContain('orders:read');
+    });
   });
 });

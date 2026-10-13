@@ -1093,6 +1093,7 @@ export interface McpTeamMember {
   role: string;
   active: boolean;
   mcpAccess: boolean;
+  mcpScopes?: string[];
   mcpSessionActive?: boolean;
   lastMcpConnectedAt?: string | null;
 }

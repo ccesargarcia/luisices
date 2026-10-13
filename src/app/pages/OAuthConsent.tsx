@@ -7,6 +7,18 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { resolveOAuthApiOrigin } from '../utils/oauthEnvironment';
 
+const SCOPE_DESCRIPTIONS: Record<string, { label: string; description: string }> = {
+  'orders:read': { label: 'Consultar Pedidos & Prazos', description: 'Visualizar fila de produção, pedidos do dia e status de encomendas.' },
+  'orders:draft': { label: 'Criar Rascunhos de Encomendas', description: 'Extrair dados e montar rascunhos de pedidos a partir de conversas.' },
+  'orders:create': { label: 'Criar Pedidos no Sistema', description: 'Registrar novos pedidos diretamente na fila do ateliê.' },
+  'customers:read': { label: 'Consultar Clientes & Contatos', description: 'Buscar histórico e contatos de clientes para atendimento.' },
+  'pricing:estimate': { label: 'Calculadora de Precificação', description: 'Calcular sugestões de preço, custos de insumos e margem.' },
+  'whatsapp:compose': { label: 'Gerador de Mensagens WhatsApp', description: 'Preparar mensagens para envio (cobrança, avisos, pedidos).' },
+  'gallery:read': { label: 'Consultar Portfólio / Acervo', description: 'Buscar fotos e modelos da galeria de produtos.' },
+  'financial:read': { label: 'Relatórios Financeiros & DRE', description: 'Acessar relatórios e métricas financeiras.' },
+  'team:read': { label: 'Auditoria & Desempenho da Equipe', description: 'Auditar pedidos e produtividade da equipe.' },
+};
+
 export function OAuthConsent() {
   const [searchParams] = useSearchParams();
   const requestId = searchParams.get('request_id') || '';
@@ -79,14 +91,34 @@ export function OAuthConsent() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Autorizar acesso ao Luisices</CardTitle>
-          <CardDescription>{clientName} solicita acesso aos seguintes recursos:</CardDescription>
+          <CardDescription>{clientName} solicita permissão para as seguintes funcionalidades do ateliê:</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={authorize} className="space-y-4">
             <div className="space-y-2"><Label htmlFor="oauth-email">E-mail</Label><Input id="oauth-email" type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} /></div>
             <div className="space-y-2"><Label htmlFor="oauth-password">Senha</Label><Input id="oauth-password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></div>
-            <ul className="list-disc pl-5 text-sm text-muted-foreground">{scopes.map((scope) => <li key={scope}>{scope}</li>)}</ul>
-            <p className="text-sm text-muted-foreground">Sua senha é validada pelo Firebase Authentication. A autorização fica vinculada à sua conta e às permissões atuais.</p>
+
+            <div className="rounded-xl border bg-muted/30 p-3.5 space-y-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block">
+                Funcionalidades Habilitadas:
+              </span>
+              <ul className="space-y-2.5 text-xs">
+                {scopes.map((scope) => {
+                  const info = SCOPE_DESCRIPTIONS[scope] || { label: scope, description: 'Acesso autorizado aos recursos do ateliê.' };
+                  return (
+                    <li key={scope} className="flex items-start gap-2.5">
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary text-[10px] font-bold mt-0.5">✓</span>
+                      <div>
+                        <span className="font-semibold text-foreground block">{info.label}</span>
+                        <span className="text-muted-foreground text-[11px] block">{info.description}</span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+
+            <p className="text-xs text-muted-foreground">Sua senha é validada pelo Firebase Authentication. A autorização fica vinculada ao seu usuário e às suas permissões do ateliê.</p>
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
             <Button className="w-full" type="submit" disabled={loading || !apiUrl}>{loading ? 'Validando e autorizando…' : 'Entrar e autorizar'}</Button>
           </form>

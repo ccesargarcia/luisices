@@ -207,6 +207,7 @@ const getMcpSettingsStatus = onCall({ cors: true, maxInstances: 5 }, async (requ
           role: u.role || 'funcionario',
           active: u.active !== false && u.status !== 'paused',
           mcpAccess: u.permissions?.mcpAccess !== false,
+          mcpScopes: Array.isArray(u.permissions?.mcpScopes) ? u.permissions.mcpScopes : (Array.isArray(u.mcpScopes) ? u.mcpScopes : undefined),
           mcpSessionActive: hasSession,
           lastMcpConnectedAt: u.lastMcpConnectedAt || null,
         };
@@ -459,21 +460,27 @@ const toggleGlobalMcp = onCall({ cors: true, maxInstances: 5 }, async (request) 
 const setUserMcpEligibility = onCall({ cors: true, maxInstances: 5 }, async (request) => {
   await assertActiveAdmin(request);
   const db = getFirestore();
-  const { targetUid, eligible } = request.data || {};
+  const { targetUid, eligible, scopes } = request.data || {};
 
   if (!targetUid) {
     throw new HttpsError('invalid-argument', 'Identificador do usuário obrigatório.');
   }
 
   const newEligible = Boolean(eligible);
+  const updateData = {
+    'permissions.mcpAccess': newEligible,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+
+  if (Array.isArray(scopes)) {
+    const validScopeIds = Object.values(MCP_SCOPES).map((s) => s.id);
+    updateData['permissions.mcpScopes'] = scopes.filter((s) => validScopeIds.includes(s));
+  }
 
   await db
     .collection(COLLECTIONS.USERS)
     .doc(targetUid)
-    .update({
-      'permissions.mcpAccess': newEligible,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    .update(updateData);
 
   clearMcpAuthCache();
 
@@ -481,6 +488,7 @@ const setUserMcpEligibility = onCall({ cors: true, maxInstances: 5 }, async (req
     success: true,
     targetUid,
     eligible: newEligible,
+    scopes: updateData['permissions.mcpScopes'],
   };
 });
 

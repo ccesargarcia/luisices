@@ -51,6 +51,29 @@ function parseScopes(value) {
   return scopes;
 }
 
+function getEffectiveUserScopes(requestedScopes, userProfile) {
+  if (!Array.isArray(requestedScopes) || requestedScopes.length === 0) {
+    return [MCP_SCOPES.ORDERS_READ.id];
+  }
+  const isAdmin = userProfile && userProfile.role === 'admin';
+  if (isAdmin) {
+    return requestedScopes;
+  }
+
+  const customScopes = userProfile?.permissions?.mcpScopes || userProfile?.mcpScopes;
+  const validNonAdminScopes = Object.values(MCP_SCOPES)
+    .filter((s) => !s.requiresAdmin)
+    .map((s) => s.id);
+
+  let allowedForUser = validNonAdminScopes;
+  if (Array.isArray(customScopes) && customScopes.length > 0) {
+    allowedForUser = customScopes.filter((s) => validNonAdminScopes.includes(s));
+  }
+
+  const effective = requestedScopes.filter((s) => allowedForUser.includes(s));
+  return effective.length > 0 ? effective : (allowedForUser.length > 0 ? allowedForUser : [MCP_SCOPES.ORDERS_READ.id]);
+}
+
 function authError(res, status, error, description) {
   return res.status(status).json({ error, error_description: description });
 }
@@ -295,17 +318,18 @@ async function handleOAuthAuthorize(req, res, db, getAuth) {
       if (currentProfile.active === false || ['paused', 'inactive', 'disabled'].includes(currentProfile.status)
           || currentProfile.permissions?.mcpAccess === false || (currentProfile.tokensValidAfterTime && (!Number.isFinite(decoded.auth_time) || decoded.auth_time <= currentProfile.tokensValidAfterTime))) throw new Error('invalid_authorization_request');
       const requestedScopes = parseScopes(stored.scope);
-      if (!requestedScopes || (currentProfile.role !== 'admin' && requestedScopes.some((scope) => scope === MCP_SCOPES.FINANCIAL_READ.id || scope === MCP_SCOPES.TEAM_READ.id))) throw new Error('invalid_scope');
+      if (!requestedScopes) throw new Error('invalid_scope');
+      const effectiveScopes = getEffectiveUserScopes(requestedScopes, currentProfile);
       tx.update(requestRef, { used: true, usedAt: Date.now(), userId: decoded.uid });
       tx.set(db.collection('oauthAuthCodes').doc(code), {
         code, clientId: stored.clientId, redirectUri: stored.redirectUri, userId: decoded.uid, authTime: decoded.auth_time,
-        userEmail: currentProfile.email || decoded.email || '', scope: stored.scope, codeChallenge: stored.codeChallenge,
+        userEmail: currentProfile.email || decoded.email || '', scope: effectiveScopes.join(' '), codeChallenge: stored.codeChallenge,
         codeChallengeMethod: 'S256', used: false, expiresAt: Date.now() + 5 * 60 * 1000,
         createdAt: new Date().toISOString(), issuer: OAUTH_ORIGIN(),
       });
     });
   } catch (err) {
-    if (err.message === 'invalid_scope') return authError(res, 403, 'access_denied', 'O perfil atual não permite um ou mais escopos administrativos solicitados.');
+    if (err.message === 'invalid_scope') return authError(res, 400, 'invalid_scope', 'Escopos de autorização inválidos.');
     return authError(res, 400, 'invalid_request', 'Solicitação de consentimento expirada ou já utilizada. Inicie novamente a conexão.');
   }
   const requestSnap = await requestRef.get();
@@ -374,8 +398,9 @@ async function handleOAuthToken(req, res, db) {
             || !currentClient.redirectUris?.includes(redirectUri) || profile.active === false || ['paused', 'inactive', 'disabled'].includes(profile.status)
             || profile.permissions?.mcpAccess === false || (profile.tokensValidAfterTime && (!Number.isFinite(data.authTime) || data.authTime <= profile.tokensValidAfterTime))) throw new Error('invalid_grant');
         if (data.codeChallengeMethod !== 'S256' || calculateS256Challenge(verifier) !== data.codeChallenge) throw new Error('invalid_grant');
-        const scopes = parseScopes(data.scope);
-        if (!scopes || (profile.role !== 'admin' && scopes.some((scope) => MCP_SCOPES.FINANCIAL_READ.id === scope || MCP_SCOPES.TEAM_READ.id === scope))) throw new Error('invalid_scope');
+        const requestedScopes = parseScopes(data.scope);
+        if (!requestedScopes) throw new Error('invalid_scope');
+        const scopes = getEffectiveUserScopes(requestedScopes, profile);
         resultScope = scopes.join(' ');
         const expiresAt = now + expiresInSeconds * 1000;
         const refreshExpiresAt = now + 30 * 24 * 3600 * 1000;

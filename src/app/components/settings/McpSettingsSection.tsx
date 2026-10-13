@@ -92,6 +92,13 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
   const [revokingKeyId, setRevokingKeyId] = useState<string | null>(null);
   const [togglingUserUid, setTogglingUserUid] = useState<string | null>(null);
 
+  // Modal de Permissões Granulares por Colaborador
+  const [memberModalOpen, setMemberModalOpen] = useState(false);
+  const [editingMember, setEditingMember] = useState<McpTeamMember | null>(null);
+  const [memberAccess, setMemberAccess] = useState(true);
+  const [memberScopes, setMemberScopes] = useState<string[]>([]);
+  const [savingMemberPermissions, setSavingMemberPermissions] = useState(false);
+
   // Gestão de Sessões Ativas MCP / OAuth
   const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
   const [sessionToRevoke, setSessionToRevoke] = useState<McpSession | null>(null);
@@ -311,6 +318,40 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
       toast.error(err?.message || 'Erro ao alterar permissão do colaborador');
     } finally {
       setTogglingUserUid(null);
+    }
+  };
+
+  const handleOpenMemberModal = (member: McpTeamMember) => {
+    setEditingMember(member);
+    setMemberAccess(member.mcpAccess);
+    const defaults = member.mcpScopes && member.mcpScopes.length > 0
+      ? member.mcpScopes
+      : (status?.availableScopes || [])
+          .filter((s) => member.role === 'admin' || !s.requiresAdmin)
+          .map((s) => s.id);
+    setMemberScopes(defaults);
+    setMemberModalOpen(true);
+  };
+
+  const handleToggleMemberScope = (scopeId: string) => {
+    setMemberScopes((prev) =>
+      prev.includes(scopeId) ? prev.filter((id) => id !== scopeId) : [...prev, scopeId]
+    );
+  };
+
+  const handleSaveMemberPermissions = async () => {
+    if (!editingMember) return;
+    setSavingMemberPermissions(true);
+    try {
+      await firebaseMcpService.setUserEligibility(editingMember.uid, memberAccess, memberScopes);
+      toast.success(`Permissões do colaborador ${editingMember.displayName} atualizadas!`);
+      setMemberModalOpen(false);
+      setEditingMember(null);
+      await fetchStatus(true);
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao atualizar permissões do colaborador.');
+    } finally {
+      setSavingMemberPermissions(false);
     }
   };
 
@@ -846,15 +887,34 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
                         )}
                       </div>
                       <p className="text-[11px] text-muted-foreground truncate">{member.email}</p>
-                      <Badge variant={member.role === 'admin' ? 'default' : 'secondary'} className="text-[9px] py-0">
-                        {member.role === 'admin' ? 'Admin' : 'Colaborador'}
-                      </Badge>
+                      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                        <Badge variant={member.role === 'admin' ? 'default' : 'secondary'} className="text-[9px] py-0">
+                          {member.role === 'admin' ? 'Admin' : 'Colaborador'}
+                        </Badge>
+                        {member.mcpScopes && member.mcpScopes.length > 0 && (
+                          <Badge variant="outline" className="text-[9px] py-0 font-mono text-muted-foreground">
+                            {member.mcpScopes.length} {member.mcpScopes.length === 1 ? 'escopo' : 'escopos'}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
-                    <Switch
-                      checked={member.mcpAccess}
-                      onCheckedChange={() => handleToggleUserEligibility(member)}
-                      disabled={togglingUserUid === member.uid}
-                    />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenMemberModal(member)}
+                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                        title="Configurar escopos e permissões granulares"
+                      >
+                        <Layers className="size-3.5 mr-1" />
+                        Escopos
+                      </Button>
+                      <Switch
+                        checked={member.mcpAccess}
+                        onCheckedChange={() => handleToggleUserEligibility(member)}
+                        disabled={togglingUserUid === member.uid}
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1238,6 +1298,86 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
             >
               {revokingSessionId ? <RefreshCw className="size-3.5 animate-spin" /> : <LogOut className="size-3.5" />}
               Confirmar Revogação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── MODAL DE CONFIGURAÇÃO DE ESCOPOS GRANULARES DO COLABORADOR ────── */}
+      <Dialog open={memberModalOpen} onOpenChange={setMemberModalOpen}>
+        <DialogContent className="max-w-lg bg-background border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="size-5 text-primary" />
+              Permissões MCP de {editingMember?.displayName}
+            </DialogTitle>
+            <DialogDescription>
+              Defina o acesso geral e os escopos individuais que este colaborador poderá utilizar no ChatGPT / MCP.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogBody className="space-y-4 py-2">
+            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
+              <div className="space-y-0.5">
+                <span className="font-semibold text-xs text-foreground block">
+                  Acesso ao ChatGPT & Assistentes (MCP)
+                </span>
+                <span className="text-[11px] text-muted-foreground block">
+                  Se desativado, o colaborador é impedido de se conectar via OAuth.
+                </span>
+              </div>
+              <Switch checked={memberAccess} onCheckedChange={setMemberAccess} />
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-xs font-semibold text-foreground uppercase tracking-wider block">
+                Escopos Permitidos para este Colaborador:
+              </span>
+
+              <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                {Object.entries(groupedScopes).map(([moduleName, scopes]) => {
+                  const isMemberAdmin = editingMember?.role === 'admin';
+                  const filteredScopes = scopes.filter((s) => isMemberAdmin || !s.requiresAdmin);
+                  if (filteredScopes.length === 0) return null;
+
+                  return (
+                    <div key={moduleName} className="space-y-1.5 p-2.5 rounded-lg border border-border/60 bg-card/40">
+                      <span className="text-[11px] font-bold text-primary block">{moduleName}</span>
+                      <div className="space-y-1.5">
+                        {filteredScopes.map((scope) => {
+                          const checked = memberScopes.includes(scope.id);
+                          return (
+                            <label
+                              key={scope.id}
+                              className="flex items-start gap-2.5 cursor-pointer hover:bg-muted/40 p-1.5 rounded transition-colors"
+                            >
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={() => handleToggleMemberScope(scope.id)}
+                                className="mt-0.5"
+                              />
+                              <div>
+                                <span className="text-xs font-medium text-foreground block">{scope.label}</span>
+                                <span className="text-[11px] text-muted-foreground block line-clamp-1">{scope.description}</span>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </DialogBody>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={() => setMemberModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button size="sm" onClick={handleSaveMemberPermissions} disabled={savingMemberPermissions} className="gap-1.5">
+              {savingMemberPermissions ? <RefreshCw className="size-3.5 animate-spin" /> : <ShieldCheck className="size-3.5" />}
+              Salvar Permissões
             </Button>
           </DialogFooter>
         </DialogContent>
