@@ -165,7 +165,7 @@ const TOOLS_METADATA = [
     name: 'extract_order_draft',
     scope: 'orders:draft',
     summary: 'Montar Rascunho de Pedido',
-    description: 'Extrai dados informados por cliente em conversa e estrutura um rascunho de pedido para conferência.',
+    description: 'Extrai dados informados por cliente em conversa e estrutura um rascunho de pedido para conferência. Para efetivar e registrar o pedido no sistema, execute a ação create_order.',
     requestBody: {
       type: 'object',
       required: ['customerName', 'productSummary'],

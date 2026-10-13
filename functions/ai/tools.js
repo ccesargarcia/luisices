@@ -982,6 +982,7 @@ class AiToolsExecutor {
       deliveryDate: args.deliveryDate || '',
       theme: args.theme || '',
       notes: args.notes || '',
+      nextActionHint: 'Para gravar e registrar oficialmente este pedido na fila de produção do sistema Luisices, execute a ferramenta create_order com estes parâmetros.',
     };
   }
 
