@@ -162,6 +162,25 @@ const TOOLS_METADATA = [
     },
   },
   {
+    name: 'get_order_form',
+    scope: 'orders:draft',
+    summary: 'Obter Formulário Estruturado de Pedido',
+    description: 'Retorna o modelo de formulário padronizado em Markdown para coleta guiada dos dados do cliente e do pedido de papelaria personalizada.',
+    requestBody: {
+      type: 'object',
+      properties: {
+        customerName: {
+          type: 'string',
+          description: 'Nome do cliente se já informado.',
+        },
+        productCategory: {
+          type: 'string',
+          description: 'Categoria opcional do produto (ex: "caixas_milk", "festa_infantil", "convites", "corporativo").',
+        },
+      },
+    },
+  },
+  {
     name: 'extract_order_draft',
     scope: 'orders:draft',
     summary: 'Montar Rascunho de Pedido',

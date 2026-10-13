@@ -39,6 +39,8 @@ async function executeToolByName(toolsExecutor, toolName, args, scope) {
       return await toolsExecutor.executeGenerateWhatsAppMessage(args, scope);
     case 'extract_order_draft':
       return await toolsExecutor.executeExtractOrderDraft(args, scope);
+    case 'get_order_form':
+      return await toolsExecutor.executeGetOrderForm(args, scope);
     case 'create_order':
       return await toolsExecutor.executeCreateOrder(args, scope);
     case 'search_gallery_portfolio':

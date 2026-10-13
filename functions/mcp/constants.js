@@ -81,6 +81,7 @@ const TOOL_SCOPE_MAP = {
   query_orders_view: 'orders:read',
   daily_briefing: 'orders:read',
   extract_order_draft: 'orders:draft',
+  get_order_form: 'orders:draft',
   create_order: 'orders:create',
   query_customers: 'customers:read',
   get_financial_summary: 'financial:read',

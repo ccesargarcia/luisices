@@ -1013,9 +1013,45 @@ class AiToolsExecutor {
   }
 
   /**
+   * Ferramenta de Formulário Estruturado de Pedido
+   */
+  async executeGetOrderForm(args = {}, scope) {
+    const cName = args.customerName ? ` para **${args.customerName}**` : '';
+    const formMarkdown = [
+      `📋 **Formulário de Pedido — Luisices Ateliê de Papelaria Personalizada**${cName}`,
+      `*Preencha ou responda os campos abaixo no chat (você pode responder tudo de uma vez, em lista, por partes ou enviar um áudio):*`,
+      ``,
+      `1. **Nome do Cliente:** ${args.customerName || ''}`,
+      `2. **Telefone / WhatsApp:** `,
+      `3. **Produto / Kit Desejado:** *(ex: Kit Festinha, 30 Caixas Milk, Topo de Bolo, Convites)*`,
+      `4. **Tema ou Paleta de Cores:** *(ex: Safari Baby, Sereia, Jardim Encantado, Dourado e Rosa)*`,
+      `5. **Nome e Idade do Aniversariante:** *(ex: Bernardo, 5 anos)*`,
+      `6. **Data de Entrega / Data da Festa:** *(no formato DD/MM/AAAA ou AAAA-MM-DD)*`,
+      `7. **Quantidade de Peças:** `,
+      `8. **Valor Total Combinado (R$):** *(se já orçado)*`,
+      `9. **Sinal / Valor de Entrada (R$):** *(ex: 50% de entrada)*`,
+      `10. **Forma de Pagamento:** *(PIX, Cartão, Dinheiro)*`,
+      `11. **Observações & Acabamentos:** *(ex: Laço de cetim azul marinho, lamination fosca)*`,
+      ``,
+      `💡 *Após o preenchimento, a IA processará os dados com extract_order_draft para conferência e create_order para gravar o pedido oficial no sistema.*`,
+    ].join('\n');
+
+    return {
+      success: true,
+      templateTitle: 'Formulário Estruturado de Pedido',
+      formMarkdown,
+      instructions: 'Apresente o formulário em Markdown acima para o usuário preencher no chat.',
+    };
+  }
+
+  /**
    * Ferramenta 9: Rascunho de Pedido com Contrato Compatível (IA-03 & R03)
    */
   async executeExtractOrderDraft(args = {}, scope) {
+    if (!args.customerName && !args.productSummary && !args.productName) {
+      return await this.executeGetOrderForm(args, scope);
+    }
+
     const identity = await this.resolveCustomerIdentity(args.customerName, args.customerPhone, scope);
     if (identity.ambiguous) {
       return { preparationStatus: 'identification_required', requiresIdentification: true,
