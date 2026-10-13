@@ -3,7 +3,7 @@
 **Sistema:** Luisices — Gestão Integrada de Ateliê de Papelaria Personalizada  
 **Módulo:** `functions/mcp` & `functions/ai`  
 **Versão da API:** `1.0.0`  
-**Padrões Suportados:** OpenAPI 3.1.0, MCP JSON-RPC 2.0, OAuth 2.1 (RFC 9723 / RFC 8414)  
+**Padrões Suportados:** OpenAPI 3.1.0, MCP JSON-RPC 2.0, OAuth 2.1 (RFC 9728 / RFC 8414)
 **Ambiente de Produção:** `https://api.luisices.com.br/chatGptToolsEndpoint`  
 **Ambiente de Desenvolvimento:** `https://api.dev.luisices.com.br/chatGptToolsEndpoint`  
 
@@ -104,9 +104,25 @@ A API permite realizar consultas de estoque, fila de produção, relatórios fin
       │                                  │                                      │
       │  8. POST /oauth/token (code + code_verifier PKCE)                       │
       ├─────────────────────────────────>│                                      │
-      │  9. Emite access_token JWT / Bearer                                     │
+      │  9. Emite access_token opaco / Bearer                                     │
       │<─────────────────────────────────┤                                      │
 ```
+
+---
+
+#### Validações e consentimento OAuth
+
+O registro dinâmico aceita clientes públicos (`token_endpoint_auth_method=none`) e exige `redirect_uris` cadastrados. Cada callback é comparado por igualdade exata. HTTPS é obrigatório; HTTP só é aceito para loopback com porta explícita. Clientes desconhecidos e callbacks diferentes são recusados antes de mostrar o consentimento.
+
+A tela de autorização abre `dev.luisices.com.br/oauth-consent` ou `luisices.com.br/oauth-consent`. O navegador autentica pelo Firebase Authentication da aplicação e envia ao endpoint OAuth somente um Firebase ID token no cabeçalho `Authorization`; o backend verifica assinatura, expiração e revogação (`verifyIdToken(..., true)`). UID e e-mail enviados no corpo são ignorados. O código só é criado após a identidade e o perfil atual passarem pelas verificações MCP. A solicitação registrada no servidor fixa cliente, callback, escopos, `state` e challenge S256 e só pode ser consumida uma vez.
+
+A página escolhe o endpoint por domínio oficial, build local ou projeto Firebase explicitamente configurado como DEV. Hosts locais e previews sem sinal de ambiente reconhecido mostram erro e não enviam credenciais; parâmetros da URL não alteram o destino.
+
+O endpoint de token exige `client_id`, `redirect_uri` e `code_verifier`; o cliente e o callback precisam corresponder ao código original. Código e refresh token são consumidos/rotacionados em transações Firestore. Refresh preserva cliente e escopos. Escopos administrativos são recusados para perfis comuns; escopos ausentes em tokens antigos resultam em nenhuma permissão. Clientes registrados com o método `none` não devem enviar segredo de cliente.
+
+As chamadas OAuth usam limites Firestore compartilhados entre instâncias: 120 chamadas MCP por usuário/hora; 30 inícios de autorização e 30 confirmações de consentimento por IP/hora; 120 trocas/renovações de token por IP/hora; e 60 registros dinâmicos por IP/hora. Os limites MCP seguem o UID, mesmo após renovar token. O controle de chamadas MCP não depende de rate limit em memória nem de regra da Cloudflare.
+
+Clientes dinâmicos existentes com callback HTTPS cadastrado podem continuar usando seu `client_id`. O identificador interno legado `chatgpt-mcp` permanece definido explicitamente e aceita somente `https://chatgpt.com/aip/g-mcp/oauth/callback`. Códigos emitidos antes desta alteração e refresh tokens legados sem issuer/audience precisam iniciar nova autorização. Access tokens legados só continuam válidos quando issuer/audience do token e da sessão, sessão e cliente conferem; sessões sem issuer/audience ou de outro ambiente exigem reconexão OAuth. Tokens sem escopos persistidos ficam sem permissões de ferramenta.
 
 ---
 
@@ -196,7 +212,7 @@ A API suporta dois métodos equivalentes de autenticação no cabeçalho `Author
 | :--- | :--- | :--- | :--- |
 | `GET` | `/.well-known/ai-plugin.json` | Manifesto oficial do Plugin ChatGPT | Descoberta do Plugin pelo ChatGPT |
 | `GET` | `/openapi.json` | Especificação OpenAPI 3.1 dinâmica | Leitura do Schema pelo ChatGPT / Custom GPT |
-| `GET` | `/.well-known/oauth-protected-resource` | Metadados de Recurso Protegido (RFC 9723) | Descoberta de Recursos OAuth 2.1 |
+| `GET` | `/.well-known/oauth-protected-resource` | Metadados de Recurso Protegido (RFC 9728) | Descoberta de Recursos OAuth 2.1 |
 | `GET` | `/.well-known/openid-configuration` | Configuração do Servidor de Autorização | Descoberta de endpoints OAuth |
 | `GET` | `/health` | Checagem de integridade e status da API | Monitoramento e Liveness Check |
 
@@ -462,6 +478,8 @@ Content-Type: application/json
 | `materialsCost` | `number` | Não | `0` | Custo total dos materiais empregados em R$. |
 | `laborHours` | `number` | Não | `0` | Horas estimadas de trabalho/corte/montagem. |
 | `targetMarginPercent` | `number` | Não | `40` | Margem de lucro desejada (%). |
+
+Para compatibilidade, `materialsCost` é o custo total dos materiais do lote e é dividido por `quantity`; `laborHours` é o total de horas do lote e é convertido em minutos por unidade. `targetMarginPercent` é alias de `profitMarginPercent`. Os campos nativos por unidade são `rawMaterialsCost`, `laborTimeMinutes` e `profitMarginPercent`; valores conflitantes entre alias e campo nativo são rejeitados. Custos negativos/não finitos, quantidade fora de 1–100.000, margem acima de 95%, mais de 1.000 horas de mão de obra por lote, taxas acima de 100% ou perdas acima de 1.000% são rejeitados. Entradas omitidas seguem padrões/configurações atuais e são identificadas na lista de premissas do resultado.
 
 #### Exemplo de Requisição HTTP:
 ```http

@@ -28,13 +28,19 @@ describe('MCP & ChatGPT Plugin / OpenAPI 3.0.3 Specification', () => {
       });
     });
 
-    it('deve listar as 10 ferramentas de negócio (incluindo create_order) com operationId e respostas 200', () => {
+    it('deve publicar exatamente as ferramentas MCP previstas, com operationId e respostas 200', () => {
       const baseUrl = 'https://api.dev.luisices.com.br/chatGptToolsEndpoint';
       const schema = buildOpenApiSchema(baseUrl);
+      const expectedTools = [
+        'query_orders_view', 'daily_briefing', 'query_customers', 'get_financial_summary',
+        'calculate_pricing_estimate', 'generate_whatsapp_message', 'get_order_form',
+        'extract_order_draft', 'create_order', 'search_gallery_portfolio', 'get_user_summary',
+      ];
 
-      expect(TOOLS_METADATA.length).toBe(10);
-      expect(Object.keys(schema.paths).length).toBe(10);
-      expect(Object.keys(schema.paths)).toContain('/tools/create_order');
+      expect(TOOLS_METADATA.map((tool) => tool.name)).toEqual(expectedTools);
+      expect(new Set(TOOLS_METADATA.map((tool) => tool.name)).size).toBe(expectedTools.length);
+      expect(Object.keys(schema.paths).sort()).toEqual(expectedTools.map((name) => `/tools/${name}`).sort());
+      expect(Object.values(schema.paths).map((path: any) => path.post.operationId).sort()).toEqual([...expectedTools].sort());
 
       for (const tool of TOOLS_METADATA) {
         const pathItem = schema.paths[`/tools/${tool.name}`];

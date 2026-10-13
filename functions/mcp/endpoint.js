@@ -12,6 +12,7 @@ const {
   getOauthAuthorizationServerMetadata,
   handleOAuthRegister,
   handleOAuthAuthorize,
+  handleOAuthConsentInfo,
   handleOAuthToken,
 } = require('./oauth');
 const { TOOL_SCOPE_MAP, MCP_SCOPES } = require('./constants');
@@ -50,6 +51,22 @@ async function executeToolByName(toolsExecutor, toolName, args, scope) {
     default:
       throw new Error(`Ferramenta '${toolName}' não implementada.`);
   }
+}
+
+async function executeScopedToolByName(toolsExecutor, toolName, args, scope, scopes = []) {
+  const requiredScope = TOOL_SCOPE_MAP[toolName];
+  if (!requiredScope || (!scopes.includes('*') && !scopes.includes(requiredScope))) {
+    const error = new Error('Permissão insuficiente para executar esta ferramenta.');
+    error.code = 'permission-denied';
+    throw error;
+  }
+  return executeToolByName(toolsExecutor, toolName, args, scope);
+}
+
+function buildBearerChallenge(hasBearerCredentials, apiOrigin) {
+  const metadataUrl = `${apiOrigin}/.well-known/oauth-protected-resource`;
+  const error = hasBearerCredentials ? 'error="invalid_token", ' : '';
+  return `Bearer ${error}resource_metadata=${JSON.stringify(metadataUrl)}`;
 }
 
 /**
@@ -136,15 +153,9 @@ const chatGptToolsEndpoint = onRequest(
 
     const matchTool = rawPath.match(/^tools\/([a-zA-Z0-9_]+)$/);
 
-    const isProd = process.env.GCLOUD_PROJECT === 'papelaria-dashboard';
-    const forwardedHost = req.get('x-forwarded-host');
-    const reqHost = req.get('host') || '';
-    const customDomain = isProd ? 'api.luisices.com.br' : 'api.dev.luisices.com.br';
-
-    // Garante que o apiDomain seja SEMPRE o domínio unificado do Cloudflare Worker
-    const apiDomain = (forwardedHost && !forwardedHost.includes('cloudfunctions.net') && !forwardedHost.includes('run.app'))
-      ? forwardedHost
-      : (!reqHost.includes('cloudfunctions.net') && !reqHost.includes('run.app') && reqHost ? reqHost : customDomain);
+    const isProd = process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard';
+    // Domínio público fixo por ambiente; não derive issuer/challenges de Host fornecido pelo cliente.
+    const apiDomain = isProd ? 'api.luisices.com.br' : 'api.dev.luisices.com.br';
 
     const protocol = 'https';
     const baseUrl = `https://${apiDomain}/chatGptToolsEndpoint`;
@@ -155,6 +166,7 @@ const chatGptToolsEndpoint = onRequest(
     // Rotas públicas de descoberta (OpenAPI, Manifesto de Plugins, OAuth Discovery, MCP Initialize e Health) são abertas
     // para que a OpenAI / ChatGPT e clientes MCP consigam ler os schemas, descobrir OAuth e conectar o assistente
     const isPublicDiscovery =
+      (req.method === 'GET' && rawPath === 'oauth/consent') ||
       (req.method === 'GET' &&
       (
         rawPath === 'openapi.json' ||
@@ -205,7 +217,7 @@ const chatGptToolsEndpoint = onRequest(
       return res.redirect(302, `https://${appHost}/favicon.ico`);
     }
 
-    // ─── ROTA 0.1: Descoberta de Recurso Protegido OAuth 2.1 (RFC 9723) ────────
+    // ─── ROTA 0.1: Descoberta de Recurso Protegido OAuth 2.1 (RFC 9728) ────────
     if (req.method === 'GET' && (rawPath === '.well-known/oauth-protected-resource' || rawPath === 'oauth-protected-resource')) {
       const metadata = getOauthProtectedResourceMetadata(baseUrl);
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -232,6 +244,11 @@ const chatGptToolsEndpoint = onRequest(
     // ─── ROTA 0.4: Endpoint de Autorização OAuth 2.1 (GET/POST /oauth/authorize) ──
     if (rawPath === 'oauth/authorize' || rawPath === 'authorize') {
       return await handleOAuthAuthorize(req, res, db, getAuth);
+    }
+
+    if (rawPath === 'oauth/consent') {
+      if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' });
+      return await handleOAuthConsentInfo(req, res, db);
     }
 
     // ─── ROTA 0.5: Endpoint de Emissão / Renovação de Token OAuth 2.1 (POST /oauth/token) ──
@@ -385,11 +402,10 @@ const chatGptToolsEndpoint = onRequest(
 
         const authResult = await validateMcpRequest(req, db);
         if (!authResult.success) {
+          if (authResult.status === 429) res.setHeader('Retry-After', String(3600 - (Math.floor(Date.now() / 1000) % 3600)));
           if (authResult.status === 401) {
-            res.setHeader(
-              'WWW-Authenticate',
-              `Bearer error="invalid_token", error_description="${authResult.message || 'Falha de autenticação.'}", resource="${protocol}://${apiDomain}", authorization_uri="${protocol}://${apiDomain}/oauth/authorize"`
-            );
+            const authorization = req.headers.authorization || req.headers.Authorization || '';
+            res.setHeader('WWW-Authenticate', buildBearerChallenge(/^Bearer\s+\S+/i.test(authorization), `${protocol}://${apiDomain}`));
           }
           return res.status(authResult.status || 401).json({
             jsonrpc: '2.0',
@@ -446,7 +462,7 @@ const chatGptToolsEndpoint = onRequest(
         try {
           const aiServices = getSharedAiServices(db);
           const { toolsExecutor } = aiServices;
-          const result = await executeToolByName(toolsExecutor, toolName, toolArgs, scope);
+          const result = await executeScopedToolByName(toolsExecutor, toolName, toolArgs, scope, keyScopes);
           const executionTimeMs = Date.now() - startTime;
           touchKeyUsage(db, keyHash);
           recordMcpAuditLog(db, {
@@ -522,11 +538,10 @@ const chatGptToolsEndpoint = onRequest(
       // 1. Validação de Autenticação, Status Global, Status do Usuário e Rate Limiter
       const authResult = await validateMcpRequest(req, db);
       if (!authResult.success) {
+        if (authResult.status === 429) res.setHeader('Retry-After', String(3600 - (Math.floor(Date.now() / 1000) % 3600)));
         if (authResult.status === 401) {
-          res.setHeader(
-            'WWW-Authenticate',
-            `Bearer error="invalid_token", error_description="${authResult.message || 'Token de acesso inválido ou ausente.'}", resource="${protocol}://${apiDomain}", authorization_uri="${protocol}://${apiDomain}/oauth/authorize"`
-          );
+          const authorization = req.headers.authorization || req.headers.Authorization || '';
+          res.setHeader('WWW-Authenticate', buildBearerChallenge(/^Bearer\s+\S+/i.test(authorization), `${protocol}://${apiDomain}`));
         }
         return res.status(authResult.status).json({
           error: authResult.code,
@@ -573,7 +588,7 @@ const chatGptToolsEndpoint = onRequest(
 
       const startTime = Date.now();
       try {
-        const result = await executeToolByName(toolsExecutor, toolName, args, scope);
+        const result = await executeScopedToolByName(toolsExecutor, toolName, args, scope, keyScopes);
         const executionTimeMs = Date.now() - startTime;
 
         // 6. Atualização assíncrona das métricas da chave (lastUsedAt, totalCalls)
@@ -622,11 +637,11 @@ const chatGptToolsEndpoint = onRequest(
       error: 'NOT_FOUND',
       message: `Rota '${rawPath}' não encontrada. Consulte o schema em /openapi.json.`,
     });
-    } catch (globalErr) {
-      console.error('[chatGptToolsEndpoint] Erro fatal não tratado:', globalErr);
+    } catch {
+      console.error('[chatGptToolsEndpoint] Erro fatal não tratado.');
       return res.status(500).json({
         error: 'INTERNAL_SERVER_ERROR',
-        message: globalErr.message || 'Erro interno no servidor ao processar requisição.',
+        message: 'Erro interno no servidor ao processar requisição.',
       });
     }
   }
@@ -634,4 +649,6 @@ const chatGptToolsEndpoint = onRequest(
 
 module.exports = {
   chatGptToolsEndpoint,
+  executeScopedToolByName,
+  buildBearerChallenge,
 };
