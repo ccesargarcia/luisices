@@ -639,7 +639,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   whatsapp:  true,
   aiCopilot: true,
   mcpAccess: true,
-  mcpScopes: ['orders:read', 'customers:read', 'pricing:estimate'],
+  mcpScopes: ['orders:read', 'orders:draft', 'orders:create', 'customers:read', 'pricing:estimate', 'whatsapp:compose', 'gallery:read'],
 };
 
 export const EMPLOYEE_PERMISSIONS: Permission = {
@@ -661,7 +661,7 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   whatsapp:  false,
   aiCopilot: false,
   mcpAccess: true,
-  mcpScopes: ['orders:read', 'customers:read'],
+  mcpScopes: ['orders:read', 'orders:draft', 'customers:read', 'gallery:read'],
 };
 
 // Tipos para sistema de compartilhamento de dados
