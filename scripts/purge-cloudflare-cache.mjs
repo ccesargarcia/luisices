@@ -32,8 +32,8 @@ const URLS_TO_PURGE = [
 ];
 
 if (!API_TOKEN) {
-  console.warn('⚠️ CLOUDFLARE_API_TOKEN não configurado. Pulando purge de cache.');
-  process.exit(0);
+  console.error('❌ ERRO: CLOUDFLARE_API_TOKEN não está configurado. Não é possível purgar o cache.');
+  process.exit(1);
 }
 
 async function cfRequest(path, options = {}) {
@@ -76,6 +76,5 @@ async function main() {
 
 main().catch((error) => {
   console.error(`❌ Erro ao purgar cache Cloudflare: ${error.message}`);
-  // Não quebra a pipeline em caso de erro na API da Cloudflare
-  process.exit(0);
+  process.exit(1);
 });

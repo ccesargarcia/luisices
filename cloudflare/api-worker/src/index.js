@@ -53,6 +53,25 @@ export default {
       url.pathname === '/.well-known/plugin.json' ||
       url.pathname === '/plugin.json'
     ) {
+      const cache = typeof caches !== 'undefined' && caches?.default ? caches.default : null;
+      const cacheKey = new Request(url.toString(), { method: 'GET' });
+      if (cache) {
+        try {
+          const cachedResponse = await cache.match(cacheKey);
+          if (cachedResponse) {
+            const cachedHeaders = new Headers(cachedResponse.headers);
+            cachedHeaders.set('X-Edge-Cache', 'HIT');
+            return new Response(cachedResponse.body, {
+              status: cachedResponse.status,
+              statusText: cachedResponse.statusText,
+              headers: cachedHeaders,
+            });
+          }
+        } catch (_err) {
+          // Fallback silencioso
+        }
+      }
+
       const isDev = url.hostname.includes('dev') || env.ENVIRONMENT === 'dev';
       const openApiUrl = `https://${url.hostname}/chatGptToolsEndpoint/openapi.json`;
       const manifest = {
@@ -78,14 +97,20 @@ export default {
         contact_email: 'contato@luisices.com.br',
         legal_info_url: 'https://luisices.com.br',
       };
-      return new Response(JSON.stringify(manifest, null, 2), {
+      const manifestHeaders = {
+        ...CORS_HEADERS,
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'public, max-age=86400, stale-while-revalidate=3600',
+        'X-Edge-Cache': 'MISS',
+      };
+      const response = new Response(JSON.stringify(manifest, null, 2), {
         status: 200,
-        headers: {
-          ...CORS_HEADERS,
-          'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'public, max-age=86400, stale-while-revalidate=3600',
-        },
+        headers: manifestHeaders,
       });
+      if (cache && ctx && typeof ctx.waitUntil === 'function') {
+        ctx.waitUntil(cache.put(cacheKey, response.clone()).catch(() => {}));
+      }
+      return response;
     }
 
     // 2. Determinar backend de destino (Dev vs Prod)
