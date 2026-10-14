@@ -1201,31 +1201,57 @@ class AiToolsExecutor {
   async executeUpdateOrder(args = {}, scope) {
     requireMcpModulePermission(scope, 'orders', 'edit', 'editar pedidos');
     const identifier = String(args.orderNumber || '').trim();
-    if (!identifier) throw new Error('Informe o número ou ID do pedido.');
+    if (!identifier) {
+      const error = new Error('Informe o número ou ID do pedido.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
     const updates = {};
     const textFields = { customerName: 200, customerPhone: 50, productName: 300, theme: 200, notes: 1000 };
     for (const [field, maxLength] of Object.entries(textFields)) {
       if (args[field] === undefined) continue;
       if (typeof args[field] !== 'string' || args[field].length > maxLength || (field === 'customerName' || field === 'productName') && !args[field].trim()) {
-        throw new Error(`O campo ${field} é inválido ou excede ${maxLength} caracteres.`);
+        const error = new Error(`O campo ${field} é inválido ou excede ${maxLength} caracteres.`);
+        error.code = 'invalid-argument';
+        throw error;
       }
       updates[field] = args[field].trim() || null;
     }
     if (args.quantity !== undefined) {
       const quantity = Number(args.quantity);
-      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000) throw new Error('A quantidade deve ser um inteiro entre 1 e 10000.');
+      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000) {
+        const error = new Error('A quantidade deve ser um inteiro entre 1 e 10000.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
       updates.quantity = quantity;
     }
     if (args.deliveryDate !== undefined) {
-      updates.deliveryDate = validateAndNormalizeDeliveryDate(args.deliveryDate).deliveryDate;
+      try {
+        updates.deliveryDate = validateAndNormalizeDeliveryDate(args.deliveryDate).deliveryDate;
+      } catch (cause) {
+        const error = new Error(cause.message || 'A data de entrega informada é inválida.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
     }
-    if (!Object.keys(updates).length) throw new Error('Informe pelo menos um campo para alterar.');
+    if (!Object.keys(updates).length) {
+      const error = new Error('Informe pelo menos um campo para alterar.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
 
     const order = await this.repos.getScopedOrderDocument(scope, identifier);
-    if (!order || order.data.deletedAt || order.data.isDeleted) throw new Error('Pedido não encontrado ou sem permissão.');
+    if (!order || order.data.deletedAt || order.data.isDeleted) {
+      const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
+      error.code = 'not-found';
+      throw error;
+    }
     const version = Number.isSafeInteger(order.data.version) && order.data.version > 0 ? order.data.version : 1;
     if (!Number.isSafeInteger(Number(args.expectedVersion)) || Number(args.expectedVersion) !== version) {
-      throw new Error(`A versão do pedido mudou ou não foi informada. Consulte novamente antes de editar (versão atual: ${version}).`);
+      const error = new Error(`A versão do pedido mudou ou não foi informada. Consulte novamente antes de editar (versão atual: ${version}).`);
+      error.code = 'failed-precondition';
+      throw error;
     }
 
     const summary = {
@@ -1247,14 +1273,24 @@ class AiToolsExecutor {
       ]);
       const replay = readIdempotentResult(idempotencySnap, idempotency.payloadHash);
       if (replay) return replay;
-      if (!orderSnap.exists) throw new Error('Pedido não encontrado.');
+      if (!orderSnap.exists) {
+        const error = new Error('Pedido não encontrado.');
+        error.code = 'not-found';
+        throw error;
+      }
       const current = orderSnap.data() || {};
       const { filterOrdersByScope } = require('./authorization');
       if (current.deletedAt || current.isDeleted || !filterOrdersByScope([{ ...current, id: order.id }], scope).length) {
-        throw new Error('Pedido não encontrado ou sem permissão.');
+        const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
+        error.code = 'not-found';
+        throw error;
       }
       const currentVersion = Number.isSafeInteger(current.version) && current.version > 0 ? current.version : 1;
-      if (currentVersion !== version) throw new Error('O pedido foi alterado durante a operação. Consulte novamente e tente de novo.');
+      if (currentVersion !== version) {
+        const error = new Error(`O pedido foi alterado durante a operação. Consulte novamente e tente de novo (versão atual: ${currentVersion}).`);
+        error.code = 'failed-precondition';
+        throw error;
+      }
       transaction.update(orderRef, { ...updates, version: currentVersion + 1, updatedAt: now });
       if (saleSnap.exists) {
         const saleUpdates = { updatedAt: now };
