@@ -31,6 +31,12 @@ function tokenDocumentId(token) {
   return crypto.createHash('sha256').update(String(token)).digest('hex');
 }
 
+function normalizeOAuthResource(value) {
+  const expectedResource = OAUTH_ORIGIN();
+  if (value === undefined || value === null || value === '') return expectedResource;
+  return typeof value === 'string' && value.length <= 2048 && value === expectedResource ? value : null;
+}
+
 async function getOAuthClient(db, clientId, transaction) {
   if (clientId === INTERNAL_OAUTH_CLIENT.clientId) return INTERNAL_OAUTH_CLIENT;
   const ref = db.collection('oauthClients').doc(clientId);
@@ -287,15 +293,16 @@ async function handleOAuthAuthorize(req, res, db, getAuth) {
     const pendingSnap = await db.collection('oauthAuthorizationRequests').doc(String(requestId)).get();
     if (!pendingSnap.exists || pendingSnap.data().used || pendingSnap.data().expiresAt <= Date.now()) return authError(res, 400, 'invalid_request', 'Solicitação OAuth expirada ou já utilizada.');
     const pending = pendingSnap.data();
-    params = { ...pending, response_type: 'code', client_id: pending.clientId, redirect_uri: pending.redirectUri, scope: pending.scope, code_challenge: pending.codeChallenge, code_challenge_method: pending.codeChallengeMethod, request_id: requestId };
+    params = { ...pending, response_type: 'code', client_id: pending.clientId, redirect_uri: pending.redirectUri, resource: pending.resource, scope: pending.scope, code_challenge: pending.codeChallenge, code_challenge_method: pending.codeChallengeMethod, request_id: requestId };
   }
   const clientId = params.client_id;
   const redirectUri = params.redirect_uri;
   const scopes = parseScopes(params.scope || 'orders:read');
   const state = String(params.state || '');
   const challenge = params.code_challenge;
+  const resource = normalizeOAuthResource(params.resource);
   if (!db || !isOAuthClientId(clientId) || params.response_type !== 'code' || !validRedirectUri(redirectUri)
-      || !scopes || state.length > 1024 || !/^[A-Za-z0-9_-]{43,128}$/.test(String(challenge || ''))
+      || !scopes || !resource || state.length > 1024 || !/^[A-Za-z0-9_-]{43,128}$/.test(String(challenge || ''))
       || params.code_challenge_method !== 'S256') {
     return authError(res, 400, 'invalid_request', 'Solicitação OAuth inválida; PKCE S256 é obrigatório.');
   }
@@ -310,7 +317,7 @@ async function handleOAuthAuthorize(req, res, db, getAuth) {
     if (!Array.isArray(client.redirectUris) || !client.redirectUris.includes(redirectUri)) return authError(res, 400, 'invalid_redirect_uri', 'Callback não cadastrado para este cliente.');
     const requestId = `req_${crypto.randomBytes(24).toString('hex')}`;
     await db.collection('oauthAuthorizationRequests').doc(requestId).set({
-      requestId, clientId, redirectUri, scope: scopes.join(' '), state, codeChallenge: challenge,
+      requestId, clientId, redirectUri, resource, scope: scopes.join(' '), state, codeChallenge: challenge,
       codeChallengeMethod: 'S256', used: false, expiresAt: Date.now() + 10 * 60 * 1000,
     });
     const consentUrl = new URL('/oauth-consent', APP_ORIGIN());
@@ -362,7 +369,7 @@ async function handleOAuthAuthorize(req, res, db, getAuth) {
       }
       tx.update(requestRef, { used: true, usedAt: Date.now(), userId: decoded.uid });
       tx.set(db.collection('oauthAuthCodes').doc(code), {
-        code, clientId: stored.clientId, redirectUri: stored.redirectUri, userId: decoded.uid, authTime: decoded.auth_time,
+        code, clientId: stored.clientId, redirectUri: stored.redirectUri, resource: normalizeOAuthResource(stored.resource), userId: decoded.uid, authTime: decoded.auth_time,
         userEmail: currentProfile.email || decoded.email || '', scope: effectiveScopes.join(' '), codeChallenge: stored.codeChallenge,
         codeChallengeMethod: 'S256', used: false, expiresAt: Date.now() + 5 * 60 * 1000,
         createdAt: new Date().toISOString(), issuer: OAUTH_ORIGIN(),
@@ -404,6 +411,7 @@ async function handleOAuthToken(req, res, db) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return authError(res, 400, 'invalid_request', 'Parâmetros OAuth inválidos.');
   const grantType = body.grant_type;
   const issuer = OAUTH_ORIGIN();
+  const resource = normalizeOAuthResource(body.resource);
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Pragma', 'no-cache');
   if (!db || !await applyEndpointRateLimit(req, res, db, 'token', 120)) return undefined;
@@ -411,7 +419,7 @@ async function handleOAuthToken(req, res, db) {
   if (body.client_secret !== undefined || /^Basic\s/i.test(tokenAuthorization)) return authError(res, 401, 'invalid_client', 'O servidor aceita somente clientes públicos sem segredo.');
 
   if (grantType === 'authorization_code') {
-    if (Object.keys(body).some((key) => !['grant_type', 'code', 'redirect_uri', 'client_id', 'code_verifier'].includes(key))) return authError(res, 400, 'invalid_request', 'Parâmetros não permitidos para authorization_code.');
+    if (Object.keys(body).some((key) => !['grant_type', 'code', 'redirect_uri', 'client_id', 'code_verifier', 'resource'].includes(key)) || !resource) return authError(res, 400, 'invalid_request', 'Parâmetros inválidos para authorization_code.');
     const { code, redirect_uri: redirectUri, client_id: clientId, code_verifier: verifier } = body;
     if (typeof code !== 'string' || !/^lui_code_[a-f0-9]{48}$/.test(code) || !isOAuthClientId(clientId)
         || typeof redirectUri !== 'string' || redirectUri.length > 2048 || typeof verifier !== 'string') return authError(res, 400, 'invalid_request', 'code, client_id, redirect_uri e code_verifier válidos são obrigatórios.');
@@ -438,7 +446,7 @@ async function handleOAuthToken(req, res, db) {
         const userSnap = await tx.get(userRef);
         if (!currentClient || !userSnap.exists) throw new Error('invalid_grant');
         const profile = userSnap.data();
-        if (data.used || !Number.isFinite(data.expiresAt) || data.expiresAt <= now || data.issuer !== issuer || data.clientId !== clientId || data.redirectUri !== redirectUri
+        if (data.used || !Number.isFinite(data.expiresAt) || data.expiresAt <= now || data.issuer !== issuer || data.clientId !== clientId || data.redirectUri !== redirectUri || normalizeOAuthResource(data.resource) !== resource
             || currentClient.enabled === false || (currentClient.tokenEndpointAuthMethod || 'none') !== 'none'
             || currentClient.grantTypes && !currentClient.grantTypes.includes('authorization_code')
             || !currentClient.redirectUris?.includes(redirectUri) || profile.active === false || ['paused', 'inactive', 'disabled'].includes(profile.status)
@@ -453,9 +461,9 @@ async function handleOAuthToken(req, res, db) {
         const refreshExpiresAt = now + 30 * 24 * 3600 * 1000;
         const accessTokenHash = tokenDocumentId(accessToken);
         const refreshTokenHash = tokenDocumentId(refreshToken);
-        const tokenDoc = { accessTokenHash, refreshTokenHash, sessionId, clientId, userId: data.userId, authTime: data.authTime, userEmail: profile.email || '', userName: profile.displayName || profile.email || 'Usuário', scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt };
-        const sessionDoc = { sessionId, accessTokenHash, refreshTokenHash, clientId, clientName: registeredClient.clientName || 'Cliente MCP', userId: data.userId, userEmail: tokenDoc.userEmail, userName: tokenDoc.userName, userRole: profile.role || 'user', scope: resultScope, scopes, active: true, revoked: false, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, lastUsedAt: new Date().toISOString(), totalCalls: 0 };
-        const refreshDoc = { refreshTokenHash, accessTokenHash, sessionId, clientId, userId: data.userId, authTime: data.authTime, userEmail: tokenDoc.userEmail, scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, revoked: false };
+        const tokenDoc = { accessTokenHash, refreshTokenHash, sessionId, clientId, resource, userId: data.userId, authTime: data.authTime, userEmail: profile.email || '', userName: profile.displayName || profile.email || 'Usuário', scope: resultScope, scopes, iss: issuer, aud: resource, createdAt: new Date().toISOString(), expiresAt };
+        const sessionDoc = { sessionId, accessTokenHash, refreshTokenHash, clientId, resource, clientName: registeredClient.clientName || 'Cliente MCP', userId: data.userId, userEmail: tokenDoc.userEmail, userName: tokenDoc.userName, userRole: profile.role || 'user', scope: resultScope, scopes, active: true, revoked: false, iss: issuer, aud: resource, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, lastUsedAt: new Date().toISOString(), totalCalls: 0 };
+        const refreshDoc = { refreshTokenHash, accessTokenHash, sessionId, clientId, resource, userId: data.userId, authTime: data.authTime, userEmail: tokenDoc.userEmail, scope: resultScope, scopes, iss: issuer, aud: resource, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, revoked: false };
         tx.update(codeRef, { used: true, usedAt: now });
         tx.create(db.collection('oauthAccessTokens').doc(accessTokenHash), tokenDoc);
         tx.create(db.collection('oauthRefreshTokens').doc(refreshTokenHash), refreshDoc);
@@ -469,7 +477,7 @@ async function handleOAuthToken(req, res, db) {
   }
 
   if (grantType === 'refresh_token') {
-    if (Object.keys(body).some((key) => !['grant_type', 'refresh_token', 'client_id'].includes(key))) return authError(res, 400, 'invalid_request', 'Parâmetros não permitidos para refresh_token.');
+    if (Object.keys(body).some((key) => !['grant_type', 'refresh_token', 'client_id', 'resource'].includes(key)) || !resource) return authError(res, 400, 'invalid_request', 'Parâmetros inválidos para refresh_token.');
     const { refresh_token: oldRefreshToken, client_id: clientId } = body;
     if (typeof oldRefreshToken !== 'string' || !/^lui_oauth_rt_[a-f0-9]{64}$/.test(oldRefreshToken) || !isOAuthClientId(clientId)) return authError(res, 400, 'invalid_request', 'refresh_token e client_id válidos são obrigatórios.');
     const oldRef = db.collection('oauthRefreshTokens').doc(tokenDocumentId(oldRefreshToken));
@@ -495,7 +503,7 @@ async function handleOAuthToken(req, res, db) {
         if (!sessionSnap.exists || !userSnap.exists || !client) throw new Error('invalid_grant');
         const session = sessionSnap.data();
         const profile = userSnap.data();
-        if (refresh.revoked || !Number.isFinite(refresh.expiresAt) || refresh.expiresAt <= now || refresh.clientId !== clientId || refresh.iss !== issuer || refresh.aud !== issuer
+        if (refresh.revoked || !Number.isFinite(refresh.expiresAt) || refresh.expiresAt <= now || refresh.clientId !== clientId || refresh.iss !== issuer || refresh.aud !== issuer || normalizeOAuthResource(refresh.resource) !== resource
             || session.revoked || session.active === false || !Number.isFinite(session.expiresAt) || session.expiresAt <= now || session.userId !== refresh.userId
             || (session.refreshTokenHash ? session.refreshTokenHash !== tokenDocumentId(oldRefreshToken) : session.refreshToken !== oldRefreshToken)
             || session.clientId !== clientId || session.iss !== issuer || session.aud !== issuer
@@ -513,9 +521,9 @@ async function handleOAuthToken(req, res, db) {
         const accessTokenHash = tokenDocumentId(newAccessToken);
         const refreshTokenHash = tokenDocumentId(newRefreshToken);
         tx.update(oldTokenRef, { revoked: true, replacedAt: now });
-        tx.create(db.collection('oauthAccessTokens').doc(accessTokenHash), { accessTokenHash, refreshTokenHash, sessionId: refresh.sessionId, clientId, userId: refresh.userId, authTime: refresh.authTime, userEmail: profile.email || '', userName: profile.displayName || profile.email || 'Usuário', scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt });
-        tx.create(db.collection('oauthRefreshTokens').doc(refreshTokenHash), { refreshTokenHash, accessTokenHash, sessionId: refresh.sessionId, clientId, userId: refresh.userId, authTime: refresh.authTime, userEmail: profile.email || '', scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, revoked: false });
-        tx.update(sessionRef, { accessTokenHash, refreshTokenHash, scope: resultScope, scopes, lastUsedAt: new Date().toISOString() });
+        tx.create(db.collection('oauthAccessTokens').doc(accessTokenHash), { accessTokenHash, refreshTokenHash, sessionId: refresh.sessionId, clientId, resource, userId: refresh.userId, authTime: refresh.authTime, userEmail: profile.email || '', userName: profile.displayName || profile.email || 'Usuário', scope: resultScope, scopes, iss: issuer, aud: resource, createdAt: new Date().toISOString(), expiresAt });
+        tx.create(db.collection('oauthRefreshTokens').doc(refreshTokenHash), { refreshTokenHash, accessTokenHash, sessionId: refresh.sessionId, clientId, resource, userId: refresh.userId, authTime: refresh.authTime, userEmail: profile.email || '', scope: resultScope, scopes, iss: issuer, aud: resource, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, revoked: false });
+        tx.update(sessionRef, { accessTokenHash, refreshTokenHash, resource, aud: resource, scope: resultScope, scopes, lastUsedAt: new Date().toISOString() });
       });
     } catch (_err) {
       return authError(res, 400, 'invalid_grant', 'Refresh token expirado, já utilizado, revogado ou vinculado a outro cliente/ambiente.');

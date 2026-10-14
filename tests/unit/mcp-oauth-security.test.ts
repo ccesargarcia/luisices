@@ -48,6 +48,10 @@ class MemoryFirestore {
     const writes: Array<() => void> = [];
     const tx = {
       get: async (ref: { key: string }) => this.snapshot(ref.key),
+      create: (ref: { key: string }, data: Stored) => writes.push(() => {
+        if (this.records.has(ref.key)) throw new Error('document already exists');
+        this.records.set(ref.key, { ...data });
+      }),
       set: (ref: { key: string }, data: Stored) => writes.push(() => this.records.set(ref.key, { ...data })),
       update: (ref: { key: string }, data: Stored) => writes.push(() => {
         const current = this.records.get(ref.key);
@@ -258,19 +262,22 @@ describe('OAuth authorization and client binding', () => {
     const db = new MemoryFirestore();
     const client = await register(db);
     const clientId = client.body.client_id;
-    const started = await beginAuthorization(db, clientId, { scope: 'orders:read orders:draft' });
+    const started = await beginAuthorization(db, clientId, { scope: 'orders:read orders:draft', resource: devOrigin });
     const requestId = new URL(started.redirectUrl).searchParams.get('request_id')!;
     await db.collection('userProfiles').doc('verified-user').set({ email: 'verified@example.test', role: 'funcionario', active: true, permissions: { mcpAccess: true } });
     const authorized = response();
     await handleOAuthAuthorize({ method: 'POST', body: { request_id: requestId, client_id: 'attacker-client', redirect_uri: 'https://evil.invalid', scope: 'orders:create', uid: 'other-user', email: 'other@example.test' }, headers: { authorization: 'Bearer firebase-id-token' }, ip: '127.0.0.1' } as any, authorized, db as any, (() => ({ verifyIdToken: async () => ({ uid: 'verified-user', email: 'verified@example.test', auth_time: Math.floor(Date.now() / 1000) }) })) as any);
     expect(authorized.statusCode).toBe(200);
     const code = new URL(authorized.body.redirect_uri).searchParams.get('code')!;
-    expect(db.records.get(`oauthAuthCodes/${code}`)).toMatchObject({ userId: 'verified-user', clientId, redirectUri: callback, scope: 'orders:read orders:draft' });
+    expect(db.records.get(`oauthAuthCodes/${code}`)).toMatchObject({ userId: 'verified-user', clientId, redirectUri: callback, resource: devOrigin, scope: 'orders:read orders:draft' });
 
     const codeDoc = db.records.get(`oauthAuthCodes/${code}`)!;
+    const wrongResource = response();
+    await handleOAuthToken({ method: 'POST', body: { grant_type: 'authorization_code', code, client_id: clientId, redirect_uri: callback, code_verifier: verifier, resource: `${devOrigin}/other` }, ip: '127.0.0.2' } as any, wrongResource, db as any);
+    expect(wrongResource.statusCode).toBe(400);
     const exchange = () => {
       const res = response();
-      return handleOAuthToken({ method: 'POST', body: { grant_type: 'authorization_code', code, client_id: clientId, redirect_uri: callback, code_verifier: verifier }, ip: '127.0.0.2' } as any, res, db as any).then(() => res);
+      return handleOAuthToken({ method: 'POST', body: { grant_type: 'authorization_code', code, client_id: clientId, redirect_uri: callback, code_verifier: verifier, resource: devOrigin }, ip: '127.0.0.2' } as any, res, db as any).then(() => res);
     };
     const results = await Promise.all([exchange(), exchange()]);
     expect(results.filter((item) => item.statusCode === 200)).toHaveLength(1);
