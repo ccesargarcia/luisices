@@ -221,6 +221,9 @@ async function validateMcpRequest(req, db) {
   return {
     success: true,
     keyData,
+    // Keep the stored key grant so callers can distinguish a missing key scope
+    // from a scope removed by the user's current profile permissions.
+    requestedKeyScopes,
     userProfile,
     scope,
     keyHash,

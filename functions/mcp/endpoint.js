@@ -611,7 +611,7 @@ const chatGptToolsEndpoint = onRequest(
         });
       }
 
-      const { keyData, scope, keyHash } = authResult;
+      const { keyData, scope, keyHash, requestedKeyScopes } = authResult;
 
       // 2. Validação se a ferramenta existe no catálogo do sistema
       const requiredScope = TOOL_SCOPE_MAP[toolName];
@@ -627,6 +627,13 @@ const chatGptToolsEndpoint = onRequest(
       const hasScope = keyScopes.includes('*') || keyScopes.includes(requiredScope);
       if (!hasScope) {
         const scopeInfo = Object.values(MCP_SCOPES).find((s) => s.id === requiredScope);
+        const keyHasScope = requestedKeyScopes?.includes('*') || requestedKeyScopes?.includes(requiredScope);
+        if (keyHasScope) {
+          return res.status(403).json({
+            error: 'PROFILE_SCOPE_PERMISSION_DENIED',
+            message: `A chave possui '${requiredScope}', mas o perfil vinculado não permite este escopo. Confira as permissões MCP granulares do perfil e as permissões do módulo (${scopeInfo?.label || 'recurso restrito'}).`,
+          });
+        }
         return res.status(403).json({
           error: 'SCOPE_PERMISSION_DENIED',
           message: `Permissão negada: esta chave não possui o escopo '${requiredScope}' (${scopeInfo?.label || 'recurso restrito'}).`,
