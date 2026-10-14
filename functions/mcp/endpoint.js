@@ -14,6 +14,7 @@ const {
   handleOAuthAuthorize,
   handleOAuthConsentInfo,
   handleOAuthToken,
+  handleOAuthRevoke,
 } = require('./oauth');
 const { TOOL_SCOPE_MAP, MCP_SCOPES } = require('./constants');
 const { buildOpenApiSchema, TOOLS_METADATA } = require('./openapi');
@@ -257,6 +258,8 @@ const chatGptToolsEndpoint = onRequest(
         rawPath === 'authorize' ||
         rawPath === 'oauth/token' ||
         rawPath === 'token' ||
+        rawPath === 'oauth/revoke' ||
+        rawPath === 'revoke' ||
         req.body?.method === 'initialize' ||
         req.body?.method === 'notifications/initialized' ||
         req.body?.method === 'ping'
@@ -319,6 +322,11 @@ const chatGptToolsEndpoint = onRequest(
     // ─── ROTA 0.5: Endpoint de Emissão / Renovação de Token OAuth 2.1 (POST /oauth/token) ──
     if (rawPath === 'oauth/token' || rawPath === 'token') {
       return await handleOAuthToken(req, res, db);
+    }
+
+    // ─── ROTA 0.6: Revogação de token OAuth (POST /oauth/revoke) ─────────────
+    if (rawPath === 'oauth/revoke' || rawPath === 'revoke') {
+      return await handleOAuthRevoke(req, res, db);
     }
 
     // ─── ROTA 1: Manifesto OpenAPI (/openapi.json, /openapi.yaml ou /schema) ─

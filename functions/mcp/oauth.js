@@ -189,11 +189,13 @@ function getOauthAuthorizationServerMetadata(baseUrl) {
     issuer: origin,
     authorization_endpoint: `${origin}/oauth/authorize`,
     token_endpoint: `${origin}/oauth/token`,
+    revocation_endpoint: `${origin}/oauth/revoke`,
     registration_endpoint: `${origin}/oauth/register`,
     response_types_supported: ['code'],
     grant_types_supported: ['authorization_code', 'refresh_token'],
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'],
+    revocation_endpoint_auth_methods_supported: ['none'],
     scopes_supported: allScopes,
     service_documentation: `${origin}/chatGptToolsEndpoint`,
   };
@@ -564,6 +566,95 @@ async function handleOAuthToken(req, res, db) {
   return authError(res, 400, 'unsupported_grant_type', 'Utilize authorization_code ou refresh_token.');
 }
 
+/** Revoga o grant OAuth vinculado ao token apresentado (RFC 7009). */
+async function handleOAuthRevoke(req, res, db) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  if (req.method !== 'POST') return res.setHeader('Allow', 'POST').status(405).json({ error: 'method_not_allowed' });
+  const body = req.body || {};
+  if (!body || typeof body !== 'object' || Array.isArray(body)
+      || Object.keys(body).some((key) => !['token', 'token_type_hint', 'client_id', 'resource'].includes(key))) {
+    return authError(res, 400, 'invalid_request', 'Parâmetros inválidos para revogação OAuth.');
+  }
+  if (!db || !await applyEndpointRateLimit(req, res, db, 'revoke', 120)) return undefined;
+  const authorization = req.headers?.authorization || req.headers?.Authorization || '';
+  if (body.client_secret !== undefined || /^Basic\s/i.test(authorization)) {
+    return authError(res, 401, 'invalid_client', 'O servidor aceita somente clientes públicos sem segredo.');
+  }
+  const { token, client_id: clientId, token_type_hint: tokenTypeHint } = body;
+  if (typeof token !== 'string' || token.length > 256 || !isOAuthClientId(clientId)
+      || (tokenTypeHint !== undefined && !['access_token', 'refresh_token'].includes(tokenTypeHint))
+      || (body.resource !== undefined && normalizeOAuthResource(body.resource) !== body.resource)) {
+    return authError(res, 400, 'invalid_request', 'token, client_id e token_type_hint válidos são obrigatórios.');
+  }
+
+  const inferredType = token.startsWith('lui_oauth_at_') ? 'access_token'
+    : token.startsWith('lui_oauth_rt_') ? 'refresh_token' : null;
+  const tokenType = tokenTypeHint || inferredType;
+  const collectionName = tokenType === 'access_token' ? 'oauthAccessTokens'
+    : tokenType === 'refresh_token' ? 'oauthRefreshTokens' : null;
+  if (!collectionName || (tokenType === 'access_token' && !/^lui_oauth_at_[a-f0-9]{64}$/.test(token))
+      || (tokenType === 'refresh_token' && !/^lui_oauth_rt_[a-f0-9]{64}$/.test(token))) {
+    return res.status(200).send('');
+  }
+
+  const tokenRef = db.collection(collectionName).doc(tokenDocumentId(token));
+  const tokenSnap = await tokenRef.get();
+  // RFC 7009: unknown tokens and tokens belonging to another client are silently ignored.
+  if (!tokenSnap.exists) return res.status(200).send('');
+  const tokenData = tokenSnap.data();
+  if (tokenData.clientId !== clientId || (body.resource && tokenData.resource !== body.resource)) {
+    return res.status(200).send('');
+  }
+
+  const sessionId = tokenData.sessionId;
+  if (typeof sessionId === 'string' && /^sess_[A-Za-z0-9_-]{16,64}$/.test(sessionId)) {
+    const sessionRef = db.collection('oauthSessions').doc(sessionId);
+    const sessionRevoked = await db.runTransaction(async (tx) => {
+      const sessionSnap = await tx.get(sessionRef);
+      if (sessionSnap.exists && sessionSnap.data().clientId === clientId) {
+        tx.update(sessionRef, {
+          active: false,
+          revoked: true,
+          revokedAt: new Date().toISOString(),
+          revokedBy: 'oauth_client',
+          revocationReason: 'client_request',
+        });
+        tx.set(tokenRef, { revoked: true, revokedAt: new Date().toISOString() }, { merge: true });
+        return true;
+      }
+      tx.set(tokenRef, { revoked: true, revokedAt: new Date().toISOString() }, { merge: true });
+      return false;
+    });
+
+    // Mark rotated access/refresh tokens too, so the session is consistently visible in administration.
+    for (const name of sessionRevoked ? ['oauthAccessTokens', 'oauthRefreshTokens'] : []) {
+      const snapshot = await db.collection(name).where('sessionId', '==', sessionId).get();
+      for (let offset = 0; offset < snapshot.docs.length; offset += 400) {
+        const batch = db.batch();
+        snapshot.docs.slice(offset, offset + 400).forEach((doc) => batch.set(doc.ref, {
+          revoked: true,
+          revokedAt: new Date().toISOString(),
+        }, { merge: true }));
+        await batch.commit();
+      }
+    }
+    if (sessionRevoked && tokenData.userId) {
+      const activeSessions = await db.collection('oauthSessions')
+        .where('userId', '==', tokenData.userId)
+        .where('active', '==', true)
+        .get();
+      if (activeSessions.empty) {
+        await db.collection(COLLECTIONS.USERS).doc(tokenData.userId)
+          .set({ mcpSessionActive: false }, { merge: true });
+      }
+    }
+  } else {
+    await tokenRef.set({ revoked: true, revokedAt: new Date().toISOString() }, { merge: true });
+  }
+  return res.status(200).send('');
+}
+
 /**
  * Validação de Token de Acesso OAuth 2.1
  */
@@ -713,6 +804,7 @@ module.exports = {
   handleOAuthAuthorize,
   handleOAuthConsentInfo,
   handleOAuthToken,
+  handleOAuthRevoke,
   validateOAuthAccessToken,
   getEffectiveUserScopes,
   parseScopes,

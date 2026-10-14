@@ -144,6 +144,20 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
     }
   }, [hasMcpPermission, fetchStatus]);
 
+  // Refresh when returning to Settings, because ChatGPT can revoke OAuth in another tab.
+  useEffect(() => {
+    if (!hasMcpPermission) return undefined;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') fetchStatus(true);
+    };
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [hasMcpPermission, fetchStatus]);
+
   // Se o usuário não tiver permissão, o menu/seção simplesmente SUMA da tela!
   if (!hasMcpPermission) {
     return null;
