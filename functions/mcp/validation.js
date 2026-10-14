@@ -57,6 +57,7 @@ function validateToolArguments(toolName, args) {
   const tool = TOOLS_METADATA.find((entry) => entry.name === toolName);
   if (!tool) invalid('Ferramenta não reconhecida.');
   if (!args || typeof args !== 'object' || Array.isArray(args)) invalid('Os argumentos devem ser um objeto JSON.');
+  validateObject(args, tool.requestBody || { type: 'object', properties: {} });
   let encoded;
   try {
     encoded = JSON.stringify(args);
@@ -64,7 +65,6 @@ function validateToolArguments(toolName, args) {
     invalid('Os argumentos não são JSON válidos.');
   }
   if (Buffer.byteLength(encoded, 'utf8') > MAX_TOOL_ARGUMENT_BYTES) invalid('Os argumentos excedem o tamanho máximo permitido.');
-  validateObject(args, tool.requestBody || { type: 'object', properties: {} });
   return args;
 }
 

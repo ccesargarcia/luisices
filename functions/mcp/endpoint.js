@@ -95,6 +95,20 @@ async function executeScopedToolByName(toolsExecutor, toolName, args, scope, sco
       return operationalBriefing;
     }
   }
+  if (!scopes.includes('financial:read') && toolName === 'get_user_summary' && result?.metrics) {
+    const financialFields = new Set([
+      'volumeTotalEmitido', 'grossIssuedVolume', 'faturamentoRealizado', 'realizedRevenue',
+      'totalReceived', 'totalRecebido', 'pendingReceivables', 'totalPendenteReceber',
+      'averageTicket', 'ticketMedio',
+    ]);
+    return {
+      ...result,
+      customers: Array.isArray(result.customers)
+        ? result.customers.map(({ totalSpent, ...customer }) => customer)
+        : result.customers,
+      metrics: Object.fromEntries(Object.entries(result.metrics).filter(([key]) => !financialFields.has(key))),
+    };
+  }
   return result;
 }
 

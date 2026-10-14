@@ -5,12 +5,21 @@ import {
   calculateS256Challenge,
   validateOAuthAccessToken,
 } from '../../functions/mcp/oauth.js';
-import { validateMcpRequest } from '../../functions/mcp/auth.js';
+import { clearMcpAuthCache, validateMcpRequest } from '../../functions/mcp/auth.js';
 import apiWorker from '../../cloudflare/api-worker/src/index.js';
+import { createHash } from 'node:crypto';
+
+const accessToken = (label: string) => `lui_oauth_at_${createHash('sha256').update(label).digest('hex')}`;
+const employeePermissions = {
+  mcpAccess: true,
+  orders: { view: true, create: true, edit: true },
+  customers: { view: true, create: true, edit: true },
+};
 
 describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    clearMcpAuthCache();
   });
 
   describe('1. Discovery Endpoints & Metadata', () => {
@@ -147,7 +156,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
                     email: 'colab@luisices.com.br',
                     role: 'funcionario',
                     active: true,
-                    permissions: { mcpAccess: true },
+                    permissions: employeePermissions,
                   }),
                 }),
               }),
@@ -171,7 +180,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
         }),
       };
 
-      const result = await validateOAuthAccessToken('lui_oauth_at_valid_token_123', mockDb);
+      const result = await validateOAuthAccessToken(accessToken('valid'), mockDb);
       expect(result.success).toBe(true);
       expect(result.keyData.userId).toBe('user_colab_123');
       expect(result.userProfile.email).toBe('colab@luisices.com.br');
@@ -196,9 +205,10 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
           }
           return { doc: () => ({ get: async () => ({ exists: false }) }) };
         },
+        runTransaction: async (work: any) => work({ get: async () => ({ exists: false }), set: () => {} }),
       };
 
-      const result = await validateOAuthAccessToken('lui_oauth_at_expired_token', mockDb);
+      const result = await validateOAuthAccessToken(accessToken('expired'), mockDb);
       expect(result.success).toBe(false);
       expect(result.status).toBe(401);
       expect(result.code).toBe('TOKEN_EXPIRED');
@@ -226,7 +236,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
         },
       };
 
-      const result = await validateOAuthAccessToken('lui_oauth_at_wrong_issuer', mockDb);
+      const result = await validateOAuthAccessToken(accessToken('wrong-issuer'), mockDb);
       expect(result.success).toBe(false);
       expect(result.status).toBe(401);
       expect(result.code).toBe('INVALID_ISSUER');
@@ -276,7 +286,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
         },
       };
 
-      const result = await validateOAuthAccessToken('lui_oauth_at_suspended_user', mockDb);
+      const result = await validateOAuthAccessToken(accessToken('suspended-user'), mockDb);
       expect(result.success).toBe(false);
       expect(result.status).toBe(403);
       expect(result.code).toBe('USER_INACTIVE');
@@ -319,7 +329,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
                     uid: 'user_legacy_123',
                     displayName: 'Legacy User',
                     active: true,
-                    permissions: { mcpAccess: true },
+                    permissions: { ...employeePermissions, mcpScopes: ['orders:read'] },
                   }),
                 }),
               }),
@@ -327,6 +337,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
           }
           return { doc: () => ({ get: async () => ({ exists: false }) }) };
         },
+        runTransaction: async (work: any) => work({ get: async () => ({ exists: false }), set: () => {} }),
       };
 
       const req: any = {
@@ -376,7 +387,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
         },
       };
 
-      const result = await validateOAuthAccessToken('lui_oauth_at_revoked_token', mockDb);
+      const result = await validateOAuthAccessToken(accessToken('revoked'), mockDb);
       expect(result.success).toBe(false);
       expect(result.status).toBe(401);
       expect(result.code).toBe('TOKEN_REVOKED');
@@ -427,7 +438,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
         },
       };
 
-      const result = await validateOAuthAccessToken('lui_oauth_at_session_revoked', mockDb);
+      const result = await validateOAuthAccessToken(accessToken('session-revoked'), mockDb);
       expect(result.success).toBe(false);
       expect(result.status).toBe(401);
       expect(result.code).toBe('SESSION_REVOKED');
@@ -463,7 +474,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
                 email: 'funcionario@luisices.com.br',
                 role: 'funcionario', // não-admin
                 active: true,
-                permissions: { mcpAccess: true, mcpScopes: ['orders:read', 'customers:read'] },
+                permissions: { ...employeePermissions, mcpScopes: ['orders:read', 'customers:read'] },
               }),
             };
           }
@@ -537,7 +548,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
       expect(getEffectiveUserScopes(['financial:read'], { role: 'funcionario' })).toEqual([]);
 
       // Solicitação mista: concede apenas os escopos permitidos
-      expect(getEffectiveUserScopes(['orders:read', 'financial:read'], { role: 'funcionario' })).toEqual(['orders:read']);
+      expect(getEffectiveUserScopes(['orders:read', 'financial:read'], { role: 'funcionario', permissions: { orders: { view: true } } })).toEqual(['orders:read']);
 
       // Lista granular vazia no perfil: bloqueia tudo (retorna [])
       expect(getEffectiveUserScopes(['orders:read'], { role: 'funcionario', permissions: { mcpScopes: [] } })).toEqual([]);
@@ -546,14 +557,14 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
       expect(getEffectiveUserScopes(['orders:read', 'orders:create'], { role: 'admin', permissions: { mcpScopes: ['orders:read'] } })).toEqual(['orders:read']);
 
       // Admin sem lista configurada: recebe todos os escopos válidos solicitados
-      expect(getEffectiveUserScopes(['orders:read', 'financial:read'], { role: 'admin' })).toEqual(['orders:read', 'financial:read']);
+      expect(getEffectiveUserScopes(['orders:read', 'financial:read'], { role: 'admin' })).toEqual(['orders:read']);
     });
 
     it('validateOAuthAccessToken: bloqueia ferramenta quando a permissão correspondente é removida do perfil', async () => {
       let currentProfile: any = {
         role: 'funcionario',
         active: true,
-        permissions: { mcpAccess: true, mcpScopes: ['orders:read', 'orders:create'] },
+        permissions: { ...employeePermissions, mcpScopes: ['orders:read', 'orders:create'] },
       };
 
       const mockDb: any = {
@@ -592,7 +603,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
       };
 
       // 1. Inicialmente com orders:create
-      const initialRes = await validateOAuthAccessToken('lui_oauth_at_token_01', mockDb);
+      const initialRes = await validateOAuthAccessToken(accessToken('token-01'), mockDb);
       expect(initialRes.success).toBe(true);
       expect(initialRes.keyData.scopes).toEqual(['orders:read', 'orders:create']);
 
@@ -600,10 +611,10 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
       currentProfile = {
         role: 'funcionario',
         active: true,
-        permissions: { mcpAccess: true, mcpScopes: ['orders:read'] },
+        permissions: { ...employeePermissions, mcpScopes: ['orders:read'] },
       };
 
-      const updatedRes = await validateOAuthAccessToken('lui_oauth_at_token_01', mockDb);
+      const updatedRes = await validateOAuthAccessToken(accessToken('token-01'), mockDb);
       expect(updatedRes.success).toBe(true);
       expect(updatedRes.keyData.scopes).toEqual(['orders:read']); // orders:create removido imediatamente!
 
@@ -611,10 +622,10 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
       currentProfile = {
         role: 'funcionario',
         active: true,
-        permissions: { mcpAccess: true, mcpScopes: [] },
+        permissions: { ...employeePermissions, mcpScopes: [] },
       };
 
-      const emptyRes = await validateOAuthAccessToken('lui_oauth_at_token_01', mockDb);
+      const emptyRes = await validateOAuthAccessToken(accessToken('token-01'), mockDb);
       expect(emptyRes.success).toBe(false);
       expect(emptyRes.status).toBe(403);
       expect(emptyRes.code).toBe('SCOPE_PERMISSION_DENIED');
@@ -624,7 +635,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
       let currentProfile: any = {
         role: 'funcionario',
         active: true,
-        permissions: { mcpAccess: true, mcpScopes: ['orders:read'] },
+        permissions: { ...employeePermissions, mcpScopes: ['orders:read'] },
       };
 
       const mockDb: any = {
@@ -661,7 +672,8 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
                     sessionId: id,
                     userId: 'user_rt_01',
                     clientId: 'chatgpt-mcp',
-                    refreshToken: 'lui_oauth_rt_old_refresh_token_123',
+                    refreshToken: `lui_oauth_rt_${'c'.repeat(64)}`,
+                    resource: 'https://api.dev.luisices.com.br',
                     iss: 'https://api.dev.luisices.com.br',
                     aud: 'https://api.dev.luisices.com.br',
                     active: true,
@@ -682,11 +694,12 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
         },
         runTransaction: async (cb: any) => cb({
           get: async (ref: any) => {
-            if (ref.id === 'lui_oauth_rt_old_refresh_token_123') {
+            if (ref.id === `lui_oauth_rt_${'c'.repeat(64)}`) {
               return {
                 exists: true,
                 data: () => ({
-                  refreshToken: 'lui_oauth_rt_old_refresh_token_123',
+                  refreshToken: `lui_oauth_rt_${'c'.repeat(64)}`,
+                  resource: 'https://api.dev.luisices.com.br',
                   sessionId: 'sess_rt_123',
                   userId: 'user_rt_01',
                   clientId: 'chatgpt-mcp',
@@ -705,7 +718,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
                   sessionId: 'sess_rt_123',
                   userId: 'user_rt_01',
                   clientId: 'chatgpt-mcp',
-                  refreshToken: 'lui_oauth_rt_old_refresh_token_123',
+                  refreshToken: `lui_oauth_rt_${'c'.repeat(64)}`,
                   iss: 'https://api.dev.luisices.com.br',
                   aud: 'https://api.dev.luisices.com.br',
                   active: true,
@@ -718,12 +731,13 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
               return { exists: true, data: () => currentProfile };
             }
             if (ref.id === 'chatgpt-mcp') {
-              return { enabled: true, grantTypes: ['refresh_token'] };
+              return { exists: true, data: () => ({ enabled: true, grantTypes: ['refresh_token'] }) };
             }
             return { exists: false };
           },
           update: () => {},
           set: () => {},
+          create: () => {},
         }),
       };
 
@@ -731,8 +745,9 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
         method: 'POST',
         body: {
           grant_type: 'refresh_token',
-          refresh_token: 'lui_oauth_rt_old_refresh_token_123',
+          refresh_token: `lui_oauth_rt_${'c'.repeat(64)}`,
           client_id: 'chatgpt-mcp',
+          resource: 'https://api.dev.luisices.com.br',
         },
       };
 

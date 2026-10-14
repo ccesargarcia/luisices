@@ -19,6 +19,12 @@ function normalizeTimestamp(val) {
   return String(val);
 }
 
+function orderOrdersByCreationDate(query) {
+  return query && typeof query.orderBy === 'function'
+    ? query.orderBy('createdAt', 'desc')
+    : query;
+}
+
 function sanitizeOrderForAi(id, data = {}) {
   const pName = data.productName || data.productSummary || data.itemsSummary || data.description || 'Personalizado Luisices';
 
@@ -125,7 +131,18 @@ async function readAllPages(queryFactory, { pageSize = 250, maxDocs = 5000, allo
       }
       throw new Error(`Consulta excedeu o limite operacional de ${maxDocs} registros; resultado parcial recusado.`);
     }
-    if (pageDocs.length < requested || docs.length >= maxDocs) return docs.slice(0, maxDocs);
+    if (pageDocs.length < requested) return docs;
+    if (docs.length >= maxDocs) {
+      if (allowPartial) return docs.slice(0, maxDocs);
+      if (typeof query.startAfter !== 'function') {
+        throw new Error('A consulta não oferece paginação segura; resultado incompleto recusado.');
+      }
+      const nextPage = await queryFactory().limit(1).startAfter(pageDocs[pageDocs.length - 1]).get();
+      if ((nextPage?.docs || []).length) {
+        throw new Error(`Consulta excedeu o limite operacional de ${maxDocs} registros; resultado parcial recusado.`);
+      }
+      return docs;
+    }
     cursor = pageDocs[pageDocs.length - 1];
   }
 }
@@ -147,9 +164,10 @@ class AiDataRepositories {
     if (!this.db) return [];
 
     const isPartialAllowed = options.allowPartial ?? (options.maxLimit ? true : false);
-    const cacheKey = `${scope?.isAdmin ? 'admin' : (scope?.uid || 'anon')}:${options.maxLimit || 'full'}`;
+    const useCache = options.skipCache !== true;
+    const cacheKey = `${scope?.isAdmin ? 'admin' : (scope?.uid || 'anon')}:${options.maxLimit || 'full'}:${isPartialAllowed ? 'partial' : 'complete'}`;
     const cached = SCOPED_ORDERS_CACHE.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
+    if (useCache && cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
 
@@ -160,15 +178,15 @@ class AiDataRepositories {
     try {
       if (scope.isAdmin) {
         const docs = await readAllPages(
-          () => this.db.collection('orders').where('deletedAt', '==', null),
+          () => orderOrdersByCreationDate(this.db.collection('orders').where('deletedAt', '==', null)),
           { maxDocs: maxSafetyCeiling, allowPartial: isPartialAllowed },
         );
         rawDocs = docs.map((d) => sanitizeOrderForAi(d.id, d.data()));
       } else {
         const [userDocs, assignedDocs, createdDocs] = await Promise.all([
-          readAllPages(() => this.db.collection('orders').where('userId', '==', scope.uid).where('deletedAt', '==', null), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
-          readAllPages(() => this.db.collection('orders').where('assignedTo', '==', scope.uid).where('deletedAt', '==', null), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
-          readAllPages(() => this.db.collection('orders').where('createdBy', '==', scope.uid).where('deletedAt', '==', null), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
+          readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('userId', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
+          readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('assignedTo', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
+          readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('createdBy', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
         ]);
 
         const map = new Map();
@@ -193,10 +211,12 @@ class AiDataRepositories {
       return (isNaN(tB) ? 0 : tB) - (isNaN(tA) ? 0 : tA);
     });
 
-    SCOPED_ORDERS_CACHE.set(cacheKey, {
-      data: filtered,
-      expiresAt: Date.now() + SCOPED_ORDERS_TTL_MS,
-    });
+    if (useCache) {
+      SCOPED_ORDERS_CACHE.set(cacheKey, {
+        data: filtered,
+        expiresAt: Date.now() + SCOPED_ORDERS_TTL_MS,
+      });
+    }
 
     return filtered;
   }
@@ -405,7 +425,7 @@ class AiDataRepositories {
             title: data.title || data.theme || 'Projeto',
             category: data.category || '',
             papers: Array.isArray(data.papers) ? data.papers : [],
-            tags: Array.isArray(data.tags) ? data.tags.map((t) => typeof t === 'string' ? t : t.name) : [],
+            tags: Array.isArray(data.tags) ? data.tags.map((t) => typeof t === 'string' ? t : t?.name).filter((tag) => typeof tag === 'string') : [],
             imageUrl: data.imageUrl || '',
             userId: String(data.userId || ''),
             createdBy: String(data.createdBy || ''),
@@ -435,7 +455,7 @@ class AiDataRepositories {
               title: data.title || data.theme || 'Projeto',
               category: data.category || '',
               papers: Array.isArray(data.papers) ? data.papers : [],
-              tags: Array.isArray(data.tags) ? data.tags.map((t) => typeof t === 'string' ? t : t.name) : [],
+              tags: Array.isArray(data.tags) ? data.tags.map((t) => typeof t === 'string' ? t : t?.name).filter((tag) => typeof tag === 'string') : [],
               imageUrl: data.imageUrl || '',
               userId: String(data.userId || ''),
               createdBy: String(data.createdBy || ''),

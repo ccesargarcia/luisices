@@ -6,6 +6,23 @@ const { BUSINESS_TIMEZONE, TOOL_LIMITS } = require('./config');
 const { calculateRecipePricing, calculateHourlyRate, DEFAULT_PRICING_SETTINGS } = require('./pricing/pricingCalculator');
 const { sanitizeCollaboratorInfo } = require('./authorization');
 
+function getBusinessDate(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: BUSINESS_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const part = (type) => parts.find((entry) => entry.type === type)?.value || '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+function isValidDateOnly(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`))
+    && new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
+}
+
 /**
  * Calcula intervalos de data no fuso do negócio (America/Sao_Paulo - UTC-3)
  */
@@ -132,7 +149,7 @@ function getPeriodInterval(period = 'month', baseDate = new Date()) {
     };
   }
 
-  if (cleanPeriod === 'week' || cleanPeriod === 'semana' || cleanPeriod === 'ultimos_7_dias') {
+  if (cleanPeriod === 'week' || cleanPeriod === 'semana' || cleanPeriod === 'esta_semana' || cleanPeriod === 'ultimos_7_dias') {
     const start = new Date(d.getTime() - 7 * 24 * 60 * 60 * 1000);
     return {
       startDate: start,
@@ -358,7 +375,7 @@ class AiToolsExecutor {
     const validatedArgs = typeof args === 'object' && args !== null ? args : { period: String(args || 'month') };
     const period = validatedArgs.period || 'month';
 
-    let orders = await this.repos.getScopedOrders(scope);
+    let orders = await this.repos.getScopedOrders(scope, { skipCache: true });
 
     // Filtro por colaborador específico (apenas admin pode auditar outro colaborador)
     if (scope.isAdmin && validatedArgs.userIdentifier) {
@@ -477,8 +494,13 @@ class AiToolsExecutor {
    * Ferramenta 2: Daily Briefing
    */
   async executeDailyBriefing(args, scope) {
-    const orders = (await this.repos.getScopedOrders(scope)).filter((o) => !o.isDeleted);
-    const todayDate = new Date().toISOString().split('T')[0];
+    const orders = (await this.repos.getScopedOrders(scope, { skipCache: true })).filter((o) => !o.isDeleted);
+    const todayDate = args?.date ? String(args.date).trim() : getBusinessDate();
+    if (!isValidDateOnly(todayDate)) {
+      const error = new Error('A data de referência deve usar o formato AAAA-MM-DD.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
 
     const delayedOrders = orders.filter(
       (o) =>
@@ -521,22 +543,63 @@ class AiToolsExecutor {
   async executeQueryOrdersView(args = {}, scope) {
     const limit = Math.min(Math.max(Number(args.limit) || TOOL_LIMITS.ORDERS_PAGE_LIMIT, 1), 50);
     // Otimização de performance: busca apenas a janela necessária no Firestore
-    const maxLimit = args.searchTerm ? 150 : (args.status && args.status !== 'all' ? 100 : Math.max(limit * 2, 50));
-    const orders = await this.repos.getScopedOrders(scope, { maxLimit, allowPartial: true });
+    const hasStatusFilter = args.status && !['all', 'todos'].includes(String(args.status).toLowerCase().trim());
+    const hasHistoryFilter = Boolean(args.searchTerm || args.startDate || args.endDate || hasStatusFilter);
+    const maxLimit = hasHistoryFilter ? 5000 : Math.max(limit * 2, 50);
+    const orders = await this.repos.getScopedOrders(scope, { maxLimit, allowPartial: !hasHistoryFilter, skipCache: true });
     let filtered = orders;
 
-    if (args.status && args.status !== 'all') {
-      filtered = filtered.filter((o) => o.status === args.status);
+    const statusAliases = {
+      all: 'all',
+      todos: 'all',
+      pending: 'pending',
+      pendente: 'pending',
+      'in-progress': 'in-progress',
+      in_progress: 'in-progress',
+      em_producao: 'in-progress',
+      'em produção': 'in-progress',
+      'em producao': 'in-progress',
+      completed: 'completed',
+      concluido: 'completed',
+      concluído: 'completed',
+      entregue: 'completed',
+      delivered: 'completed',
+      cancelled: 'cancelled',
+      canceled: 'cancelled',
+      cancelado: 'cancelled',
+      cancelada: 'cancelled',
+      atrasado: 'overdue',
+    };
+    const requestedStatus = args.status == null ? 'all' : statusAliases[String(args.status).toLowerCase().trim()];
+    if (!requestedStatus) {
+      const error = new Error('Status inválido para consulta de pedidos.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    if (requestedStatus === 'overdue') {
+      const today = getBusinessDate();
+      filtered = filtered.filter((o) => o.deliveryDate && o.deliveryDate < today && !['completed', 'cancelled'].includes(o.status));
+    } else if (requestedStatus !== 'all') {
+      filtered = filtered.filter((o) => o.status === requestedStatus);
     }
 
+    const startDate = args.startDate ? String(args.startDate).trim() : '';
+    const endDate = args.endDate ? String(args.endDate).trim() : '';
+    if ((startDate && !isValidDateOnly(startDate)) || (endDate && !isValidDateOnly(endDate))) {
+      const error = new Error('As datas devem usar o formato AAAA-MM-DD.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    if (startDate) filtered = filtered.filter((o) => o.deliveryDate && o.deliveryDate >= startDate);
+    if (endDate) filtered = filtered.filter((o) => o.deliveryDate && o.deliveryDate <= endDate);
     if (args.searchTerm) {
       const term = String(args.searchTerm).toLowerCase().trim();
       const phoneDigits = term.replace(/\D/g, '');
       filtered = filtered.filter((o) => {
-        const numMatch = o.orderNumber && o.orderNumber.toLowerCase().includes(term);
-        const nameMatch = o.customerName && o.customerName.toLowerCase().includes(term);
-        const prodMatch = (o.productName || o.productSummary) && (o.productName || o.productSummary).toLowerCase().includes(term);
-        const phoneMatch = phoneDigits && o.customerPhone && o.customerPhone.replace(/\D/g, '').includes(phoneDigits);
+        const numMatch = String(o.orderNumber || '').toLowerCase().includes(term);
+        const nameMatch = String(o.customerName || '').toLowerCase().includes(term);
+        const prodMatch = String(o.productName || o.productSummary || '').toLowerCase().includes(term);
+        const phoneMatch = phoneDigits && String(o.customerPhone || '').replace(/\D/g, '').includes(phoneDigits);
         return numMatch || nameMatch || prodMatch || phoneMatch;
       });
     }
@@ -570,7 +633,7 @@ class AiToolsExecutor {
 
       if (matchedMember || args.userIdentifier) {
         const uid = matchedMember ? String(matchedMember.uid) : term;
-        const allOrders = await this.repos.getScopedOrders(scope);
+        const allOrders = await this.repos.getScopedOrders(scope, { skipCache: true });
         const collaboratorOrders = allOrders.filter((o) =>
           o.userId === uid ||
           o.createdBy === uid ||
@@ -809,9 +872,13 @@ class AiToolsExecutor {
     let phone = args.recipientPhone || '';
     let realOrder = null;
 
-    const orders = (await this.repos.getScopedOrders(scope)).filter((order) => !order.isDeleted);
+    const orders = (await this.repos.getScopedOrders(scope, { skipCache: true })).filter((order) => !order.isDeleted);
     const cleanTarget = String(orderNumber || '').toLowerCase().replace('#', '').trim();
     const nameTarget = String(recipientName).trim().toLowerCase();
+    const canReadPaymentDetails = !Array.isArray(scope?.mcpScopes)
+      || scope.mcpScopes.includes('*')
+      || scope.mcpScopes.includes('payments:read')
+      || scope.mcpScopes.includes('financial:read');
     const matches = orders.filter((order) => cleanTarget
       ? String(order.orderId || '').toLowerCase() === cleanTarget || String(order.orderNumber || '').toLowerCase().replace('#', '').trim() === cleanTarget
       : String(order.customerName || '').trim().toLowerCase() === nameTarget)
@@ -871,18 +938,22 @@ class AiToolsExecutor {
         orderId: realOrder.orderId,
         orderNumber: realOrder.orderNumber,
         customerName: realOrder.customerName,
-        totalPrice: realOrder.totalPrice,
-        paidAmount: realOrder.paidAmount,
-        remainingAmount: realOrder.remainingAmount,
         status: realOrder.status,
-        paymentStatus: realOrder.paymentStatus,
         deliveryDate: realOrder.deliveryDate,
+        ...(canReadPaymentDetails ? {
+          totalPrice: realOrder.totalPrice,
+          paidAmount: realOrder.paidAmount,
+          remainingAmount: realOrder.remainingAmount,
+          paymentStatus: realOrder.paymentStatus,
+        } : {}),
       };
 
       if (realOrder.status === 'cancelled') {
         generatedText = `Olá, ${realOrder.customerName}! Consta em nosso sistema que o pedido ${realOrder.orderNumber} (${realOrder.productSummary}) foi cancelado. Se desejar reativar ou tiver dúvidas, estamos à disposição! ✨`;
       } else if (normalizedType === 'cobranca') {
-        if (realOrder.paymentStatus === 'paid' || remaining <= 0) {
+        if (!canReadPaymentDetails) {
+          generatedText = `Olá, ${realOrder.customerName}! Tudo bem? Seu pedido ${realOrder.orderNumber} (${realOrder.productSummary})${dateFmt} está registrado. Para consultar os valores e o saldo, fale conosco por aqui. ✨`;
+        } else if (realOrder.paymentStatus === 'paid' || remaining <= 0) {
           generatedText = `Olá, ${realOrder.customerName}! Tudo bem? Passando para avisar que seu pedido ${realOrder.orderNumber} (${realOrder.productSummary}) já está com pagamento totalmente quitado! Qualquer dúvida estamos à disposição. ✨`;
         } else {
           // O saldo restante oficial SEMPRE prevalece sobre valores arbitrários
@@ -943,7 +1014,7 @@ class AiToolsExecutor {
         (m.email && identifier.includes(m.email.toLowerCase().split('@')[0]))
     );
 
-    const allScopedOrders = await this.repos.getScopedOrders(scope);
+    const allScopedOrders = await this.repos.getScopedOrders(scope, { skipCache: true });
 
     if (!target) {
       const matchingOrder = allScopedOrders.find(
@@ -1098,8 +1169,9 @@ class AiToolsExecutor {
    */
   async executeGetOrderForm(args = {}, scope) {
     const cName = args.customerName ? ` para **${args.customerName}**` : '';
+    const category = args.productCategory ? `\n**Categoria selecionada:** ${String(args.productCategory).trim()}` : '';
     const formMarkdown = [
-      `📋 **Formulário de Pedido — Luisices Ateliê de Papelaria Personalizada**${cName}`,
+      `📋 **Formulário de Pedido — Luisices Ateliê de Papelaria Personalizada**${cName}${category}`,
       `*Preencha ou responda os campos abaixo no chat (você pode responder tudo de uma vez, em lista, por partes ou enviar um áudio):*`,
       ``,
       `1. **Nome do Cliente:** ${args.customerName || ''}`,

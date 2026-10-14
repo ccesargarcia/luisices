@@ -10,6 +10,7 @@ import {
 import { buildBearerChallenge, executeScopedToolByName } from '../../functions/mcp/endpoint.js';
 import { clearMcpAuthCache, hashApiKey, validateMcpRequest } from '../../functions/mcp/auth.js';
 import { COLLECTIONS } from '../../functions/mcp/constants.js';
+import { createHash } from 'node:crypto';
 
 type Stored = Record<string, any>;
 
@@ -82,10 +83,23 @@ function response() {
 const callback = 'https://chatgpt.com/aip/g-mcp/oauth/callback';
 const devOrigin = 'https://api.dev.luisices.com.br';
 const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
+const employeePermissions = {
+  mcpAccess: true,
+  orders: { view: true, create: true, edit: true },
+  customers: { view: true, create: true, edit: true },
+  pricing: { view: true },
+  whatsapp: { view: true },
+  gallery: { view: true },
+  reports: { view: true },
+  users: { view: true },
+};
+const accessToken = (label: string) => `lui_oauth_at_${createHash('sha256').update(label).digest('hex')}`;
+const refreshToken = (label: string) => `lui_oauth_rt_${createHash('sha256').update(label).digest('hex')}`;
+
 const baseRequest = (clientId: string, extra = {}) => ({
   response_type: 'code', client_id: clientId, redirect_uri: callback,
   scope: 'orders:read', state: 'opaque-state', code_challenge: calculateS256Challenge(verifier),
-  code_challenge_method: 'S256', ...extra,
+  code_challenge_method: 'S256', resource: devOrigin, ...extra,
 });
 
 async function register(db: MemoryFirestore, redirectUris = [callback]) {
@@ -108,7 +122,10 @@ async function seedValidAccess(db: MemoryFirestore, { userId, clientId, token, s
   await db.collection('oauthClients').doc(clientId).set({ enabled: true });
   await db.collection('oauthAccessTokens').doc(token).set({ accessToken: token, userId, clientId, sessionId, ...(scopes ? { scopes } : {}), iss: tokenOrigin, aud: tokenOrigin, authTime: Math.floor(Date.now() / 1000), expiresAt: Date.now() + 3600000 });
   await db.collection('oauthSessions').doc(sessionId).set({ userId, clientId, iss: devOrigin, aud: devOrigin, expiresAt: Date.now() + 3600000, active: true, revoked: false, ...session });
-  await db.collection('userProfiles').doc(userId).set({ role: 'funcionario', active: true, permissions: { mcpAccess: true } });
+  await db.collection('userProfiles').doc(userId).set({
+    role: 'funcionario', active: true,
+    permissions: { ...employeePermissions, mcpScopes: scopes || [] },
+  });
 }
 
 afterEach(() => vi.unstubAllEnvs());
@@ -129,7 +146,7 @@ describe('Granular scope edge cases', () => {
     expect(getEffectiveUserScopes(['orders:create'], {
       role: 'admin', permissions: { mcpScopes: null }, mcpScopes: ['orders:create'],
     })).toEqual([]);
-    expect(getEffectiveUserScopes(['orders:create'], { role: 'funcionario' })).toEqual(['orders:create']);
+    expect(getEffectiveUserScopes(['orders:create'], { role: 'funcionario', permissions: { orders: { create: true } } })).toEqual(['orders:create']);
   });
 
   it.each([{ scopes: ['*'] }, { scopes: '*' }])('supports legacy static wildcard without granting administrative scopes to employees: %j', async ({ scopes }) => {
@@ -137,7 +154,7 @@ describe('Granular scope edge cases', () => {
     const db = new MemoryFirestore();
     const rawKey = 'lui_dev_wildcard_employee_test';
     await db.collection(COLLECTIONS.SETTINGS).doc(COLLECTIONS.SETTINGS_DOC_MCP).set({ enabled: true });
-    await db.collection(COLLECTIONS.USERS).doc('wildcard-user').set({ role: 'funcionario', active: true, permissions: { mcpAccess: true } });
+    await db.collection(COLLECTIONS.USERS).doc('wildcard-user').set({ role: 'funcionario', active: true, permissions: employeePermissions });
     await db.collection(COLLECTIONS.KEYS).doc(hashApiKey(rawKey)).set({
       keyId: 'wildcard-employee', userId: 'wildcard-user', enabled: true,
       ...(Array.isArray(scopes) ? { scopes } : { scope: scopes }),
@@ -174,17 +191,17 @@ describe('Granular scope edge cases', () => {
     const db = new MemoryFirestore();
     const clientId = await registerClientId(db);
     await db.collection(COLLECTIONS.USERS).doc('removed-before-exchange').set({
-      role: 'funcionario', active: true, permissions: { mcpAccess: true, mcpScopes: [] },
+      role: 'funcionario', active: true, permissions: { ...employeePermissions, mcpScopes: [] },
     });
-    const code = 'lui_code_removed_before_exchange';
+    const code = `lui_code_${'d'.repeat(48)}`;
     await db.collection('oauthAuthCodes').doc(code).set({
-      clientId, redirectUri: callback, userId: 'removed-before-exchange', authTime: Math.floor(Date.now() / 1000),
+      clientId, redirectUri: callback, resource: devOrigin, userId: 'removed-before-exchange', authTime: Math.floor(Date.now() / 1000),
       scope: 'orders:create', codeChallenge: calculateS256Challenge(verifier), codeChallengeMethod: 'S256',
       issuer: devOrigin, used: false, expiresAt: Date.now() + 300000,
     });
     const denied = response();
     await handleOAuthToken({ method: 'POST', body: {
-      grant_type: 'authorization_code', code, client_id: clientId, redirect_uri: callback, code_verifier: verifier,
+      grant_type: 'authorization_code', code, client_id: clientId, redirect_uri: callback, code_verifier: verifier, resource: devOrigin,
     }, ip: 'synthetic-exchange' } as any, denied, db as any);
     expect(denied.statusCode).toBe(400);
     expect(denied.body.error).toBe('invalid_scope');
@@ -264,7 +281,7 @@ describe('OAuth authorization and client binding', () => {
     const clientId = client.body.client_id;
     const started = await beginAuthorization(db, clientId, { scope: 'orders:read orders:draft', resource: devOrigin });
     const requestId = new URL(started.redirectUrl).searchParams.get('request_id')!;
-    await db.collection('userProfiles').doc('verified-user').set({ email: 'verified@example.test', role: 'funcionario', active: true, permissions: { mcpAccess: true } });
+    await db.collection('userProfiles').doc('verified-user').set({ email: 'verified@example.test', role: 'funcionario', active: true, permissions: { ...employeePermissions, mcpScopes: ['orders:read', 'orders:draft'] } });
     const authorized = response();
     await handleOAuthAuthorize({ method: 'POST', body: { request_id: requestId, client_id: 'attacker-client', redirect_uri: 'https://evil.invalid', scope: 'orders:create', uid: 'other-user', email: 'other@example.test' }, headers: { authorization: 'Bearer firebase-id-token' }, ip: '127.0.0.1' } as any, authorized, db as any, (() => ({ verifyIdToken: async () => ({ uid: 'verified-user', email: 'verified@example.test', auth_time: Math.floor(Date.now() / 1000) }) })) as any);
     expect(authorized.statusCode).toBe(200);
@@ -302,26 +319,26 @@ describe('OAuth authorization and client binding', () => {
     const db = new MemoryFirestore();
     const a = await register(db);
     const b = await register(db, ['https://example.test/callback']);
-    await db.collection('userProfiles').doc('user-a').set({ email: 'a@example.test', role: 'funcionario', active: true, permissions: { mcpAccess: true } });
-    const code = 'lui_code_test';
-    await db.collection('oauthAuthCodes').doc(code).set({ code, clientId: a.body.client_id, redirectUri: callback, userId: 'user-a', authTime: Math.floor(Date.now() / 1000), scope: 'orders:read', codeChallenge: calculateS256Challenge(verifier), codeChallengeMethod: 'S256', issuer: 'https://api.dev.luisices.com.br', used: false, expiresAt: Date.now() + 300000 });
+    await db.collection('userProfiles').doc('user-a').set({ email: 'a@example.test', role: 'funcionario', active: true, permissions: { ...employeePermissions, mcpScopes: ['orders:read'] } });
+    const code = `lui_code_${'e'.repeat(48)}`;
+    await db.collection('oauthAuthCodes').doc(code).set({ code, clientId: a.body.client_id, redirectUri: callback, resource: devOrigin, userId: 'user-a', authTime: Math.floor(Date.now() / 1000), scope: 'orders:read', codeChallenge: calculateS256Challenge(verifier), codeChallengeMethod: 'S256', issuer: 'https://api.dev.luisices.com.br', used: false, expiresAt: Date.now() + 300000 });
     for (const payload of [
       { client_id: b.body.client_id, redirect_uri: callback },
       { client_id: a.body.client_id, redirect_uri: 'https://chatgpt.com/aip/g-mcp/oauth/callback.evil' },
     ]) {
       const denied = response();
-      await handleOAuthToken({ method: 'POST', body: { grant_type: 'authorization_code', code, code_verifier: verifier, ...payload }, ip: '127.0.0.3' } as any, denied, db as any);
+      await handleOAuthToken({ method: 'POST', body: { grant_type: 'authorization_code', code, code_verifier: verifier, resource: devOrigin, ...payload }, ip: '127.0.0.3' } as any, denied, db as any);
       expect(denied.statusCode).toBe(400);
     }
     const exchanged = response();
-    await handleOAuthToken({ method: 'POST', body: { grant_type: 'authorization_code', code, client_id: a.body.client_id, redirect_uri: callback, code_verifier: verifier }, ip: '127.0.0.3' } as any, exchanged, db as any);
+    await handleOAuthToken({ method: 'POST', body: { grant_type: 'authorization_code', code, client_id: a.body.client_id, redirect_uri: callback, code_verifier: verifier, resource: devOrigin }, ip: '127.0.0.3' } as any, exchanged, db as any);
     expect(exchanged.statusCode).toBe(200);
     expect(exchanged.body.scope).toBe('orders:read');
     const wrongRefreshClient = response();
-    await handleOAuthToken({ method: 'POST', body: { grant_type: 'refresh_token', refresh_token: exchanged.body.refresh_token, client_id: b.body.client_id }, ip: '127.0.0.3' } as any, wrongRefreshClient, db as any);
+    await handleOAuthToken({ method: 'POST', body: { grant_type: 'refresh_token', refresh_token: exchanged.body.refresh_token, client_id: b.body.client_id, resource: devOrigin }, ip: '127.0.0.3' } as any, wrongRefreshClient, db as any);
     expect(wrongRefreshClient.statusCode).toBe(400);
     const refreshed = response();
-    await handleOAuthToken({ method: 'POST', body: { grant_type: 'refresh_token', refresh_token: exchanged.body.refresh_token, client_id: a.body.client_id }, ip: '127.0.0.3' } as any, refreshed, db as any);
+    await handleOAuthToken({ method: 'POST', body: { grant_type: 'refresh_token', refresh_token: exchanged.body.refresh_token, client_id: a.body.client_id, resource: devOrigin }, ip: '127.0.0.3' } as any, refreshed, db as any);
     expect(refreshed.statusCode).toBe(200);
     expect(refreshed.body.scope).toBe('orders:read');
     expect(refreshed.body.refresh_token).not.toBe(exchanged.body.refresh_token);
@@ -337,7 +354,7 @@ describe('OAuth authorization and client binding', () => {
     ];
     const validResults = [];
     for (const fixture of fixtures) {
-      const token = `lui_oauth_at_${fixture.uid}`;
+      const token = accessToken(fixture.uid);
       await seedValidAccess(db, { userId: fixture.uid, clientId, token, scopes: fixture.scopes });
       const result = await validateOAuthAccessToken(token, db as any);
       expect(result.success).toBe(true);
@@ -352,18 +369,18 @@ describe('OAuth authorization and client binding', () => {
   it('applies a Firestore shared hourly limit to OAuth calls per user', async () => {
     const db = new MemoryFirestore();
     const clientId = await registerClientId(db);
-    const tokenA = 'lui_oauth_at_rate_test_a';
-    const tokenB = 'lui_oauth_at_rate_test_b';
-    const refreshToken = 'lui_oauth_rt_rate_test';
+    const tokenA = accessToken('rate-test-a');
+    const tokenB = accessToken('rate-test-b');
+    const refreshTokenValue = refreshToken('rate-test');
     await seedValidAccess(db, { userId: 'rate-user', clientId, token: tokenA, scopes: ['orders:read'], sessionId: 'rate-session-a' });
     await seedValidAccess(db, { userId: 'rate-user', clientId, token: tokenB, scopes: ['orders:read'], sessionId: 'rate-session-b' });
-    await db.collection('oauthSessions').doc('rate-session-a').update({ accessToken: tokenA, refreshToken });
-    await db.collection('oauthRefreshTokens').doc(refreshToken).set({ refreshToken, accessToken: tokenA, sessionId: 'rate-session-a', clientId, userId: 'rate-user', authTime: Math.floor(Date.now() / 1000), scope: 'orders:read', scopes: ['orders:read'], iss: devOrigin, aud: devOrigin, expiresAt: Date.now() + 3600000, revoked: false });
+    await db.collection('oauthSessions').doc('rate-session-a').update({ accessToken: tokenA, refreshToken: refreshTokenValue });
+    await db.collection('oauthRefreshTokens').doc(refreshTokenValue).set({ refreshToken: refreshTokenValue, accessToken: tokenA, sessionId: 'rate-session-a', clientId, userId: 'rate-user', resource: devOrigin, authTime: Math.floor(Date.now() / 1000), scope: 'orders:read', scopes: ['orders:read'], iss: devOrigin, aud: devOrigin, expiresAt: Date.now() + 3600000, revoked: false });
     let last: any;
     for (let i = 0; i < 120; i += 1) last = await validateOAuthAccessToken(i % 2 ? tokenA : tokenB, db as any);
     expect(last.success).toBe(true);
     const refreshed = response();
-    await handleOAuthToken({ method: 'POST', body: { grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId }, ip: '127.0.0.4' } as any, refreshed, db as any);
+    await handleOAuthToken({ method: 'POST', body: { grant_type: 'refresh_token', refresh_token: refreshTokenValue, client_id: clientId, resource: devOrigin }, ip: '127.0.0.4' } as any, refreshed, db as any);
     expect(refreshed.statusCode).toBe(200);
     expect(refreshed.body.access_token).not.toBe(tokenA);
     const afterRenewal = await validateOAuthAccessToken(refreshed.body.access_token, db as any);
@@ -377,7 +394,7 @@ describe('OAuth authorization and client binding', () => {
     vi.stubEnv('GCLOUD_PROJECT', project === 'production' ? 'papelaria-dashboard' : 'luisices-dev');
     const db = new MemoryFirestore();
     const clientId = await registerClientId(db);
-    const token = `lui_oauth_at_${project}`;
+    const token = accessToken(project);
     await seedValidAccess(db, { userId: project, clientId, token, scopes: ['orders:read'], tokenOrigin: origin, session: { iss: origin, aud: origin } });
     const result = await validateOAuthAccessToken(token, db as any);
     expect(result.success).toBe(true);
@@ -395,7 +412,7 @@ describe('OAuth authorization and client binding', () => {
   ])('rejects a session with %s', async (_label, override, code) => {
     const db = new MemoryFirestore();
     const clientId = await registerClientId(db);
-    const token = 'lui_oauth_at_session_environment';
+    const token = accessToken('session-environment');
     await seedValidAccess(db, { userId: 'session-user', clientId, token, scopes: ['orders:read'], session: override as Stored });
     const result = await validateOAuthAccessToken(token, db as any);
     expect(result).toMatchObject({ success: false, status: 401, code });

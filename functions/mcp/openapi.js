@@ -18,7 +18,7 @@ const TOOLS_METADATA = [
       properties: {
         status: {
           type: 'string',
-          enum: ['todos', 'pendente', 'em_producao', 'concluido', 'entregue', 'atrasado'],
+          enum: ['all', 'todos', 'pendente', 'em_producao', 'concluido', 'entregue', 'atrasado'],
           description: 'Filtro por status do pedido. Padrão: todos.',
         },
         searchTerm: {
@@ -40,7 +40,7 @@ const TOOLS_METADATA = [
           type: 'integer',
           minimum: 1,
           maximum: 50,
-          description: 'Quantidade máxima de pedidos retornados (máximo 20). Padrão: 15.',
+          description: 'Quantidade máxima de pedidos retornados (máximo 50). Padrão: 15.',
           default: 15,
         },
       },
@@ -66,7 +66,7 @@ const TOOLS_METADATA = [
     name: 'query_customers',
     scope: 'customers:read',
     summary: 'Consultar Clientes & Contatos',
-    description: 'Pesquisa clientes na base por nome, telefone WhatsApp, cidade ou responsável.',
+    description: 'Pesquisa clientes por nome, telefone WhatsApp ou cidade. Para localizar clientes atendidos por um colaborador, informe userIdentifier.',
     requestBody: {
       type: 'object',
       properties: {
@@ -80,7 +80,7 @@ const TOOLS_METADATA = [
           type: 'integer',
           minimum: 1,
           maximum: 50,
-          description: 'Limite de clientes a retornar (máximo 15).',
+          description: 'Limite de clientes a retornar (máximo 50).',
           default: 10,
         },
       },
@@ -466,6 +466,8 @@ const TOOLS_METADATA = [
         },
         limit: {
           type: 'integer',
+          minimum: 1,
+          maximum: 50,
           description: 'Quantidade máxima (padrão 8).',
           default: 8,
         },
