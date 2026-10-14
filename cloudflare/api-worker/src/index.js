@@ -100,7 +100,7 @@ export default {
       const manifestHeaders = {
         ...CORS_HEADERS,
         'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'public, max-age=86400, stale-while-revalidate=3600',
+        'Cache-Control': 'public, s-maxage=86400, max-age=60',
         'X-Edge-Cache': 'MISS',
       };
       const response = new Response(JSON.stringify(manifest, null, 2), {
@@ -237,7 +237,7 @@ export default {
 
       // 5.2 Se for rota de metadado cacheável e origin retornou 200, armazena no cache da borda
       if (isCacheableMetadata && originResponse.status === 200) {
-        responseHeaders.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600');
+        responseHeaders.set('Cache-Control', 'public, s-maxage=86400, max-age=60');
         responseHeaders.set('X-Edge-Cache', 'MISS');
         const edgeCachedResponse = new Response(originResponse.body, {
           status: originResponse.status,

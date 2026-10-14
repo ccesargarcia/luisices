@@ -199,6 +199,68 @@ describe('MCP & ChatGPT Plugin / OpenAPI 3.0.3 Specification', () => {
         expect(call[0]).toBe('https://us-central1-luisices-dev.cloudfunctions.net/chatGptToolsEndpoint');
       }
     });
+
+    it('deve usar Cache API na borda: primeiro MISS com s-maxage longo e max-age curto, e segundo request como HIT', async () => {
+      const cacheStore = new Map<string, Response>();
+      const mockCache = {
+        match: vi.fn(async (req: Request) => {
+          const entry = cacheStore.get(req.url);
+          return entry ? entry.clone() : undefined;
+        }),
+        put: vi.fn(async (req: Request, res: Response) => {
+          cacheStore.set(req.url, res.clone());
+        }),
+      };
+      vi.stubGlobal('caches', { default: mockCache });
+
+      const request = new Request('https://api.dev.luisices.com.br/.well-known/ai-plugin.json', { method: 'GET' });
+      const ctx = { waitUntil: (p: Promise<any>) => p };
+
+      // 1ª chamada: MISS, grava no cache
+      const res1 = await apiWorker.fetch(request, {}, ctx);
+      expect(res1.status).toBe(200);
+      expect(res1.headers.get('X-Edge-Cache')).toBe('MISS');
+      expect(res1.headers.get('Cache-Control')).toBe('public, s-maxage=86400, max-age=60');
+      expect(mockCache.put).toHaveBeenCalledTimes(1);
+
+      // 2ª chamada: HIT direto do cache da borda
+      const res2 = await apiWorker.fetch(request, {}, ctx);
+      expect(res2.status).toBe(200);
+      expect(res2.headers.get('X-Edge-Cache')).toBe('HIT');
+    });
+
+    it('requisições autenticadas (com Authorization) NUNCA devem usar nem gravar no cache de borda', async () => {
+      const mockCache = {
+        match: vi.fn(),
+        put: vi.fn(),
+      };
+      vi.stubGlobal('caches', { default: mockCache });
+
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ openapi: '3.0.3', paths: {} }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+      vi.stubGlobal('fetch', mockFetch);
+
+      const request = new Request('https://api.dev.luisices.com.br/openapi.json', {
+        method: 'GET',
+        headers: {
+          Authorization: 'Bearer lui_dev_secret_token_123',
+        },
+      });
+
+      const res = await apiWorker.fetch(request, {
+        ENVIRONMENT: 'dev',
+        BACKEND_ORIGIN: 'https://us-central1-luisices-dev.cloudfunctions.net',
+      }, {});
+
+      expect(res.status).toBe(200);
+      expect(mockCache.match).not.toHaveBeenCalled();
+      expect(mockCache.put).not.toHaveBeenCalled();
+      expect(res.headers.get('X-Edge-Cache')).toBeNull();
+    });
   });
 });
 
