@@ -1873,6 +1873,30 @@ class AiToolsExecutor {
       cleanNotes = cleanNotes ? `Tema: ${args.theme}\n${cleanNotes}` : `Tema: ${args.theme}`;
     }
 
+    // A criação deve ser uma operação em duas etapas: a primeira chamada
+    // prepara uma prévia e só uma chamada posterior, após confirmação explícita,
+    // pode chegar ao trecho transacional que grava o pedido.
+    if (args.confirmed !== true) {
+      return {
+        success: false,
+        requiresConfirmation: true,
+        preview: {
+          customerName: cleanCustomer,
+          customerPhone: customerPhone || null,
+          productName: cleanProduct,
+          quantity: cleanQuantity,
+          totalPrice: cleanTotalPrice,
+          paidAmount: cleanPaidAmount,
+          remainingAmount,
+          deliveryDate: rawDate,
+          theme: args.theme || null,
+          notes: cleanNotes || null,
+          paymentMethod: args.paymentMethod || null,
+        },
+        message: 'Prévia pronta. Mostre os dados do pedido ao usuário e só grave após confirmação explícita. Reutilize a mesma chave de idempotência na confirmação.',
+      };
+    }
+
     const db = this.repos.db;
     const uid = scope.uid;
     const year = new Date().getFullYear();

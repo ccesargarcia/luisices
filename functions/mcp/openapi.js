@@ -273,10 +273,10 @@ const TOOLS_METADATA = [
     name: 'create_order',
     scope: 'orders:create',
     summary: 'Criar e Registrar Novo Pedido no Sistema',
-    description: 'Cria e grava um novo pedido oficial na fila de produção do Ateliê Luisices. Gera número sequencial (#AAAA-0001), vincula o cliente, calcula o saldo pendente e define o status como pendente com a tag "ChatGPT".',
+    description: 'Apresenta uma prévia do pedido. Só grava depois de mostrar os dados ao usuário e receber confirmação explícita. Na primeira chamada use confirmed=false; após a confirmação, repita com confirmed=true e a mesma chave de idempotência. Gera número sequencial (#AAAA-0001), calcula o saldo e define o status como pendente.',
     requestBody: {
       type: 'object',
-      required: ['customerName', 'productName', 'quantity', 'totalPrice', 'deliveryDate', 'idempotencyKey'],
+      required: ['customerName', 'productName', 'quantity', 'totalPrice', 'deliveryDate', 'idempotencyKey', 'confirmed'],
       properties: {
         customerName: {
           type: 'string',
@@ -345,6 +345,10 @@ const TOOLS_METADATA = [
           maxLength: 128,
           pattern: '^[A-Za-z0-9._:-]{8,128}$',
           description: 'Chave única obrigatória. Reutilize a mesma chave em caso de repetição da chamada.',
+        },
+        confirmed: {
+          type: 'boolean',
+          description: 'Use false para receber a prévia. Use true somente após mostrar os dados do pedido ao usuário e receber confirmação explícita; mantenha a mesma idempotencyKey.',
         },
       },
     },
