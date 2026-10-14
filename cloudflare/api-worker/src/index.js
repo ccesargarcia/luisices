@@ -53,7 +53,8 @@ export default {
       url.pathname === '/.well-known/plugin.json' ||
       url.pathname === '/plugin.json'
     ) {
-      const cache = typeof caches !== 'undefined' && caches?.default ? caches.default : null;
+      const isAuthRequest = request.headers.has('Authorization');
+      const cache = !isAuthRequest && typeof caches !== 'undefined' && caches?.default ? caches.default : null;
       const cacheKey = new Request(url.toString(), { method: 'GET' });
       if (cache) {
         try {
@@ -100,14 +101,14 @@ export default {
       const manifestHeaders = {
         ...CORS_HEADERS,
         'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'public, s-maxage=86400, max-age=60',
-        'X-Edge-Cache': 'MISS',
+        'Cache-Control': isAuthRequest ? 'no-store' : 'public, s-maxage=86400, max-age=60',
+        ...(isAuthRequest ? {} : { 'X-Edge-Cache': 'MISS' }),
       };
       const response = new Response(JSON.stringify(manifest, null, 2), {
         status: 200,
         headers: manifestHeaders,
       });
-      if (cache && ctx && typeof ctx.waitUntil === 'function') {
+      if (!isAuthRequest && cache && ctx && typeof ctx.waitUntil === 'function') {
         ctx.waitUntil(cache.put(cacheKey, response.clone()).catch(() => {}));
       }
       return response;
