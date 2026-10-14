@@ -45,6 +45,8 @@ async function executeToolByName(toolsExecutor, toolName, args, scope) {
       return await toolsExecutor.executeGetOrderForm(args, scope);
     case 'create_order':
       return await toolsExecutor.executeCreateOrder(args, scope);
+    case 'get_order_edit_form':
+      return await toolsExecutor.executeGetOrderEditForm(args, scope);
     case 'update_order':
       return await toolsExecutor.executeUpdateOrder(args, scope);
     case 'query_order_payments':
@@ -415,12 +417,13 @@ const chatGptToolsEndpoint = onRequest(
               tools: {
                 listChanged: false,
               },
+              resources: { listChanged: false },
             },
             serverInfo: {
               name: 'luisices-mcp-server',
               version: '1.0.0',
             },
-            instructions: 'Servidor MCP oficial do Ateliê Luisices para consulta de pedidos, produção, clientes e orçamentos.',
+            instructions: 'Servidor MCP oficial do Ateliê Luisices. Para editar um pedido, invoque primeiro get_order_edit_form para carregar a interface interativa; a gravação passa por prévia, confirmação explícita e controle de versão.',
           },
         });
       }
@@ -454,9 +457,46 @@ const chatGptToolsEndpoint = onRequest(
               name: t.name,
               description: `${t.summary}: ${t.description}`,
               inputSchema: { ...(t.requestBody || { type: 'object', properties: {} }), additionalProperties: false },
+              ...(['get_order_edit_form', 'update_order'].includes(t.name) ? { _meta: {
+                ui: { resourceUri: 'ui://luisices/order-edit/v1.html' },
+                'openai/outputTemplate': 'ui://luisices/order-edit/v1.html',
+              } } : {}),
             })),
           },
         });
+      }
+
+      // MCP Apps: widget de formulário do pedido, disponível apenas com orders:update.
+      if (method === 'resources/list') {
+        const authResult = await validateMcpRequest(req, db);
+        if (!authResult.success) return res.status(authResult.status || 401).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32001, message: authResult.message || 'Autenticação necessária.' } });
+        const scopes = authResult.keyData.scopes || [];
+        const resources = scopes.includes('*') || scopes.includes('orders:update') ? [{
+          uri: 'ui://luisices/order-edit/v1.html',
+          name: 'Formulário de edição de pedido',
+          description: 'Formulário para editar dados e valores do pedido.',
+          mimeType: 'text/html;profile=mcp-app',
+        }] : [];
+        return res.status(200).json({ jsonrpc: '2.0', id: rpcId, result: { resources } });
+      }
+
+      if (method === 'resources/read') {
+        const authResult = await validateMcpRequest(req, db);
+        if (!authResult.success) return res.status(authResult.status || 401).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32001, message: authResult.message || 'Autenticação necessária.' } });
+        const scopes = authResult.keyData.scopes || [];
+        if (!scopes.includes('*') && !scopes.includes('orders:update')) {
+          return res.status(200).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32003, message: 'Permissão negada para carregar o formulário de edição.' } });
+        }
+        if (params.uri !== 'ui://luisices/order-edit/v1.html') {
+          return res.status(200).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32602, message: 'Recurso MCP não encontrado.' } });
+        }
+        const { ORDER_EDIT_WIDGET_HTML } = require('./orderEditWidget');
+        return res.status(200).json({ jsonrpc: '2.0', id: rpcId, result: { contents: [{
+          uri: params.uri,
+          mimeType: 'text/html;profile=mcp-app',
+          text: ORDER_EDIT_WIDGET_HTML,
+          _meta: { ui: { prefersBorder: true } },
+        }] } });
       }
 
       // 3.5 Execução de Ferramentas: tools/call
@@ -550,6 +590,7 @@ const chatGptToolsEndpoint = onRequest(
                   text: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
                 },
               ],
+              structuredContent: result && typeof result === 'object' ? result : { result },
               isError: false,
             },
           });

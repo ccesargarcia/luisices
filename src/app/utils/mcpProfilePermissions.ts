@@ -4,7 +4,7 @@ export const MCP_PROFILE_SCOPES = [
   { id: 'orders:read', label: 'Consultar pedidos e prazos', module: 'orders', action: 'view', defaultGranted: true },
   { id: 'orders:draft', label: 'Preparar rascunhos de pedidos', module: 'orders', action: 'view', defaultGranted: false },
   { id: 'orders:create', label: 'Criar pedidos', module: 'orders', action: 'create', defaultGranted: true },
-  { id: 'orders:update', label: 'Editar pedidos', module: 'orders', action: 'edit', defaultGranted: false },
+  { id: 'orders:update', label: 'Editar pedidos e valores', module: 'orders', action: 'edit', defaultGranted: false },
   { id: 'customers:read', label: 'Consultar clientes', module: 'customers', action: 'view', defaultGranted: true },
   { id: 'customers:create', label: 'Criar clientes', module: 'customers', action: 'create', defaultGranted: false },
   { id: 'customers:update', label: 'Editar clientes', module: 'customers', action: 'edit', defaultGranted: false },

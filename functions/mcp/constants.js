@@ -30,7 +30,7 @@ const MCP_SCOPES = {
   ORDERS_UPDATE: {
     id: 'orders:update',
     label: 'Editar Pedidos',
-    description: 'Permite atualizar dados não financeiros de pedidos existentes.',
+    description: 'Permite atualizar dados e valores de pedidos existentes. Não autoriza registrar pagamentos recebidos.',
     module: 'Pedidos & Produção',
     requiresAdmin: false,
     defaultGranted: false,
@@ -122,6 +122,7 @@ const TOOL_SCOPE_MAP = {
   daily_briefing: 'orders:read',
   extract_order_draft: 'orders:draft',
   get_order_form: 'orders:draft',
+  get_order_edit_form: 'orders:update',
   create_order: 'orders:create',
   update_order: 'orders:update',
   query_order_payments: 'payments:read',

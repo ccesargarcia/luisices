@@ -1197,7 +1197,40 @@ class AiToolsExecutor {
     };
   }
 
-  /** Atualiza somente dados operacionais de um pedido autorizado. */
+  /** Carrega os dados autorizados de um pedido para o formulário MCP Apps. */
+  async executeGetOrderEditForm(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'edit', 'editar pedidos');
+    const identifier = String(args.orderNumber || '').trim();
+    if (!identifier) {
+      const error = new Error('Informe o número ou ID do pedido.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const order = await this.repos.getScopedOrderDocument(scope, identifier);
+    if (!order || order.data.deletedAt || order.data.isDeleted) {
+      const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
+      error.code = 'not-found';
+      throw error;
+    }
+    return {
+      state: 'editing',
+      order: {
+        orderNumber: order.data.orderNumber || identifier,
+        customerName: order.data.customerName || '',
+        customerPhone: order.data.customerPhone || '',
+        productName: order.data.productName || '',
+        quantity: Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
+        totalPrice: Number(order.data.price ?? order.data.totalPrice ?? order.data.payment?.totalAmount ?? 0),
+        deliveryDate: order.data.deliveryDate || '',
+        theme: order.data.theme || '',
+        notes: order.data.notes || '',
+        version: Number.isSafeInteger(order.data.version) && order.data.version > 0 ? order.data.version : 1,
+      },
+      message: 'Preencha os campos desejados. Escolha valor total ou unitário; o total unitário será calculado pelo servidor.',
+    };
+  }
+
+  /** Atualiza dados operacionais e valor do pedido autorizado, preservando o histórico de pagamentos. */
   async executeUpdateOrder(args = {}, scope) {
     requireMcpModulePermission(scope, 'orders', 'edit', 'editar pedidos');
     const identifier = String(args.orderNumber || '').trim();
@@ -1226,6 +1259,27 @@ class AiToolsExecutor {
       }
       updates.quantity = quantity;
     }
+    if (args.totalPrice !== undefined && args.unitPrice !== undefined) {
+      const error = new Error('Informe totalPrice ou unitPrice, nunca os dois.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const requestedPrice = args.totalPrice !== undefined ? args.totalPrice : args.unitPrice;
+    if (requestedPrice !== undefined) {
+      if (typeof requestedPrice !== 'number' || !Number.isFinite(requestedPrice) || requestedPrice < 0) {
+        const error = new Error('O valor informado deve ser um número não negativo em reais.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
+      const cents = Math.round(requestedPrice * 100);
+      const maxCents = args.totalPrice !== undefined ? 1000000000 : 100000000;
+      if (!Number.isSafeInteger(cents) || cents > maxCents) {
+        const error = new Error('O valor informado excede o limite permitido.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
+      updates.price = cents / 100;
+    }
     if (args.deliveryDate !== undefined) {
       try {
         updates.deliveryDate = validateAndNormalizeDeliveryDate(args.deliveryDate).deliveryDate;
@@ -1236,16 +1290,31 @@ class AiToolsExecutor {
       }
     }
     if (!Object.keys(updates).length) {
-      const error = new Error('Informe pelo menos um campo para alterar.');
-      error.code = 'invalid-argument';
-      throw error;
+      return await this.executeGetOrderEditForm(args, scope);
     }
-
     const order = await this.repos.getScopedOrderDocument(scope, identifier);
     if (!order || order.data.deletedAt || order.data.isDeleted) {
       const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
       error.code = 'not-found';
       throw error;
+    }
+    if (requestedPrice !== undefined && args.unitPrice !== undefined) {
+      const quantity = updates.quantity ?? (Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1);
+      const totalCents = Math.round(requestedPrice * 100) * quantity;
+      if (!Number.isSafeInteger(totalCents) || totalCents > 1000000000) {
+        const error = new Error('O total calculado excede o limite permitido.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
+      updates.price = totalCents / 100;
+    }
+    if (requestedPrice !== undefined) {
+      const alreadyPaid = Math.max(0, Number(order.data.payment?.paidAmount) || 0);
+      if (alreadyPaid > updates.price) {
+        const error = new Error('O novo valor não pode ficar abaixo do total já recebido. Ajuste o valor recebido pelo fluxo financeiro autorizado.');
+        error.code = 'failed-precondition';
+        throw error;
+      }
     }
     const version = Number.isSafeInteger(order.data.version) && order.data.version > 0 ? order.data.version : 1;
     if (!Number.isSafeInteger(Number(args.expectedVersion)) || Number(args.expectedVersion) !== version) {
@@ -1258,9 +1327,22 @@ class AiToolsExecutor {
       orderNumber: order.data.orderNumber || identifier,
       customerName: order.data.customerName || '',
       changes: updates,
+      ...(requestedPrice !== undefined ? {
+        pricing: {
+          mode: args.unitPrice !== undefined ? 'unit' : 'total',
+          unitPrice: args.unitPrice !== undefined ? Math.round(Number(args.unitPrice) * 100) / 100 : Math.round((updates.price / (updates.quantity ?? (Number(order.data.quantity) || 1))) * 100) / 100,
+          totalPrice: updates.price,
+        },
+      } : {}),
       version,
     };
     if (args.confirmed !== true) return { success: false, requiresConfirmation: true, preview: summary, message: 'Prévia pronta. Mostre as alterações ao usuário e só grave após confirmação explícita.' };
+
+    if (typeof args.idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(args.idempotencyKey)) {
+      const error = new Error('Informe uma chave de idempotência válida para confirmar a alteração.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
 
     const db = this.repos.db;
     const idempotency = getMcpIdempotencyContext(db, scope, 'update_order', args.idempotencyKey, args);
@@ -1291,13 +1373,59 @@ class AiToolsExecutor {
         error.code = 'failed-precondition';
         throw error;
       }
-      transaction.update(orderRef, { ...updates, version: currentVersion + 1, updatedAt: now });
+      const orderUpdates = { ...updates, version: currentVersion + 1, updatedAt: now };
+      if (requestedPrice !== undefined) {
+        orderUpdates.totalPrice = updates.price;
+        const payment = current.payment && typeof current.payment === 'object' ? current.payment : {};
+        const paidAmount = Math.max(0, Number(payment.paidAmount) || 0);
+        if (paidAmount > updates.price) {
+          const error = new Error('O novo valor não pode ficar abaixo do total já recebido. Ajuste o valor recebido pelo fluxo financeiro autorizado.');
+          error.code = 'failed-precondition';
+          throw error;
+        }
+        const remainingAmount = Math.round((updates.price - paidAmount) * 100) / 100;
+        const paymentStatus = paidAmount === 0 ? 'pending' : paidAmount === updates.price ? 'paid' : 'partial';
+        orderUpdates.payment = { ...payment, status: paymentStatus, totalAmount: updates.price, paidAmount, remainingAmount };
+      }
+      transaction.update(orderRef, orderUpdates);
       if (saleSnap.exists) {
         const saleUpdates = { updatedAt: now };
         for (const field of ['customerName', 'customerPhone', 'productName', 'quantity', 'deliveryDate']) {
           if (updates[field] !== undefined) saleUpdates[field] = updates[field];
         }
+        if (requestedPrice !== undefined) {
+          saleUpdates.amount = updates.price;
+          saleUpdates.paymentStatus = orderUpdates.payment.status;
+          saleUpdates.paidAmount = orderUpdates.payment.paidAmount;
+        }
         transaction.update(saleRef, saleUpdates);
+      } else if (requestedPrice !== undefined) {
+        const payment = orderUpdates.payment;
+        transaction.set(saleRef, {
+          id: order.id,
+          orderId: order.id,
+          orderNumber: current.orderNumber || identifier,
+          userId: current.userId || scope.uid,
+          assignedTo: current.assignedTo || null,
+          assignedToName: current.assignedToName || null,
+          customerId: current.customerId || null,
+          customerName: updates.customerName ?? current.customerName ?? 'Cliente não informado',
+          customerPhone: updates.customerPhone ?? current.customerPhone ?? null,
+          productName: updates.productName ?? current.productName ?? 'Produto',
+          quantity: updates.quantity ?? current.quantity ?? 1,
+          amount: updates.price,
+          paymentStatus: payment.status,
+          paidAmount: payment.paidAmount,
+          paymentMethod: payment.method || null,
+          date: current.createdAt || now,
+          deliveryDate: updates.deliveryDate ?? current.deliveryDate ?? null,
+          status: current.status || 'pending',
+          isDeletedFromOrders: false,
+          notes: updates.notes ?? current.notes ?? null,
+          tags: current.tags || null,
+          createdAt: current.createdAt || now,
+          updatedAt: now,
+        });
       }
       const response = { success: true, orderNumber: order.data.orderNumber || identifier, version: version + 1, message: 'Pedido atualizado.' };
       transaction.set(idempotency.ref, { payloadHash: idempotency.payloadHash, result: response, completed: true, createdAt: now });
