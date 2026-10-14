@@ -14,6 +14,9 @@ const { generateApiKey, invalidateKeyCache, clearMcpAuthCache } = require('./aut
  */
 async function assertActiveAdmin(request) {
   const session = await assertActiveSession(request, { requiredRole: 'admin' });
+  if (!session.profile || session.profile.active === false || ['paused', 'inactive', 'disabled'].includes(session.profile.status)) {
+    throw new HttpsError('permission-denied', 'Sua conta está inativa ou suspensa.');
+  }
   if (!session.profile || session.profile.role !== 'admin') {
     throw new HttpsError('permission-denied', 'Apenas administradores podem executar esta ação no MCP.');
   }
@@ -26,7 +29,7 @@ async function assertActiveAdmin(request) {
 async function assertActiveUserWithMcp(request) {
   const session = await assertActiveSession(request);
   const profile = session.profile;
-  if (!profile || profile.active === false || profile.status === 'paused') {
+  if (!profile || profile.active === false || ['paused', 'inactive', 'disabled'].includes(profile.status)) {
     throw new HttpsError('permission-denied', 'Sua conta está inativa ou suspensa.');
   }
 
@@ -288,7 +291,7 @@ const createMcpApiKey = onCall({ cors: true, maxInstances: 5 }, async (request) 
     throw new HttpsError('not-found', 'Colaborador selecionado não encontrado no sistema.');
   }
 
-  if (userData.active === false || userData.status === 'paused') {
+  if (userData.active === false || ['paused', 'inactive', 'disabled'].includes(userData.status)) {
     throw new HttpsError('failed-precondition', 'Não é possível criar chave para um colaborador inativo.');
   }
 

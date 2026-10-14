@@ -183,7 +183,7 @@ async function validateMcpRequest(req, db) {
   }
 
   // 4. Checagem do Status do Usuário no Sistema (RBAC)
-  if (userProfile.active === false || userProfile.status === 'paused') {
+  if (userProfile.active === false || ['paused', 'inactive', 'disabled'].includes(userProfile.status)) {
     return {
       success: false,
       status: 403,
