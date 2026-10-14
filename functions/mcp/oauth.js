@@ -83,18 +83,8 @@ function getEffectiveUserScopes(requestedScopes, userProfile) {
   let allowedForUser;
   if (Array.isArray(configuredScopes)) {
     if (configuredScopes.some((scope) => typeof scope !== 'string' || !serverSupportedScopeIds.includes(scope))) return [];
-
-    // Migração transparente para perfis com o array padrão legado (2 ou 3 itens)
-    const isLegacyDefault3 = configuredScopes.length === 3 && configuredScopes.includes('orders:read') && configuredScopes.includes('customers:read') && configuredScopes.includes('pricing:estimate');
-    const isLegacyDefault2 = configuredScopes.length === 2 && configuredScopes.includes('orders:read') && configuredScopes.includes('customers:read');
-
-    let effectiveConfigured = configuredScopes;
-    if (isLegacyDefault3 || isLegacyDefault2) {
-      const fullDefaults = ['orders:read', 'orders:draft', 'orders:create', 'customers:read', 'pricing:estimate', 'whatsapp:compose', 'gallery:read'];
-      effectiveConfigured = [...new Set([...configuredScopes, ...fullDefaults])];
-    }
-
-    allowedForUser = effectiveConfigured.filter((s) => roleAllowedScopeIds.includes(s));
+    // A lista salva no perfil é explícita: não amplie escopos durante a autorização.
+    allowedForUser = configuredScopes.filter((s) => roleAllowedScopeIds.includes(s));
   } else {
     // Configuração ausente (undefined): comportamento legado por papel
     allowedForUser = roleAllowedScopeIds;
