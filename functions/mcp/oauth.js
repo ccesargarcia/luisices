@@ -86,8 +86,10 @@ function getEffectiveUserScopes(requestedScopes, userProfile) {
     // A lista salva no perfil é explícita: não amplie escopos durante a autorização.
     allowedForUser = configuredScopes.filter((s) => roleAllowedScopeIds.includes(s));
   } else {
-    // Configuração ausente (undefined): comportamento legado por papel
-    allowedForUser = roleAllowedScopeIds;
+    // Para perfis sem configuração granular, comece pelos padrões de menor privilégio.
+    allowedForUser = Object.values(MCP_SCOPES)
+      .filter((scope) => scope.defaultGranted && roleAllowedScopeIds.includes(scope.id))
+      .map((scope) => scope.id);
   }
 
   // Interseção estrita com os escopos solicitados. Nunca adiciona escopos extras!

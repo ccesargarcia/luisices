@@ -18,7 +18,7 @@ function moduleAllowsMcpScope(scopeId, profile) {
   if (!requirement) return false;
   const [module, action] = requirement;
   const permission = profile?.permissions?.[module];
-  if (permission === undefined) return true; // Perfis legados: ausência não redefine permissões.
+  if (permission === undefined) return false;
   if (typeof permission === 'boolean') return permission;
   return permission !== null && typeof permission === 'object' && permission[action] === true;
 }
