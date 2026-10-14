@@ -3,25 +3,16 @@
  */
 
 const crypto = require('crypto');
-let RateLimiterMemory = null;
-try {
-  RateLimiterMemory = require('rate-limiter-flexible').RateLimiterMemory;
-} catch (_err) {
-  // Fallback silencioso caso a lib esteja instalada somente em /functions
-}
 const { COLLECTIONS, CACHE_TTL_MS, DEFAULT_RATE_LIMIT_PER_HOUR, MCP_SCOPES } = require('./constants');
 const { getCallerScope } = require('../ai/authorization');
 
-const { validateOAuthAccessToken, getEffectiveUserScopes } = require('./oauth');
+const { validateOAuthAccessToken, getEffectiveUserScopes, consumeSharedRateLimit } = require('./oauth');
 
 // Cache em memória para validação ultrarrápida de chaves (evita 1 leitura de Firestore por request)
 const KEY_CACHE = new Map();
 
 // Cache em memória para o interruptor geral do MCP
 let GLOBAL_SETTINGS_CACHE = null;
-
-// Rate Limiters dinâmicos em memória por chave
-const KEY_RATE_LIMITERS = new Map();
 
 function hashApiKey(rawKey) {
   return crypto.createHash('sha256').update(String(rawKey).trim()).digest('hex');
@@ -56,7 +47,6 @@ function invalidateKeyCache(keyHash) {
 function clearMcpAuthCache() {
   KEY_CACHE.clear();
   GLOBAL_SETTINGS_CACHE = null;
-  KEY_RATE_LIMITERS.clear();
 }
 
 /**
@@ -78,27 +68,6 @@ async function getMcpGlobalSettings(db) {
   };
 
   return data;
-}
-
-/**
- * Obtém ou cria o Rate Limiter em memória para a chave informada.
- */
-function getRateLimiterForKey(keyId, limitPerHour = DEFAULT_RATE_LIMIT_PER_HOUR) {
-  const safeLimit = Math.max(10, Math.min(300, Number(limitPerHour) || DEFAULT_RATE_LIMIT_PER_HOUR));
-  if (!KEY_RATE_LIMITERS.has(keyId)) {
-    if (RateLimiterMemory) {
-      KEY_RATE_LIMITERS.set(
-        keyId,
-        new RateLimiterMemory({
-          points: safeLimit,
-          duration: 3600, // 1 hora
-        })
-      );
-    } else {
-      KEY_RATE_LIMITERS.set(keyId, { consume: async () => {} });
-    }
-  }
-  return KEY_RATE_LIMITERS.get(keyId);
 }
 
 /**
@@ -221,15 +190,13 @@ async function validateMcpRequest(req, db) {
   keyData.scopes = effectiveKeyScopes;
 
   // 5. Rate Limiter por Chave (Proteção contra loops e custos)
-  const limiter = getRateLimiterForKey(keyData.keyId, keyData.rateLimitPerHour);
-  try {
-    await limiter.consume(keyData.keyId);
-  } catch (_limiterErr) {
+  const rateLimitPerHour = Math.max(10, Math.min(300, Number(keyData.rateLimitPerHour) || DEFAULT_RATE_LIMIT_PER_HOUR));
+  if (!await consumeSharedRateLimit(db, `mcp-key:${keyData.keyId}`, rateLimitPerHour)) {
     return {
       success: false,
       status: 429,
       code: 'RATE_LIMIT_EXCEEDED',
-      message: `Limite de requisições por hora excedido (${keyData.rateLimitPerHour || DEFAULT_RATE_LIMIT_PER_HOUR} req/h). Aguarde antes de realizar novas chamadas.`,
+      message: `Limite de requisições por hora excedido (${rateLimitPerHour} req/h). Aguarde antes de realizar novas chamadas.`,
     };
   }
 

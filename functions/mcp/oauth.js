@@ -100,7 +100,7 @@ function authError(res, status, error, description) {
   return res.status(status).json({ error, error_description: description });
 }
 
-async function consumeOAuthRateLimit(db, key, limit, windowSeconds = 3600) {
+async function consumeSharedRateLimit(db, key, limit, windowSeconds = 3600) {
   if (!db || typeof db.runTransaction !== 'function') return false;
   const bucket = crypto.createHash('sha256').update(String(key)).digest('hex');
   const ref = db.collection('oauthRateLimits').doc(bucket);
@@ -118,7 +118,7 @@ async function consumeOAuthRateLimit(db, key, limit, windowSeconds = 3600) {
 
 async function applyEndpointRateLimit(req, res, db, bucket, limit) {
   const address = req.ip || req.socket?.remoteAddress || 'unknown';
-  if (await consumeOAuthRateLimit(db, `${bucket}:${address}`, limit)) return true;
+  if (await consumeSharedRateLimit(db, `${bucket}:${address}`, limit)) return true;
   const secondsIntoWindow = Math.floor(Date.now() / 1000) % 3600;
   res.setHeader('Retry-After', String(3600 - secondsIntoWindow));
   authError(res, 429, 'slow_down', 'Limite de requisições OAuth excedido. Tente novamente mais tarde.');
@@ -608,7 +608,7 @@ async function validateOAuthAccessToken(accessToken, db) {
     };
   }
 
-  if (!await consumeOAuthRateLimit(db, `mcp-user:${tokenData.userId}`, 120)) {
+  if (!await consumeSharedRateLimit(db, `mcp-user:${tokenData.userId}`, 120)) {
     return { success: false, status: 429, code: 'RATE_LIMIT_EXCEEDED', message: 'Limite de 120 chamadas MCP por hora excedido para esta conta.' };
   }
 
@@ -629,6 +629,7 @@ async function validateOAuthAccessToken(accessToken, db) {
 module.exports = {
   getOauthProtectedResourceMetadata,
   getOauthAuthorizationServerMetadata,
+  consumeSharedRateLimit,
   calculateS256Challenge,
   handleOAuthRegister,
   handleOAuthAuthorize,
