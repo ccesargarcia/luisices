@@ -557,6 +557,10 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
                       <span>•</span>
                       <span>Total de chamadas: {status.myActiveSession.totalCalls || 0}</span>
                     </div>
+                    <p className="text-[11px] text-muted-foreground pt-1 break-words">
+                      Escopos concedidos nesta sessão ({status.myActiveSession.scopes?.length || 0}):{' '}
+                      {status.myActiveSession.scopes?.length ? status.myActiveSession.scopes.join(', ') : 'Nenhum escopo registrado'}
+                    </p>
                   </div>
                 </div>
 
@@ -636,6 +640,10 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
                             <span>•</span>
                             <span>Chamadas: {sess.totalCalls || 0}</span>
                           </div>
+                          <p className="text-[11px] text-muted-foreground pt-0.5 break-words">
+                            Escopos concedidos ({sess.scopes?.length || 0}):{' '}
+                            {sess.scopes?.length ? sess.scopes.join(', ') : 'Nenhum escopo registrado'}
+                          </p>
                         </div>
 
                         <Button
