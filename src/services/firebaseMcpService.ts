@@ -37,6 +37,16 @@ export class FirebaseMcpService {
     return result.data;
   }
 
+  /** Atualiza os escopos granulares de uma chave existente. */
+  async updateApiKeyScopes(keyId: string, scopes: string[]): Promise<{ success: boolean; keyId: string; scopes: string[] }> {
+    const callable = httpsCallable<{ keyId: string; scopes: string[] }, { success: boolean; keyId: string; scopes: string[] }>(
+      functions,
+      'updateMcpApiKeyScopes'
+    );
+    const result = await callable({ keyId, scopes });
+    return result.data;
+  }
+
   /**
    * Alterna o estado liga/desliga de uma chave específica.
    */

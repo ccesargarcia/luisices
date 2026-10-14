@@ -392,6 +392,46 @@ const createMcpApiKey = onCall({ cors: true, maxInstances: 5 }, async (request) 
   };
 });
 
+/** Atualiza os escopos de uma chave existente, limitando-os ao perfil atual do titular. */
+const updateMcpApiKeyScopes = onCall({ cors: true, maxInstances: 5 }, async (request) => {
+  const { profile, isAdmin } = await assertActiveUserWithMcp(request);
+  const db = getFirestore();
+  await enforceManagementRateLimit(db, profile.uid, 'update-key-scopes');
+  const { keyId: rawKeyId, scopes } = getPayload(request, ['keyId', 'scopes']);
+  const keyId = validateDocumentId(rawKeyId, 'Identificador da chave');
+  if (!/^k_(?:dev|live)_[a-f0-9]{12}$/.test(keyId)) throw new HttpsError('invalid-argument', 'Identificador da chave inválido.');
+
+  const validScopeIds = Object.values(MCP_SCOPES).map((scope) => scope.id);
+  if (!Array.isArray(scopes) || scopes.length === 0 || scopes.length > validScopeIds.length
+      || new Set(scopes).size !== scopes.length || scopes.some((scope) => typeof scope !== 'string' || !validScopeIds.includes(scope))) {
+    throw new HttpsError('invalid-argument', 'Selecione ao menos um escopo MCP válido, sem duplicatas.');
+  }
+
+  const querySnap = await db.collection(COLLECTIONS.KEYS).where('keyId', '==', keyId).limit(1).get();
+  if (querySnap.empty) throw new HttpsError('not-found', 'Chave de acesso não localizada.');
+  const keyDoc = querySnap.docs[0];
+  const keyData = keyDoc.data();
+  if (!isAdmin && keyData.userId !== profile.uid) {
+    throw new HttpsError('permission-denied', 'Você não tem permissão para alterar esta chave.');
+  }
+
+  const userSnap = await db.collection(COLLECTIONS.USERS).doc(keyData.userId).get();
+  if (!userSnap.exists) throw new HttpsError('not-found', 'Perfil do titular da chave não localizado.');
+  const userData = userSnap.data();
+  if (userData.active === false || ['paused', 'inactive', 'disabled'].includes(userData.status)
+      || userData.permissions?.mcpAccess === false) {
+    throw new HttpsError('failed-precondition', 'O titular da chave está inativo ou sem acesso MCP.');
+  }
+  const effectiveScopes = getEffectiveUserScopes(scopes, userData);
+  if (effectiveScopes.length !== scopes.length) {
+    throw new HttpsError('permission-denied', 'Um ou mais escopos não estão permitidos pelas permissões granulares do perfil do titular.');
+  }
+
+  await keyDoc.ref.update({ scopes: effectiveScopes, updatedAt: FieldValue.serverTimestamp() });
+  invalidateKeyCache(keyDoc.id);
+  return { success: true, keyId, scopes: effectiveScopes };
+});
+
 /**
  * Alterna o estado liga/desliga de uma chave específica (inline toggle).
  */
@@ -755,6 +795,7 @@ const getMcpAuditLogs = onCall({ cors: true, maxInstances: 5 }, async (request) 
 module.exports = {
   getMcpSettingsStatus,
   createMcpApiKey,
+  updateMcpApiKeyScopes,
   toggleMcpApiKey,
   revokeMcpApiKey,
   toggleGlobalMcp,

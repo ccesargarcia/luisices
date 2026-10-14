@@ -72,6 +72,7 @@ module.exports = {
   // ─── Integração MCP & ChatGPT Actions ─────────────────────────────────────
   getMcpSettingsStatus: mcpFunctions.getMcpSettingsStatus,
   createMcpApiKey: mcpFunctions.createMcpApiKey,
+  updateMcpApiKeyScopes: mcpFunctions.updateMcpApiKeyScopes,
   toggleMcpApiKey: mcpFunctions.toggleMcpApiKey,
   revokeMcpApiKey: mcpFunctions.revokeMcpApiKey,
   toggleGlobalMcp: mcpFunctions.toggleGlobalMcp,

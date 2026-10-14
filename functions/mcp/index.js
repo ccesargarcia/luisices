@@ -9,6 +9,7 @@ module.exports = {
   // Callables onCall para o Painel Web (Admin)
   getMcpSettingsStatus: callables.getMcpSettingsStatus,
   createMcpApiKey: callables.createMcpApiKey,
+  updateMcpApiKeyScopes: callables.updateMcpApiKeyScopes,
   toggleMcpApiKey: callables.toggleMcpApiKey,
   revokeMcpApiKey: callables.revokeMcpApiKey,
   toggleGlobalMcp: callables.toggleGlobalMcp,

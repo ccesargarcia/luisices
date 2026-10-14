@@ -36,6 +36,7 @@ import {
   ExternalLink,
   Lock,
   Layers,
+  SlidersHorizontal,
   Activity,
   Wifi,
   WifiOff,
@@ -78,6 +79,9 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
   const [rateLimit, setRateLimit] = useState('60');
   const [selectedScopes, setSelectedScopes] = useState<string[]>([]);
   const [creatingKey, setCreatingKey] = useState(false);
+  const [scopeEditorKey, setScopeEditorKey] = useState<McpApiKey | null>(null);
+  const [scopeEditorScopes, setScopeEditorScopes] = useState<string[]>([]);
+  const [savingKeyScopes, setSavingKeyScopes] = useState(false);
 
   // Modal de Chave Gerada com Sucesso
   const [createdResult, setCreatedResult] = useState<CreateMcpKeyResult | null>(null);
@@ -289,6 +293,27 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
     }
   };
 
+  const handleSaveKeyScopes = async () => {
+    if (!scopeEditorKey || scopeEditorScopes.length === 0) {
+      toast.error('Selecione pelo menos um escopo para a chave.');
+      return;
+    }
+    setSavingKeyScopes(true);
+    try {
+      const result = await firebaseMcpService.updateApiKeyScopes(scopeEditorKey.keyId, scopeEditorScopes);
+      setStatus((prev) => prev ? {
+        ...prev,
+        keys: prev.keys.map((key) => key.keyId === result.keyId ? { ...key, scopes: result.scopes } : key),
+      } : null);
+      toast.success(`Escopos da chave "${scopeEditorKey.keyName}" atualizados.`);
+      setScopeEditorKey(null);
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao atualizar os escopos da chave.');
+    } finally {
+      setSavingKeyScopes(false);
+    }
+  };
+
   const handleRevokeSession = async (session: McpSession) => {
     setRevokingSessionId(session.sessionId);
     try {
@@ -356,6 +381,10 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
 
   const selectedMember = status?.teamMembers.find((m) => m.uid === selectedUid);
   const isSelectedAdmin = selectedMember?.role === 'admin';
+  const scopeEditorMember = scopeEditorKey
+    ? status?.teamMembers.find((member) => member.uid === scopeEditorKey.userId)
+    : undefined;
+  const scopeEditorIsAdmin = scopeEditorMember?.role === 'admin';
 
   if (!loading && !status) {
     return (
@@ -770,8 +799,21 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
                           </div>
                         </div>
 
-                        {/* Ações: Interruptor Liga/Desliga e Lixeira */}
+                        {/* Ações: escopos, estado e revogação */}
                         <div className="flex items-center gap-3 self-end sm:self-auto shrink-0 pt-2 sm:pt-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setScopeEditorKey(key);
+                              setScopeEditorScopes([...key.scopes]);
+                            }}
+                            className="gap-1.5 text-xs"
+                            title="Editar escopos da chave"
+                          >
+                            <SlidersHorizontal className="size-3.5" />
+                            Escopos
+                          </Button>
                           <div className="flex items-center gap-2 pr-2 border-r border-border/60">
                             <span className="text-xs text-muted-foreground">
                               {key.enabled ? 'Ligada' : 'Desligada'}
@@ -1026,12 +1068,11 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
                         return (
                           <div
                             key={scope.id}
-                            className={`flex items-start gap-2.5 p-2 rounded-lg transition-colors ${
+                          className={`flex items-start gap-2.5 p-2 rounded-lg transition-colors ${
                               isLocked
                                 ? 'opacity-40 cursor-not-allowed bg-muted/20'
-                                : 'hover:bg-muted/40 cursor-pointer'
+                              : 'hover:bg-muted/40'
                             }`}
-                            onClick={() => !isLocked && handleToggleScope(scope.id)}
                           >
                             <Checkbox
                               checked={isChecked}
@@ -1079,6 +1120,71 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
                   Gerar Chave de Acesso
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── MODAL: EDITAR ESCOPOS DE CHAVE EXISTENTE ─────────────────────── */}
+      <Dialog open={Boolean(scopeEditorKey)} onOpenChange={(open) => { if (!open && !savingKeyScopes) setScopeEditorKey(null); }}>
+        <DialogContent size="lg" className="flex flex-col max-h-[90dvh] overflow-hidden bg-background border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <SlidersHorizontal className="size-5 text-primary" />
+              Editar escopos da chave
+            </DialogTitle>
+            <DialogDescription>
+              {scopeEditorKey?.keyName}: selecione apenas escopos permitidos atualmente no perfil do titular. A alteração passa a valer nas próximas chamadas.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-3 py-3 custom-scrollbar">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Permissões granulares
+              </Label>
+              <span className="text-[11px] text-muted-foreground">
+                {scopeEditorScopes.length} selecionados
+              </span>
+            </div>
+            <div className="max-h-[55dvh] overflow-y-auto space-y-3 p-3 rounded-xl border border-border/70 bg-muted/15 custom-scrollbar">
+              {Object.entries(groupedScopes).map(([moduleName, scopes]) => (
+                <div key={moduleName} className="space-y-2">
+                  <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{moduleName}</span>
+                  <div className="space-y-2">
+                    {scopes.map((scope) => {
+                      const locked = (scope.requiresAdmin && !scopeEditorIsAdmin)
+                        || !scopeEditorMember?.mcpAccess
+                        || !scopeEditorMember?.mcpScopes?.includes(scope.id);
+                      const checked = scopeEditorScopes.includes(scope.id);
+                      const toggleScope = () => setScopeEditorScopes((current) =>
+                        current.includes(scope.id)
+                          ? current.filter((id) => id !== scope.id)
+                          : [...current, scope.id]
+                      );
+                      return (
+                        <div
+                          key={scope.id}
+                          className={`flex items-start gap-2.5 p-2 rounded-lg ${locked ? 'opacity-40 cursor-not-allowed bg-muted/20' : 'hover:bg-muted/40'}`}
+                        >
+                          <Checkbox checked={checked} disabled={locked || savingKeyScopes} onCheckedChange={toggleScope} className="mt-0.5" />
+                          <div className="space-y-0.5 min-w-0 flex-1">
+                            <span className="text-xs font-medium text-foreground">{scope.label}</span>
+                            {!locked && <p className="text-[11px] text-muted-foreground leading-tight">{scope.description}</p>}
+                            {locked && <p className="text-[11px] text-muted-foreground">Indisponível pelas permissões atuais do titular.</p>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScopeEditorKey(null)} disabled={savingKeyScopes}>Cancelar</Button>
+            <Button onClick={handleSaveKeyScopes} disabled={savingKeyScopes || scopeEditorScopes.length === 0} className="gap-1.5">
+              {savingKeyScopes ? <RefreshCw className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+              Salvar escopos
             </Button>
           </DialogFooter>
         </DialogContent>
