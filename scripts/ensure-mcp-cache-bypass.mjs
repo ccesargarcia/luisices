@@ -35,7 +35,7 @@ async function main() {
   if (!zone) throw new Error(`Zona Cloudflare ${ZONE_NAME} não localizada.`);
 
   const rulesets = await cfRequest(`/zones/${zone.id}/rulesets`);
-  let ruleset = rulesets.find((candidate) => candidate.phase === RULESET_PHASE && candidate.kind === 'zone');
+  let rulesetSummary = rulesets.find((candidate) => candidate.phase === RULESET_PHASE && candidate.kind === 'zone');
 
   const rule = {
     ref: RULE_REF,
@@ -46,8 +46,8 @@ async function main() {
     enabled: true,
   };
 
-  if (!ruleset) {
-    ruleset = await cfRequest(`/zones/${zone.id}/rulesets`, {
+  if (!rulesetSummary) {
+    const createdRuleset = await cfRequest(`/zones/${zone.id}/rulesets`, {
       method: 'POST',
       body: JSON.stringify({
         name: 'Luisices API cache policy',
@@ -56,9 +56,13 @@ async function main() {
         rules: [rule],
       }),
     });
-    console.log(`Cache bypass criado no ruleset ${ruleset.id} para os hosts da API Luisices.`);
+    console.log(`Cache bypass criado no ruleset ${createdRuleset.id} para os hosts da API Luisices.`);
     return;
   }
+
+  // O endpoint /rulesets lista apenas resumos sem o array rules preenchido.
+  // Devemos buscar o ruleset específico pelo ID para obter as regras existentes.
+  const ruleset = await cfRequest(`/zones/${zone.id}/rulesets/${rulesetSummary.id}`);
 
   const existingRules = ruleset.rules || [];
   const managedRule = existingRules.find((candidate) => candidate.ref === RULE_REF || candidate.description === RULE_DESCRIPTION);
