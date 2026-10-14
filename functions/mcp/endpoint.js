@@ -506,7 +506,7 @@ const chatGptToolsEndpoint = onRequest(
             jsonrpc: '2.0',
             id: rpcId,
             error: {
-              code: -32603,
+              code: execErr.code === 'permission-denied' ? -32003 : -32603,
               message: execErr.message || 'Erro ao executar ferramenta MCP.',
             },
           });
@@ -625,8 +625,9 @@ const chatGptToolsEndpoint = onRequest(
           errorMessage: execErr.message,
         });
 
-        return res.status(500).json({
-          error: 'TOOL_EXECUTION_ERROR',
+        const isPermissionDenied = execErr.code === 'permission-denied';
+        return res.status(isPermissionDenied ? 403 : 500).json({
+          error: isPermissionDenied ? 'PERMISSION_DENIED' : 'TOOL_EXECUTION_ERROR',
           message: execErr.message || 'Erro interno ao processar a ferramenta no sistema.',
         });
       }

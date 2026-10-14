@@ -1127,12 +1127,12 @@ class AiToolsExecutor {
       throw new Error('Usuário não autenticado.');
     }
 
-    // Validação de permissão RBAC
-    if (!scope.isAdmin) {
-      const p = scope.permissions?.orders;
-      if (p === false || (typeof p === 'object' && p !== null && p.create === false)) {
-        throw new Error('Você não possui permissão para criar pedidos no sistema Luisices.');
-      }
+    // Alinha com o permissionamento da interface e com a autorização usada no fluxo Alexa:
+    // usuários não administradores precisam ter orders.create explicitamente habilitado.
+    if (!scope.isAdmin && scope.permissions?.orders?.create !== true) {
+      const error = new Error('Você não possui permissão para criar pedidos no sistema Luisices. Habilite a permissão de criação de pedidos no seu perfil ou solicite ao administrador.');
+      error.code = 'permission-denied';
+      throw error;
     }
 
     const cleanCustomer = String(args.customerName || '').trim();
