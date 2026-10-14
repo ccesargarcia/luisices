@@ -7,6 +7,8 @@ on:
       - main
     paths:
       - 'cloudflare/**'
+      - 'scripts/ensure-mcp-cache-bypass.mjs'
+      - 'scripts/purge-cloudflare-cache.mjs'
       - '.github/workflows/deploy-cloudflare.yml'
 
   workflow_dispatch:
