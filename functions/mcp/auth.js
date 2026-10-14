@@ -77,7 +77,8 @@ async function getMcpGlobalSettings(db) {
  */
 async function validateMcpRequest(req, db) {
   const authHeader = req.headers.authorization || req.headers.Authorization || '';
-  if (!authHeader.startsWith('Bearer ')) {
+  const bearerMatch = typeof authHeader === 'string' ? authHeader.match(/^Bearer\s+(.+)$/i) : null;
+  if (!bearerMatch) {
     return {
       success: false,
       status: 401,
@@ -86,8 +87,8 @@ async function validateMcpRequest(req, db) {
     };
   }
 
-  const rawKey = authHeader.slice(7).trim();
-  if (!rawKey || !rawKey.startsWith('lui_')) {
+  const rawKey = bearerMatch[1].trim();
+  if (!rawKey || rawKey.length > 256 || !rawKey.startsWith('lui_')) {
     return {
       success: false,
       status: 401,
@@ -126,6 +127,9 @@ async function validateMcpRequest(req, db) {
   }
 
   const keyData = keySnap.data();
+  if (!keyData || typeof keyData.userId !== 'string' || !keyData.userId.trim() || typeof keyData.keyId !== 'string' || !keyData.keyId.trim()) {
+    return { success: false, status: 401, code: 'INVALID_API_KEY', message: 'Chave de acesso inválida ou incompleta.' };
+  }
 
   // Consulta do perfil do usuário vinculado (sempre atualizado do Firestore para invalidação em tempo real)
   const userSnap = await db.collection(COLLECTIONS.USERS).doc(keyData.userId).get();
@@ -190,13 +194,24 @@ async function validateMcpRequest(req, db) {
   keyData.scopes = effectiveKeyScopes;
 
   // 5. Rate Limiter por Chave (Proteção contra loops e custos)
-  const rateLimitPerHour = Math.max(10, Math.min(300, Number(keyData.rateLimitPerHour) || DEFAULT_RATE_LIMIT_PER_HOUR));
+  const configuredRateLimit = Number(keyData.rateLimitPerHour);
+  const rateLimitPerHour = Number.isFinite(configuredRateLimit) && configuredRateLimit > 0
+    ? Math.min(300, Math.floor(configuredRateLimit))
+    : DEFAULT_RATE_LIMIT_PER_HOUR;
   if (!await consumeSharedRateLimit(db, `mcp-key:${keyData.keyId}`, rateLimitPerHour)) {
     return {
       success: false,
       status: 429,
       code: 'RATE_LIMIT_EXCEEDED',
       message: `Limite de requisições por hora excedido (${rateLimitPerHour} req/h). Aguarde antes de realizar novas chamadas.`,
+    };
+  }
+  if (!await consumeSharedRateLimit(db, `mcp-user:${keyData.userId}`, 600)) {
+    return {
+      success: false,
+      status: 429,
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: 'Limite agregado de chamadas MCP por hora excedido para esta conta.',
     };
   }
 
@@ -221,14 +236,14 @@ function touchKeyUsage(db, keyHash) {
 
   // Caso seja um token OAuth 2.1 (lui_oauth_at_...)
   if (keyHash.startsWith('lui_oauth_at_')) {
-    db.collection('oauthAccessTokens')
-      .doc(keyHash)
-      .update({
+    const tokenId = crypto.createHash('sha256').update(keyHash).digest('hex');
+    const tokenRef = db.collection('oauthAccessTokens').doc(tokenId);
+    const legacyRef = db.collection('oauthAccessTokens').doc(keyHash);
+    const updateUsage = (ref) => ref.update({
         lastUsedAt: FieldValue.serverTimestamp(),
         totalCalls: FieldValue.increment(1),
-      })
-      .then(async () => {
-        const tokenSnap = await db.collection('oauthAccessTokens').doc(keyHash).get();
+      }).then(async () => {
+        const tokenSnap = await ref.get();
         if (tokenSnap.exists && tokenSnap.data().sessionId) {
           await db.collection('oauthSessions')
             .doc(tokenSnap.data().sessionId)
@@ -238,8 +253,8 @@ function touchKeyUsage(db, keyHash) {
             })
             .catch(() => {});
         }
-      })
-      .catch(() => {
+      });
+    updateUsage(tokenRef).catch(() => updateUsage(legacyRef)).catch(() => {
         console.warn('[MCP] Falha não-bloqueante ao atualizar métricas do token OAuth.');
       });
     return;

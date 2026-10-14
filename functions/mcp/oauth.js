@@ -27,6 +27,10 @@ function isOAuthClientId(value) {
   return value === INTERNAL_OAUTH_CLIENT.clientId || (typeof value === 'string' && /^client_[a-f0-9]{24}$/.test(value));
 }
 
+function tokenDocumentId(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
 async function getOAuthClient(db, clientId, transaction) {
   if (clientId === INTERNAL_OAUTH_CLIENT.clientId) return INTERNAL_OAUTH_CLIENT;
   const ref = db.collection('oauthClients').doc(clientId);
@@ -47,7 +51,8 @@ function validRedirectUri(value) {
 }
 
 function parseScopes(value) {
-  const scopes = [...new Set(String(value || '').trim().split(/\s+/).filter(Boolean))];
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  const scopes = [...new Set(value.trim().split(/\s+/).filter(Boolean))];
   if (!scopes.length || scopes.some((scope) => !ALLOWED_SCOPES.has(scope))) return null;
   return scopes;
 }
@@ -207,7 +212,15 @@ function calculateS256Challenge(codeVerifier) {
  */
 async function handleOAuthRegister(req, res, db) {
   try {
+    if (req.method !== 'POST') return res.setHeader('Allow', 'POST').status(405).json({ error: 'method_not_allowed' });
     const body = req.body || {};
+    const allowedFields = ['redirect_uris', 'client_name', 'token_endpoint_auth_method', 'grant_types', 'response_types'];
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => !allowedFields.includes(key))) {
+      return authError(res, 400, 'invalid_client_metadata', 'Metadados de cliente inválidos.');
+    }
+    if (body.client_name !== undefined && (typeof body.client_name !== 'string' || body.client_name.trim().length > 120)) {
+      return authError(res, 400, 'invalid_client_metadata', 'client_name deve conter no máximo 120 caracteres.');
+    }
     if (!db || !Array.isArray(body.redirect_uris) || body.redirect_uris.length < 1 || body.redirect_uris.length > 10) {
       return authError(res, 400, 'invalid_client_metadata', 'Informe entre 1 e 10 redirect_uris válidos.');
     }
@@ -267,8 +280,10 @@ async function handleOAuthAuthorize(req, res, db, getAuth) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Pragma', 'no-cache');
   let params = req.method === 'GET' ? req.query || {} : req.body || {};
+  if (!params || typeof params !== 'object' || Array.isArray(params)) return authError(res, 400, 'invalid_request', 'Parâmetros OAuth inválidos.');
   const requestId = req.method === 'POST' ? params.request_id : null;
   if (req.method === 'POST' && requestId && db) {
+    if (typeof requestId !== 'string' || !/^req_[a-f0-9]{48}$/.test(requestId)) return authError(res, 400, 'invalid_request', 'Solicitação OAuth inválida.');
     const pendingSnap = await db.collection('oauthAuthorizationRequests').doc(String(requestId)).get();
     if (!pendingSnap.exists || pendingSnap.data().used || pendingSnap.data().expiresAt <= Date.now()) return authError(res, 400, 'invalid_request', 'Solicitação OAuth expirada ou já utilizada.');
     const pending = pendingSnap.data();
@@ -370,7 +385,7 @@ async function handleOAuthAuthorize(req, res, db, getAuth) {
 
 async function handleOAuthConsentInfo(req, res, db) {
   const requestId = req.query?.request_id;
-  if (!requestId || typeof requestId !== 'string') return authError(res, 400, 'invalid_request', 'request_id obrigatório.');
+  if (typeof requestId !== 'string' || !/^req_[a-f0-9]{48}$/.test(requestId)) return authError(res, 400, 'invalid_request', 'request_id inválido.');
   const requestSnap = await db.collection('oauthAuthorizationRequests').doc(requestId).get();
   if (!requestSnap.exists || requestSnap.data().used || requestSnap.data().expiresAt <= Date.now()) return authError(res, 400, 'invalid_request', 'Solicitação expirada ou já utilizada.');
   const request = requestSnap.data();
@@ -385,6 +400,8 @@ async function handleOAuthConsentInfo(req, res, db) {
  */
 async function handleOAuthToken(req, res, db) {
   const body = req.body || {};
+  if (req.method !== 'POST') return res.setHeader('Allow', 'POST').status(405).json({ error: 'method_not_allowed' });
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return authError(res, 400, 'invalid_request', 'Parâmetros OAuth inválidos.');
   const grantType = body.grant_type;
   const issuer = OAUTH_ORIGIN();
   res.setHeader('Cache-Control', 'no-store');
@@ -394,9 +411,10 @@ async function handleOAuthToken(req, res, db) {
   if (body.client_secret !== undefined || /^Basic\s/i.test(tokenAuthorization)) return authError(res, 401, 'invalid_client', 'O servidor aceita somente clientes públicos sem segredo.');
 
   if (grantType === 'authorization_code') {
+    if (Object.keys(body).some((key) => !['grant_type', 'code', 'redirect_uri', 'client_id', 'code_verifier'].includes(key))) return authError(res, 400, 'invalid_request', 'Parâmetros não permitidos para authorization_code.');
     const { code, redirect_uri: redirectUri, client_id: clientId, code_verifier: verifier } = body;
-    if (typeof code !== 'string' || !code.startsWith('lui_code_') || !isOAuthClientId(clientId)
-        || !redirectUri || typeof verifier !== 'string') return authError(res, 400, 'invalid_request', 'code, client_id, redirect_uri e code_verifier válidos são obrigatórios.');
+    if (typeof code !== 'string' || !/^lui_code_[a-f0-9]{48}$/.test(code) || !isOAuthClientId(clientId)
+        || typeof redirectUri !== 'string' || redirectUri.length > 2048 || typeof verifier !== 'string') return authError(res, 400, 'invalid_request', 'code, client_id, redirect_uri e code_verifier válidos são obrigatórios.');
     if (!/^[A-Za-z0-9._~-]{43,128}$/.test(String(verifier))) return authError(res, 400, 'invalid_grant', 'PKCE code_verifier inválido.');
     const codeRef = db.collection('oauthAuthCodes').doc(code);
     const registeredClient = await getOAuthClient(db, clientId);
@@ -433,11 +451,14 @@ async function handleOAuthToken(req, res, db) {
         resultScope = scopes.join(' ');
         const expiresAt = now + expiresInSeconds * 1000;
         const refreshExpiresAt = now + 30 * 24 * 3600 * 1000;
-        const tokenDoc = { accessToken, refreshToken, sessionId, clientId, userId: data.userId, authTime: data.authTime, userEmail: profile.email || '', userName: profile.displayName || profile.email || 'Usuário', scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt };
-        const sessionDoc = { sessionId, accessToken, refreshToken, clientId, clientName: registeredClient.clientName || 'Cliente MCP', userId: data.userId, userEmail: tokenDoc.userEmail, userName: tokenDoc.userName, userRole: profile.role || 'user', scope: resultScope, scopes, active: true, revoked: false, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, lastUsedAt: new Date().toISOString(), totalCalls: 0 };
+        const accessTokenHash = tokenDocumentId(accessToken);
+        const refreshTokenHash = tokenDocumentId(refreshToken);
+        const tokenDoc = { accessTokenHash, refreshTokenHash, sessionId, clientId, userId: data.userId, authTime: data.authTime, userEmail: profile.email || '', userName: profile.displayName || profile.email || 'Usuário', scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt };
+        const sessionDoc = { sessionId, accessTokenHash, refreshTokenHash, clientId, clientName: registeredClient.clientName || 'Cliente MCP', userId: data.userId, userEmail: tokenDoc.userEmail, userName: tokenDoc.userName, userRole: profile.role || 'user', scope: resultScope, scopes, active: true, revoked: false, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, lastUsedAt: new Date().toISOString(), totalCalls: 0 };
+        const refreshDoc = { refreshTokenHash, accessTokenHash, sessionId, clientId, userId: data.userId, authTime: data.authTime, userEmail: tokenDoc.userEmail, scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, revoked: false };
         tx.update(codeRef, { used: true, usedAt: now });
-        tx.set(db.collection('oauthAccessTokens').doc(accessToken), tokenDoc);
-        tx.set(db.collection('oauthRefreshTokens').doc(refreshToken), { refreshToken, accessToken, sessionId, clientId, userId: data.userId, authTime: data.authTime, userEmail: tokenDoc.userEmail, scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, revoked: false });
+        tx.create(db.collection('oauthAccessTokens').doc(accessTokenHash), tokenDoc);
+        tx.create(db.collection('oauthRefreshTokens').doc(refreshTokenHash), refreshDoc);
         tx.set(db.collection('oauthSessions').doc(sessionId), sessionDoc);
       });
     } catch (err) {
@@ -448,9 +469,11 @@ async function handleOAuthToken(req, res, db) {
   }
 
   if (grantType === 'refresh_token') {
+    if (Object.keys(body).some((key) => !['grant_type', 'refresh_token', 'client_id'].includes(key))) return authError(res, 400, 'invalid_request', 'Parâmetros não permitidos para refresh_token.');
     const { refresh_token: oldRefreshToken, client_id: clientId } = body;
-    if (typeof oldRefreshToken !== 'string' || !oldRefreshToken.startsWith('lui_oauth_rt_') || !isOAuthClientId(clientId)) return authError(res, 400, 'invalid_request', 'refresh_token e client_id válidos são obrigatórios.');
-    const oldRef = db.collection('oauthRefreshTokens').doc(oldRefreshToken);
+    if (typeof oldRefreshToken !== 'string' || !/^lui_oauth_rt_[a-f0-9]{64}$/.test(oldRefreshToken) || !isOAuthClientId(clientId)) return authError(res, 400, 'invalid_request', 'refresh_token e client_id válidos são obrigatórios.');
+    const oldRef = db.collection('oauthRefreshTokens').doc(tokenDocumentId(oldRefreshToken));
+    const legacyOldRef = db.collection('oauthRefreshTokens').doc(oldRefreshToken);
     const newAccessToken = `lui_oauth_at_${crypto.randomBytes(32).toString('hex')}`;
     const newRefreshToken = `lui_oauth_rt_${crypto.randomBytes(32).toString('hex')}`;
     const now = Date.now();
@@ -458,7 +481,12 @@ async function handleOAuthToken(req, res, db) {
     let resultScope = '';
     try {
       await db.runTransaction(async (tx) => {
-        const snap = await tx.get(oldRef);
+        let oldTokenRef = oldRef;
+        let snap = await tx.get(oldRef);
+        if (!snap.exists) {
+          oldTokenRef = legacyOldRef;
+          snap = await tx.get(legacyOldRef);
+        }
         if (!snap.exists) throw new Error('invalid_grant');
         const refresh = snap.data();
         const sessionRef = db.collection('oauthSessions').doc(refresh.sessionId);
@@ -469,7 +497,8 @@ async function handleOAuthToken(req, res, db) {
         const profile = userSnap.data();
         if (refresh.revoked || !Number.isFinite(refresh.expiresAt) || refresh.expiresAt <= now || refresh.clientId !== clientId || refresh.iss !== issuer || refresh.aud !== issuer
             || session.revoked || session.active === false || !Number.isFinite(session.expiresAt) || session.expiresAt <= now || session.userId !== refresh.userId
-            || session.refreshToken !== oldRefreshToken || session.clientId !== clientId || session.iss !== issuer || session.aud !== issuer
+            || (session.refreshTokenHash ? session.refreshTokenHash !== tokenDocumentId(oldRefreshToken) : session.refreshToken !== oldRefreshToken)
+            || session.clientId !== clientId || session.iss !== issuer || session.aud !== issuer
             || client.enabled === false || (client.tokenEndpointAuthMethod || 'none') !== 'none'
             || client.grantTypes && !client.grantTypes.includes('refresh_token')
             || profile.active === false || ['paused', 'inactive', 'disabled'].includes(profile.status) || profile.permissions?.mcpAccess === false
@@ -481,10 +510,12 @@ async function handleOAuthToken(req, res, db) {
         resultScope = scopes.join(' ');
         const expiresAt = now + expiresInSeconds * 1000;
         const refreshExpiresAt = Math.min(refresh.expiresAt, now + 30 * 24 * 3600 * 1000);
-        tx.update(oldRef, { revoked: true, replacedAt: now });
-        tx.set(db.collection('oauthAccessTokens').doc(newAccessToken), { accessToken: newAccessToken, refreshToken: newRefreshToken, sessionId: refresh.sessionId, clientId, userId: refresh.userId, authTime: refresh.authTime, userEmail: profile.email || '', userName: profile.displayName || profile.email || 'Usuário', scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt });
-        tx.set(db.collection('oauthRefreshTokens').doc(newRefreshToken), { refreshToken: newRefreshToken, accessToken: newAccessToken, sessionId: refresh.sessionId, clientId, userId: refresh.userId, authTime: refresh.authTime, userEmail: profile.email || '', scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, revoked: false });
-        tx.update(sessionRef, { accessToken: newAccessToken, refreshToken: newRefreshToken, scope: resultScope, scopes, lastUsedAt: new Date().toISOString() });
+        const accessTokenHash = tokenDocumentId(newAccessToken);
+        const refreshTokenHash = tokenDocumentId(newRefreshToken);
+        tx.update(oldTokenRef, { revoked: true, replacedAt: now });
+        tx.create(db.collection('oauthAccessTokens').doc(accessTokenHash), { accessTokenHash, refreshTokenHash, sessionId: refresh.sessionId, clientId, userId: refresh.userId, authTime: refresh.authTime, userEmail: profile.email || '', userName: profile.displayName || profile.email || 'Usuário', scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt });
+        tx.create(db.collection('oauthRefreshTokens').doc(refreshTokenHash), { refreshTokenHash, accessTokenHash, sessionId: refresh.sessionId, clientId, userId: refresh.userId, authTime: refresh.authTime, userEmail: profile.email || '', scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, revoked: false });
+        tx.update(sessionRef, { accessTokenHash, refreshTokenHash, scope: resultScope, scopes, lastUsedAt: new Date().toISOString() });
       });
     } catch (_err) {
       return authError(res, 400, 'invalid_grant', 'Refresh token expirado, já utilizado, revogado ou vinculado a outro cliente/ambiente.');
@@ -498,7 +529,7 @@ async function handleOAuthToken(req, res, db) {
  * Validação de Token de Acesso OAuth 2.1
  */
 async function validateOAuthAccessToken(accessToken, db) {
-  if (!accessToken || !db) {
+  if (typeof accessToken !== 'string' || !/^lui_oauth_at_[a-f0-9]{64}$/.test(accessToken) || !db) {
     return {
       success: false,
       status: 401,
@@ -507,7 +538,9 @@ async function validateOAuthAccessToken(accessToken, db) {
     };
   }
 
-  const tokenSnap = await db.collection('oauthAccessTokens').doc(accessToken).get();
+  const accessTokenHash = tokenDocumentId(accessToken);
+  let tokenSnap = await db.collection('oauthAccessTokens').doc(accessTokenHash).get();
+  if (!tokenSnap.exists) tokenSnap = await db.collection('oauthAccessTokens').doc(accessToken).get();
   if (!tokenSnap.exists) {
     return {
       success: false,
@@ -518,6 +551,9 @@ async function validateOAuthAccessToken(accessToken, db) {
   }
 
   const tokenData = tokenSnap.data();
+  if (tokenData.accessTokenHash && tokenData.accessTokenHash !== accessTokenHash) {
+    return { success: false, status: 401, code: 'INVALID_TOKEN', message: 'Token de acesso OAuth inválido.' };
+  }
 
   // Checa se o token foi explicitamente revogado
   if (tokenData.revoked) {
@@ -545,6 +581,9 @@ async function validateOAuthAccessToken(accessToken, db) {
   const sessionSnap = await db.collection('oauthSessions').doc(tokenData.sessionId).get();
   if (!sessionSnap.exists) return { success: false, status: 401, code: 'SESSION_NOT_FOUND', message: 'Sessão OAuth vinculada não encontrada.' };
   const sessionData = sessionSnap.data();
+  if (sessionData.accessTokenHash && sessionData.accessTokenHash !== accessTokenHash) {
+    return { success: false, status: 401, code: 'SESSION_REVOKED', message: 'Token de acesso substituído ou revogado.' };
+  }
   if (sessionData.iss !== expectedIssuer) return { success: false, status: 401, code: 'INVALID_SESSION_ISSUER', message: 'Emissor (issuer) da sessão OAuth não confere com o ambiente.' };
   if (sessionData.aud !== expectedIssuer) return { success: false, status: 401, code: 'INVALID_SESSION_AUDIENCE', message: 'Público (audience) da sessão OAuth não confere com o ambiente.' };
   if (sessionData.active === false || sessionData.revoked || sessionData.userId !== tokenData.userId || sessionData.clientId !== tokenData.clientId

@@ -256,6 +256,75 @@ function validateAndNormalizeDeliveryDate(rawDateString) {
   };
 }
 
+function requireMcpModulePermission(scope, module, action, label) {
+  if (!scope?.uid) {
+    const error = new Error('Usuário não autenticado.');
+    error.code = 'unauthenticated';
+    throw error;
+  }
+  const permission = scope.permissions?.[module];
+  const allowed = scope.isAdmin || permission === true || (permission && typeof permission === 'object' && permission[action] === true);
+  if (!allowed) {
+    const error = new Error(`Você não possui permissão para ${label}.`);
+    error.code = 'permission-denied';
+    throw error;
+  }
+}
+
+function roundMoney(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function normalizePaymentMethod(value) {
+  const aliases = {
+    pix: 'pix',
+    dinheiro: 'cash', cash: 'cash',
+    cartao_credito: 'credit', credito: 'credit', credit: 'credit',
+    cartao_debito: 'debit', debito: 'debit', debit: 'debit',
+    transferencia: 'transfer', transfer: 'transfer',
+  };
+  return aliases[String(value || '').trim().toLowerCase()] || null;
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function getMcpIdempotencyContext(db, scope, toolName, key, args) {
+  const idempotencyKey = typeof key === 'string' ? key.trim() : '';
+  if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
+    const error = new Error('Informe uma chave de idempotência válida com 8 a 128 caracteres.');
+    error.code = 'invalid-argument';
+    throw error;
+  }
+  const crypto = require('crypto');
+  const operationId = crypto.createHash('sha256').update(`${scope.uid}:${toolName}:${idempotencyKey}`).digest('hex');
+  const payload = { ...args };
+  delete payload.idempotencyKey;
+  const payloadHash = crypto.createHash('sha256').update(canonicalJson(payload)).digest('hex');
+  return { ref: db.collection('mcpIdempotency').doc(operationId), payloadHash };
+}
+
+function readIdempotentResult(snapshot, payloadHash) {
+  if (!snapshot.exists) return null;
+  const previous = snapshot.data() || {};
+  if (previous.payloadHash !== payloadHash) {
+    const error = new Error('Esta chave de idempotência já foi usada com outros dados. Gere uma nova chave para uma operação diferente.');
+    error.code = 'already-exists';
+    throw error;
+  }
+  if (!previous.completed || !previous.result) {
+    const error = new Error('Esta operação ainda está sendo processada. Repita a chamada com a mesma chave em alguns instantes.');
+    error.code = 'failed-precondition';
+    throw error;
+  }
+  return previous.result;
+}
+
 class AiToolsExecutor {
   constructor(repositories) {
     this.repos = repositories;
@@ -1056,6 +1125,335 @@ class AiToolsExecutor {
     };
   }
 
+  /** Atualiza somente dados operacionais de um pedido autorizado. */
+  async executeUpdateOrder(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'edit', 'editar pedidos');
+    const identifier = String(args.orderNumber || '').trim();
+    if (!identifier) throw new Error('Informe o número ou ID do pedido.');
+    const updates = {};
+    const textFields = { customerName: 200, customerPhone: 50, productName: 300, theme: 200, notes: 1000 };
+    for (const [field, maxLength] of Object.entries(textFields)) {
+      if (args[field] === undefined) continue;
+      if (typeof args[field] !== 'string' || args[field].length > maxLength || (field === 'customerName' || field === 'productName') && !args[field].trim()) {
+        throw new Error(`O campo ${field} é inválido ou excede ${maxLength} caracteres.`);
+      }
+      updates[field] = args[field].trim() || null;
+    }
+    if (args.quantity !== undefined) {
+      const quantity = Number(args.quantity);
+      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000) throw new Error('A quantidade deve ser um inteiro entre 1 e 10000.');
+      updates.quantity = quantity;
+    }
+    if (args.deliveryDate !== undefined) {
+      updates.deliveryDate = validateAndNormalizeDeliveryDate(args.deliveryDate).deliveryDate;
+    }
+    if (!Object.keys(updates).length) throw new Error('Informe pelo menos um campo para alterar.');
+
+    const order = await this.repos.getScopedOrderDocument(scope, identifier);
+    if (!order || order.data.deletedAt || order.data.isDeleted) throw new Error('Pedido não encontrado ou sem permissão.');
+    const version = Number.isSafeInteger(order.data.version) && order.data.version > 0 ? order.data.version : 1;
+    if (!Number.isSafeInteger(Number(args.expectedVersion)) || Number(args.expectedVersion) !== version) {
+      throw new Error(`A versão do pedido mudou ou não foi informada. Consulte novamente antes de editar (versão atual: ${version}).`);
+    }
+
+    const summary = {
+      orderNumber: order.data.orderNumber || identifier,
+      customerName: order.data.customerName || '',
+      changes: updates,
+      version,
+    };
+    if (args.confirmed !== true) return { success: false, requiresConfirmation: true, preview: summary, message: 'Prévia pronta. Mostre as alterações ao usuário e só grave após confirmação explícita.' };
+
+    const db = this.repos.db;
+    const idempotency = getMcpIdempotencyContext(db, scope, 'update_order', args.idempotencyKey, args);
+    const now = new Date().toISOString();
+    const result = await db.runTransaction(async (transaction) => {
+      const orderRef = db.collection('orders').doc(order.id);
+      const saleRef = db.collection('salesLedger').doc(order.id);
+      const [idempotencySnap, orderSnap, saleSnap] = await Promise.all([
+        transaction.get(idempotency.ref), transaction.get(orderRef), transaction.get(saleRef),
+      ]);
+      const replay = readIdempotentResult(idempotencySnap, idempotency.payloadHash);
+      if (replay) return replay;
+      if (!orderSnap.exists) throw new Error('Pedido não encontrado.');
+      const current = orderSnap.data() || {};
+      const { filterOrdersByScope } = require('./authorization');
+      if (current.deletedAt || current.isDeleted || !filterOrdersByScope([{ ...current, id: order.id }], scope).length) {
+        throw new Error('Pedido não encontrado ou sem permissão.');
+      }
+      const currentVersion = Number.isSafeInteger(current.version) && current.version > 0 ? current.version : 1;
+      if (currentVersion !== version) throw new Error('O pedido foi alterado durante a operação. Consulte novamente e tente de novo.');
+      transaction.update(orderRef, { ...updates, version: currentVersion + 1, updatedAt: now });
+      if (saleSnap.exists) {
+        const saleUpdates = { updatedAt: now };
+        for (const field of ['customerName', 'customerPhone', 'productName', 'quantity', 'deliveryDate']) {
+          if (updates[field] !== undefined) saleUpdates[field] = updates[field];
+        }
+        transaction.update(saleRef, saleUpdates);
+      }
+      const response = { success: true, orderNumber: order.data.orderNumber || identifier, version: version + 1, message: 'Pedido atualizado.' };
+      transaction.set(idempotency.ref, { payloadHash: idempotency.payloadHash, result: response, completed: true, createdAt: now });
+      return response;
+    });
+    return result;
+  }
+
+  /** Cria um cliente com campos permitidos e confirmação explícita. */
+  async executeCreateCustomer(args = {}, scope) {
+    requireMcpModulePermission(scope, 'customers', 'create', 'cadastrar clientes');
+    const fields = ['name', 'phone', 'email', 'street', 'number', 'complement', 'city', 'state', 'zipCode', 'notes'];
+    const limits = { name: 200, phone: 50, email: 254, street: 200, number: 30, complement: 100, city: 100, state: 50, zipCode: 20, notes: 1000 };
+    const customer = {};
+    for (const field of fields) {
+      if (args[field] === undefined) continue;
+      if (typeof args[field] !== 'string' || args[field].length > limits[field]) throw new Error(`O campo ${field} é inválido ou excede ${limits[field]} caracteres.`);
+      const value = args[field].trim();
+      if (field === 'name' && !value) throw new Error('Nome do cliente é obrigatório.');
+      if (field === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new Error('Informe um e-mail válido.');
+      customer[field] = value;
+    }
+    if (!customer.name) throw new Error('Nome do cliente é obrigatório.');
+    const phoneDigits = String(customer.phone || '').replace(/\D/g, '');
+    const preview = { ...customer };
+    if (args.confirmed !== true) return { success: false, requiresConfirmation: true, preview, message: 'Prévia pronta. Mostre os dados ao usuário e só cadastre após confirmação explícita.' };
+
+    const db = this.repos.db;
+    if (!db) throw new Error('Banco de dados indisponível.');
+    const customerRef = db.collection('customers').doc();
+    const idempotency = getMcpIdempotencyContext(db, scope, 'create_customer', args.idempotencyKey, args);
+    const now = new Date().toISOString();
+    const result = await db.runTransaction(async (transaction) => {
+      const idempotencySnap = await transaction.get(idempotency.ref);
+      const replay = readIdempotentResult(idempotencySnap, idempotency.payloadHash);
+      if (replay) return replay;
+      if (phoneDigits) {
+        const duplicateQuery = db.collection('customers').where('phoneDigits', '==', phoneDigits);
+        const duplicateSnap = await transaction.get(duplicateQuery);
+        const { filterCustomersByScope } = require('./authorization');
+        const duplicate = (duplicateSnap.docs || []).some((doc) => filterCustomersByScope([{ ...(doc.data() || {}), id: doc.id }], scope).length > 0);
+        if (duplicate) throw new Error('Já existe um cliente acessível com este telefone. Consulte a base e atualize o cadastro existente.');
+      }
+      transaction.set(customerRef, {
+        ...customer,
+        phoneDigits,
+        userId: scope.uid,
+        createdBy: scope.uid,
+        createdByName: scope.displayName || scope.email || 'ChatGPT',
+        createdAt: now,
+        updatedAt: now,
+        totalOrders: 0,
+        totalSpent: 0,
+      });
+      const response = { success: true, customerId: customerRef.id, message: 'Cliente cadastrado.' };
+      transaction.set(idempotency.ref, { payloadHash: idempotency.payloadHash, result: response, completed: true, createdAt: now });
+      return response;
+    });
+    return result;
+  }
+
+  /** Atualiza somente campos de contato permitidos de um cliente autorizado. */
+  async executeUpdateCustomer(args = {}, scope) {
+    requireMcpModulePermission(scope, 'customers', 'edit', 'editar clientes');
+    const customerId = String(args.customerId || '').trim();
+    if (!customerId || customerId.includes('/')) throw new Error('Informe um ID de cliente válido.');
+    const fields = ['name', 'phone', 'email', 'street', 'number', 'complement', 'city', 'state', 'zipCode', 'notes'];
+    const limits = { name: 200, phone: 50, email: 254, street: 200, number: 30, complement: 100, city: 100, state: 50, zipCode: 20, notes: 1000 };
+    const updates = {};
+    for (const field of fields) {
+      if (args[field] === undefined) continue;
+      if (typeof args[field] !== 'string' || args[field].length > limits[field]) throw new Error(`O campo ${field} é inválido ou excede ${limits[field]} caracteres.`);
+      const value = args[field].trim();
+      if (field === 'name' && !value) throw new Error('O nome do cliente não pode ficar vazio.');
+      if (field === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new Error('Informe um e-mail válido.');
+      updates[field] = value;
+    }
+    if (!Object.keys(updates).length) throw new Error('Informe pelo menos um campo para alterar.');
+    const customer = await this.repos.getScopedCustomerDocument(scope, customerId);
+    if (!customer || customer.data.deletedAt || customer.data.isDeleted) throw new Error('Cliente não encontrado ou sem permissão.');
+    const preview = { customerId, currentName: customer.data.name || customer.data.fullName || '', changes: updates };
+    if (args.confirmed !== true) return { success: false, requiresConfirmation: true, preview, message: 'Prévia pronta. Mostre as alterações e só salve após confirmação explícita.' };
+
+    const db = this.repos.db;
+    const idempotency = getMcpIdempotencyContext(db, scope, 'update_customer', args.idempotencyKey, args);
+    const customerRef = db.collection('customers').doc(customerId);
+    const result = await db.runTransaction(async (transaction) => {
+      const [idempotencySnap, customerSnap] = await Promise.all([transaction.get(idempotency.ref), transaction.get(customerRef)]);
+      const replay = readIdempotentResult(idempotencySnap, idempotency.payloadHash);
+      if (replay) return replay;
+      if (!customerSnap.exists) throw new Error('Cliente não encontrado ou sem permissão.');
+      const current = customerSnap.data() || {};
+      const { filterCustomersByScope } = require('./authorization');
+      if (!filterCustomersByScope([{ ...current, id: customerId }], scope).length) throw new Error('Cliente não encontrado ou sem permissão.');
+      if (updates.phone !== undefined) {
+        const phoneDigits = updates.phone.replace(/\D/g, '');
+        if (phoneDigits) {
+          const duplicateQuery = db.collection('customers').where('phoneDigits', '==', phoneDigits);
+          const duplicateSnap = await transaction.get(duplicateQuery);
+          const duplicate = (duplicateSnap.docs || []).some((doc) => doc.id !== customerId && filterCustomersByScope([{ ...(doc.data() || {}), id: doc.id }], scope).length > 0);
+          if (duplicate) throw new Error('Já existe outro cliente acessível com este telefone.');
+        }
+        updates.phoneDigits = phoneDigits;
+      }
+      const now = new Date().toISOString();
+      transaction.update(customerRef, { ...updates, updatedAt: now });
+      const response = { success: true, customerId, message: 'Cliente atualizado.' };
+      transaction.set(idempotency.ref, { payloadHash: idempotency.payloadHash, result: response, completed: true, createdAt: now });
+      return response;
+    });
+    return result;
+  }
+
+  /** Consulta histórico de pagamentos sem expor pedidos fora do escopo do usuário. */
+  async executeQueryOrderPayments(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'view', 'consultar pagamentos de pedidos');
+    const identifier = String(args.orderNumber || '').trim();
+    if (!identifier) throw new Error('Informe o número ou ID do pedido.');
+    const order = await this.repos.getScopedOrderDocument(scope, identifier);
+    if (!order || order.data.deletedAt || order.data.isDeleted) throw new Error('Pedido não encontrado ou sem permissão.');
+    const payment = order.data.payment || {};
+    const totalAmount = Number(payment.totalAmount ?? order.data.price ?? order.data.totalPrice ?? 0);
+    const paidAmount = Number(payment.paidAmount ?? order.data.paidAmount ?? 0);
+    const remainingAmount = Math.max(0, roundMoney(totalAmount - paidAmount));
+    return {
+      orderNumber: order.data.orderNumber || identifier,
+      customerName: order.data.customerName || '',
+      totalAmount: roundMoney(totalAmount),
+      paidAmount: roundMoney(paidAmount),
+      remainingAmount,
+      status: payment.status || (remainingAmount === 0 && totalAmount > 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'pending'),
+      history: Array.isArray(payment.history) ? payment.history : [],
+      historyAvailable: Array.isArray(payment.history),
+    };
+  }
+
+  /** Registra um pagamento em transação, com saldo validado e idempotência. */
+  async executeRegisterOrderPayment(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'edit', 'registrar pagamentos');
+    const identifier = String(args.orderNumber || '').trim();
+    const amount = roundMoney(args.amount);
+    const method = normalizePaymentMethod(args.method);
+    const idempotencyKey = String(args.idempotencyKey || '').trim();
+    if (!identifier) throw new Error('Informe o número ou ID do pedido.');
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000) throw new Error('O valor do pagamento deve ser maior que zero e menor ou igual a R$ 1.000.000,00.');
+    if (!method) throw new Error('Forma de pagamento inválida. Utilize PIX, dinheiro, crédito, débito ou transferência.');
+    if (idempotencyKey.length < 8 || idempotencyKey.length > 128) throw new Error('Informe uma chave de idempotência entre 8 e 128 caracteres.');
+    const notes = args.notes === undefined ? '' : String(args.notes).trim();
+    if (notes.length > 300) throw new Error('A observação do pagamento deve ter no máximo 300 caracteres.');
+
+    const order = await this.repos.getScopedOrderDocument(scope, identifier);
+    if (!order || order.data.deletedAt || order.data.isDeleted) throw new Error('Pedido não encontrado ou sem permissão.');
+    const currentPayment = order.data.payment || {};
+    const totalAmount = roundMoney(currentPayment.totalAmount ?? order.data.price ?? order.data.totalPrice ?? 0);
+    const paidAmount = roundMoney(currentPayment.paidAmount ?? order.data.paidAmount ?? 0);
+    const remainingAmount = Math.max(0, roundMoney(totalAmount - paidAmount));
+    if (amount > remainingAmount) throw new Error(`O pagamento supera o saldo do pedido (R$ ${remainingAmount.toFixed(2)}). Consulte os pagamentos antes de tentar novamente.`);
+    const preview = {
+      orderNumber: order.data.orderNumber || identifier,
+      customerName: order.data.customerName || '',
+      amount,
+      method,
+      currentPaidAmount: paidAmount,
+      newPaidAmount: roundMoney(paidAmount + amount),
+      remainingAfterPayment: roundMoney(remainingAmount - amount),
+      notes,
+    };
+    if (args.confirmed !== true) return { success: false, requiresConfirmation: true, preview, message: 'Prévia pronta. Mostre o valor, pedido e forma de pagamento ao usuário; só registre após confirmação explícita.' };
+
+    const db = this.repos.db;
+    const idempotency = getMcpIdempotencyContext(db, scope, 'register_order_payment', args.idempotencyKey, args);
+    const paymentEntry = {
+      amount,
+      date: new Date().toISOString(),
+      method,
+      notes: notes || null,
+      idempotencyKey,
+      registeredBy: scope.uid,
+      source: 'chatgpt-mcp',
+    };
+    const result = await db.runTransaction(async (transaction) => {
+      const orderRef = db.collection('orders').doc(order.id);
+      const saleRef = db.collection('salesLedger').doc(order.id);
+      const [idempotencySnap, orderSnap, saleSnap] = await Promise.all([
+        transaction.get(idempotency.ref), transaction.get(orderRef), transaction.get(saleRef),
+      ]);
+      const replay = readIdempotentResult(idempotencySnap, idempotency.payloadHash);
+      if (replay) return { response: replay };
+      if (!orderSnap.exists) throw new Error('Pedido não encontrado.');
+      const current = orderSnap.data() || {};
+      const { filterOrdersByScope } = require('./authorization');
+      if (current.deletedAt || current.isDeleted || !filterOrdersByScope([{ ...current, id: order.id }], scope).length) {
+        throw new Error('Pedido não encontrado ou sem permissão.');
+      }
+      const payment = current.payment || {};
+      const liveTotal = roundMoney(payment.totalAmount ?? current.price ?? current.totalPrice ?? 0);
+      const livePaid = roundMoney(payment.paidAmount ?? current.paidAmount ?? 0);
+      const history = Array.isArray(payment.history) ? payment.history : [];
+      const duplicate = history.find((entry) => entry?.idempotencyKey === idempotencyKey);
+      if (duplicate) {
+        if (roundMoney(duplicate.amount) !== amount || duplicate.method !== method || (duplicate.notes || '') !== (notes || '')) {
+          const error = new Error('Esta chave de pagamento já foi usada com dados diferentes.');
+          error.code = 'already-exists';
+          throw error;
+        }
+        const response = { success: true, duplicate: true, orderNumber: current.orderNumber || identifier, payment: duplicate, message: 'Este pagamento já havia sido registrado; nenhuma duplicata foi criada.' };
+        transaction.set(idempotency.ref, { payloadHash: idempotency.payloadHash, result: response, completed: true, createdAt: paymentEntry.date });
+        return { response };
+      }
+      const liveRemaining = Math.max(0, roundMoney(liveTotal - livePaid));
+      if (amount > liveRemaining) throw new Error(`O saldo mudou durante a operação. Saldo atual: R$ ${liveRemaining.toFixed(2)}.`);
+      const newPaid = roundMoney(livePaid + amount);
+      const status = newPaid >= liveTotal && liveTotal > 0 ? 'paid' : 'partial';
+      const newHistory = [...history, paymentEntry];
+      const updatedPayment = {
+        ...payment,
+        status,
+        method,
+        totalAmount: liveTotal,
+        paidAmount: newPaid,
+        remainingAmount: roundMoney(liveTotal - newPaid),
+        paymentDate: paymentEntry.date,
+        history: newHistory,
+      };
+      const now = new Date().toISOString();
+      transaction.update(orderRef, {
+        payment: updatedPayment,
+        version: (Number.isSafeInteger(current.version) && current.version > 0 ? current.version : 1) + 1,
+        updatedAt: now,
+      });
+      if (saleSnap.exists) {
+        transaction.update(saleRef, { paidAmount: newPaid, paymentStatus: status, paymentMethod: method, updatedAt: now });
+      } else {
+        transaction.set(saleRef, {
+          id: order.id,
+          orderId: order.id,
+          orderNumber: current.orderNumber || '',
+          userId: current.userId || scope.uid,
+          assignedTo: current.assignedTo || null,
+          assignedToName: current.assignedToName || null,
+          customerId: current.customerId || null,
+          customerName: current.customerName || 'Cliente não informado',
+          customerPhone: current.customerPhone || null,
+          productName: current.productName || 'Produto',
+          quantity: Number(current.quantity) || 1,
+          amount: liveTotal,
+          paymentStatus: status,
+          paidAmount: newPaid,
+          paymentMethod: method,
+          date: current.createdAt || now,
+          deliveryDate: current.deliveryDate || null,
+          status: current.status || 'pending',
+          isDeletedFromOrders: false,
+          createdAt: current.createdAt || now,
+          updatedAt: now,
+        });
+      }
+      const response = { success: true, orderNumber: current.orderNumber || identifier, paidAmount: newPaid, remainingAmount: updatedPayment.remainingAmount, status, message: `Pagamento de R$ ${amount.toFixed(2)} registrado no pedido ${current.orderNumber || identifier}.` };
+      transaction.set(idempotency.ref, { payloadHash: idempotency.payloadHash, result: response, completed: true, createdAt: paymentEntry.date });
+      return { response };
+    });
+    return result.response;
+  }
+
   /**
    * Ferramenta 9: Rascunho de Pedido com Contrato Compatível (IA-03 & R03)
    */
@@ -1127,13 +1525,7 @@ class AiToolsExecutor {
       throw new Error('Usuário não autenticado.');
     }
 
-    // Alinha com o permissionamento da interface e com a autorização usada no fluxo Alexa:
-    // usuários não administradores precisam ter orders.create explicitamente habilitado.
-    if (!scope.isAdmin && scope.permissions?.orders?.create !== true) {
-      const error = new Error('Você não possui permissão para criar pedidos no sistema Luisices. Habilite a permissão de criação de pedidos no seu perfil ou solicite ao administrador.');
-      error.code = 'permission-denied';
-      throw error;
-    }
+    requireMcpModulePermission(scope, 'orders', 'create', 'criar pedidos');
 
     const cleanCustomer = String(args.customerName || '').trim();
     if (!cleanCustomer) {
@@ -1145,9 +1537,32 @@ class AiToolsExecutor {
       throw new Error('Nome do produto é obrigatório para registrar o pedido.');
     }
 
-    const cleanQuantity = Math.max(1, Math.round(Number(args.quantity) || 1));
-    const cleanTotalPrice = Math.max(0, Math.round((Number(args.totalPrice) || 0) * 100) / 100);
-    const cleanPaidAmount = Math.max(0, Math.min(cleanTotalPrice, Math.round((Number(args.paidAmount) || 0) * 100) / 100));
+    const rawQuantity = Number(args.quantity);
+    const rawTotalPrice = Number(args.totalPrice);
+    const rawPaidAmount = args.paidAmount === undefined ? 0 : Number(args.paidAmount);
+    if (!Number.isSafeInteger(rawQuantity) || rawQuantity < 1 || rawQuantity > 100000) {
+      const error = new Error('A quantidade deve ser um inteiro entre 1 e 100000.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    if (!Number.isFinite(rawTotalPrice) || rawTotalPrice < 0 || rawTotalPrice > 10000000) {
+      const error = new Error('O valor total deve estar entre R$ 0,00 e R$ 10.000.000,00.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    if (!Number.isFinite(rawPaidAmount) || rawPaidAmount < 0 || rawPaidAmount > rawTotalPrice) {
+      const error = new Error('O valor pago deve ser não negativo e não pode superar o total do pedido.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const cleanQuantity = rawQuantity;
+    const cleanTotalPrice = roundMoney(rawTotalPrice);
+    const cleanPaidAmount = roundMoney(rawPaidAmount);
+    if ((cleanPaidAmount > 0 || args.paymentMethod !== undefined) && !scope.mcpScopes?.includes('payments:write')) {
+      const error = new Error('A permissão Registrar Pagamentos é necessária para informar um pagamento inicial no pedido.');
+      error.code = 'permission-denied';
+      throw error;
+    }
     const remainingAmount = Math.max(0, Math.round((cleanTotalPrice - cleanPaidAmount) * 100) / 100);
 
     // Validação rigorosa de prazo no fuso de Brasília
@@ -1226,62 +1641,7 @@ class AiToolsExecutor {
     const uid = scope.uid;
     const year = new Date().getFullYear();
 
-    // ─── Proteção de Idempotência contra Duplicação (ChatGPT / MCP) ───
-    const crypto = require('crypto');
-    const explicitIdempotencyKey = args.idempotencyKey ? String(args.idempotencyKey).trim().slice(0, 128) : null;
-    const autoFingerprint = crypto
-      .createHash('sha256')
-      .update(`${uid}|${cleanCustomer.toLowerCase()}|${cleanProduct.toLowerCase()}|${cleanQuantity}|${cleanTotalPrice}|${rawDate}`)
-      .digest('hex')
-      .slice(0, 24);
-    const effectiveIdempotencyKey = explicitIdempotencyKey || `auto_${autoFingerprint}`;
-
-    // Consulta se já existe pedido idêntico recente com a mesma chave de idempotência
-    try {
-      const existingSnap = await db
-        .collection('orders')
-        .where('userId', '==', uid)
-        .where('idempotencyKey', '==', effectiveIdempotencyKey)
-        .limit(1)
-        .get();
-
-      if (!existingSnap.empty) {
-        const existingDoc = existingSnap.docs[0];
-        const existingData = existingDoc.data();
-        if (!existingData.deletedAt && !existingData.isDeleted) {
-          const dupSummary = [
-            `ℹ️ **Pedido ${existingData.orderNumber} já constava no sistema!**`,
-            `• **Cliente:** ${existingData.customerName}${existingData.customerPhone ? ` (${existingData.customerPhone})` : ''}`,
-            `• **Produto:** ${existingData.productName} (${existingData.quantity} un)`,
-            `• **Entrega:** ${existingData.deliveryDate}`,
-            `• **Total:** R$ ${Number(existingData.totalPrice || 0).toFixed(2)}`,
-            `\n*(Operação idempotente: a chamada foi reconhecida e nenhuma duplicata foi gravada).*`,
-          ].join('\n');
-
-          return {
-            success: true,
-            isDuplicate: true,
-            reusedExisting: true,
-            orderId: existingDoc.id,
-            orderNumber: existingData.orderNumber,
-            customerName: existingData.customerName,
-            customerPhone: existingData.customerPhone || 'Não informado',
-            productName: existingData.productName,
-            quantity: existingData.quantity,
-            totalPrice: existingData.totalPrice,
-            paidAmount: existingData.payment?.paidAmount || 0,
-            remainingAmount: existingData.payment?.remainingAmount || 0,
-            paymentStatus: existingData.payment?.status || 'pending',
-            deliveryDate: existingData.deliveryDate,
-            status: existingData.status,
-            formattedSummary: dupSummary,
-            message: `Pedido ${existingData.orderNumber} já havia sido registrado para ${existingData.customerName} (idempotência preservada, sem duplicações).`,
-          };
-        }
-      }
-    } catch (_idempErr) {
-      // Caso não haja índice composto ainda, prossegue normalmente
-    }
+    const idempotency = getMcpIdempotencyContext(db, scope, 'create_order', args.idempotencyKey, args);
 
     const orderRef = db.collection('orders').doc();
     const orderId = orderRef.id;
@@ -1293,10 +1653,15 @@ class AiToolsExecutor {
       // fallback
     }
 
-    let createdOrderNumber = `#${year}-0001`;
-
-    if (typeof db.runTransaction === 'function') {
-      createdOrderNumber = await db.runTransaction(async (transaction) => {
+    if (typeof db.runTransaction !== 'function') {
+      const error = new Error('A gravação segura não está disponível; o pedido não foi criado.');
+      error.code = 'failed-precondition';
+      throw error;
+    }
+    const creationResult = await db.runTransaction(async (transaction) => {
+        const idempotencySnap = await transaction.get(idempotency.ref);
+        const replay = readIdempotentResult(idempotencySnap, idempotency.payloadHash);
+        if (replay) return { ...replay, replayed: true };
         const counterRef = db.doc(`users/${uid}/metadata/counters`);
         const counterSnap = await transaction.get(counterRef);
         const currentCount = counterSnap.exists ? Number(counterSnap.data()?.orderCounter || 0) : 0;
@@ -1342,7 +1707,7 @@ class AiToolsExecutor {
             }] : null,
           },
           source: 'chatgpt-mcp',
-          idempotencyKey: effectiveIdempotencyKey,
+          idempotencyKey: String(args.idempotencyKey).trim(),
           requiresFinancialApproval: Boolean(requiresFinancialApproval),
           financialWarning: financialWarning || null,
           productionWorkflow: {
@@ -1365,25 +1730,16 @@ class AiToolsExecutor {
         };
 
         transaction.set(orderRef, newOrderDoc);
-        return orderNumber;
+        const result = { orderId, orderNumber };
+        transaction.set(idempotency.ref, {
+          payloadHash: idempotency.payloadHash,
+          result,
+          completed: true,
+          createdAt: new Date().toISOString(),
+        });
+        return { ...result, replayed: false };
       });
-    } else {
-      // Fallback direto caso o DB mock não suporte transações
-      await orderRef.set({
-        userId: uid,
-        orderNumber: createdOrderNumber,
-        customerName: cleanCustomer,
-        productName: cleanProduct,
-        quantity: cleanQuantity,
-        totalPrice: cleanTotalPrice,
-        status: 'pending',
-        deliveryDate: rawDate,
-        idempotencyKey: effectiveIdempotencyKey,
-        requiresFinancialApproval: Boolean(requiresFinancialApproval),
-        financialWarning: financialWarning || null,
-        createdAt: new Date().toISOString(),
-      });
-    }
+    const createdOrderNumber = creationResult.orderNumber;
 
     let brDisplayDate = rawDate;
     if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
@@ -1430,7 +1786,10 @@ class AiToolsExecutor {
       requiresFinancialApproval,
       financialWarning: financialWarning || undefined,
       formattedSummary,
-      message: `Pedido ${createdOrderNumber} criado com sucesso para ${cleanCustomer}!`,
+      isDuplicate: creationResult.replayed,
+      message: creationResult.replayed
+        ? `Pedido ${createdOrderNumber} já havia sido criado para ${cleanCustomer}; nenhuma duplicata foi gravada.`
+        : `Pedido ${createdOrderNumber} criado com sucesso para ${cleanCustomer}!`,
     };
   }
 }

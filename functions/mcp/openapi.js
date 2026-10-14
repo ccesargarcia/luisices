@@ -23,18 +23,23 @@ const TOOLS_METADATA = [
         },
         searchTerm: {
           type: 'string',
+          maxLength: 200,
           description: 'Busca por nome do cliente, número do pedido ou resumo do produto.',
         },
         startDate: {
           type: 'string',
+          maxLength: 10,
           description: 'Data inicial no formato AAAA-MM-DD.',
         },
         endDate: {
           type: 'string',
+          maxLength: 10,
           description: 'Data final no formato AAAA-MM-DD.',
         },
         limit: {
           type: 'integer',
+          minimum: 1,
+          maximum: 50,
           description: 'Quantidade máxima de pedidos retornados (máximo 20). Padrão: 15.',
           default: 15,
         },
@@ -51,6 +56,7 @@ const TOOLS_METADATA = [
       properties: {
         date: {
           type: 'string',
+          maxLength: 10,
           description: 'Data de referência (AAAA-MM-DD). Se omitida, utiliza a data de hoje.',
         },
       },
@@ -66,10 +72,14 @@ const TOOLS_METADATA = [
       properties: {
         searchTerm: {
           type: 'string',
+          maxLength: 200,
           description: 'Nome, número de telefone ou cidade do cliente.',
         },
+        userIdentifier: { type: 'string', maxLength: 200, description: 'Identificador de colaborador, disponível apenas conforme as permissões do usuário.' },
         limit: {
           type: 'integer',
+          minimum: 1,
+          maximum: 50,
           description: 'Limite de clientes a retornar (máximo 15).',
           default: 10,
         },
@@ -91,6 +101,7 @@ const TOOLS_METADATA = [
         },
         userIdentifier: {
           type: 'string',
+          maxLength: 200,
           description: 'Filtrar por colaborador específico (apenas administradores).',
         },
       },
@@ -155,14 +166,18 @@ const TOOLS_METADATA = [
       properties: {
         recipientName: {
           type: 'string',
+          minLength: 1,
+          maxLength: 200,
           description: 'Nome do cliente.',
         },
         recipientPhone: {
           type: 'string',
+          maxLength: 50,
           description: 'Telefone/WhatsApp do cliente.',
         },
         orderNumber: {
           type: 'string',
+          maxLength: 100,
           description: 'Número do pedido.',
         },
         messageType: {
@@ -172,6 +187,7 @@ const TOOLS_METADATA = [
         },
         customText: {
           type: 'string',
+          maxLength: 2000,
           description: 'Observações específicas a incluir no texto.',
         },
       },
@@ -187,10 +203,12 @@ const TOOLS_METADATA = [
       properties: {
         customerName: {
           type: 'string',
+          maxLength: 200,
           description: 'Nome do cliente se já informado.',
         },
         productCategory: {
           type: 'string',
+          maxLength: 100,
           description: 'Categoria opcional do produto (ex: "caixas_milk", "festa_infantil", "convites", "corporativo").',
         },
       },
@@ -203,38 +221,49 @@ const TOOLS_METADATA = [
     description: 'Extrai dados informados por cliente em conversa e estrutura um rascunho de pedido para conferência. Para efetivar e registrar o pedido no sistema, execute a ação create_order.',
     requestBody: {
       type: 'object',
-      required: ['customerName', 'productSummary'],
       properties: {
         customerName: {
           type: 'string',
+          maxLength: 200,
           description: 'Nome do cliente.',
         },
         customerPhone: {
           type: 'string',
+          maxLength: 50,
           description: 'Telefone do cliente.',
         },
         productSummary: {
           type: 'string',
+          maxLength: 1000,
           description: 'Descrição dos itens encomendados.',
         },
+        productName: { type: 'string', maxLength: 1000, description: 'Alias para a descrição dos itens.' },
         quantity: {
           type: 'integer',
+          minimum: 1,
+          maximum: 100000,
           description: 'Quantidade.',
         },
         totalPrice: {
           type: 'number',
+          minimum: 0,
+          maximum: 10000000,
           description: 'Valor total acertado.',
         },
+        paidAmount: { type: 'number', minimum: 0, maximum: 10000000, description: 'Valor já pago, se informado.' },
         deliveryDate: {
           type: 'string',
+          maxLength: 10,
           description: 'Data prometida de entrega (AAAA-MM-DD).',
         },
         theme: {
           type: 'string',
+          maxLength: 200,
           description: 'Tema ou paleta de cores.',
         },
         notes: {
           type: 'string',
+          maxLength: 2000,
           description: 'Observações de acabamento.',
         },
       },
@@ -247,34 +276,42 @@ const TOOLS_METADATA = [
     description: 'Cria e grava um novo pedido oficial na fila de produção do Ateliê Luisices. Gera número sequencial (#AAAA-0001), vincula o cliente, calcula o saldo pendente e define o status como pendente com a tag "ChatGPT".',
     requestBody: {
       type: 'object',
-      required: ['customerName', 'productName', 'quantity', 'totalPrice', 'deliveryDate'],
+      required: ['customerName', 'productName', 'quantity', 'totalPrice', 'deliveryDate', 'idempotencyKey'],
       properties: {
         customerName: {
           type: 'string',
+          minLength: 1,
+          maxLength: 200,
           description: 'Nome completo ou primeiro nome do cliente.',
         },
         customerPhone: {
           type: 'string',
+          maxLength: 50,
           description: 'Telefone ou WhatsApp do cliente para contato.',
         },
         productName: {
           type: 'string',
+          minLength: 1,
+          maxLength: 500,
           description: 'Nome e descrição do produto encomendado (ex: "30 Caixas Milk Personalizadas", "Topo de Bolo").',
         },
         quantity: {
           type: 'integer',
           description: 'Quantidade encomendada (mínimo 1).',
           minimum: 1,
+          maximum: 100000,
         },
         totalPrice: {
           type: 'number',
           description: 'Valor total do pedido em reais (ex: 210.00).',
           minimum: 0,
+          maximum: 10000000,
         },
         paidAmount: {
           type: 'number',
           description: 'Valor de entrada ou sinal já pago pelo cliente (ex: 100.00). Padrão: 0.',
           default: 0,
+          maximum: 10000000,
         },
         paymentMethod: {
           type: 'string',
@@ -283,25 +320,135 @@ const TOOLS_METADATA = [
         },
         deliveryDate: {
           type: 'string',
+          maxLength: 10,
           description: 'Data limite prometida para entrega no formato AAAA-MM-DD (ou DD/MM/AAAA).',
         },
         theme: {
           type: 'string',
+          maxLength: 200,
           description: 'Tema da festa ou personalização (ex: "Safari Baby", "Jardim Encantado").',
         },
         notes: {
           type: 'string',
+          maxLength: 2000,
           description: 'Observações de produção, personalização ou instruções especiais.',
         },
         tags: {
           type: 'array',
-          items: { type: 'string' },
+          maxItems: 20,
+          items: { type: 'string', maxLength: 50 },
           description: 'Tags adicionais para organizar o pedido (a tag "ChatGPT" é adicionada automaticamente).',
         },
         idempotencyKey: {
           type: 'string',
-          description: 'Chave única de idempotência opcional para evitar duplicação em caso de reexecução de chamada.',
+          minLength: 8,
+          maxLength: 128,
+          pattern: '^[A-Za-z0-9._:-]{8,128}$',
+          description: 'Chave única obrigatória. Reutilize a mesma chave em caso de repetição da chamada.',
         },
+      },
+    },
+  },
+  {
+    name: 'update_order',
+    scope: 'orders:update',
+    summary: 'Editar um Pedido Existente',
+    description: 'Mostra uma prévia das alterações de pedido. Só grave após apresentar os campos ao usuário e receber confirmação explícita. Altere somente dados de contato, produto, quantidade, prazo, tema e observações; não altera valores nem pagamentos.',
+    requestBody: {
+      type: 'object',
+      required: ['orderNumber', 'expectedVersion', 'idempotencyKey', 'confirmed'],
+      properties: {
+        orderNumber: { type: 'string', description: 'Número do pedido, por exemplo #2026-0042, ou ID do documento.' },
+        customerName: { type: 'string', maxLength: 200, description: 'Novo nome do cliente, se for alterar.' },
+        customerPhone: { type: 'string', maxLength: 50, description: 'Novo telefone/WhatsApp, se for alterar.' },
+        productName: { type: 'string', maxLength: 300, description: 'Nova descrição do produto.' },
+        quantity: { type: 'integer', minimum: 1, maximum: 10000, description: 'Nova quantidade.' },
+        deliveryDate: { type: 'string', description: 'Novo prazo no formato AAAA-MM-DD ou DD/MM/AAAA.' },
+        theme: { type: 'string', maxLength: 200, description: 'Novo tema do pedido.' },
+        notes: { type: 'string', maxLength: 1000, description: 'Novas observações de produção.' },
+        expectedVersion: { type: 'integer', minimum: 1, description: 'Versão obtida na consulta do pedido, para evitar sobrescrever uma alteração recente.' },
+        idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{8,128}$', description: 'Chave única da operação. Reutilize a mesma chave em caso de repetição.' },
+        confirmed: { type: 'boolean', description: 'Use false para prévia. Use true somente depois que o usuário confirmar explicitamente a alteração apresentada.' },
+      },
+    },
+  },
+  {
+    name: 'query_order_payments',
+    scope: 'payments:read',
+    summary: 'Consultar Pagamentos de um Pedido',
+    description: 'Consulta valores, saldo e histórico de pagamentos do pedido no escopo autorizado do usuário.',
+    requestBody: {
+      type: 'object',
+      required: ['orderNumber'],
+      properties: {
+        orderNumber: { type: 'string', description: 'Número do pedido ou ID do documento.' },
+      },
+    },
+  },
+  {
+    name: 'register_order_payment',
+    scope: 'payments:write',
+    summary: 'Registrar Pagamento Recebido',
+    description: 'Apresenta uma prévia do lançamento e atualiza o saldo e o histórico financeiro. Só registre após o usuário confirmar explicitamente o valor, pedido e forma de pagamento. Reenvie o mesmo idempotencyKey em caso de repetição da chamada.',
+    requestBody: {
+      type: 'object',
+      required: ['orderNumber', 'amount', 'method', 'idempotencyKey', 'confirmed'],
+      properties: {
+        orderNumber: { type: 'string', description: 'Número do pedido ou ID do documento.' },
+        amount: { type: 'number', minimum: 0, exclusiveMinimum: true, description: 'Valor recebido em reais.' },
+        method: { type: 'string', enum: ['pix', 'cash', 'credit', 'debit', 'transfer'], description: 'Forma de pagamento.' },
+        notes: { type: 'string', maxLength: 300, description: 'Referência ou observação opcional.' },
+        idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{8,128}$', description: 'Identificador único da operação. Mantenha o mesmo valor se a chamada for repetida.' },
+        confirmed: { type: 'boolean', description: 'Use false para prévia. Use true somente depois que o usuário confirmar explicitamente o lançamento.' },
+      },
+    },
+  },
+  {
+    name: 'create_customer',
+    scope: 'customers:create',
+    summary: 'Cadastrar Cliente',
+    description: 'Apresenta uma prévia do cadastro. Só salve após mostrar os dados e receber confirmação explícita. Se já houver cliente com o telefone, use update_customer para editar o cadastro existente.',
+    requestBody: {
+      type: 'object',
+      required: ['name', 'idempotencyKey', 'confirmed'],
+      properties: {
+        name: { type: 'string', minLength: 1, maxLength: 200, description: 'Nome completo do cliente.' },
+        phone: { type: 'string', maxLength: 50, description: 'Telefone ou WhatsApp.' },
+        email: { type: 'string', maxLength: 254, description: 'E-mail.' },
+        street: { type: 'string', maxLength: 200, description: 'Rua ou avenida.' },
+        number: { type: 'string', maxLength: 30, description: 'Número do endereço.' },
+        complement: { type: 'string', maxLength: 100, description: 'Complemento.' },
+        city: { type: 'string', maxLength: 100, description: 'Cidade.' },
+        state: { type: 'string', maxLength: 50, description: 'Estado ou UF.' },
+        zipCode: { type: 'string', maxLength: 20, description: 'CEP.' },
+        notes: { type: 'string', maxLength: 1000, description: 'Observações sobre o atendimento.' },
+        idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{8,128}$', description: 'Chave única da operação. Reutilize a mesma chave em caso de repetição.' },
+        confirmed: { type: 'boolean', description: 'Use false para prévia. Use true somente depois que o usuário confirmar explicitamente o cadastro.' },
+      },
+    },
+  },
+  {
+    name: 'update_customer',
+    scope: 'customers:update',
+    summary: 'Editar Cliente',
+    description: 'Apresenta uma prévia das alterações. Só salve após mostrar os dados e receber confirmação explícita. Atualiza apenas campos fornecidos e preserva os demais.',
+    requestBody: {
+      type: 'object',
+      required: ['customerId', 'idempotencyKey', 'confirmed'],
+      properties: {
+        customerId: { type: 'string', description: 'ID retornado por query_customers.' },
+        name: { type: 'string', minLength: 1, maxLength: 200, description: 'Novo nome.' },
+        phone: { type: 'string', maxLength: 50, description: 'Novo telefone ou WhatsApp.' },
+        email: { type: 'string', maxLength: 254, description: 'Novo e-mail.' },
+        street: { type: 'string', maxLength: 200, description: 'Rua ou avenida.' },
+        number: { type: 'string', maxLength: 30, description: 'Número do endereço.' },
+        complement: { type: 'string', maxLength: 100, description: 'Complemento.' },
+        city: { type: 'string', maxLength: 100, description: 'Cidade.' },
+        state: { type: 'string', maxLength: 50, description: 'Estado ou UF.' },
+        zipCode: { type: 'string', maxLength: 20, description: 'CEP.' },
+        notes: { type: 'string', maxLength: 1000, description: 'Observações sobre o atendimento.' },
+        idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{8,128}$', description: 'Chave única da operação. Reutilize a mesma chave em caso de repetição.' },
+        confirmed: { type: 'boolean', description: 'Use false para prévia. Use true somente depois que o usuário confirmar explicitamente as alterações.' },
       },
     },
   },
@@ -369,7 +516,7 @@ function buildOpenApiSchema(baseUrl, allowedScopes = null) {
           required: Boolean(tool.requestBody && Array.isArray(tool.requestBody.required) && tool.requestBody.required.length > 0),
           content: {
             'application/json': {
-              schema: tool.requestBody,
+                  schema: { ...tool.requestBody, additionalProperties: false },
             },
           },
         },

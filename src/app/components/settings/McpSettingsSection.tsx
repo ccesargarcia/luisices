@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -81,6 +81,7 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
 
   // Modal de Chave Gerada com Sucesso
   const [createdResult, setCreatedResult] = useState<CreateMcpKeyResult | null>(null);
+  const createKeyRequest = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedPluginUrl, setCopiedPluginUrl] = useState(false);
@@ -159,7 +160,7 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
     const isTargetAdmin = targetMember?.role === 'admin';
 
     const defaults = status.availableScopes
-      .filter((s) => s.defaultGranted && (isTargetAdmin || !s.requiresAdmin))
+      .filter((s) => s.defaultGranted && (isTargetAdmin || !s.requiresAdmin) && targetMember?.mcpScopes?.includes(s.id))
       .map((s) => s.id);
 
     setSelectedScopes(defaults);
@@ -173,15 +174,10 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
     const target = status.teamMembers.find((m) => m.uid === uid);
     const isTargetAdmin = target?.role === 'admin';
 
-    // Remove escopos de admin se o usuário selecionado não for admin
-    if (!isTargetAdmin) {
-      setSelectedScopes((prev) =>
-        prev.filter((scopeId) => {
-          const scopeDef = status.availableScopes.find((s) => s.id === scopeId);
-          return !scopeDef?.requiresAdmin;
-        })
-      );
-    }
+    const defaults = status.availableScopes
+      .filter((scope) => scope.defaultGranted && (isTargetAdmin || !scope.requiresAdmin) && target?.mcpScopes?.includes(scope.id))
+      .map((scope) => scope.id);
+    setSelectedScopes(defaults);
   };
 
   const handleToggleScope = (scopeId: string) => {
@@ -202,13 +198,22 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
 
     setCreatingKey(true);
     try {
-      const res = await firebaseMcpService.createApiKey({
+      const keyRequest = {
         userId: selectedUid,
         keyName: keyName.trim(),
         scopes: selectedScopes,
         rateLimitPerHour: Number(rateLimit) || 60,
+      };
+      const fingerprint = JSON.stringify(keyRequest);
+      if (!createKeyRequest.current || createKeyRequest.current.fingerprint !== fingerprint) {
+        createKeyRequest.current = { fingerprint, idempotencyKey: crypto.randomUUID().replace(/-/g, '') };
+      }
+      const res = await firebaseMcpService.createApiKey({
+        ...keyRequest,
+        idempotencyKey: createKeyRequest.current.idempotencyKey,
       });
 
+      createKeyRequest.current = null;
       setModalOpen(false);
       setCreatedResult(res);
       toast.success('Chave de acesso gerada com sucesso!');
@@ -1004,7 +1009,10 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
                     </span>
                     <div className="space-y-2">
                       {scopes.map((scope) => {
-                        const isLocked = scope.requiresAdmin && !isSelectedAdmin;
+                        const selectedMember = status?.teamMembers.find((member) => member.uid === selectedUid);
+                        const isLocked = (scope.requiresAdmin && !isSelectedAdmin)
+                          || !selectedMember?.mcpAccess
+                          || !selectedMember?.mcpScopes?.includes(scope.id);
                         const isChecked = selectedScopes.includes(scope.id);
 
                         return (

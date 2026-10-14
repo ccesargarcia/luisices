@@ -17,6 +17,7 @@ const {
 } = require('./oauth');
 const { TOOL_SCOPE_MAP, MCP_SCOPES } = require('./constants');
 const { buildOpenApiSchema, TOOLS_METADATA } = require('./openapi');
+const { validateToolArguments } = require('./validation');
 const { createAiServices } = require('../ai/index');
 const { ORIGIN_SECRET } = require('../common/secrets');
 const { validateOriginSecret } = require('../originProtection');
@@ -44,6 +45,16 @@ async function executeToolByName(toolsExecutor, toolName, args, scope) {
       return await toolsExecutor.executeGetOrderForm(args, scope);
     case 'create_order':
       return await toolsExecutor.executeCreateOrder(args, scope);
+    case 'update_order':
+      return await toolsExecutor.executeUpdateOrder(args, scope);
+    case 'query_order_payments':
+      return await toolsExecutor.executeQueryOrderPayments(args, scope);
+    case 'register_order_payment':
+      return await toolsExecutor.executeRegisterOrderPayment(args, scope);
+    case 'create_customer':
+      return await toolsExecutor.executeCreateCustomer(args, scope);
+    case 'update_customer':
+      return await toolsExecutor.executeUpdateCustomer(args, scope);
     case 'search_gallery_portfolio':
       return await toolsExecutor.executeSearchGalleryPortfolio(args, scope);
     case 'get_user_summary':
@@ -60,7 +71,39 @@ async function executeScopedToolByName(toolsExecutor, toolName, args, scope, sco
     error.code = 'permission-denied';
     throw error;
   }
-  return executeToolByName(toolsExecutor, toolName, args, scope);
+  validateToolArguments(toolName, args);
+  const result = await executeToolByName(toolsExecutor, toolName, args, { ...scope, mcpScopes: scopes });
+  const canReadPaymentDetails = scopes.includes('payments:read') || scopes.includes('financial:read');
+  if (!canReadPaymentDetails && result && typeof result === 'object') {
+    const redactOrder = (order) => {
+      const { totalPrice, paidAmount, remainingAmount, paymentStatus, ...operationalOrder } = order;
+      return operationalOrder;
+    };
+    if (toolName === 'query_orders_view' && Array.isArray(result.orders)) {
+      return { ...result, orders: result.orders.map(redactOrder) };
+    }
+    if (toolName === 'query_customers' && Array.isArray(result.customers)) {
+      return { ...result, customers: result.customers.map((customer) => {
+        const { totalSpent, ...operationalCustomer } = customer;
+        return operationalCustomer;
+      }) };
+    }
+    if (toolName === 'daily_briefing') {
+      const { pendingPaymentCount, pendingPaymentTotal, realizedRevenue, totalReceived, ...operationalBriefing } = result;
+      if (Array.isArray(operationalBriefing.delayedOrders)) operationalBriefing.delayedOrders = operationalBriefing.delayedOrders.map(redactOrder);
+      if (Array.isArray(operationalBriefing.todayDeliveries)) operationalBriefing.todayDeliveries = operationalBriefing.todayDeliveries.map(redactOrder);
+      return operationalBriefing;
+    }
+  }
+  return result;
+}
+
+function publicToolError(error) {
+  if (error?.code === 'permission-denied') return { status: 403, code: 'PERMISSION_DENIED', message: error.message };
+  if (error?.code === 'invalid-argument') return { status: 400, code: 'INVALID_ARGUMENT', message: error.message };
+  if (error?.code === 'not-found') return { status: 404, code: 'NOT_FOUND', message: error.message };
+  if (error?.code === 'failed-precondition' || error?.code === 'already-exists') return { status: 409, code: 'CONFLICT', message: error.message };
+  return { status: 500, code: 'TOOL_EXECUTION_ERROR', message: 'Erro interno ao processar a ferramenta.' };
 }
 
 function buildBearerChallenge(hasBearerCredentials, apiOrigin) {
@@ -91,15 +134,15 @@ function recordMcpAuditLog(db, {
 
   db.collection('mcpAuditLogs')
     .add({
-      toolName: String(toolName || 'unknown'),
-      keyId: String(keyId || 'oauth_session'),
-      callerUid: String(callerUid || ''),
-      callerName: String(callerName || ''),
+      toolName: String(toolName || 'unknown').slice(0, 100),
+      keyId: String(keyId || 'oauth_session').slice(0, 100),
+      callerUid: String(callerUid || '').slice(0, 128),
+      callerName: String(callerName || '').slice(0, 200),
       clientProtocol: String(clientProtocol || 'unknown'),
       executionTimeMs: Number(executionTimeMs) || 0,
       success: Boolean(success),
-      errorMessage: errorMessage || null,
-      orderNumber: orderNumber || null,
+      errorMessage: typeof errorMessage === 'string' ? errorMessage.slice(0, 500) : null,
+      orderNumber: typeof orderNumber === 'string' ? orderNumber.slice(0, 100) : null,
       timestamp: FieldValue && FieldValue.serverTimestamp ? FieldValue.serverTimestamp() : new Date().toISOString(),
     })
     .catch((err) => {
@@ -138,6 +181,12 @@ const chatGptToolsEndpoint = onRequest(
 
     if (req.method === 'OPTIONS') {
       return res.status(204).send('');
+    }
+
+    if (req.body !== undefined) {
+      let bodyBytes;
+      try { bodyBytes = Buffer.byteLength(JSON.stringify(req.body), 'utf8'); } catch (_err) { bodyBytes = Infinity; }
+      if (bodyBytes > 64 * 1024) return res.status(413).json({ error: 'PAYLOAD_TOO_LARGE', message: 'O corpo da requisição excede o limite permitido.' });
     }
 
     const db = getFirestore();
@@ -262,9 +311,8 @@ const chatGptToolsEndpoint = onRequest(
       let allowedScopes = null;
       if (req.headers.authorization) {
         const authResult = await validateMcpRequest(req, db);
-        if (authResult.success) {
-          allowedScopes = authResult.keyData.scopes || [];
-        }
+        if (!authResult.success) return res.status(authResult.status || 401).json({ error: authResult.code, message: authResult.message });
+        allowedScopes = authResult.keyData.scopes || [];
       }
 
       const schema = buildOpenApiSchema(baseUrl, allowedScopes);
@@ -293,7 +341,7 @@ const chatGptToolsEndpoint = onRequest(
         auth: {
           type: 'oauth',
           client_url: `${protocol}://${apiDomain}/oauth/authorize`,
-          scope: 'orders:read orders:draft orders:create customers:read pricing:estimate whatsapp:compose gallery:read',
+          scope: 'orders:read orders:draft orders:create orders:update customers:read customers:create customers:update payments:read payments:write pricing:estimate whatsapp:compose gallery:read',
           authorization_url: `${protocol}://${apiDomain}/oauth/token`,
           authorization_content_type: 'application/x-www-form-urlencoded',
           verification_tokens: {},
@@ -335,6 +383,9 @@ const chatGptToolsEndpoint = onRequest(
       const rpcId = req.body?.id ?? null;
       const method = req.body?.method;
       const params = req.body?.params || {};
+      if ((rpcId !== null && typeof rpcId !== 'string' && typeof rpcId !== 'number') || !params || typeof params !== 'object' || Array.isArray(params)) {
+        return res.status(400).json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Requisição JSON-RPC inválida.' } });
+      }
 
       // 3.1 Handshake Inicial: initialize
       if (method === 'initialize') {
@@ -369,16 +420,12 @@ const chatGptToolsEndpoint = onRequest(
 
       // 3.4 Listagem de Ferramentas: tools/list
       if (method === 'tools/list') {
-        let allowedScopes = null;
-        if (req.headers.authorization) {
-          const authResult = await validateMcpRequest(req, db);
-          if (authResult.success) {
-            allowedScopes = authResult.keyData.scopes || [];
-          }
-        }
+        const authResult = await validateMcpRequest(req, db);
+        if (!authResult.success) return res.status(authResult.status || 401).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32001, message: authResult.message || 'Autenticação necessária.' } });
+        const allowedScopes = authResult.keyData.scopes || [];
 
         const filteredTools = TOOLS_METADATA.filter((tool) => {
-          if (!allowedScopes || allowedScopes.includes('*')) return true;
+          if (allowedScopes.includes('*')) return true;
           return allowedScopes.includes(tool.scope);
         });
 
@@ -389,7 +436,7 @@ const chatGptToolsEndpoint = onRequest(
             tools: filteredTools.map((t) => ({
               name: t.name,
               description: `${t.summary}: ${t.description}`,
-              inputSchema: t.requestBody || { type: 'object', properties: {} },
+              inputSchema: { ...(t.requestBody || { type: 'object', properties: {} }), additionalProperties: false },
             })),
           },
         });
@@ -499,15 +546,15 @@ const chatGptToolsEndpoint = onRequest(
             clientProtocol: 'mcp-rpc',
             executionTimeMs,
             success: false,
-            errorMessage: execErr.message,
+            errorMessage: execErr.code || 'tool_execution_error',
           });
 
           return res.status(200).json({
             jsonrpc: '2.0',
             id: rpcId,
             error: {
-              code: execErr.code === 'permission-denied' ? -32003 : -32603,
-              message: execErr.message || 'Erro ao executar ferramenta MCP.',
+              code: execErr.code === 'permission-denied' ? -32003 : execErr.code === 'invalid-argument' ? -32602 : execErr.code === 'failed-precondition' || execErr.code === 'already-exists' ? -32009 : -32603,
+              message: publicToolError(execErr).message,
             },
           });
         }
@@ -582,7 +629,12 @@ const chatGptToolsEndpoint = onRequest(
       }
 
       // 5. Execução Segura da Ferramenta no Núcleo de IA
-      const args = req.body || {};
+      let args;
+      try {
+        args = validateToolArguments(toolName, req.body);
+      } catch (validationError) {
+        return res.status(400).json({ error: 'INVALID_ARGUMENT', message: validationError.message });
+      }
       const aiServices = getSharedAiServices(db);
       const { toolsExecutor } = aiServices;
 
@@ -613,7 +665,7 @@ const chatGptToolsEndpoint = onRequest(
         });
       } catch (execErr) {
         const executionTimeMs = Date.now() - startTime;
-        console.error(`[MCP] Erro ao executar ferramenta ${toolName}:`, execErr);
+          console.error(`[MCP] Falha na ferramenta ${toolName} (${execErr.code || 'tool_execution_error'}).`);
         recordMcpAuditLog(db, {
           toolName,
           keyId: keyData.keyId,
@@ -622,14 +674,11 @@ const chatGptToolsEndpoint = onRequest(
           clientProtocol: 'openapi-rest',
           executionTimeMs,
           success: false,
-          errorMessage: execErr.message,
+          errorMessage: execErr.code || 'tool_execution_error',
         });
 
-        const isPermissionDenied = execErr.code === 'permission-denied';
-        return res.status(isPermissionDenied ? 403 : 500).json({
-          error: isPermissionDenied ? 'PERMISSION_DENIED' : 'TOOL_EXECUTION_ERROR',
-          message: execErr.message || 'Erro interno ao processar a ferramenta no sistema.',
-        });
+        const safeError = publicToolError(execErr);
+        return res.status(safeError.status).json({ error: safeError.code, message: safeError.message });
       }
     }
 
@@ -651,5 +700,6 @@ const chatGptToolsEndpoint = onRequest(
 module.exports = {
   chatGptToolsEndpoint,
   executeScopedToolByName,
+  publicToolError,
   buildBearerChallenge,
 };

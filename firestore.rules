@@ -719,5 +719,32 @@ service cloud.firestore {
     match /mcpApiKeys/{keyHash} {
       allow read, write: if false;
     }
+    match /mcpIdempotency/{operationKey} {
+      allow read, write: if false;
+    }
+    match /mcpAuditLogs/{eventId} {
+      allow read, write: if false;
+    }
+    match /oauthClients/{clientId} {
+      allow read, write: if false;
+    }
+    match /oauthAuthorizationRequests/{requestId} {
+      allow read, write: if false;
+    }
+    match /oauthAuthCodes/{code} {
+      allow read, write: if false;
+    }
+    match /oauthAccessTokens/{tokenId} {
+      allow read, write: if false;
+    }
+    match /oauthRefreshTokens/{tokenId} {
+      allow read, write: if false;
+    }
+    match /oauthSessions/{sessionId} {
+      allow read, write: if false;
+    }
+    match /oauthRateLimits/{bucketId} {
+      allow read, write: if false;
+    }
   }
 }

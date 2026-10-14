@@ -1135,6 +1135,7 @@ export interface CreateMcpKeyParams {
   keyName: string;
   scopes: string[];
   rateLimitPerHour?: number;
+  idempotencyKey: string;
 }
 
 export interface CreateMcpKeyResult {

@@ -94,6 +94,7 @@ function sanitizeOrderForAi(id, data = {}) {
     createdByName: String(data.createdByName || ''),
     assignedTo: String(data.assignedTo || ''),
     assignedToName: String(data.assignedToName || ''),
+    version: Number.isSafeInteger(data.version) && data.version > 0 ? data.version : 1,
     isDeleted: Boolean(data.deletedAt || data.isDeleted),
   };
 }
@@ -200,6 +201,28 @@ class AiDataRepositories {
     return filtered;
   }
 
+  /** Busca um pedido por ID ou número e valida a posse antes de devolvê-lo. */
+  async getScopedOrderDocument(scope, identifier) {
+    if (!this.db || typeof identifier !== 'string' || !identifier.trim()) return null;
+    const value = identifier.trim();
+    const candidates = [];
+    if (!value.includes('/')) {
+      const direct = await this.db.collection('orders').doc(value).get();
+      if (direct.exists) candidates.push(direct);
+    }
+    if (!candidates.length) {
+      const matches = await this.db.collection('orders').where('orderNumber', '==', value).limit(2).get();
+      candidates.push(...(matches.docs || []));
+    }
+    const scoped = candidates.filter((doc) => {
+      const data = doc.data() || {};
+      return filterOrdersByScope([{ ...data, id: doc.id }], scope).length > 0;
+    });
+    if (scoped.length !== 1) return null;
+    const doc = scoped[0];
+    return { id: doc.id, ref: doc.ref, data: doc.data() || {} };
+  }
+
   /**
    * Busca clientes autorizados no escopo do usuário com paginação e suporte a agregações completas
    */
@@ -296,6 +319,16 @@ class AiDataRepositories {
       hasMore,
       isPartial: rawList.length >= maxSafetyCeiling,
     };
+  }
+
+  /** Busca um cliente por ID e valida o escopo de acesso antes de devolvê-lo. */
+  async getScopedCustomerDocument(scope, customerId) {
+    if (!this.db || typeof customerId !== 'string' || !customerId.trim() || customerId.includes('/')) return null;
+    const snap = await this.db.collection('customers').doc(customerId.trim()).get();
+    if (!snap.exists) return null;
+    const data = snap.data() || {};
+    if (!filterCustomersByScope([{ ...data, id: snap.id }], scope).length) return null;
+    return { id: snap.id, ref: snap.ref, data };
   }
 
   /**

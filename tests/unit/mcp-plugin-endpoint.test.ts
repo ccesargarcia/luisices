@@ -34,7 +34,8 @@ describe('MCP & ChatGPT Plugin / OpenAPI 3.0.3 Specification', () => {
       const expectedTools = [
         'query_orders_view', 'daily_briefing', 'query_customers', 'get_financial_summary',
         'calculate_pricing_estimate', 'generate_whatsapp_message', 'get_order_form',
-        'extract_order_draft', 'create_order', 'search_gallery_portfolio', 'get_user_summary',
+        'extract_order_draft', 'create_order', 'update_order', 'query_order_payments',
+        'register_order_payment', 'create_customer', 'update_customer', 'search_gallery_portfolio', 'get_user_summary',
       ];
 
       expect(TOOLS_METADATA.map((tool) => tool.name)).toEqual(expectedTools);

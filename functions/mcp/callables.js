@@ -8,6 +8,29 @@ const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { assertActiveSession } = require('../common/helpers');
 const { COLLECTIONS, MCP_SCOPES, DEFAULT_RATE_LIMIT_PER_HOUR } = require('./constants');
 const { generateApiKey, invalidateKeyCache, clearMcpAuthCache } = require('./auth');
+const { consumeSharedRateLimit, getEffectiveUserScopes } = require('./oauth');
+const crypto = require('crypto');
+
+function getPayload(request, allowedFields) {
+  const data = request.data === undefined ? {} : request.data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new HttpsError('invalid-argument', 'Os parâmetros da solicitação devem ser um objeto.');
+  const unknown = Object.keys(data).find((key) => !allowedFields.includes(key));
+  if (unknown) throw new HttpsError('invalid-argument', `Parâmetro não permitido: ${unknown}.`);
+  return data;
+}
+
+function validateDocumentId(value, label) {
+  if (typeof value !== 'string' || !value.trim() || value.length > 128 || value.includes('/') || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new HttpsError('invalid-argument', `${label} inválido.`);
+  }
+  return value.trim();
+}
+
+async function enforceManagementRateLimit(db, uid, operation, limit = 60) {
+  if (!await consumeSharedRateLimit(db, `mcp-management:${uid}:${operation}`, limit)) {
+    throw new HttpsError('resource-exhausted', 'Limite de operações da integração MCP excedido. Tente novamente mais tarde.');
+  }
+}
 
 /**
  * Validação de sessão do administrador estrito (para ações globais/elegibilidade).
@@ -61,6 +84,7 @@ const getMcpSettingsStatus = onCall({ cors: true, maxInstances: 5 }, async (requ
   const { profile, isAdmin } = await assertActiveUserWithMcp(request);
   const db = getFirestore();
   const environment = getCurrentEnvironment();
+  await enforceManagementRateLimit(db, profile.uid, 'status', 120);
 
   // 1. Status global
   const globalSnap = await db.collection(COLLECTIONS.SETTINGS).doc(COLLECTIONS.SETTINGS_DOC_MCP).get();
@@ -71,6 +95,7 @@ const getMcpSettingsStatus = onCall({ cors: true, maxInstances: 5 }, async (requ
   if (!isAdmin) {
     keysQuery = keysQuery.where('userId', '==', profile.uid);
   }
+  keysQuery = keysQuery.limit(500);
   const keysSnap = await keysQuery.get();
   const keys = keysSnap.docs.map((doc) => {
     const data = doc.data();
@@ -103,6 +128,7 @@ const getMcpSettingsStatus = onCall({ cors: true, maxInstances: 5 }, async (requ
     if (!isAdmin) {
       sessionsQuery = sessionsQuery.where('userId', '==', profile.uid);
     }
+    sessionsQuery = sessionsQuery.limit(500);
     const sessionsSnap = await sessionsQuery.get();
 
     for (const doc of sessionsSnap.docs) {
@@ -134,6 +160,7 @@ const getMcpSettingsStatus = onCall({ cors: true, maxInstances: 5 }, async (requ
     if (!isAdmin) {
       refreshQuery = refreshQuery.where('userId', '==', profile.uid);
     }
+    refreshQuery = refreshQuery.limit(500);
     const refreshSnap = await refreshQuery.get();
 
     for (const rDoc of refreshSnap.docs) {
@@ -179,8 +206,8 @@ const getMcpSettingsStatus = onCall({ cors: true, maxInstances: 5 }, async (requ
         // Salva na coleção oauthSessions para persistência e normalização
         db.collection('oauthSessions').doc(sid).set({
           ...fallbackSession,
-          refreshToken: rDoc.id,
-          accessToken: rData.accessToken || null,
+          refreshTokenHash: rData.refreshTokenHash || crypto.createHash('sha256').update(rDoc.id).digest('hex'),
+          accessTokenHash: rData.accessTokenHash || (rData.accessToken ? crypto.createHash('sha256').update(rData.accessToken).digest('hex') : null),
         }).catch(() => {});
       }
     }
@@ -198,7 +225,7 @@ const getMcpSettingsStatus = onCall({ cors: true, maxInstances: 5 }, async (requ
   // 4. Usuários da equipe para seleção no modal e monitoramento
   let teamMembers = [];
   if (isAdmin) {
-    const usersSnap = await db.collection(COLLECTIONS.USERS).get();
+    const usersSnap = await db.collection(COLLECTIONS.USERS).limit(500).get();
     teamMembers = usersSnap.docs
       .map((doc) => {
         const u = doc.data();
@@ -210,7 +237,7 @@ const getMcpSettingsStatus = onCall({ cors: true, maxInstances: 5 }, async (requ
           role: u.role || 'funcionario',
           active: u.active !== false && u.status !== 'paused',
           mcpAccess: u.permissions?.mcpAccess !== false,
-          mcpScopes: Array.isArray(u.permissions?.mcpScopes) ? u.permissions.mcpScopes : (Array.isArray(u.mcpScopes) ? u.mcpScopes : undefined),
+          mcpScopes: getEffectiveUserScopes(Object.values(MCP_SCOPES).map((scope) => scope.id), u),
           mcpSessionActive: hasSession,
           lastMcpConnectedAt: u.lastMcpConnectedAt || null,
         };
@@ -225,6 +252,7 @@ const getMcpSettingsStatus = onCall({ cors: true, maxInstances: 5 }, async (requ
         role: profile.role || 'funcionario',
         active: true,
         mcpAccess: true,
+        mcpScopes: getEffectiveUserScopes(Object.values(MCP_SCOPES).map((scope) => scope.id), profile),
         mcpSessionActive: hasActiveMcpSession,
         lastMcpConnectedAt: myActiveSession?.createdAt || null,
       },
@@ -264,21 +292,24 @@ const createMcpApiKey = onCall({ cors: true, maxInstances: 5 }, async (request) 
   const { profile, isAdmin } = await assertActiveUserWithMcp(request);
   const db = getFirestore();
   const environment = getCurrentEnvironment();
+  await enforceManagementRateLimit(db, profile.uid, 'create-key', 20);
 
-  let { userId, keyName, scopes, rateLimitPerHour } = request.data || {};
+  const { userId: requestedUserId, keyName, scopes, rateLimitPerHour, idempotencyKey } = getPayload(request, ['userId', 'keyName', 'scopes', 'rateLimitPerHour', 'idempotencyKey']);
+  let userId = requestedUserId;
 
   // Se não for admin, força a criação exclusivamente para o próprio usuário
   if (!isAdmin) {
     userId = profile.uid;
   }
 
-  if (!userId || typeof userId !== 'string') {
-    throw new HttpsError('invalid-argument', 'O colaborador proprietário da chave é obrigatório.');
-  }
+  userId = validateDocumentId(userId, 'O colaborador proprietário da chave');
 
-  const cleanName = String(keyName || '').trim();
-  if (!cleanName || cleanName.length < 3) {
-    throw new HttpsError('invalid-argument', 'O nome de identificação da chave deve ter no mínimo 3 caracteres.');
+  if (typeof keyName !== 'string' || keyName.trim().length < 3 || keyName.trim().length > 120) {
+    throw new HttpsError('invalid-argument', 'O nome da chave deve conter de 3 a 120 caracteres.');
+  }
+  const cleanName = keyName.trim();
+  if (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
+    throw new HttpsError('invalid-argument', 'Informe uma chave de idempotência válida para criar a chave de acesso.');
   }
 
   // Validação do usuário no Firestore (coleção userProfiles)
@@ -295,32 +326,27 @@ const createMcpApiKey = onCall({ cors: true, maxInstances: 5 }, async (request) 
     throw new HttpsError('failed-precondition', 'Não é possível criar chave para um colaborador inativo.');
   }
 
-  // Habilita mcpAccess automaticamente se o admin gerar para um usuário que estava desativado
-  if (isAdmin && userData.permissions && userData.permissions.mcpAccess === false) {
-    await db.collection(COLLECTIONS.USERS).doc(userId).update({
-      'permissions.mcpAccess': true,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+  if (userData.permissions?.mcpAccess === false) {
+    throw new HttpsError('failed-precondition', 'O acesso MCP está desativado para este perfil. Ative-o nas permissões antes de criar uma chave.');
   }
 
-  // Sanitização de escopos
+  // Validação estrita dos escopos e interseção com as permissões efetivas do perfil.
   const validScopeIds = Object.values(MCP_SCOPES).map((s) => s.id);
-  let cleanScopes = Array.isArray(scopes) ? scopes.filter((s) => validScopeIds.includes(s) || s === '*') : [];
-  if (cleanScopes.length === 0) {
-    cleanScopes = ['orders:read', 'customers:read', 'pricing:estimate'];
+  if (!Array.isArray(scopes) || scopes.length === 0 || scopes.length > validScopeIds.length
+      || new Set(scopes).size !== scopes.length || scopes.some((scope) => typeof scope !== 'string' || !validScopeIds.includes(scope))) {
+    throw new HttpsError('invalid-argument', 'Selecione uma lista não vazia de escopos MCP válidos, sem duplicatas.');
   }
-
-  // Proteção: colaborador comum não pode ter escopos exclusivos de admin
-  if (userData.role !== 'admin' || !isAdmin) {
-    cleanScopes = cleanScopes.filter((scopeId) => {
-      const scopeDef = Object.values(MCP_SCOPES).find((s) => s.id === scopeId);
-      return !scopeDef?.requiresAdmin;
-    });
+  const cleanScopes = getEffectiveUserScopes(scopes, userData);
+  if (cleanScopes.length !== scopes.length) {
+    throw new HttpsError('permission-denied', 'Um ou mais escopos não estão permitidos pelas permissões granulares do perfil selecionado.');
   }
 
   // Geração criptográfica da chave
   const { rawKey, keyHash, keyId, keyPrefix } = generateApiKey(environment);
-  const safeRateLimit = Math.max(10, Math.min(300, Number(rateLimitPerHour) || DEFAULT_RATE_LIMIT_PER_HOUR));
+  const safeRateLimit = rateLimitPerHour === undefined ? DEFAULT_RATE_LIMIT_PER_HOUR : Number(rateLimitPerHour);
+  if (!Number.isSafeInteger(safeRateLimit) || safeRateLimit < 10 || safeRateLimit > 300) {
+    throw new HttpsError('invalid-argument', 'O limite de chamadas deve ser um inteiro entre 10 e 300 por hora.');
+  }
 
   const keyDocData = {
     keyId,
@@ -340,7 +366,20 @@ const createMcpApiKey = onCall({ cors: true, maxInstances: 5 }, async (request) 
     environment,
   };
 
-  await db.collection(COLLECTIONS.KEYS).doc(keyHash).set(keyDocData);
+  const requestHash = crypto.createHash('sha256').update(`${profile.uid}:create-key:${idempotencyKey}`).digest('hex');
+  const payloadHash = crypto.createHash('sha256').update(JSON.stringify({ userId, keyName: cleanName, scopes: cleanScopes, rateLimitPerHour: safeRateLimit })).digest('hex');
+  const requestRef = db.collection('mcpIdempotency').doc(requestHash);
+  const keyRef = db.collection(COLLECTIONS.KEYS).doc(keyHash);
+  await db.runTransaction(async (transaction) => {
+    const requestSnap = await transaction.get(requestRef);
+    if (requestSnap.exists) {
+      const prior = requestSnap.data() || {};
+      if (prior.payloadHash !== payloadHash) throw new HttpsError('already-exists', 'Esta chave de idempotência já foi usada para outra solicitação.');
+      throw new HttpsError('failed-precondition', 'Esta solicitação já criou uma chave. A chave secreta só é exibida uma vez; consulte ou revogue a chave existente antes de tentar novamente.');
+    }
+    transaction.create(keyRef, keyDocData);
+    transaction.create(requestRef, { payloadHash, keyId, keyHash, completed: true, createdAt: FieldValue.serverTimestamp() });
+  });
 
   return {
     success: true,
@@ -359,11 +398,10 @@ const createMcpApiKey = onCall({ cors: true, maxInstances: 5 }, async (request) 
 const toggleMcpApiKey = onCall({ cors: true, maxInstances: 5 }, async (request) => {
   const { profile, isAdmin } = await assertActiveUserWithMcp(request);
   const db = getFirestore();
-  const { keyId, enabled } = request.data || {};
-
-  if (!keyId) {
-    throw new HttpsError('invalid-argument', 'Identificador da chave não fornecido.');
-  }
+  await enforceManagementRateLimit(db, profile.uid, 'toggle-key');
+  const { keyId: rawKeyId, enabled } = getPayload(request, ['keyId', 'enabled']);
+  const keyId = validateDocumentId(rawKeyId, 'Identificador da chave');
+  if (!/^k_(?:dev|live)_[a-f0-9]{12}$/.test(keyId) || typeof enabled !== 'boolean') throw new HttpsError('invalid-argument', 'Identificador e estado booleano da chave são obrigatórios.');
 
   const querySnap = await db.collection(COLLECTIONS.KEYS).where('keyId', '==', keyId).limit(1).get();
   if (querySnap.empty) {
@@ -380,7 +418,7 @@ const toggleMcpApiKey = onCall({ cors: true, maxInstances: 5 }, async (request) 
     throw new HttpsError('permission-denied', 'Você não tem permissão para alterar esta chave.');
   }
 
-  const newEnabled = Boolean(enabled);
+  const newEnabled = enabled;
   await docRef.update({
     enabled: newEnabled,
     updatedAt: FieldValue.serverTimestamp(),
@@ -401,11 +439,10 @@ const toggleMcpApiKey = onCall({ cors: true, maxInstances: 5 }, async (request) 
 const revokeMcpApiKey = onCall({ cors: true, maxInstances: 5 }, async (request) => {
   const { profile, isAdmin } = await assertActiveUserWithMcp(request);
   const db = getFirestore();
-  const { keyId } = request.data || {};
-
-  if (!keyId) {
-    throw new HttpsError('invalid-argument', 'Identificador da chave não fornecido.');
-  }
+  await enforceManagementRateLimit(db, profile.uid, 'revoke-key');
+  const { keyId: rawKeyId } = getPayload(request, ['keyId']);
+  const keyId = validateDocumentId(rawKeyId, 'Identificador da chave');
+  if (!/^k_(?:dev|live)_[a-f0-9]{12}$/.test(keyId)) throw new HttpsError('invalid-argument', 'Identificador da chave inválido.');
 
   const querySnap = await db.collection(COLLECTIONS.KEYS).where('keyId', '==', keyId).limit(1).get();
   if (querySnap.empty) {
@@ -435,11 +472,13 @@ const revokeMcpApiKey = onCall({ cors: true, maxInstances: 5 }, async (request) 
  * Alterna o interruptor global de integração MCP (Apenas Admin).
  */
 const toggleGlobalMcp = onCall({ cors: true, maxInstances: 5 }, async (request) => {
-  await assertActiveAdmin(request);
+  const profile = await assertActiveAdmin(request);
   const db = getFirestore();
-  const { enabled } = request.data || {};
+  await enforceManagementRateLimit(db, profile.uid, 'toggle-global');
+  const { enabled } = getPayload(request, ['enabled']);
+  if (typeof enabled !== 'boolean') throw new HttpsError('invalid-argument', 'O parâmetro "enabled" deve ser booleano.');
 
-  const newEnabled = Boolean(enabled);
+  const newEnabled = enabled;
 
   await db.collection(COLLECTIONS.SETTINGS).doc(COLLECTIONS.SETTINGS_DOC_MCP).set(
     {
@@ -461,13 +500,11 @@ const toggleGlobalMcp = onCall({ cors: true, maxInstances: 5 }, async (request) 
  * Atualiza a elegibilidade de um usuário para utilizar MCP/ChatGPT (Apenas Admin).
  */
 const setUserMcpEligibility = onCall({ cors: true, maxInstances: 5 }, async (request) => {
-  await assertActiveAdmin(request);
+  const profile = await assertActiveAdmin(request);
   const db = getFirestore();
-  const { targetUid, eligible, scopes } = request.data || {};
-
-  if (!targetUid || typeof targetUid !== 'string' || !targetUid.trim()) {
-    throw new HttpsError('invalid-argument', 'Identificador do usuário inválido ou não informado.');
-  }
+  await enforceManagementRateLimit(db, profile.uid, 'set-eligibility');
+  const { targetUid: rawTargetUid, eligible, scopes } = getPayload(request, ['targetUid', 'eligible', 'scopes']);
+  const targetUid = validateDocumentId(rawTargetUid, 'Identificador do usuário');
 
   if (typeof eligible !== 'boolean') {
     throw new HttpsError('invalid-argument', 'O parâmetro "eligible" deve ser um booleano.');
@@ -480,7 +517,7 @@ const setUserMcpEligibility = onCall({ cors: true, maxInstances: 5 }, async (req
   };
 
   if (scopes !== undefined) {
-    if (!Array.isArray(scopes)) {
+    if (!Array.isArray(scopes) || scopes.length > validScopeIds.length) {
       throw new HttpsError('invalid-argument', 'O parâmetro "scopes" deve ser um array.');
     }
     if (new Set(scopes).size !== scopes.length) {
@@ -515,11 +552,15 @@ const setUserMcpEligibility = onCall({ cors: true, maxInstances: 5 }, async (req
 const revokeMcpSession = onCall({ cors: true, maxInstances: 5 }, async (request) => {
   const { profile, isAdmin } = await assertActiveUserWithMcp(request);
   const db = getFirestore();
-  const { sessionId, targetUid } = request.data || {};
+  await enforceManagementRateLimit(db, profile.uid, 'revoke-session');
+  const { sessionId: rawSessionId, targetUid: rawTargetUid } = getPayload(request, ['sessionId', 'targetUid']);
+  const sessionId = rawSessionId === undefined ? undefined : validateDocumentId(rawSessionId, 'Identificador da sessão');
+  const targetUid = rawTargetUid === undefined ? undefined : validateDocumentId(rawTargetUid, 'Identificador do usuário');
 
-  if (!sessionId && !targetUid) {
+  if ((!sessionId && !targetUid) || (sessionId && targetUid)) {
     throw new HttpsError('invalid-argument', 'Identificador da sessão MCP ou ID do usuário não informado.');
   }
+  if (sessionId && !/^sess_[A-Za-z0-9_-]{16,64}$/.test(sessionId)) throw new HttpsError('invalid-argument', 'Identificador da sessão inválido.');
 
   // Revogação de todas as sessões de um usuário específico (por targetUid)
   if (targetUid) {
@@ -611,21 +652,19 @@ const revokeMcpSession = onCall({ cors: true, maxInstances: 5 }, async (request)
       revoked: true,
       revokedAt: FieldValue.serverTimestamp(),
       revokedBy: profile.uid,
+      accessToken: FieldValue.delete(),
+      refreshToken: FieldValue.delete(),
     });
   }
 
   // 6. Invalida tokens de acesso e refresh associados
-  if (sessionData.accessToken) {
-    await db.collection('oauthAccessTokens').doc(sessionData.accessToken).update({
-      revoked: true,
-      revokedAt: FieldValue.serverTimestamp(),
-    }).catch(() => {});
+  const accessTokenIds = new Set([sessionData.accessTokenHash, sessionData.accessToken && crypto.createHash('sha256').update(sessionData.accessToken).digest('hex'), sessionData.accessToken].filter(Boolean));
+  const refreshTokenIds = new Set([sessionData.refreshTokenHash, sessionData.refreshToken && crypto.createHash('sha256').update(sessionData.refreshToken).digest('hex'), sessionData.refreshToken].filter(Boolean));
+  for (const tokenId of accessTokenIds) {
+    await db.collection('oauthAccessTokens').doc(tokenId).update({ revoked: true, revokedAt: FieldValue.serverTimestamp() }).catch(() => {});
   }
-  if (sessionData.refreshToken) {
-    await db.collection('oauthRefreshTokens').doc(sessionData.refreshToken).update({
-      revoked: true,
-      revokedAt: FieldValue.serverTimestamp(),
-    }).catch(() => {});
+  for (const tokenId of refreshTokenIds) {
+    await db.collection('oauthRefreshTokens').doc(tokenId).update({ revoked: true, revokedAt: FieldValue.serverTimestamp() }).catch(() => {});
   }
 
   // Invalida quaisquer tokens vinculados ao sessionId
@@ -667,10 +706,13 @@ const revokeMcpSession = onCall({ cors: true, maxInstances: 5 }, async (request)
  * Consulta histórico recente de logs de auditoria de chamadas do MCP (apenas Administradores).
  */
 const getMcpAuditLogs = onCall({ cors: true, maxInstances: 5 }, async (request) => {
-  await assertActiveAdmin(request);
+  const profile = await assertActiveAdmin(request);
 
   const db = getFirestore();
-  const limitCount = Math.min(50, Math.max(5, Number(request.data?.limit) || 20));
+  await enforceManagementRateLimit(db, profile.uid, 'audit-logs', 120);
+  const { limit } = getPayload(request, ['limit']);
+  if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > 50)) throw new HttpsError('invalid-argument', 'O limite deve ser um inteiro entre 1 e 50.');
+  const limitCount = limit ?? 20;
 
   let snapshot;
   try {
