@@ -60,6 +60,7 @@ jobs:
       need_e2e: ${{ steps.targets.outputs.need_e2e }}
       need_functions_validation: ${{ steps.targets.outputs.need_functions_validation }}
       has_changes: ${{ steps.targets.outputs.has_changes }}
+      mcp_metadata: ${{ steps.targets.outputs.mcp_metadata }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -96,6 +97,10 @@ jobs:
               - 'vitest*.ts'
             integration_tests:
               - 'tests/integration/**'
+            mcp_metadata:
+              - 'functions/mcp/**'
+              - 'cloudflare/api-worker/**'
+              - 'public/.well-known/**'
             ci:
               - '.github/workflows/deploy-dev.yml'
               - '.github/workflows/test-actions.yml'
@@ -115,6 +120,7 @@ jobs:
           FILTER_UNIT_TESTS: ${{ steps.filter.outputs.unit_tests }}
           FILTER_INTEGRATION_TESTS: ${{ steps.filter.outputs.integration_tests }}
           FILTER_CI: ${{ steps.filter.outputs.ci }}
+          FILTER_MCP_METADATA: ${{ steps.filter.outputs.mcp_metadata }}
         run: |
           # 1. Identificar flags na mensagem do commit e inputs
           SKIP_TESTS=false
@@ -206,6 +212,7 @@ jobs:
           echo "need_e2e=$NEED_E2E" >> "$GITHUB_OUTPUT"
           echo "need_functions_validation=$NEED_FUNCTIONS_VALIDATION" >> "$GITHUB_OUTPUT"
           echo "has_changes=$HAS_CHANGES" >> "$GITHUB_OUTPUT"
+          echo "mcp_metadata=$FILTER_MCP_METADATA" >> "$GITHUB_OUTPUT"
 
           echo "============================================="
           echo "🎯 Estratégia de Execução da Pipeline:"
@@ -491,3 +498,11 @@ jobs:
 
           echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Dev)..."
           npx --yes firebase-tools@15.32.1 functions:secrets:prune --project luisices-dev --force --non-interactive
+
+      - name: Purgar Cache da Borda Cloudflare (OpenAPI & Manifestos MCP)
+        if: needs.detect-changes.outputs.mcp_metadata == 'true' || inputs.deploy_target == 'all'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          echo "🧹 Alterações detectadas em rotas/schemas do MCP. Purgando cache da borda na Cloudflare (Dev)..."
+          node scripts/purge-cloudflare-cache.mjs dev

@@ -83,6 +83,7 @@ export default {
         headers: {
           ...CORS_HEADERS,
           'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'public, max-age=86400, stale-while-revalidate=3600',
         },
       });
     }
@@ -154,6 +155,38 @@ export default {
         requestBody = await request.arrayBuffer();
       }
 
+      const isCacheableMetadata =
+        request.method === 'GET' &&
+        (
+          url.pathname === '/openapi.json' ||
+          url.pathname === '/openapi.yaml' ||
+          url.pathname === '/schema' ||
+          url.pathname === '/.well-known/oauth-protected-resource' ||
+          url.pathname === '/.well-known/oauth-authorization-server' ||
+          url.pathname === '/.well-known/openid-configuration'
+        ) &&
+        !request.headers.has('Authorization');
+
+      // 5.1 Se for rota de metadado cacheável, tenta servir do cache da borda da Cloudflare
+      const cache = typeof caches !== 'undefined' && caches?.default ? caches.default : null;
+      const cacheKey = new Request(url.toString(), { method: 'GET' });
+      if (isCacheableMetadata && cache) {
+        try {
+          const cachedResponse = await cache.match(cacheKey);
+          if (cachedResponse) {
+            const cachedHeaders = new Headers(cachedResponse.headers);
+            cachedHeaders.set('X-Edge-Cache', 'HIT');
+            return new Response(cachedResponse.body, {
+              status: cachedResponse.status,
+              statusText: cachedResponse.statusText,
+              headers: cachedHeaders,
+            });
+          }
+        } catch (_err) {
+          // Fallback silencioso se o cache não estiver disponível
+        }
+      }
+
       const originResponse = await fetch(targetUrl.toString(), {
         method: request.method,
         headers: forwardHeaders,
@@ -175,6 +208,21 @@ export default {
           loc = loc.replace(/^https?:\/\/[^\/]+(\/chatGptToolsEndpoint)?/, `https://${url.hostname}`);
           responseHeaders.set('location', loc);
         }
+      }
+
+      // 5.2 Se for rota de metadado cacheável e origin retornou 200, armazena no cache da borda
+      if (isCacheableMetadata && originResponse.status === 200) {
+        responseHeaders.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600');
+        responseHeaders.set('X-Edge-Cache', 'MISS');
+        const edgeCachedResponse = new Response(originResponse.body, {
+          status: originResponse.status,
+          statusText: originResponse.statusText,
+          headers: responseHeaders,
+        });
+        if (cache && ctx && typeof ctx.waitUntil === 'function') {
+          ctx.waitUntil(cache.put(cacheKey, edgeCachedResponse.clone()).catch(() => {}));
+        }
+        return edgeCachedResponse;
       }
 
       return new Response(originResponse.body, {

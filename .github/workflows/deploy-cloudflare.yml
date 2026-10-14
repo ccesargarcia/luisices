@@ -96,6 +96,8 @@ jobs:
             echo "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" | npx wrangler secret put ORIGIN_SECRET -c cloudflare/api-worker/wrangler.toml -e dev || true
           fi
           npx wrangler deploy -c cloudflare/api-worker/wrangler.toml -e dev
+          echo "🧹 Purgando cache das rotas MCP após deploy do API Gateway Worker (Dev)..."
+          node scripts/purge-cloudflare-cache.mjs dev
 
       # ─── DEPLOY NO AMBIENTE DE PRODUÇÃO ─────────────────────────────────────
       - name: Deploy CDN Worker (Produção)
@@ -122,3 +124,5 @@ jobs:
             echo "${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" | npx wrangler secret put ORIGIN_SECRET -c cloudflare/api-worker/wrangler.toml -e production || true
           fi
           npx wrangler deploy -c cloudflare/api-worker/wrangler.toml -e production
+          echo "🧹 Purgando cache das rotas MCP após deploy do API Gateway Worker (Produção)..."
+          node scripts/purge-cloudflare-cache.mjs prod
