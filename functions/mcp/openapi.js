@@ -1,5 +1,5 @@
 /**
- * Gerador Dinâmico da Especificação OpenAPI 3.1.0 para Plugins ChatGPT e Clientes MCP.
+ * Gerador Dinâmico da Especificação OpenAPI 3.0.3 para Plugins ChatGPT.
  */
 
 const { TOOL_SCOPE_MAP, MCP_SCOPES } = require('./constants');
@@ -395,7 +395,7 @@ const TOOLS_METADATA = [
       required: ['orderNumber', 'amount', 'method', 'idempotencyKey', 'confirmed'],
       properties: {
         orderNumber: { type: 'string', description: 'Número do pedido ou ID do documento.' },
-        amount: { type: 'number', minimum: 0, exclusiveMinimum: true, description: 'Valor recebido em reais.' },
+        amount: { type: 'number', exclusiveMinimum: 0, description: 'Valor recebido em reais.' },
         method: { type: 'string', enum: ['pix', 'cash', 'credit', 'debit', 'transfer'], description: 'Forma de pagamento.' },
         notes: { type: 'string', maxLength: 300, description: 'Referência ou observação opcional.' },
         idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{8,128}$', description: 'Identificador único da operação. Mantenha o mesmo valor se a chamada for repetida.' },
@@ -492,8 +492,33 @@ const TOOLS_METADATA = [
   },
 ];
 
+// MCP publishes JSON Schema (2020-12), where exclusiveMinimum is numeric.
+// OpenAPI 3.0.3 uses the older boolean form, so translate only in that output.
+function toOpenApi30Schema(schema) {
+  const converted = { ...schema };
+
+  if (typeof converted.exclusiveMinimum === 'number') {
+    converted.minimum = converted.exclusiveMinimum;
+    converted.exclusiveMinimum = true;
+  }
+  if (typeof converted.exclusiveMaximum === 'number') {
+    converted.maximum = converted.exclusiveMaximum;
+    converted.exclusiveMaximum = true;
+  }
+  if (converted.properties && typeof converted.properties === 'object') {
+    converted.properties = Object.fromEntries(
+      Object.entries(converted.properties).map(([key, value]) => [key, toOpenApi30Schema(value)])
+    );
+  }
+  if (converted.items && typeof converted.items === 'object') {
+    converted.items = toOpenApi30Schema(converted.items);
+  }
+
+  return converted;
+}
+
 /**
- * Gera a especificação OpenAPI 3.1.0 dinâmica.
+ * Gera a especificação OpenAPI 3.0.3 dinâmica.
  * @param {string} baseUrl - URL base da Cloud Function
  * @param {string[]} [allowedScopes] - Se informado, filtra apenas as ferramentas autorizadas para a chave
  */
@@ -518,7 +543,7 @@ function buildOpenApiSchema(baseUrl, allowedScopes = null) {
           required: Boolean(tool.requestBody && Array.isArray(tool.requestBody.required) && tool.requestBody.required.length > 0),
           content: {
             'application/json': {
-                  schema: { ...tool.requestBody, additionalProperties: false },
+                  schema: toOpenApi30Schema({ ...tool.requestBody, additionalProperties: false }),
             },
           },
         },

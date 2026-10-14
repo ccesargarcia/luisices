@@ -69,6 +69,16 @@ describe('MCP & ChatGPT Plugin / OpenAPI 3.0.3 Specification', () => {
       expect(exposedPaths).not.toContain('/tools/get_financial_summary');
       expect(exposedPaths).not.toContain('/tools/calculate_pricing_estimate');
     });
+
+    it('mantém a regra de valor positivo válida no MCP JSON Schema e no OpenAPI 3.0.3', () => {
+      const paymentTool = TOOLS_METADATA.find((tool) => tool.name === 'register_order_payment');
+      const schema = buildOpenApiSchema('https://api.dev.luisices.com.br/chatGptToolsEndpoint');
+      const openApiAmount = schema.paths['/tools/register_order_payment'].post.requestBody.content['application/json'].schema.properties.amount;
+
+      expect(paymentTool?.requestBody.properties.amount).toMatchObject({ type: 'number', exclusiveMinimum: 0 });
+      expect(openApiAmount).toMatchObject({ type: 'number', minimum: 0, exclusiveMinimum: true });
+      expect(typeof openApiAmount.exclusiveMinimum).toBe('boolean');
+    });
   });
 
   describe('Cloudflare Worker: Plugin Manifest & Smart Routing', () => {
