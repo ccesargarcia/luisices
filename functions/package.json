@@ -6,8 +6,8 @@
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",
-    "deploy": "firebase deploy --only functions && firebase functions:secrets:prune -f",
-    "secrets:prune": "firebase functions:secrets:prune -f",
+    "deploy": "firebase deploy --only functions && firebase functions:secrets:prune -f --non-interactive",
+    "secrets:prune": "firebase functions:secrets:prune -f --non-interactive",
     "logs": "firebase functions:log"
   },
   "engines": {

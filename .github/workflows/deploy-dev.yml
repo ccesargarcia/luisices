@@ -486,3 +486,6 @@ jobs:
             npx --yes firebase-tools@15.32.1 deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession" --project luisices-dev --non-interactive
             npx --yes firebase-tools@15.32.1 deploy --only "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint" --project luisices-dev --non-interactive
           fi
+
+          echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Dev)..."
+          npx --yes firebase-tools@15.32.1 functions:secrets:prune --project luisices-dev --force --non-interactive
