@@ -331,7 +331,10 @@ const chatGptToolsEndpoint = onRequest(
 
       const schema = buildOpenApiSchema(baseUrl, allowedScopes);
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.setHeader('Cache-Control', 'public, max-age=300');
+      // This schema can be filtered by the caller's OAuth scopes. Never let a
+      // shared cache reuse one user's tool catalog for another connection.
+      res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+      res.setHeader('Vary', 'Authorization');
       return res.status(200).json(schema);
     }
 
