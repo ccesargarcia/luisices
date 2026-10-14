@@ -80,6 +80,8 @@ jobs:
               - 'tsconfig*.json'
             functions:
               - 'functions/**'
+              - '.github/workflows/deploy-dev.yml'
+              - 'package.json'
             rules:
               - 'firestore.rules'
               - 'firestore.indexes.json'
