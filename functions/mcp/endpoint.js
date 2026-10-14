@@ -311,7 +311,7 @@ const chatGptToolsEndpoint = onRequest(
 
     if (rawPath === 'oauth/consent') {
       if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' });
-      return await handleOAuthConsentInfo(req, res, db);
+      return await handleOAuthConsentInfo(req, res, db, getAuth);
     }
 
     // ─── ROTA 0.5: Endpoint de Emissão / Renovação de Token OAuth 2.1 (POST /oauth/token) ──

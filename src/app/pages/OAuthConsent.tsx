@@ -33,6 +33,8 @@ export function OAuthConsent() {
   const [loading, setLoading] = useState(false);
   const [clientName, setClientName] = useState('Cliente MCP');
   const [scopes, setScopes] = useState<string[]>([]);
+  const [authenticatedEmail, setAuthenticatedEmail] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const apiOrigin = useMemo(() => {
     if (typeof window === 'undefined') return null;
     return resolveOAuthApiOrigin({
@@ -55,12 +57,11 @@ export function OAuthConsent() {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error_description || 'Solicitação OAuth inválida.');
         setClientName(data.client_name);
-        setScopes(data.scopes || []);
       })
       .catch((err) => setError(err?.message || 'Solicitação OAuth inválida.'));
   }, [apiUrl, requestId]);
 
-  async function authorize(event: FormEvent) {
+  async function previewPermissions(event: FormEvent) {
     event.preventDefault();
     setError('');
     if (!apiUrl) {
@@ -75,6 +76,42 @@ export function OAuthConsent() {
     try {
       const user = await firebaseAuthService.login(email, password);
       const idToken = await user.getIdToken(true);
+      const infoUrl = apiUrl.replace('/oauth/authorize', '/oauth/consent');
+      const response = await fetch(`${infoUrl}?request_id=${encodeURIComponent(requestId)}`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      const result = await response.json();
+      if (!response.ok || result.requires_login) throw new Error(result.error_description || 'Não foi possível consultar as permissões deste perfil.');
+      const effectiveScopes = Array.isArray(result.scopes) ? result.scopes : [];
+      setClientName(result.client_name || clientName);
+      setScopes(effectiveScopes);
+      setAuthenticatedEmail(user.email || email);
+      setIsAuthenticated(true);
+      setPassword('');
+      if (!effectiveScopes.length) setError('Seu perfil não possui funcionalidades liberadas para esta integração.');
+    } catch (err: any) {
+      setError(err?.message || 'Falha ao autenticar e consultar as permissões.');
+    } finally {
+      setLoading(false);
+      setPassword('');
+    }
+  }
+
+  async function authorize() {
+    setError('');
+    if (!apiUrl || !requestId) {
+      setError('Solicitação OAuth inválida. Recomece a conexão pelo ChatGPT.');
+      return;
+    }
+    const user = firebaseAuthService.getCurrentUser();
+    if (!user) {
+      setIsAuthenticated(false);
+      setError('Sua sessão expirou. Entre novamente para consultar as permissões.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const idToken = await user.getIdToken(true);
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
@@ -84,10 +121,9 @@ export function OAuthConsent() {
       if (!response.ok || !result.redirect_uri) throw new Error(result.error_description || 'Não foi possível concluir a autorização.');
       window.location.assign(result.redirect_uri);
     } catch (err: any) {
-      setError(err?.message || 'Falha ao autenticar ou autorizar a integração.');
+      setError(err?.message || 'Falha ao autorizar a integração.');
     } finally {
       setLoading(false);
-      setPassword('');
     }
   }
 
@@ -97,37 +133,59 @@ export function OAuthConsent() {
         <CardHeader>
           <CardTitle>Autorizar acesso ao Luisices</CardTitle>
           <CardDescription>
-            {clientName} solicita acesso às funcionalidades abaixo. A lista mostra o que foi solicitado; o acesso concedido também depende do papel e das permissões do seu perfil Luisices.
+            {isAuthenticated
+              ? `Permissões que o perfil ${authenticatedEmail} pode conceder a ${clientName}.`
+              : `${clientName} solicita acesso. Entre na sua conta Luisices para carregar as permissões efetivas do seu perfil.`}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={authorize} className="space-y-4">
-            <div className="space-y-2"><Label htmlFor="oauth-email">E-mail</Label><Input id="oauth-email" type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} /></div>
-            <div className="space-y-2"><Label htmlFor="oauth-password">Senha</Label><Input id="oauth-password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></div>
+          <form onSubmit={previewPermissions} className="space-y-4">
+            {!isAuthenticated && (
+              <>
+                <div className="space-y-2"><Label htmlFor="oauth-email">E-mail</Label><Input id="oauth-email" type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} /></div>
+                <div className="space-y-2"><Label htmlFor="oauth-password">Senha</Label><Input id="oauth-password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></div>
+              </>
+            )}
 
-            <div className="rounded-xl border bg-muted/30 p-3.5 space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block">
-                Funcionalidades Solicitadas:
-              </span>
-              <ul className="space-y-2.5 text-xs">
-                {scopes.map((scope) => {
-                  const info = SCOPE_DESCRIPTIONS[scope] || { label: scope, description: 'A funcionalidade só será liberada se estiver autorizada no perfil Luisices.' };
-                  return (
-                    <li key={scope} className="flex items-start gap-2.5">
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-[10px] font-bold mt-0.5">•</span>
-                      <div>
-                        <span className="font-semibold text-foreground block">{info.label}</span>
-                        <span className="text-muted-foreground text-[11px] block">{info.description}</span>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            {!isAuthenticated ? (
+              <p className="text-xs text-muted-foreground">As permissões serão consultadas após o login. A integração só receberá os acessos autorizados pelo seu perfil e papel.</p>
+            ) : (
+              <div className="rounded-xl border bg-muted/30 p-3.5 space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block">
+                  Permissões efetivas deste perfil ({scopes.length}):
+                </span>
+                {scopes.length ? (
+                  <ul className="space-y-2.5 text-xs">
+                    {scopes.map((scope) => {
+                      const info = SCOPE_DESCRIPTIONS[scope] || { label: scope, description: 'Permissão concedida pelo perfil Luisices.' };
+                      return (
+                        <li key={scope} className="flex items-start gap-2.5">
+                          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary text-[10px] font-bold mt-0.5">✓</span>
+                          <div>
+                            <span className="font-semibold text-foreground block">{info.label}</span>
+                            <span className="text-muted-foreground text-[11px] block">{info.description}</span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Nenhuma funcionalidade está liberada no perfil.</p>
+                )}
+              </div>
+            )}
 
-            <p className="text-xs text-muted-foreground">Sua senha é validada pelo Firebase Authentication. A autorização fica vinculada ao seu usuário e às suas permissões do ateliê.</p>
+            {!isAuthenticated && <p className="text-xs text-muted-foreground">Sua senha é validada pelo Firebase Authentication e não é compartilhada com o ChatGPT.</p>}
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-            <Button className="w-full" type="submit" disabled={loading || !apiUrl}>{loading ? 'Validando e autorizando…' : 'Entrar e autorizar'}</Button>
+            {isAuthenticated ? (
+              <Button className="w-full" type="button" onClick={authorize} disabled={loading || !scopes.length || !apiUrl}>
+                {loading ? 'Autorizando…' : 'Confirmar e autorizar'}
+              </Button>
+            ) : (
+              <Button className="w-full" type="submit" disabled={loading || !apiUrl}>
+                {loading ? 'Consultando permissões…' : 'Entrar e consultar permissões'}
+              </Button>
+            )}
           </form>
         </CardContent>
       </Card>

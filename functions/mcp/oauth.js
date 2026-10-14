@@ -390,7 +390,7 @@ async function handleOAuthAuthorize(req, res, db, getAuth) {
   return res.status(200).json({ redirect_uri: callback.toString() });
 }
 
-async function handleOAuthConsentInfo(req, res, db) {
+async function handleOAuthConsentInfo(req, res, db, getAuth) {
   const requestId = req.query?.request_id;
   if (typeof requestId !== 'string' || !/^req_[a-f0-9]{48}$/.test(requestId)) return authError(res, 400, 'invalid_request', 'request_id inválido.');
   const requestSnap = await db.collection('oauthAuthorizationRequests').doc(requestId).get();
@@ -399,7 +399,38 @@ async function handleOAuthConsentInfo(req, res, db) {
   const client = await getOAuthClient(db, request.clientId);
   if (!client || client.enabled === false) return authError(res, 400, 'invalid_client', 'Cliente OAuth desativado.');
   if (client.grantTypes && !client.grantTypes.includes('authorization_code')) return authError(res, 400, 'unauthorized_client', 'Cliente não registrado para authorization_code.');
-  return res.status(200).json({ client_name: client.clientName || 'Cliente MCP', scopes: parseScopes(request.scope) || [] });
+  const requestedScopes = parseScopes(request.scope);
+  if (!requestedScopes) return authError(res, 400, 'invalid_scope', 'Escopos de autorização inválidos.');
+
+  const authorization = req.headers.authorization || req.headers.Authorization || '';
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!match || typeof getAuth !== 'function') {
+    return res.status(200).json({ client_name: client.clientName || 'Cliente MCP', scopes: [], requires_login: true });
+  }
+
+  let decoded;
+  try {
+    decoded = await getAuth().verifyIdToken(match[1].trim(), true);
+  } catch (_err) {
+    return authError(res, 401, 'login_required', 'Entre novamente na sua conta Luisices para consultar as permissões.');
+  }
+  if (!decoded?.uid || !Number.isFinite(decoded.auth_time)) return authError(res, 401, 'login_required', 'A sessão Firebase não contém uma identidade válida.');
+
+  const profileSnap = await db.collection(COLLECTIONS.USERS).doc(decoded.uid).get();
+  if (!profileSnap.exists) return authError(res, 403, 'access_denied', 'Perfil de usuário não localizado.');
+  const profile = profileSnap.data();
+  if (profile.active === false || ['paused', 'inactive', 'disabled'].includes(profile.status)
+      || profile.permissions?.mcpAccess === false
+      || (profile.tokensValidAfterTime && decoded.auth_time <= profile.tokensValidAfterTime)) {
+    return authError(res, 403, 'access_denied', 'Conta inativa, sem permissão MCP ou com sessão revogada.');
+  }
+
+  const effectiveScopes = getEffectiveUserScopes(requestedScopes, profile);
+  return res.status(200).json({
+    client_name: client.clientName || 'Cliente MCP',
+    scopes: effectiveScopes,
+    requires_login: false,
+  });
 }
 
 /**
