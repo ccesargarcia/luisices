@@ -32,7 +32,7 @@ function isValidDateOnly(value) {
 }
 
 function isConfirmed(value) {
-  return value === true || value === 'true' || value === 1 || value === '1';
+  return value === true || value === 'true';
 }
 
 /**

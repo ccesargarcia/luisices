@@ -7,8 +7,13 @@ const Sentry = require('@sentry/node');
 function sanitizeText(value) {
   if (typeof value !== 'string') return value;
   return value
+    .replace(/\bBearer\s+[A-Za-z0-9_\-.~+/]+=*/gi, 'Bearer [REDACTED_TOKEN]')
+    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, '[REDACTED_JWT]')
+    .replace(/\bAIza[0-9A-Za-z-_]{35}\b/g, '[REDACTED_API_KEY]')
+    .replace(/\bre_[A-Za-z0-9_]{20,}\b/g, '[REDACTED_RESEND_KEY]')
+    .replace(/\b(password|passwd|secret|api_?key|auth_?token|access_?token)(\s*[:=]\s*['"]?)[^\s'",;]{6,}(['"]?)/gi, '$1$2[REDACTED_CREDENTIAL]$3')
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[REDACTED_EMAIL]')
-    .replace(/(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?(?:9\d{4}[-\s]?\d{4}|\d{4}[-\s]?\d{4})/g, '[REDACTED_PHONE]')
+    .replace(/\b(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?(?:9\d{4}[-\s]?\d{4}|\d{4}[-\s]?\d{4})\b/g, '[REDACTED_PHONE]')
     .replace(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g, '[REDACTED_CPF]');
 }
 

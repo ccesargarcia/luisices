@@ -73,6 +73,7 @@ async function main() {
   let skippedCount = 0;
   let updatedCount = 0;
   let createdCount = 0;
+  const failures = [];
 
   for (const item of SECRETS_TO_SYNC) {
     const { name, value } = item;
@@ -83,27 +84,73 @@ async function main() {
     const trimmedValue = value.trim();
     const secretPath = `projects/${projectId}/secrets/${name}`;
 
-    // 1. Verificar se o secret existe
-    const getSecretRes = await fetch(`https://secretmanager.googleapis.com/v1/${secretPath}`, { headers });
+    try {
+      // 1. Verificar se o secret existe
+      const getSecretRes = await fetch(`https://secretmanager.googleapis.com/v1/${secretPath}`, { headers });
 
-    if (getSecretRes.status === 404) {
-      // Secret não existe: criar o secret e adicionar a versão inicial
-      console.log(`➕ Criando novo secret: ${name}...`);
-      const createRes = await fetch(`https://secretmanager.googleapis.com/v1/projects/${projectId}/secrets?secretId=${name}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          replication: { automatic: {} },
-        }),
-      });
+      if (getSecretRes.status === 404) {
+        // Secret não existe: criar o secret e adicionar a versão inicial
+        console.log(`➕ Criando novo secret: ${name}...`);
+        const createRes = await fetch(`https://secretmanager.googleapis.com/v1/projects/${projectId}/secrets?secretId=${name}`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            replication: { automatic: {} },
+          }),
+        });
 
-      if (!createRes.ok) {
-        console.error(`❌ Falha ao criar secret ${name}: ${await createRes.text()}`);
+        if (!createRes.ok) {
+          const errText = await createRes.text();
+          console.error(`❌ Falha ao criar secret ${name}: ${errText}`);
+          failures.push({ name, error: `Falha ao criar: ${errText}` });
+          continue;
+        }
+
+        // Adicionar versão inicial
+        const addRes = await fetch(`https://secretmanager.googleapis.com/v1/${secretPath}:addVersion`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            payload: { data: Buffer.from(trimmedValue, 'utf-8').toString('base64') },
+          }),
+        });
+
+        if (addRes.ok) {
+          console.log(`   ✓ Criado e versão inicial adicionada.`);
+          createdCount++;
+        } else {
+          const errText = await addRes.text();
+          console.error(`   ✗ Falha ao adicionar versão inicial para ${name}: ${errText}`);
+          failures.push({ name, error: `Falha ao adicionar versão inicial: ${errText}` });
+        }
         continue;
       }
 
-      // Adicionar versão inicial
-      const addRes = await fetch(`https://secretmanager.googleapis.com/v1/${secretPath}:addVersion`, {
+      if (!getSecretRes.ok) {
+        const errText = await getSecretRes.text();
+        console.error(`❌ Falha ao consultar secret ${name} (${getSecretRes.status}): ${errText}`);
+        failures.push({ name, error: `Falha ao consultar: ${errText}` });
+        continue;
+      }
+
+      // 2. Secret já existe: verificar o valor da versão 'latest'
+      const accessRes = await fetch(`https://secretmanager.googleapis.com/v1/${secretPath}/versions/latest:access`, { headers });
+
+      if (accessRes.ok) {
+        const accessData = await accessRes.json();
+        const currentValBase64 = accessData?.payload?.data || '';
+        const currentValue = Buffer.from(currentValBase64, 'base64').toString('utf-8');
+
+        if (currentValue === trimmedValue) {
+          console.log(`⏩ ${name}: Valor idêntico à versão atual. Nenhuma versão criada ($0 custo).`);
+          skippedCount++;
+          continue;
+        }
+      }
+
+      // 3. O valor mudou ou não há versão ativa: adicionar nova versão
+      console.log(`🔄 ${name}: Valor alterado ou atualizado. Gravando nova versão...`);
+      const addVersionRes = await fetch(`https://secretmanager.googleapis.com/v1/${secretPath}:addVersion`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -111,62 +158,36 @@ async function main() {
         }),
       });
 
-      if (addRes.ok) {
-        console.log(`   ✓ Criado e versão inicial adicionada.`);
-        createdCount++;
+      if (addVersionRes.ok) {
+        const newVersion = await addVersionRes.json();
+        const vNum = newVersion.name?.split('/').pop();
+        console.log(`   ✓ Nova versão adicionada com sucesso: v${vNum}`);
+        updatedCount++;
       } else {
-        console.error(`   ✗ Falha ao adicionar versão inicial para ${name}: ${await addRes.text()}`);
+        const errText = await addVersionRes.text();
+        console.error(`   ✗ Falha ao atualizar ${name}: ${errText}`);
+        failures.push({ name, error: `Falha ao adicionar nova versão: ${errText}` });
       }
-      continue;
-    }
-
-    if (!getSecretRes.ok) {
-      console.warn(`⚠️  Falha ao consultar secret ${name} (${getSecretRes.status}). Pulando verificação.`);
-      continue;
-    }
-
-    // 2. Secret já existe: verificar o valor da versão 'latest'
-    const accessRes = await fetch(`https://secretmanager.googleapis.com/v1/${secretPath}/versions/latest:access`, { headers });
-
-    if (accessRes.ok) {
-      const accessData = await accessRes.json();
-      const currentValBase64 = accessData?.payload?.data || '';
-      const currentValue = Buffer.from(currentValBase64, 'base64').toString('utf-8');
-
-      if (currentValue === trimmedValue) {
-        console.log(`⏩ ${name}: Valor idêntico à versão atual. Nenhuma versão criada ($0 custo).`);
-        skippedCount++;
-        continue;
-      }
-    }
-
-    // 3. O valor mudou ou não há versão ativa: adicionar nova versão
-    console.log(`🔄 ${name}: Valor alterado ou atualizado. Gravando nova versão...`);
-    const addVersionRes = await fetch(`https://secretmanager.googleapis.com/v1/${secretPath}:addVersion`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        payload: { data: Buffer.from(trimmedValue, 'utf-8').toString('base64') },
-      }),
-    });
-
-    if (addVersionRes.ok) {
-      const newVersion = await addVersionRes.json();
-      const vNum = newVersion.name?.split('/').pop();
-      console.log(`   ✓ Nova versão adicionada com sucesso: v${vNum}`);
-      updatedCount++;
-    } else {
-      console.error(`   ✗ Falha ao atualizar ${name}: ${await addVersionRes.text()}`);
+    } catch (err) {
+      console.error(`❌ Erro inesperado ao processar secret ${name}:`, err);
+      failures.push({ name, error: err.message || String(err) });
     }
   }
 
   console.log('-'.repeat(70));
   console.log(`Resultado: ${skippedCount} inalterados (pulados), ${updatedCount} atualizados, ${createdCount} criados.`);
+  if (failures.length > 0) {
+    console.error(`❌ ${failures.length} segredo(s) falharam na sincronização:`);
+    for (const f of failures) {
+      console.error(`   - ${f.name}: ${f.error}`);
+    }
+    console.log('='.repeat(70));
+    process.exit(1);
+  }
   console.log('='.repeat(70));
 }
 
 main().catch((err) => {
-  console.error('❌ Erro na sincronização de secrets:', err);
-  // Não interrompe o fluxo de deploy caso haja problema de permissão específica de leitura
-  process.exit(0);
+  console.error('❌ Erro fatal na sincronização de secrets:', err);
+  process.exit(1);
 });
