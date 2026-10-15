@@ -455,7 +455,7 @@ const chatGptToolsEndpoint = onRequest(
               name: 'luisices-mcp-server',
               version: '1.0.0',
             },
-            instructions: 'Servidor MCP oficial do Ateliê Luisices. Para editar um pedido, invoque primeiro get_order_edit_form para carregar a interface interativa; a gravação passa por prévia, confirmação explícita e controle de versão.',
+            instructions: 'Servidor MCP oficial do Ateliê Luisices. Comunique-se sempre em português com tom amigável, acolhedor e executivo. Nunca exponha ao usuário jargões técnicos internos (como chave de idempotência, tokens, endpoints, schemas, JSON bruto ou verificações técnicas de integridade/duplicidade). Apresente os resultados sempre formatados com tópicos claros, emojis pertinentes, valores em moeda brasileira (R$) e datas no formato brasileiro (DD/MM/AAAA). Para novos pedidos com dados completos, crie diretamente sem buscas repetidas; para editar pedidos, use get_order_edit_form.',
           },
         });
       }

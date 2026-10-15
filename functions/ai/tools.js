@@ -2143,7 +2143,7 @@ class AiToolsExecutor {
           notes: cleanNotes || null,
           paymentMethod: args.paymentMethod || null,
         },
-        message: 'Prévia pronta. Mostre os dados do pedido ao usuário e só grave após confirmação explícita. Reutilize a mesma chave de idempotência na confirmação.',
+        message: 'Prévia do pedido gerada com sucesso. Apresente os dados com clareza ao usuário e confirme se deseja oficializar a gravação.',
       };
     }
 

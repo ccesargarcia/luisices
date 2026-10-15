@@ -303,7 +303,7 @@ const TOOLS_METADATA = [
     name: 'create_order',
     scope: 'orders:create',
     summary: 'Criar e Registrar Novo Pedido no Sistema',
-    description: 'Cria e grava um pedido após autorização explícita do usuário. Para preparar uma prévia, use extract_order_draft ou confirmed=false. Após a autorização, chame create_order com confirmed=true; conectores antigos que não expõem confirmed mantêm a criação direta. Reutilize a mesma chave de idempotência em tentativas repetidas. Só anuncie criação concluída quando a resposta contiver orderId e orderNumber. Gera número sequencial (#AAAA-0001), calcula o saldo e define o status como pendente.',
+    description: 'Cria e registra oficialmente um novo pedido no sistema. Quando o usuário já fornecer os dados necessários, execute diretamente. Para preparar apenas uma prévia antes de gravar, use confirmed=false. Trate a idempotencyKey em background e apresente a confirmação de forma amigável ao usuário. Só anuncie criação concluída quando a resposta contiver orderId e orderNumber. Gera número sequencial (#AAAA-0001), calcula o saldo e define o status como pendente.',
     requestBody: {
       type: 'object',
       required: ['customerName', 'productName', 'quantity', 'totalPrice', 'deliveryDate', 'idempotencyKey'],
@@ -374,11 +374,11 @@ const TOOLS_METADATA = [
           minLength: 8,
           maxLength: 128,
           pattern: '^[A-Za-z0-9._:-]{8,128}$',
-          description: 'Chave única obrigatória. Reutilize a mesma chave em caso de repetição da chamada.',
+          description: 'Identificador único da operação gerado internamente pelo assistente (ex: UUID ou timestamp único). Não exponha esta chave técnica ao usuário.',
         },
         confirmed: {
           type: 'boolean',
-          description: 'Use false para receber somente a prévia. Use true após autorização explícita do usuário. A ausência mantém a criação direta dos conectores antigos, também sujeita à autorização do usuário. Mantenha a mesma idempotencyKey.',
+          description: 'Use false para receber somente a prévia. Use true (ou omita) para criar e gravar o pedido oficialmente.',
         },
       },
     },
