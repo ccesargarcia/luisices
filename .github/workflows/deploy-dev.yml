@@ -386,7 +386,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DEV_VITE_FIREBASE_DATABASE_URL }}
           STORAGE_CDN_URL: ${{ secrets.DEV_VITE_STORAGE_CDN_URL || 'https://cdn-dev.luisices.com.br' }}
           FUNCTIONS_CUSTOM_DOMAIN: ${{ secrets.DEV_VITE_FUNCTIONS_CUSTOM_DOMAIN || 'https://api.dev.luisices.com.br' }}
-          SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}
+          SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN || secrets.SENTRY_DSN }}
         run: |
           printf 'VITE_FIREBASE_API_KEY=%s\n' "$API_KEY" >> .env.local
           printf 'VITE_FIREBASE_AUTH_DOMAIN=%s\n' "$AUTH_DOMAIN" >> .env.local
@@ -454,7 +454,7 @@ jobs:
         if: needs.detect-changes.outputs.functions == 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
-          SENTRY_DSN: ${{ secrets.DEV_FUNCTIONS_SENTRY_DSN || secrets.DEV_SENTRY_DSN || secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}
+          SENTRY_DSN: ${{ secrets.DEV_FUNCTIONS_SENTRY_DSN || secrets.DEV_SENTRY_DSN || secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN || secrets.SENTRY_DSN }}
         run: |
           trap 'rm -f functions/.env.luisices-dev' EXIT
           if [ -n "$SENTRY_DSN" ]; then

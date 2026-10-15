@@ -97,7 +97,7 @@ jobs:
           if [ -n "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ]; then
             echo "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" | npx wrangler secret put ORIGIN_SECRET -c cloudflare/api-worker/wrangler.toml -e dev || true
           fi
-          DEV_SENTRY_DSN="${{ secrets.DEV_CLOUDFLARE_SENTRY_DSN || secrets.DEV_FUNCTIONS_SENTRY_DSN || secrets.DEV_SENTRY_DSN || secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}"
+          DEV_SENTRY_DSN="${{ secrets.DEV_CLOUDFLARE_SENTRY_DSN || secrets.DEV_FUNCTIONS_SENTRY_DSN || secrets.DEV_SENTRY_DSN || secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN || secrets.SENTRY_DSN }}"
           if [ -n "$DEV_SENTRY_DSN" ]; then
             echo "$DEV_SENTRY_DSN" | npx wrangler secret put SENTRY_DSN -c cloudflare/api-worker/wrangler.toml -e dev || true
           fi
