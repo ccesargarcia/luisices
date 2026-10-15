@@ -9,7 +9,12 @@
  *   node scripts/sync-secrets-safe.mjs --project=luisices-dev
  */
 
-import { GoogleAuth } from 'google-auth-library';
+import { createRequire } from 'node:module';
+
+// Deploys de Functions instalam apenas functions/node_modules. Resolva a
+// dependência declarada nesse pacote, independentemente do diretório atual.
+const requireFunctions = createRequire(new URL('../functions/package.json', import.meta.url));
+const { GoogleAuth } = requireFunctions('google-auth-library');
 
 const args = process.argv.slice(2);
 const projectArg = args.find((a) => a.startsWith('--project='));
