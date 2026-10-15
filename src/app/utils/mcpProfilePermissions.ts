@@ -1,11 +1,11 @@
 import type { Permission, UserRole } from '../types';
 
 export const MCP_PROFILE_SCOPES = [
-  { id: 'orders:read', label: 'Consultar pedidos e prazos', module: 'orders', action: 'view', defaultGranted: true },
+  { id: 'orders:read', label: 'Consultar pedidos, prazos e agenda', description: 'Pesquisa pedidos e consulta a agenda de entregas em períodos de até 31 dias.', module: 'orders', action: 'view', defaultGranted: true },
   { id: 'orders:draft', label: 'Preparar rascunhos de pedidos', module: 'orders', action: 'view', defaultGranted: false },
   { id: 'orders:create', label: 'Criar pedidos', module: 'orders', action: 'create', defaultGranted: true },
-  { id: 'orders:update', label: 'Editar pedidos e valores', module: 'orders', action: 'edit', defaultGranted: false },
-  { id: 'customers:read', label: 'Consultar clientes', module: 'customers', action: 'view', defaultGranted: true },
+  { id: 'orders:update', label: 'Editar pedidos, entregas e etapas', description: 'Altera dados e valores do pedido, atualiza informações de entrega e avança a etapa de produção com confirmação.', module: 'orders', action: 'edit', defaultGranted: false },
+  { id: 'customers:read', label: 'Consultar clientes e histórico', description: 'Pesquisa clientes e consulta pedidos associados; o histórico de pedidos também exige “Consultar pedidos”.', module: 'customers', action: 'view', defaultGranted: true },
   { id: 'customers:create', label: 'Criar clientes', module: 'customers', action: 'create', defaultGranted: false },
   { id: 'customers:update', label: 'Editar clientes', module: 'customers', action: 'edit', defaultGranted: false },
   { id: 'payments:read', label: 'Consultar pagamentos', module: 'orders', action: 'view', defaultGranted: false },

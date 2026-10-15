@@ -34,6 +34,10 @@ async function executeToolByName(toolsExecutor, toolName, args, scope) {
       return await toolsExecutor.executeDailyBriefing(args, scope);
     case 'query_customers':
       return await toolsExecutor.executeQueryCustomers(args, scope);
+    case 'get_customer_history':
+      return await toolsExecutor.executeGetCustomerHistory(args, scope);
+    case 'query_delivery_schedule':
+      return await toolsExecutor.executeQueryDeliverySchedule(args, scope);
     case 'get_financial_summary':
       return await toolsExecutor.executeFinancialSummary(args, scope);
     case 'calculate_pricing_estimate':
@@ -50,6 +54,10 @@ async function executeToolByName(toolsExecutor, toolName, args, scope) {
       return await toolsExecutor.executeGetOrderEditForm(args, scope);
     case 'update_order':
       return await toolsExecutor.executeUpdateOrder(args, scope);
+    case 'update_order_status':
+      return await toolsExecutor.executeUpdateOrderStatus(args, scope);
+    case 'update_delivery_details':
+      return await toolsExecutor.executeUpdateDeliveryDetails(args, scope);
     case 'query_order_payments':
       return await toolsExecutor.executeQueryOrderPayments(args, scope);
     case 'register_order_payment':

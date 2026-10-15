@@ -87,6 +87,36 @@ const TOOLS_METADATA = [
     },
   },
   {
+    name: 'get_customer_history',
+    scope: 'customers:read',
+    summary: 'Consultar Histórico do Cliente',
+    description: 'Retorna dados básicos e pedidos autorizados associados a um cliente. Valores e pagamentos só aparecem se a sessão também possuir pagamentos:read.',
+    requestBody: {
+      type: 'object',
+      required: ['customerId'],
+      properties: {
+        customerId: { type: 'string', minLength: 1, maxLength: 128, description: 'ID do cliente obtido em query_customers.' },
+        limit: { type: 'integer', minimum: 1, maximum: 20, default: 10, description: 'Máximo de pedidos recentes a retornar.' },
+      },
+    },
+  },
+  {
+    name: 'query_delivery_schedule',
+    scope: 'orders:read',
+    summary: 'Consultar Agenda de Entregas',
+    description: 'Lista entregas em um intervalo de até 31 dias, respeitando o acesso do usuário aos pedidos.',
+    requestBody: {
+      type: 'object',
+      required: ['startDate', 'endDate'],
+      properties: {
+        startDate: { type: 'string', minLength: 10, maxLength: 10, description: 'Data inicial inclusiva (AAAA-MM-DD).' },
+        endDate: { type: 'string', minLength: 10, maxLength: 10, description: 'Data final inclusiva (AAAA-MM-DD), até 31 dias após o início.' },
+        status: { type: 'string', enum: ['all', 'pending', 'in-progress', 'completed', 'cancelled'], default: 'all' },
+        limit: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
+      },
+    },
+  },
+  {
     name: 'get_financial_summary',
     scope: 'financial:read',
     summary: 'Resumo Financeiro & Faturamento',
@@ -388,6 +418,41 @@ const TOOLS_METADATA = [
         expectedVersion: { type: 'integer', minimum: 1, description: 'Versão obtida no formulário/consulta. Obrigatória ao alterar.' },
         idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{8,128}$', description: 'Chave única obrigatória ao alterar. Reutilize a mesma chave em caso de repetição.' },
         confirmed: { type: 'boolean', description: 'Use false para prévia. Use true somente depois que o usuário confirmar explicitamente as alterações apresentadas.' },
+      },
+    },
+  },
+  {
+    name: 'update_order_status',
+    scope: 'orders:update',
+    summary: 'Atualizar Etapa de Produção',
+    description: 'Avança pedido entre pendente, em produção e concluído. Retorna prévia e só grava com confirmação explícita, versão atual e chave de idempotência. Cancelamentos e reaberturas ficam fora deste fluxo.',
+    requestBody: {
+      type: 'object',
+      required: ['orderNumber', 'status', 'expectedVersion', 'idempotencyKey', 'confirmed'],
+      properties: {
+        orderNumber: { type: 'string', minLength: 1, maxLength: 128 },
+        status: { type: 'string', enum: ['in-progress', 'completed'], description: 'Etapa de destino. O servidor valida a transição com o estado atual.' },
+        expectedVersion: { type: 'integer', minimum: 1 },
+        idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{8,128}$' },
+        confirmed: { type: 'boolean', description: 'Use false para prévia e true somente após confirmação explícita.' },
+      },
+    },
+  },
+  {
+    name: 'update_delivery_details',
+    scope: 'orders:update',
+    summary: 'Alterar Data ou Observação de Entrega',
+    description: 'Apresenta prévia de uma alteração de entrega e só grava após confirmação, com controle de versão e idempotência.',
+    requestBody: {
+      type: 'object',
+      required: ['orderNumber', 'expectedVersion', 'idempotencyKey', 'confirmed'],
+      properties: {
+        orderNumber: { type: 'string', minLength: 1, maxLength: 128 },
+        deliveryDate: { type: 'string', minLength: 10, maxLength: 10, description: 'Nova data (AAAA-MM-DD).' },
+        notes: { type: 'string', maxLength: 1000, description: 'Observação operacional opcional da entrega.' },
+        expectedVersion: { type: 'integer', minimum: 1 },
+        idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{8,128}$' },
+        confirmed: { type: 'boolean', description: 'Use false para prévia e true após confirmação explícita.' },
       },
     },
   },

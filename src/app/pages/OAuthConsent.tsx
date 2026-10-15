@@ -8,11 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { resolveOAuthApiOrigin } from '../utils/oauthEnvironment';
 
 const SCOPE_DESCRIPTIONS: Record<string, { label: string; description: string }> = {
-  'orders:read': { label: 'Consultar Pedidos & Prazos', description: 'Visualizar fila de produção, pedidos do dia e status de encomendas.' },
+  'orders:read': { label: 'Consultar Pedidos & Prazos', description: 'Visualizar a fila de produção, consultar entregas em um período de até 31 dias e verificar o status dos pedidos.' },
   'orders:draft': { label: 'Criar Rascunhos de Encomendas', description: 'Extrair dados e montar rascunhos de pedidos a partir de conversas.' },
   'orders:create': { label: 'Criar Pedidos no Sistema', description: 'Registrar novos pedidos diretamente na fila do ateliê.' },
-  'orders:update': { label: 'Editar Pedidos', description: 'Atualizar dados operacionais de pedidos, se permitido pelo perfil.' },
-  'customers:read': { label: 'Consultar Clientes & Contatos', description: 'Buscar histórico e contatos de clientes para atendimento.' },
+  'orders:update': { label: 'Editar Pedidos, Entregas & Etapas', description: 'Atualizar dados e valores dos pedidos, informações de entrega e avançar etapas da produção, conforme as permissões do perfil.' },
+  'customers:read': { label: 'Consultar Clientes & Histórico', description: 'Pesquisar clientes e contatos. O histórico de pedidos também depende da permissão de consulta de pedidos.' },
   'customers:create': { label: 'Criar Clientes', description: 'Cadastrar clientes, se permitido pelo perfil.' },
   'customers:update': { label: 'Editar Clientes', description: 'Atualizar dados de clientes, se permitido pelo perfil.' },
   'payments:read': { label: 'Consultar Pagamentos', description: 'Consultar pagamentos e saldos de pedidos, se permitido pelo perfil.' },

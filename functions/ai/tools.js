@@ -4,7 +4,7 @@
 
 const { BUSINESS_TIMEZONE, TOOL_LIMITS } = require('./config');
 const { calculateRecipePricing, calculateHourlyRate, DEFAULT_PRICING_SETTINGS } = require('./pricing/pricingCalculator');
-const { sanitizeCollaboratorInfo } = require('./authorization');
+const { sanitizeCollaboratorInfo, filterOrdersByScope } = require('./authorization');
 
 function getBusinessDate(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -15,6 +15,14 @@ function getBusinessDate(date = new Date()) {
   }).formatToParts(date);
   const part = (type) => parts.find((entry) => entry.type === type)?.value || '';
   return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+function normalizeMcpTimestamp(value) {
+  if (!value) return '';
+  if (typeof value.toDate === 'function') return value.toDate().toISOString();
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object' && Number.isFinite(value._seconds)) return new Date(value._seconds * 1000).toISOString();
+  return String(value);
 }
 
 function isValidDateOnly(value) {
@@ -608,6 +616,120 @@ class AiToolsExecutor {
       orders: filtered.slice(0, limit),
       totalFound: filtered.length,
       hasMore: filtered.length > limit,
+    };
+  }
+
+  /** Agenda limitada por janela e por propriedade do pedido para reduzir leituras. */
+  async executeQueryDeliverySchedule(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'view', 'consultar a agenda de entregas');
+    const startDate = String(args.startDate || '').trim();
+    const endDate = String(args.endDate || '').trim();
+    if (!isValidDateOnly(startDate) || !isValidDateOnly(endDate)) {
+      const error = new Error('Informe as datas no formato AAAA-MM-DD.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const spanDays = (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400000;
+    if (spanDays < 0 || spanDays > 30) {
+      const error = new Error('O período deve ser válido e ter no máximo 31 dias.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const status = args.status || 'all';
+    const limit = Math.min(Math.max(Number(args.limit) || 20, 1), 50);
+    const db = this.repos.db;
+    if (!db) throw new Error('Banco de dados indisponível.');
+    const baseQuery = () => db.collection('orders').where('deliveryDate', '>=', startDate).where('deliveryDate', '<=', endDate).orderBy('deliveryDate', 'asc');
+    const queryLimit = 100;
+    let snapshots;
+    if (scope.isAdmin) {
+      snapshots = [await baseQuery().limit(queryLimit).get()];
+    } else {
+      snapshots = await Promise.all(['userId', 'assignedTo', 'createdBy'].map((field) =>
+        baseQuery().where(field, '==', scope.uid).limit(queryLimit).get()
+      ));
+    }
+    const docsById = new Map();
+    snapshots.flatMap((snapshot) => snapshot.docs || []).forEach((doc) => docsById.set(doc.id, doc));
+    const statusAliases = { pending: 'pending', pendente: 'pending', received: 'pending', recebido: 'pending', in_contact: 'pending', 'in-progress': 'in-progress', in_progress: 'in-progress', em_producao: 'in-progress', 'em produção': 'in-progress', 'em producao': 'in-progress', 'em-andamento': 'in-progress', em_andamento: 'in-progress', producao: 'in-progress', produção: 'in-progress', completed: 'completed', concluido: 'completed', concluído: 'completed', delivered: 'completed', entregue: 'completed', pronto: 'completed', finished: 'completed', cancelled: 'cancelled', canceled: 'cancelled', cancelado: 'cancelled', cancelada: 'cancelled' };
+    const authorized = filterOrdersByScope(Array.from(docsById.values(), (doc) => ({ ...(doc.data() || {}), id: doc.id })), scope)
+      .filter((order) => String(order.deliveryDate || '').slice(0, 10) >= startDate && String(order.deliveryDate || '').slice(0, 10) <= endDate)
+      .filter((order) => status === 'all' || statusAliases[String(order.status || 'pending').toLowerCase().trim()] === status)
+      .sort((a, b) => String(a.deliveryDate).localeCompare(String(b.deliveryDate)) || String(a.orderNumber).localeCompare(String(b.orderNumber)));
+    const canReadPayments = scope.mcpScopes?.includes('payments:read') || scope.mcpScopes?.includes('financial:read');
+    const orders = authorized.slice(0, limit).map((order) => ({
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      productName: order.productName,
+      quantity: order.quantity,
+      deliveryDate: String(order.deliveryDate || '').slice(0, 10),
+      status: statusAliases[String(order.status || 'pending').toLowerCase().trim()] || 'unknown',
+      ...(canReadPayments ? { totalPrice: order.totalPrice, paidAmount: order.paidAmount, remainingAmount: order.remainingAmount } : {}),
+    }));
+    return {
+      startDate,
+      endDate,
+      orders,
+      totalFound: authorized.length,
+      hasMore: authorized.length > limit || snapshots.some((snapshot) => (snapshot.docs || []).length === queryLimit),
+    };
+  }
+
+  /** Histórico restrito ao cliente autorizado e aos pedidos visíveis ao usuário. */
+  async executeGetCustomerHistory(args = {}, scope) {
+    requireMcpModulePermission(scope, 'customers', 'view', 'consultar o histórico do cliente');
+    const customer = await this.repos.getScopedCustomerDocument(scope, String(args.customerId || ''));
+    if (!customer || customer.data.deletedAt || customer.data.isDeleted) {
+      const error = new Error('Cliente não encontrado ou sem permissão para consultá-lo.');
+      error.code = 'not-found';
+      throw error;
+    }
+    const db = this.repos.db;
+    const customerName = String(customer.data.name || customer.data.fullName || '').trim();
+    const customerPhone = String(customer.data.phone || customer.data.whatsapp || '').replace(/\D/g, '');
+    const canReadOrders = scope.isAdmin || scope.mcpScopes?.includes('orders:read');
+    if (!canReadOrders) {
+      return {
+        customer: { id: customer.id, name: customerName, phone: customer.data.phone || customer.data.whatsapp || '', city: customer.data.city || '' },
+        orders: [],
+        totalFound: 0,
+        hasMore: false,
+        ordersPermissionRequired: 'orders:read',
+      };
+    }
+    const queries = [db.collection('orders').where('customerId', '==', customer.id).limit(100).get()];
+    // Compatibilidade com pedidos antigos sem customerId: fallback com nome e telefone exatos.
+    if (customerName && customerPhone) {
+      queries.push(db.collection('orders').where('customerName', '==', customerName).limit(100).get());
+    }
+    const snapshots = await Promise.all(queries);
+    const unique = new Map();
+    snapshots.flatMap((snapshot) => snapshot.docs || []).forEach((doc) => unique.set(doc.id, doc));
+    const visible = filterOrdersByScope(Array.from(unique.values(), (doc) => ({ ...(doc.data() || {}), id: doc.id })), scope)
+      .filter((order) => order.customerId === customer.id || (
+        String(order.customerName || '').trim() === customerName &&
+        (!customerPhone || String(order.customerPhone || '').replace(/\D/g, '') === customerPhone)
+      ))
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    const limit = Math.min(Math.max(Number(args.limit) || 10, 1), 20);
+    const canReadPayments = scope.mcpScopes?.includes('payments:read') || scope.mcpScopes?.includes('financial:read');
+    return {
+      customer: { id: customer.id, name: customerName, phone: customer.data.phone || customer.data.whatsapp || '', city: customer.data.city || '' },
+      orders: visible.slice(0, limit).map((order) => ({
+        orderNumber: order.orderNumber || order.id,
+        productName: order.productName || order.productSummary || '',
+        quantity: Number(order.quantity) || 1,
+        deliveryDate: order.deliveryDate || null,
+        status: order.status || 'pending',
+        createdAt: normalizeMcpTimestamp(order.createdAt) || null,
+        ...(canReadPayments ? {
+          totalPrice: Number(order.price ?? order.totalPrice ?? order.payment?.totalAmount) || 0,
+          paidAmount: Number(order.payment?.paidAmount ?? order.paidAmount) || 0,
+          remainingAmount: Number(order.payment?.remainingAmount ?? order.remainingAmount) || 0,
+        } : {}),
+      })),
+      totalFound: visible.length,
+      hasMore: visible.length > limit || snapshots.some((snapshot) => (snapshot.docs || []).length === 100),
     };
   }
 
@@ -1212,6 +1334,7 @@ class AiToolsExecutor {
       error.code = 'not-found';
       throw error;
     }
+    const statusAliases = { pending: 'pending', pendente: 'pending', received: 'pending', recebido: 'pending', in_contact: 'pending', 'in-progress': 'in-progress', in_progress: 'in-progress', em_producao: 'in-progress', 'em produção': 'in-progress', 'em producao': 'in-progress', 'em-andamento': 'in-progress', em_andamento: 'in-progress', producao: 'in-progress', produção: 'in-progress', completed: 'completed', concluido: 'completed', concluído: 'completed', delivered: 'completed', entregue: 'completed', pronto: 'completed', finished: 'completed', cancelled: 'cancelled', canceled: 'cancelled', cancelado: 'cancelled', cancelada: 'cancelled' };
     return {
       state: 'editing',
       order: {
@@ -1224,6 +1347,7 @@ class AiToolsExecutor {
         deliveryDate: order.data.deliveryDate || '',
         theme: order.data.theme || '',
         notes: order.data.notes || '',
+        status: statusAliases[String(order.data.status || 'pending').toLowerCase().trim()] || 'unknown',
         version: Number.isSafeInteger(order.data.version) && order.data.version > 0 ? order.data.version : 1,
       },
       message: 'Preencha os campos desejados. Escolha valor total ou unitário; o total unitário será calculado pelo servidor.',
@@ -1432,6 +1556,120 @@ class AiToolsExecutor {
       return response;
     });
     return result;
+  }
+
+  /** Atualização de etapa com transição monotônica, prévia, versão e idempotência. */
+  async executeUpdateOrderStatus(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'edit', 'atualizar a etapa de produção');
+    const identifier = String(args.orderNumber || '').trim();
+    const targetStatus = args.status;
+    if (!identifier || !['in-progress', 'completed'].includes(targetStatus)) {
+      const error = new Error('Informe o pedido e uma etapa de destino válida.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const db = this.repos.db;
+    let idempotency = null;
+    if (args.confirmed === true) {
+      idempotency = getMcpIdempotencyContext(db, scope, 'update_order_status', args.idempotencyKey, args);
+      const previous = await idempotency.ref.get();
+      const replay = readIdempotentResult(previous, idempotency.payloadHash);
+      if (replay) return replay;
+    }
+    const order = await this.repos.getScopedOrderDocument(scope, identifier);
+    if (!order || order.data.deletedAt || order.data.isDeleted) {
+      const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
+      error.code = 'not-found';
+      throw error;
+    }
+    const statusAliases = {
+      pending: 'pending', pendente: 'pending', received: 'pending', recebido: 'pending', in_contact: 'pending',
+      'in-progress': 'in-progress', in_progress: 'in-progress', em_producao: 'in-progress', 'em produção': 'in-progress', 'em producao': 'in-progress', 'em-andamento': 'in-progress', em_andamento: 'in-progress', producao: 'in-progress', produção: 'in-progress',
+      completed: 'completed', concluido: 'completed', concluído: 'completed', delivered: 'completed', entregue: 'completed', pronto: 'completed', finished: 'completed',
+      cancelled: 'cancelled', canceled: 'cancelled', cancelado: 'cancelled', cancelada: 'cancelled',
+    };
+    const currentStatus = statusAliases[String(order.data.status || 'pending').toLowerCase().trim()];
+    if (!currentStatus) {
+      const error = new Error('O status atual do pedido não é reconhecido; nenhuma alteração foi feita.');
+      error.code = 'failed-precondition';
+      throw error;
+    }
+    const allowedNext = { pending: ['in-progress'], 'in-progress': ['completed'], completed: [], cancelled: [] };
+    if (!allowedNext[currentStatus]?.includes(targetStatus)) {
+      const error = new Error(`Transição não permitida: ${currentStatus} para ${targetStatus}. O fluxo só permite pendente → em produção → concluído.`);
+      error.code = 'failed-precondition';
+      throw error;
+    }
+    const version = Number.isSafeInteger(order.data.version) && order.data.version > 0 ? order.data.version : 1;
+    if (!Number.isSafeInteger(args.expectedVersion) || args.expectedVersion !== version) {
+      const error = new Error(`A versão do pedido mudou ou não foi informada. Consulte novamente antes de alterar (versão atual: ${version}).`);
+      error.code = 'failed-precondition';
+      throw error;
+    }
+    const preview = {
+      orderNumber: order.data.orderNumber || identifier,
+      customerName: order.data.customerName || '',
+      fromStatus: currentStatus,
+      toStatus: targetStatus,
+      version,
+    };
+    if (args.confirmed !== true) return { success: false, requiresConfirmation: true, preview, message: 'Mostre a mudança de etapa e só grave após confirmação explícita.' };
+    if (typeof db?.runTransaction !== 'function') {
+      const error = new Error('Gravação segura indisponível; a etapa não foi alterada.');
+      error.code = 'failed-precondition';
+      throw error;
+    }
+    const now = new Date().toISOString();
+    return db.runTransaction(async (transaction) => {
+      const orderRef = db.collection('orders').doc(order.id);
+      const saleRef = db.collection('salesLedger').doc(order.id);
+      const [idempotencySnap, orderSnap, saleSnap] = await Promise.all([
+        transaction.get(idempotency.ref), transaction.get(orderRef), transaction.get(saleRef),
+      ]);
+      const replay = readIdempotentResult(idempotencySnap, idempotency.payloadHash);
+      if (replay) return replay;
+      if (!orderSnap.exists) {
+        const error = new Error('Pedido não encontrado.');
+        error.code = 'not-found';
+        throw error;
+      }
+      const current = orderSnap.data() || {};
+      if (current.deletedAt || current.isDeleted || !filterOrdersByScope([{ ...current, id: order.id }], scope).length) {
+        const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
+        error.code = 'not-found';
+        throw error;
+      }
+      const currentVersion = Number.isSafeInteger(current.version) && current.version > 0 ? current.version : 1;
+      const liveStatus = statusAliases[String(current.status || 'pending').toLowerCase().trim()];
+      if (currentVersion !== version || !liveStatus || liveStatus !== currentStatus || !allowedNext[liveStatus]?.includes(targetStatus)) {
+        const error = new Error('O pedido mudou durante a operação. Consulte novamente e tente outra vez.');
+        error.code = 'failed-precondition';
+        throw error;
+      }
+      transaction.update(orderRef, { status: targetStatus, version: currentVersion + 1, updatedAt: now });
+      if (saleSnap.exists) transaction.update(saleRef, { status: targetStatus, updatedAt: now });
+      const response = { success: true, orderNumber: current.orderNumber || identifier, status: targetStatus, version: currentVersion + 1, message: 'Etapa do pedido atualizada.' };
+      transaction.set(idempotency.ref, { payloadHash: idempotency.payloadHash, result: response, completed: true, createdAt: now });
+      return response;
+    });
+  }
+
+  /** Atalho com schema restrito para alterações de entrega; reutiliza toda a validação transacional existente. */
+  async executeUpdateDeliveryDetails(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'edit', 'alterar dados de entrega');
+    if (args.deliveryDate === undefined && args.notes === undefined) {
+      const error = new Error('Informe uma nova data ou observação de entrega.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    return this.executeUpdateOrder({
+      orderNumber: args.orderNumber,
+      ...(args.deliveryDate !== undefined ? { deliveryDate: args.deliveryDate } : {}),
+      ...(args.notes !== undefined ? { notes: args.notes } : {}),
+      expectedVersion: args.expectedVersion,
+      idempotencyKey: `${String(args.idempotencyKey).slice(0, 119)}:delivery`,
+      confirmed: args.confirmed,
+    }, scope);
   }
 
   /** Cria um cliente com campos permitidos e confirmação explícita. */

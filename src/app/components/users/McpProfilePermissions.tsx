@@ -36,6 +36,7 @@ export function McpProfilePermissions({ role, permissions, onChange }: {
               <Checkbox id={`profile-mcp-${scope.id}`} checked={selected.includes(scope.id)} disabled={!enabled || !allowed} onCheckedChange={() => toggle(scope.id)} />
               <div className="space-y-0.5">
                 <Label htmlFor={`profile-mcp-${scope.id}`} className="text-xs font-normal">{scope.label}</Label>
+                {'description' in scope && <p className="text-xs text-muted-foreground">{scope.description}</p>}
                 {!allowed && <p className="text-xs text-muted-foreground">Indisponível pelas permissões do sistema.</p>}
               </div>
             </div>

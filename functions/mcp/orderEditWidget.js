@@ -40,6 +40,7 @@ const ORDER_EDIT_WIDGET_HTML = `<!doctype html>
     let requestId = 0;
     let currentOrder = null;
     let pendingUpdate = null;
+    let pendingToolName = 'update_order';
     let busy = false;
 
     function rpc(method, params) {
@@ -72,6 +73,7 @@ const ORDER_EDIT_WIDGET_HTML = `<!doctype html>
     function renderForm(order) {
       currentOrder = order;
       pendingUpdate = null;
+      pendingToolName = 'update_order';
       document.getElementById('title').textContent = 'Editar pedido ' + order.orderNumber;
       subtitle.textContent = order.customerName ? 'Cliente: ' + order.customerName : 'Revise os dados do pedido.';
       const unitPrice = Number(order.quantity) > 0 ? Number(order.totalPrice) / Number(order.quantity) : Number(order.totalPrice);
@@ -85,10 +87,24 @@ const ORDER_EDIT_WIDGET_HTML = `<!doctype html>
         '<div id="calculated" class="wide total">Valor total: ' + money(order.totalPrice) + '</div>' +
         '<label>Prazo de entrega<input name="deliveryDate" type="date" value="' + escapeHtml(String(order.deliveryDate || '').slice(0, 10)) + '"></label>' +
         '<label>Tema<input name="theme" maxlength="200" value="' + escapeHtml(order.theme) + '"></label>' +
+        '<section class="wide"><label>Etapa da produção</label><p>Atualize a etapa separadamente; o servidor só aceita avançar no fluxo.</p><div class="actions"><select id="next-status"></select><button id="status-preview" type="button">Revisar etapa</button></div></section>' +
         '<label class="wide">Observações<textarea name="notes" maxlength="1000">' + escapeHtml(order.notes) + '</textarea></label>' +
         '<div id="message" role="alert"></div><div class="actions"><button id="preview-button" type="submit">Revisar alterações</button></div>' +
         '</form>';
       const form = document.getElementById('edit-form');
+      const statusSelect = document.getElementById('next-status');
+      const nextStatuses = { pending: [{ value: 'in-progress', label: 'Em produção' }], 'in-progress': [{ value: 'completed', label: 'Concluído' }], completed: [], cancelled: [] };
+      const statusLabels = { pending: 'Pendente', 'in-progress': 'Em produção', completed: 'Concluído', cancelled: 'Cancelado' };
+      const statusOptions = nextStatuses[order.status] || [];
+      statusSelect.innerHTML = '<option value="">Etapa atual: ' + escapeHtml(statusLabels[order.status] || order.status) + '</option>' + statusOptions.map((item) => '<option value="' + item.value + '">' + item.label + '</option>').join('');
+      const statusButton = document.getElementById('status-preview');
+      statusButton.disabled = statusOptions.length === 0;
+      statusButton.onclick = async () => {
+        const targetStatus = statusSelect.value;
+        if (!targetStatus || busy) return;
+        const args = { orderNumber: order.orderNumber, status: targetStatus, expectedVersion: order.version, idempotencyKey: 'mcp-order-status-' + crypto.randomUUID(), confirmed: false };
+        await submitPreview(args, 'update_order_status');
+      };
       const priceInput = form.elements.price;
       const quantityInput = form.elements.quantity;
       const updateCalculated = () => {
@@ -136,13 +152,14 @@ const ORDER_EDIT_WIDGET_HTML = `<!doctype html>
         await submitPreview(args);
       });
     }
-    async function submitPreview(args) {
+    async function submitPreview(args, toolName = 'update_order') {
       busy = true;
       try {
-        const response = await callTool('update_order', args);
+        const response = await callTool(toolName, args);
         const result = resultData(response);
         if (!result.requiresConfirmation) throw new Error(result.message || 'A prévia não foi retornada.');
         pendingUpdate = args;
+        pendingToolName = toolName;
         renderPreview(result.preview);
       } catch (error) { showError(error); }
       finally { busy = false; }
@@ -150,9 +167,11 @@ const ORDER_EDIT_WIDGET_HTML = `<!doctype html>
     function renderPreview(preview) {
       const pricing = preview.pricing;
       app.innerHTML = '<section id="preview"><h3>Confirme as alterações</h3><p>Pedido ' + escapeHtml(preview.orderNumber) + ' — ' + escapeHtml(preview.customerName) + '</p><pre></pre><div class="actions"><button id="back" class="secondary" type="button">Voltar ao formulário</button><button id="confirm" type="button">Confirmar e salvar</button></div><div id="message" role="alert"></div></section>';
-      const changes = { ...preview.changes };
+      const changes = { ...(preview.changes || {}) };
       delete changes.price;
-      document.querySelector('#preview pre').textContent = JSON.stringify(changes, null, 2) + (pricing ? '\n\n' + (pricing.mode === 'unit' ? 'Valor unitário: ' + money(pricing.unitPrice) + '\n' : '') + 'Novo total: ' + money(pricing.totalPrice) : '');
+      document.querySelector('#preview pre').textContent = preview.fromStatus
+        ? ('Etapa atual: ' + preview.fromStatus + '\nNova etapa: ' + preview.toStatus)
+        : JSON.stringify(changes, null, 2) + (pricing ? '\n\n' + (pricing.mode === 'unit' ? 'Valor unitário: ' + money(pricing.unitPrice) + '\n' : '') + 'Novo total: ' + money(pricing.totalPrice) : '');
       document.getElementById('back').onclick = () => renderForm(currentOrder);
       document.getElementById('confirm').onclick = async () => {
         if (!pendingUpdate || busy) return;
@@ -160,7 +179,7 @@ const ORDER_EDIT_WIDGET_HTML = `<!doctype html>
         const button = document.getElementById('confirm');
         button.disabled = true;
         try {
-          const response = await callTool('update_order', { ...pendingUpdate, confirmed: true });
+          const response = await callTool(pendingToolName, { ...pendingUpdate, confirmed: true });
           const result = resultData(response);
           if (!result.success) throw new Error(result.message || 'O pedido não foi salvo.');
           app.innerHTML = '<section id="preview"><h3>Pedido atualizado</h3><p>' + escapeHtml(result.orderNumber) + ' — nova versão ' + escapeHtml(result.version) + '.</p></section>';

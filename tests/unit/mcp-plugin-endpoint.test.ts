@@ -32,9 +32,9 @@ describe('MCP & ChatGPT Plugin / OpenAPI 3.0.3 Specification', () => {
       const baseUrl = 'https://api.dev.luisices.com.br/chatGptToolsEndpoint';
       const schema = buildOpenApiSchema(baseUrl);
       const expectedTools = [
-        'query_orders_view', 'daily_briefing', 'query_customers', 'get_financial_summary',
+        'query_orders_view', 'daily_briefing', 'query_customers', 'get_customer_history', 'query_delivery_schedule', 'get_financial_summary',
         'calculate_pricing_estimate', 'generate_whatsapp_message', 'get_order_form',
-        'extract_order_draft', 'create_order', 'get_order_edit_form', 'update_order', 'query_order_payments',
+        'extract_order_draft', 'create_order', 'get_order_edit_form', 'update_order', 'update_order_status', 'update_delivery_details', 'query_order_payments',
         'register_order_payment', 'create_customer', 'update_customer', 'search_gallery_portfolio', 'get_user_summary',
       ];
 
