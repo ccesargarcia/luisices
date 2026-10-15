@@ -153,7 +153,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
                   data: () => ({
                     uid,
                     displayName: 'Colaborador Teste',
-                    email: 'colab@luisices.com.br',
+                    email: 'test-user@example.invalid',
                     role: 'funcionario',
                     active: true,
                     permissions: employeePermissions,
@@ -183,7 +183,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
       const result = await validateOAuthAccessToken(accessToken('valid'), mockDb);
       expect(result.success).toBe(true);
       expect(result.keyData.userId).toBe('user_colab_123');
-      expect(result.userProfile.email).toBe('colab@luisices.com.br');
+      expect(result.userProfile.email).toBe('test-user@example.invalid');
       expect(result.scope.uid).toBe('user_colab_123');
     });
 
@@ -471,7 +471,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
               exists: true,
               data: () => ({
                 uid: 'user_func_001',
-                email: 'funcionario@luisices.com.br',
+                email: 'test-user@example.invalid',
                 role: 'funcionario', // não-admin
                 active: true,
                 permissions: { ...employeePermissions, mcpScopes: ['orders:read', 'customers:read'] },
@@ -501,7 +501,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
       const mockGetAuth = () => ({
         verifyIdToken: async () => ({
           uid: 'user_func_001',
-          email: 'funcionario@luisices.com.br',
+          email: 'test-user@example.invalid',
           auth_time: Math.floor(Date.now() / 1000) - 10,
         }),
       });

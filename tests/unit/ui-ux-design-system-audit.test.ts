@@ -95,9 +95,9 @@ describe('Auditoria Minuciosa de UI/UX, Design System e Usabilidade', () => {
 
   describe('4. Busca e Filtragem Fluida de Clientes (Anti-Travamento)', () => {
     const customers: Customer[] = [
-      { id: '1', name: 'Juliana Paes', phone: '(11) 98888-1111', email: 'ju@paes.com', status: 'vip', createdAt: '2026-01-01' },
-      { id: '2', name: 'Marcos Mion', phone: '(21) 97777-2222', email: 'mion@globo.com', status: 'active', createdAt: '2026-01-02' },
-      { id: '3', name: 'Ana Hickmann', phone: '(11) 96666-3333', email: 'ana@hickmann.com', status: 'defaulter', createdAt: '2026-01-03' },
+      { id: '1', name: 'Cliente Teste A', phone: '(11) 98888-1111', email: 'cliente-a@empresa.com', status: 'vip', createdAt: '2026-01-01' },
+      { id: '2', name: 'Cliente Teste B', phone: '(21) 97777-2222', email: 'cliente-b@globo.com', status: 'active', createdAt: '2026-01-02' },
+      { id: '3', name: 'Cliente Teste C', phone: '(11) 96666-3333', email: 'cliente-c@outro.com', status: 'defaulter', createdAt: '2026-01-03' },
     ];
 
     function searchCustomers(query: string) {
@@ -117,13 +117,13 @@ describe('Auditoria Minuciosa de UI/UX, Design System e Usabilidade', () => {
     it('deve encontrar cliente por dígitos puros sem formatação de DDD ou hífen', () => {
       const res = searchCustomers('988881111');
       expect(res.length).toBe(1);
-      expect(res[0].name).toBe('Juliana Paes');
+      expect(res[0].name).toBe('Cliente Teste A');
     });
 
     it('deve encontrar cliente por fragmento de email', () => {
       const res = searchCustomers('globo.com');
       expect(res.length).toBe(1);
-      expect(res[0].name).toBe('Marcos Mion');
+      expect(res[0].name).toBe('Cliente Teste B');
     });
 
     it('deve manter ordenação e integridade quando busca não encontra resultados', () => {

@@ -3,7 +3,7 @@
 **Sistema:** Luisices — Gestão Integrada de Ateliê de Papelaria Personalizada  
 **Módulo:** `functions/mcp` & `functions/ai`  
 **Versão da API:** `1.0.0`  
-**Padrões Suportados:** OpenAPI 3.1.0, MCP JSON-RPC 2.0, OAuth 2.1 (RFC 9728 / RFC 8414)
+**Padrões Suportados:** OpenAPI 3.0.3, MCP JSON-RPC 2.0, OAuth 2.1 (RFC 9728 / RFC 8414)
 **Ambiente de Produção:** `https://api.luisices.com.br/chatGptToolsEndpoint`  
 **Ambiente de Desenvolvimento:** `https://api.dev.luisices.com.br/chatGptToolsEndpoint`  
 
@@ -169,10 +169,10 @@ Clientes dinâmicos existentes com callback HTTPS cadastrado podem continuar usa
 A API suporta dois métodos equivalentes de autenticação no cabeçalho `Authorization`:
 
 1. **Chave Privada de API (`lui_...`):**
-   * Sintaxe: `Authorization: Bearer lui_live_8f93a10b...` (Produção) ou `Authorization: Bearer lui_dev_4c21e...` (Desenvolvimento).
+   * Sintaxe: `Authorization: Bearer <ACCESS_TOKEN>` (Produção) ou `Authorization: Bearer <ACCESS_TOKEN>` (Desenvolvimento).
    * Geradas e gerenciadas no painel de configurações do Luisices na coleção `mcpApiKeys`.
 2. **Token de Acesso OAuth 2.1 (JWT):**
-   * Sintaxe: `Authorization: Bearer eyJhbGciOiJKV1QiLC...`
+   * Sintaxe: `Authorization: Bearer <ACCESS_TOKEN>`
    * Emitidos através do fluxo OAuth 2.1 com suporte a PKCE (`/oauth/authorize` e `/oauth/token`).
 
 ---
@@ -211,7 +211,7 @@ A API suporta dois métodos equivalentes de autenticação no cabeçalho `Author
 | Método | Caminho (Path) | Descrição | Exemplo de Uso |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/.well-known/ai-plugin.json` | Manifesto oficial do Plugin ChatGPT | Descoberta do Plugin pelo ChatGPT |
-| `GET` | `/openapi.json` | Especificação OpenAPI 3.1 dinâmica | Leitura do Schema pelo ChatGPT / Custom GPT |
+| `GET` | `/openapi.json` | Especificação OpenAPI 3.0.3 dinâmica | Leitura do Schema pelo ChatGPT / Custom GPT |
 | `GET` | `/.well-known/oauth-protected-resource` | Metadados de Recurso Protegido (RFC 9728) | Descoberta de Recursos OAuth 2.1 |
 | `GET` | `/.well-known/openid-configuration` | Configuração do Servidor de Autorização | Descoberta de endpoints OAuth |
 | `GET` | `/health` | Checagem de integridade e status da API | Monitoramento e Liveness Check |
@@ -265,12 +265,12 @@ Todas as ferramentas executadas via REST são chamadas via método **`POST`** pa
 ```http
 POST /chatGptToolsEndpoint/tools/query_orders_view HTTP/1.1
 Host: api.luisices.com.br
-Authorization: Bearer lui_live_8f93a10b9c32e41f021
+Authorization: Bearer <ACCESS_TOKEN>
 Content-Type: application/json
 
 {
   "status": "em_producao",
-  "searchTerm": "Mariana",
+  "searchTerm": "Cliente Exemplo",
   "limit": 5
 }
 ```
@@ -288,8 +288,8 @@ Content-Type: application/json
       {
         "id": "ORD-2026-0189",
         "orderNumber": "#2026-0189",
-        "customerName": "Mariana Silva",
-        "customerPhone": "+5511987654321",
+        "customerName": "Cliente Exemplo",
+        "customerPhone": "<TELEFONE_FICTICIO>",
         "productName": "Kit Festa Luxo Safari Baby 3D (30 Caixas)",
         "quantity": 30,
         "totalPrice": 450.00,
@@ -322,7 +322,7 @@ Content-Type: application/json
 ```http
 POST /chatGptToolsEndpoint/tools/daily_briefing HTTP/1.1
 Host: api.luisices.com.br
-Authorization: Bearer lui_live_8f93a10b9c32e41f021
+Authorization: Bearer <ACCESS_TOKEN>
 Content-Type: application/json
 
 {
@@ -345,7 +345,7 @@ Content-Type: application/json
     "deliveriesToday": [
       {
         "orderNumber": "#2026-0175",
-        "customerName": "Camila Alcantara",
+        "customerName": "Cliente Exemplo B",
         "productName": "50 Convites de Casamento Clássicos em Papel Linho",
         "deliveryDate": "2026-10-13",
         "status": "em_producao",
@@ -355,7 +355,7 @@ Content-Type: application/json
     "overdueOrders": [
       {
         "orderNumber": "#2026-0160",
-        "customerName": "Roberto Ferreira",
+        "customerName": "Cliente Exemplo C",
         "productName": "Topo de Bolo Acrílico Personalizado Bodas de Prata",
         "deliveryDate": "2026-10-11",
         "daysOverdue": 2
@@ -382,11 +382,11 @@ Content-Type: application/json
 ```http
 POST /chatGptToolsEndpoint/tools/query_customers HTTP/1.1
 Host: api.luisices.com.br
-Authorization: Bearer lui_live_8f93a10b9c32e41f021
+Authorization: Bearer <ACCESS_TOKEN>
 Content-Type: application/json
 
 {
-  "searchTerm": "11987654321",
+  "searchTerm": "telefone-de-exemplo",
   "limit": 5
 }
 ```
@@ -402,8 +402,8 @@ Content-Type: application/json
     "customers": [
       {
         "id": "CUST-9842",
-        "name": "Mariana Silva",
-        "phone": "+5511987654321",
+        "name": "Cliente Exemplo",
+        "phone": "<TELEFONE_FICTICIO>",
         "city": "São Paulo",
         "state": "SP",
         "totalOrdersCount": 4,
@@ -433,7 +433,7 @@ Content-Type: application/json
 ```http
 POST /chatGptToolsEndpoint/tools/get_financial_summary HTTP/1.1
 Host: api.luisices.com.br
-Authorization: Bearer lui_live_8f93a10b9c32e41f021
+Authorization: Bearer <ACCESS_TOKEN>
 Content-Type: application/json
 
 {
@@ -485,7 +485,7 @@ Para compatibilidade, `materialsCost` é o custo total dos materiais do lote e �
 ```http
 POST /chatGptToolsEndpoint/tools/calculate_pricing_estimate HTTP/1.1
 Host: api.luisices.com.br
-Authorization: Bearer lui_live_8f93a10b9c32e41f021
+Authorization: Bearer <ACCESS_TOKEN>
 Content-Type: application/json
 
 {
@@ -542,12 +542,12 @@ Content-Type: application/json
 ```http
 POST /chatGptToolsEndpoint/tools/generate_whatsapp_message HTTP/1.1
 Host: api.luisices.com.br
-Authorization: Bearer lui_live_8f93a10b9c32e41f021
+Authorization: Bearer <ACCESS_TOKEN>
 Content-Type: application/json
 
 {
-  "recipientName": "Mariana Silva",
-  "recipientPhone": "+5511987654321",
+  "recipientName": "Cliente Exemplo",
+  "recipientPhone": "<TELEFONE_FICTICIO>",
   "orderNumber": "#2026-0189",
   "messageType": "pedido_pronto",
   "customText": "Retirada disponível no ateliê até as 18h."
@@ -561,9 +561,9 @@ Content-Type: application/json
   "tool": "generate_whatsapp_message",
   "timestamp": "2026-10-13T10:30:00.000Z",
   "data": {
-    "recipientPhone": "+5511987654321",
+    "recipientPhone": "<TELEFONE_FICTICIO>",
     "messageType": "pedido_pronto",
-    "messageText": "Olá, Mariana! ✨ Tudo bem?\n\nPassando para avisar que o seu pedido *#2026-0189* (Kit Festa Luxo Safari Baby 3D) ficou pronto com todo o carinho e já está disponível para retirada no ateliê!\n\n📍 *Observação:* Retirada disponível no ateliê até as 18h.\n\nQualquer dúvida, estamos à disposição! 🎨✂️"
+    "messageText": "Olá, Cliente Exemplo! ✨ Tudo bem?\n\nPassando para avisar que o seu pedido *#2026-0189* (Kit Festa Luxo Safari Baby 3D) ficou pronto com todo o carinho e já está disponível para retirada no ateliê!\n\n📍 *Observação:* Retirada disponível no ateliê até as 18h.\n\nQualquer dúvida, estamos à disposição! 🎨✂️"
   }
 }
 ```
@@ -585,11 +585,11 @@ Content-Type: application/json
 ```http
 POST /chatGptToolsEndpoint/tools/get_order_form HTTP/1.1
 Host: api.luisices.com.br
-Authorization: Bearer lui_live_8f93a10b9c32e41f021
+Authorization: Bearer <ACCESS_TOKEN>
 Content-Type: application/json
 
 {
-  "customerName": "Mariana Silva",
+  "customerName": "Cliente Exemplo",
   "productCategory": "festa_infantil"
 }
 ```
@@ -602,7 +602,7 @@ Content-Type: application/json
   "timestamp": "2026-10-13T10:30:00.000Z",
   "data": {
     "formTitle": "Formulário Estruturado de Pedido - Luisices Ateliê",
-    "formMarkdown": "📋 **Formulário de Pedido — Luisices Ateliê** para **Mariana Silva**\n*Por favor, preencha ou confirme os campos abaixo:*\n\n1. **Nome Completo do Cliente:** Mariana Silva\n2. **Telefone / WhatsApp:** \n3. **Descrição dos Produtos / Peças:** \n4. **Quantidade de Peças:** \n5. **Tema / Cores / Personagem:** \n6. **Data Prometida para Entrega (AAAA-MM-DD):** \n7. **Valor Total Combinado (R$):** \n8. **Valor do Sinal / Entrada (R$):** \n9. **Forma de Pagamento (Pix/Cartão/Dinheiro):** \n10. **Observações de Acabamento:** "
+    "formMarkdown": "📋 **Formulário de Pedido — Luisices Ateliê** para **Cliente Exemplo**\n*Por favor, preencha ou confirme os campos abaixo:*\n\n1. **Nome Completo do Cliente:** Cliente Exemplo\n2. **Telefone / WhatsApp:** \n3. **Descrição dos Produtos / Peças:** \n4. **Quantidade de Peças:** \n5. **Tema / Cores / Personagem:** \n6. **Data Prometida para Entrega (AAAA-MM-DD):** \n7. **Valor Total Combinado (R$):** \n8. **Valor do Sinal / Entrada (R$):** \n9. **Forma de Pagamento (Pix/Cartão/Dinheiro):** \n10. **Observações de Acabamento:** "
   }
 }
 ```
@@ -630,12 +630,12 @@ Content-Type: application/json
 ```http
 POST /chatGptToolsEndpoint/tools/extract_order_draft HTTP/1.1
 Host: api.luisices.com.br
-Authorization: Bearer lui_live_8f93a10b9c32e41f021
+Authorization: Bearer <ACCESS_TOKEN>
 Content-Type: application/json
 
 {
-  "customerName": "Mariana Silva",
-  "customerPhone": "11987654321",
+  "customerName": "Cliente Exemplo",
+  "customerPhone": "<TELEFONE_FICTICIO>",
   "productSummary": "20 Caixas Pyramide 3D + 1 Topo de Bolo Shaker",
   "quantity": 21,
   "totalPrice": 280.00,
@@ -652,14 +652,14 @@ Content-Type: application/json
   "timestamp": "2026-10-13T10:30:00.000Z",
   "data": {
     "preparationStatus": "draft_prepared",
-    "customerName": "Mariana Silva",
-    "customerPhone": "+5511987654321",
+    "customerName": "Cliente Exemplo",
+    "customerPhone": "<TELEFONE_FICTICIO>",
     "productSummary": "20 Caixas Pyramide 3D + 1 Topo de Bolo Shaker",
     "quantity": 21,
     "totalPrice": 280.00,
     "deliveryDate": "2026-11-20",
     "theme": "Jardim Encantado",
-    "draftSummaryMarkdown": "🔍 **Rascunho do Pedido Pronto para Conferência:**\n* **Cliente:** Mariana Silva (+5511987654321)\n* **Itens:** 20 Caixas Pyramide 3D + 1 Topo de Bolo Shaker (21 peças)\n* **Tema:** Jardim Encantado\n* **Data de Entrega:** 20/11/2026\n* **Valor Total:** R$ 280,00\n\n> ⚠️ Para gravar este pedido oficialmente na fila de produção, execute a ação `create_order`."
+    "draftSummaryMarkdown": "🔍 **Rascunho do Pedido Pronto para Conferência:**\n* **Cliente:** Cliente Exemplo (<TELEFONE_FICTICIO>)\n* **Itens:** 20 Caixas Pyramide 3D + 1 Topo de Bolo Shaker (21 peças)\n* **Tema:** Jardim Encantado\n* **Data de Entrega:** 20/11/2026\n* **Valor Total:** R$ 280,00\n\n> ⚠️ Para gravar este pedido oficialmente na fila de produção, execute a ação `create_order`."
   }
 }
 ```
@@ -690,13 +690,13 @@ Content-Type: application/json
 ```http
 POST /chatGptToolsEndpoint/tools/create_order HTTP/1.1
 Host: api.luisices.com.br
-Authorization: Bearer lui_live_8f93a10b9c32e41f021
+Authorization: Bearer <ACCESS_TOKEN>
 X-Idempotency-Key: msp-ord-20261013-001
 Content-Type: application/json
 
 {
-  "customerName": "Mariana Silva",
-  "customerPhone": "11987654321",
+  "customerName": "Cliente Exemplo",
+  "customerPhone": "<TELEFONE_FICTICIO>",
   "productName": "Kit Pegue e Monte Safari 3D (50 peças)",
   "quantity": 50,
   "totalPrice": 650.00,
@@ -718,8 +718,8 @@ Content-Type: application/json
     "id": "ORD-2026-0201",
     "orderNumber": "#2026-0201",
     "status": "pendente",
-    "customerName": "Mariana Silva",
-    "customerPhone": "+5511987654321",
+    "customerName": "Cliente Exemplo",
+    "customerPhone": "<TELEFONE_FICTICIO>",
     "productName": "Kit Pegue e Monte Safari 3D (50 peças)",
     "quantity": 50,
     "totalPrice": 650.00,
@@ -753,7 +753,7 @@ Content-Type: application/json
 ```http
 POST /chatGptToolsEndpoint/tools/search_gallery_portfolio HTTP/1.1
 Host: api.luisices.com.br
-Authorization: Bearer lui_live_8f93a10b9c32e41f021
+Authorization: Bearer <ACCESS_TOKEN>
 Content-Type: application/json
 
 {
@@ -807,11 +807,11 @@ Content-Type: application/json
 ```http
 POST /chatGptToolsEndpoint/tools/get_user_summary HTTP/1.1
 Host: api.luisices.com.br
-Authorization: Bearer lui_live_8f93a10b9c32e41f021
+Authorization: Bearer <ACCESS_TOKEN>
 Content-Type: application/json
 
 {
-  "userIdentifier": "caio@luisices.com.br"
+  "userIdentifier": "usuario@example.invalid"
 }
 ```
 
@@ -822,8 +822,8 @@ Content-Type: application/json
   "tool": "get_user_summary",
   "timestamp": "2026-10-13T10:30:00.000Z",
   "data": {
-    "userEmail": "caio@luisices.com.br",
-    "userName": "Caio Garcia",
+    "userEmail": "usuario@example.invalid",
+    "userName": "Colaborador Exemplo",
     "role": "admin",
     "completedOrdersThisMonth": 28,
     "inProductionCount": 5,
@@ -833,6 +833,36 @@ Content-Type: application/json
 ```
 
 ---
+
+### 5.1 Catálogo de ferramentas e escopos
+
+O servidor publica 21 ferramentas. A lista abaixo reflete o registro atual em `functions/mcp/openapi.js`; a autorização efetiva também exige que o perfil e a chave permitam o escopo indicado.
+
+| Ferramenta | Escopo requerido |
+| :--- | :--- |
+| `query_orders_view` | `orders:read` |
+| `daily_briefing` | `orders:read` |
+| `query_delivery_schedule` | `orders:read` |
+| `extract_order_draft` | `orders:draft` |
+| `get_order_form` | `orders:draft` |
+| `create_order` | `orders:create` |
+| `get_order_edit_form` | `orders:update` |
+| `update_order` | `orders:update` |
+| `update_order_status` | `orders:update` |
+| `update_delivery_details` | `orders:update` |
+| `query_customers` | `customers:read` |
+| `get_customer_history` | `customers:read` |
+| `create_customer` | `customers:create` |
+| `update_customer` | `customers:update` |
+| `query_order_payments` | `payments:read` |
+| `register_order_payment` | `payments:write` |
+| `get_financial_summary` | `financial:read` |
+| `get_user_summary` | `team:read` |
+| `calculate_pricing_estimate` | `pricing:estimate` |
+| `generate_whatsapp_message` | `whatsapp:compose` |
+| `search_gallery_portfolio` | `gallery:read` |
+
+Ferramentas que gravam dados devem ser usadas com os campos de prévia, confirmação explícita, controle de versão e/ou idempotência definidos no schema de cada operação. A autorização é validada novamente pelo backend em cada chamada.
 
 ## 6. Suporte Nativo ao Protocolo MCP (JSON-RPC 2.0)
 
@@ -935,8 +965,8 @@ Além das chamadas REST OpenAPI, o endpoint aceita requisições no padrão nati
 Para realizar testes integrados no ChatGPT Actions ou cliente MCP, utilize os dados fictícios padronizados abaixo:
 
 ### Massa Fictícia Padronizada para Testes:
-* **Cliente de Teste:** `Mariana Silva`
-* **Telefone Fictício:** `+5511987654321`
+* **Cliente de Teste:** `Cliente Exemplo`
+* **Telefone Fictício:** `<TELEFONE_FICTICIO>`
 * **Produto de Teste 1 (Normal):** `Kit Festa Luxo Safari Baby 3D (30 peças)` — **Valor:** `R$ 350,00` — **Sinal:** `R$ 175,00`
 * **Produto de Teste 2 (Valor Alto > R$500):** `50 Caixas Personalizadas Bodas de Ouro` — **Valor:** `R$ 750,00` — **Sinal:** `R$ 400,00`
 * **Data de Entrega Futura de Teste:** `2026-11-15`
@@ -945,8 +975,8 @@ Para realizar testes integrados no ChatGPT Actions ou cliente MCP, utilize os da
 1. **Teste de Consulta:** * "Mostre o raio-x das operações de hoje do ateliê."* → Aciona `daily_briefing`.
 2. **Teste de Precificação:** * "Quanto devo cobrar para fazer 20 caixas milk luxo com custo de R$ 40 de papel e 2 horas de trabalho?"* → Aciona `calculate_pricing_estimate`.
 3. **Teste de Formulário:** * "Quero fazer um novo pedido."* → Aciona `get_order_form`.
-4. **Teste de Rascunho:** * "Monte um rascunho de pedido para a Mariana Silva, telefone 11987654321, 30 caixas safari baby no valor de R$ 350 para o dia 15/11/2026."* → Aciona `extract_order_draft`.
-5. **Teste de Registro Oficial com Idempotência & Trava Financeira:** * "Confirme e registre o pedido de 50 Caixas Bodas de Ouro para a Mariana Silva por R$ 750 para entrega em 15/11/2026."* → Aciona `create_order` e gera o alerta de aprovação financeira (> R$ 500).
+4. **Teste de Rascunho:** * "Monte um rascunho de pedido para a Cliente Exemplo, telefone <TELEFONE_FICTICIO>, 30 caixas safari baby no valor de R$ 350 para o dia 15/11/2026."* → Aciona `extract_order_draft`.
+5. **Teste de Registro Oficial com Idempotência & Trava Financeira:** * "Confirme e registre o pedido de 50 Caixas Bodas de Ouro para a Cliente Exemplo por R$ 750 para entrega em 15/11/2026."* → Aciona `create_order` e gera o alerta de aprovação financeira (> R$ 500).
 
 ---
 *Documentação gerada e mantida no repositório em `/docs/INTEGRACAO_CHATGPT_MCP.md`.*

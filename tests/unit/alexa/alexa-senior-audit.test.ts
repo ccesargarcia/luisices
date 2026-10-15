@@ -397,7 +397,7 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
 
       const res = await handleAlexaDialog({
         envelope,
-        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Caio' },
+        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Usuário Teste' },
         config: { environment: 'dev', isEnabled: true },
         db: mockDb,
       });
@@ -582,7 +582,7 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
 
       const res = await handleAlexaDialog({
         envelope,
-        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Caio' },
+        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Usuário Teste' },
         config: { environment: 'dev', isEnabled: true },
         db: mockDb,
       });
@@ -641,7 +641,7 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
 
       await handleAlexaDialog({
         envelope,
-        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Caio' },
+        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Usuário Teste' },
         config: { environment: 'dev', isEnabled: true },
         db: mockDb,
       });
@@ -785,7 +785,7 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
           uid: 'uid-test',
           bindingKey: 'binding-test',
           personId: 'amzn1.ask.person.TEST',
-          displayName: 'Caio',
+          displayName: 'Usuário Teste',
           mode: 'app_approval',
         },
         config: { environment: 'dev', isEnabled: true },
@@ -1053,7 +1053,7 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
 
       const res = await handleAlexaDialog({
         envelope,
-        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Caio' },
+        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Usuário Teste' },
         config: { environment: 'dev', isEnabled: true },
         db: mockDb,
       });
@@ -1131,7 +1131,7 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
 
       await handleAlexaDialog({
         envelope,
-        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Caio' },
+        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Usuário Teste' },
         config: { environment: 'dev', isEnabled: true },
         db: mockDb,
       });
@@ -1220,7 +1220,7 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
 
       const res = await handleAlexaDialog({
         envelope,
-        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Caio' },
+        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Usuário Teste' },
         config: { environment: 'dev', isEnabled: true, timezone: 'America/Sao_Paulo' },
         db: mockDb,
       });

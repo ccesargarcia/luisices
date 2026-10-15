@@ -7,10 +7,12 @@ dotenv.config({ path: '.env.test' });
 dotenv.config({ path: '.env.local' });
 
 export function getTestCredentials() {
-  return {
-    email: process.env.TEST_USER_EMAIL || 'teste@luisices.com.br',
-    password: process.env.TEST_USER_PASSWORD || 'Senha123456!',
-  };
+  const email = process.env.TEST_USER_EMAIL;
+  const password = process.env.TEST_USER_PASSWORD;
+  if (!email || !password) {
+    throw new Error('Configure TEST_USER_EMAIL e TEST_USER_PASSWORD fora do repositório para executar os fluxos E2E autenticados.');
+  }
+  return { email, password };
 }
 
 const IDB_FILE = path.resolve(process.cwd(), 'playwright/.auth/firebaseIdb.json');

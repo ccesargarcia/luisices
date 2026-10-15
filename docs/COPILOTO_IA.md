@@ -1,8 +1,6 @@
 # Copiloto de IA: capacidades, prompt e evolução
 
-Revisão: **10/10/2026**. Base verificada: `origin/develop` / `298f298`. Entrega: `fix/ai-response-contracts`.
-
-Esta entrega implementa os contratos e substitui o prompt executável em `functions/ai/schemas.js`, com base na proposta documental anterior. **Implementado e validado localmente; ainda não publicado em DEV.** Publicar a branch não faz merge nem deploy. As ferramentas novas listadas adiante continuam propostas.
+Revisão: **15/10/2026**. A implementação descrita abaixo é baseada no código presente no repositório. O estado de publicação em cada ambiente deve ser confirmado no pipeline e no próprio ambiente.
 
 ## Onde o comportamento é definido
 

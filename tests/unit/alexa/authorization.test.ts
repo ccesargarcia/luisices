@@ -266,7 +266,7 @@ describe('Alexa: Subsistema de Identidade, Vínculo de Voz e Autorização', () 
       userProfiles: {
         'uid-amanda-123': {
           displayName: 'Amanda Garcia',
-          email: 'amanda@luisices.com.br',
+          email: 'test-user@example.invalid',
           active: true,
           role: 'user',
           permissions: {

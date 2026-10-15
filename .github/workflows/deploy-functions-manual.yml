@@ -83,11 +83,16 @@ jobs:
         if: steps.env.outputs.target == 'dev'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+          SENTRY_DSN: ${{ secrets.DEV_FUNCTIONS_SENTRY_DSN || secrets.DEV_SENTRY_DSN || secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}
           RESEND_API_KEY: ${{ secrets.DEV_RESEND_API_KEY || secrets.RESEND_API_KEY }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.DEV_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.DEV_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.dev_gemini || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
         run: |
+          trap 'rm -f functions/.env.luisices-dev' EXIT
+          if [ -n "$SENTRY_DSN" ]; then
+            printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=development\n' "$SENTRY_DSN" > functions/.env.luisices-dev
+          fi
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           firebase use luisices-dev --project luisices-dev --non-interactive
@@ -188,6 +193,7 @@ jobs:
         if: steps.env.outputs.target == 'prod'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.PROD_FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SENTRY_DSN: ${{ secrets.PROD_FUNCTIONS_SENTRY_DSN || secrets.PROD_SENTRY_DSN || secrets.PROD_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}
           RESEND_API_KEY: ${{ secrets.PROD_RESEND_API_KEY || secrets.RESEND_API_KEY }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.PROD_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.PROD_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
@@ -196,6 +202,10 @@ jobs:
           ALEXA_HMAC: ${{ secrets.PROD_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY }}
           ALEXA_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID || secrets.ALEXA_PROD_SKILL_ID || secrets.ALEXA_SKILL_ID }}
         run: |
+          trap 'rm -f functions/.env.papelaria-dashboard' EXIT
+          if [ -n "$SENTRY_DSN" ]; then
+            printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=production\n' "$SENTRY_DSN" > functions/.env.papelaria-dashboard
+          fi
           if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
             echo "❌ ERRO: Secret FIREBASE_SERVICE_ACCOUNT_PROD não encontrado no GitHub."
             exit 1

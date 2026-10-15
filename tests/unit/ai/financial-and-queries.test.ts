@@ -118,8 +118,8 @@ describe('IA-02: Cálculos Financeiros Exatos e Consultas Completas', () => {
       };
     },
     getTeamMembers: async () => [
-      { uid: 'user-admin', name: 'Admin Geral', email: 'admin@luisices.com.br' },
-      { uid: 'user-func', name: 'Amanda Vendedora', email: 'amanda@luisices.com.br' },
+      { uid: 'user-admin', name: 'Admin Geral', email: 'admin@test.local' },
+      { uid: 'user-func', name: 'Amanda Vendedora', email: 'amanda@test.local' },
     ],
   };
 
@@ -196,7 +196,7 @@ describe('IA-02: Cálculos Financeiros Exatos e Consultas Completas', () => {
 
     it('deve pesquisar clientes atendidos por um colaborador a partir de seus pedidos', async () => {
       const scopeAdmin = getCallerScope('user-admin', { role: 'admin', active: true });
-      const res = await executor.executeQueryCustomers({ searchTerm: 'amanda@luisices.com.br' }, scopeAdmin);
+      const res = await executor.executeQueryCustomers({ searchTerm: 'amanda@test.local' }, scopeAdmin);
 
       expect(res.customers.length).toBe(1);
       expect(res.customers[0].name).toBe('Amanda Ferreira');
@@ -241,7 +241,7 @@ describe('IA-02: Cálculos Financeiros Exatos e Consultas Completas', () => {
   describe('executeUserSummary', () => {
     it('deve retornar métricas detalhadas com volume emitido e faturamento para colaborador auditado', async () => {
       const scopeAdmin = getCallerScope('user-admin', { role: 'admin', active: true });
-      const res = await executor.executeUserSummary({ userIdentifier: 'amanda@luisices.com.br' }, scopeAdmin);
+      const res = await executor.executeUserSummary({ userIdentifier: 'amanda@test.local' }, scopeAdmin);
 
       expect(res.authorized).toBe(true);
       expect(res.found).toBe(true);

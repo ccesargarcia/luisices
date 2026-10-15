@@ -114,7 +114,7 @@ describe('Alexa: Mapeamento de Pedido, Idempotência e Sequência de Gravação 
         [uid]: {
           active: true,
           displayName: 'Amanda Garcia',
-          email: 'amanda@luisices.com.br',
+          email: 'test-user@example.invalid',
           permissions: { orders: { create: true } }, // Achado 4: exige permissão explícita
         },
       },

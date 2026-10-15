@@ -4,7 +4,8 @@
 
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
 const { getStorage } = require('firebase-admin/storage');
-const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('firebase-functions/v2/https');
+const { onCall, onRequest } = require('../common/sentryFunctions');
 const crypto = require('crypto');
 const { RESEND_API_KEY, RESEND_WEBHOOK_SECRET, ORIGIN_SECRET } = require('../common/secrets');
 const { customEmailLimiter } = require('../common/rateLimiters');

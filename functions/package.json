@@ -15,6 +15,7 @@
   },
   "main": "index.js",
   "dependencies": {
+    "@sentry/node": "11.8.0",
     "ask-sdk-core": "^2.14.0",
     "ask-sdk-express-adapter": "^2.14.0",
     "firebase-admin": "14.5.0",

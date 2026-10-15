@@ -1,11 +1,11 @@
-# Pedidos por Alexa no Luisices — especificação para implementação
+# Pedidos por Alexa no Luisices — decisões de segurança e arquitetura
 
 Data: 27/09/2026. Base analisada: `0aca8fc`, após pull de `origin/develop` na branch `feature/novo-visual-luisices`.
-Este documento especifica a implementação; nenhuma integração foi implantada.
+Este documento especifica a implementação; a implementação correspondente está em `functions/alexa/` e `alexa/skill-package/`; a publicação deve ser verificada no ambiente antes de assumir disponibilidade.
 
 ## 1. Resultado esperado e decisões
 
-Permitir que pessoas previamente autorizadas criem pedidos por voz em português brasileiro. Quando Amanda falar, o servidor deverá resolver sua identidade cadastrada e criar o pedido com `userId = UID_DA_AMANDA`, após conferir os dados com ela. Pessoas desconhecidas não poderão criar pedidos nem rascunhos no quadro.
+Permitir que pessoas previamente autorizadas criem pedidos por voz em português brasileiro. Quando colaboradora autorizada falar, o servidor deverá resolver sua identidade cadastrada e criar o pedido com `userId = UID_DA_COLABORADORA`, após conferir os dados com ela. Pessoas desconhecidas não poderão criar pedidos nem rascunhos no quadro.
 
 Decisões para a primeira versão:
 
@@ -34,7 +34,7 @@ Decisões para a primeira versão:
 | `firestore.rules` e `firestore.indexes.json` | Proteger as novas coleções e consultas administrativas |
 | `.firebaserc` | Produção `papelaria-dashboard`; desenvolvimento `luisices-dev` |
 
-O sistema usa `orders.userId`; não foi identificada necessidade de criar uma entidade nova de workspace. O pedido da Amanda será de propriedade dela; `assignedTo` será `null` no MVP. O administrador continuará podendo vê-lo na visão global e no filtro da Amanda. Isso não transforma o espaço dela em privado para administradores.
+O sistema usa `orders.userId`; não foi identificada necessidade de criar uma entidade nova de workspace. O pedido da colaboradora autorizada será de propriedade dela; `assignedTo` será `null` no MVP. O administrador continuará podendo vê-lo na visão global e no filtro da colaboradora autorizada. Isso não transforma o espaço dela em privado para administradores.
 
 A versão atual grava contador, pedido e `salesLedger` na mesma transação. Preservar essa garantia no backend Alexa. O serviço atual depende de `auth.currentUser` no navegador: não importá-lo diretamente em Cloud Functions. Extrair funções puras de validação/mapeamento ou criar equivalente no servidor com testes de paridade. Evitar refatoração ampla do fluxo web.
 
@@ -65,20 +65,20 @@ O endpoint deve ser alcançável pela Alexa; a autenticação será a verificaç
 
 `context.System.user.userId` identifica a conta Amazon ativa no aparelho. `context.System.person.personId`, quando disponível, identifica o perfil reconhecido. Solicitar `alexa::person_id:read`. A personalização depende de consentimento e de reconhecimento efetivo; ausência de `personId` deve encerrar a tentativa com orientação, sem usar a conta do aparelho como fallback. [Documentação de personalização](https://developer.amazon.com/en-US/docs/alexa/custom-skills/add-personalization-to-your-skill.html).
 
-Chave lógica do vínculo: `(environment, applicationId, amazonUserId, personId)`. Persistir uma chave HMAC-SHA256 dessa composição usando segredo por ambiente. Não usar nome pronunciado, e-mail ditado ou `deviceId` como identidade de pessoa. O nome Amanda vem de `userProfiles`, após resolver o vínculo.
+Chave lógica do vínculo: `(environment, applicationId, amazonUserId, personId)`. Persistir uma chave HMAC-SHA256 dessa composição usando segredo por ambiente. Não usar nome pronunciado, e-mail ditado ou `deviceId` como identidade de pessoa. O nome colaboradora autorizada vem de `userProfiles`, após resolver o vínculo.
 
-### 4.2 Cadastro inicial de Amanda: pareamento supervisionado
+### 4.2 Cadastro inicial de colaboradora autorizada: pareamento supervisionado
 
 Para manter baixo o custo de implementação, o MVP usará pareamento próprio supervisionado, sem implementar um provedor OAuth. Não chamar esse fluxo de OAuth Account Linking.
 
-1. Administrador ativo abre “Configurações → Alexa”, escolhe o UID da Amanda e habilita sua permissão de criação por voz. Exigir também `permissions.orders.create === true`; funcionários normalmente precisam receber essa permissão explicitamente.
-2. Amanda configura seu perfil de voz e permite personalização no aplicativo Alexa.
-3. Na presença do administrador, Amanda diz “Alexa, abrir luisices de teste” e “vincular minha voz”.
+1. Administrador ativo abre “Configurações → Alexa”, escolhe o UID da colaboradora autorizada e habilita sua permissão de criação por voz. Exigir também `permissions.orders.create === true`; funcionários normalmente precisam receber essa permissão explicitamente.
+2. colaboradora autorizada configura seu perfil de voz e permite personalização no aplicativo Alexa.
+3. Na presença do administrador, colaboradora autorizada diz “Alexa, abrir luisices de teste” e “vincular minha voz”.
 4. O webhook validado recebe `personId` e gera desafio aleatório de oito dígitos, validade de cinco minutos e uso único. Fala os dígitos separadamente. Não gerar desafio se não houver pessoa reconhecida.
 5. O administrador digita esse código no Luisices e confirma o usuário e o ambiente. A associação é consumida e criada em transação. Não permitir que a Alexa escolha o UID.
-6. Fazer uma tentativa de pedido com Amanda e outra com pessoa não cadastrada antes de ativar uso automático.
+6. Fazer uma tentativa de pedido com colaboradora autorizada e outra com pessoa não cadastrada antes de ativar uso automático.
 
-Esse cadastro atesta a associação observada pelo administrador; o código não prova sozinho que a voz pertence à Amanda. Não permitir ativação remota automática por simples posse do código. Armazenar apenas HMAC do código, tentar no máximo cinco códigos por administrador em cinco minutos e limitar geração por conta/dispositivo. Regeneração invalida desafio anterior; colisões devem ser detectadas e regeneradas.
+Esse cadastro atesta a associação observada pelo administrador; o código não prova sozinho que a voz pertence à colaboradora autorizada. Não permitir ativação remota automática por simples posse do código. Armazenar apenas HMAC do código, tentar no máximo cinco códigos por administrador em cinco minutos e limitar geração por conta/dispositivo. Regeneração invalida desafio anterior; colisões devem ser detectadas e regeneradas.
 
 Novas identidades não sobrescrevem vínculos ativos silenciosamente. Reinstalação da skill ou alteração do identificador exige novo pareamento supervisionado. Revogação deve ter efeito na próxima operação de criação.
 
@@ -103,7 +103,7 @@ Modos por pessoa:
 - `voice_confirm`: pessoa vinculada, permissão explícita e confirmação verbal do resumo. Recomendado para o uso doméstico proposto após validação real.
 - `app_approval`: a voz prepara uma solicitação; o próprio titular autenticado a aprova no Luisices. Somente essa aprovação cria `orders` e `salesLedger`. É a alternativa quando a confiança da identificação de voz não é suficiente.
 
-Se `personId` não funcionar no aparelho/locale utilizado, bloquear o fluxo automático. Uma alternativa com aprovação web exige um vínculo de conta/dispositivo configurado pelo administrador e deve ser apresentada como outro modo, sem alegar reconhecimento da Amanda.
+Se `personId` não funcionar no aparelho/locale utilizado, bloquear o fluxo automático. Uma alternativa com aprovação web exige um vínculo de conta/dispositivo configurado pelo administrador e deve ser apresentada como outro modo, sem alegar reconhecimento da colaboradora autorizada.
 
 PIN nativo é uma evolução opcional condicionada à disponibilidade na conta, aparelho e locale. Usar o fluxo oficial `AMAZON.VerifyPerson/2`, tratar retorno e correlacioná-lo ao rascunho. Não criar um slot de senha ou guardar PIN pronunciado. [PIN Confirmation](https://developer.amazon.com/en-US/docs/alexa/custom-skills/pin-confirmation-for-alexa-skills.html).
 
@@ -111,23 +111,23 @@ PIN nativo é uma evolução opcional condicionada à disponibilidade na conta, 
 
 Exemplo de entrada confiável para testes:
 
-> Amanda: “Alexa, abrir luisices de teste.”
+> colaboradora autorizada: “Alexa, abrir luisices de teste.”
 >
 > Alexa: “Ambiente de teste. Diga criar pedido.”
 >
-> Amanda: “Criar pedido de vinte caixinhas para Maria.”
+> colaboradora autorizada: “Criar pedido de vinte caixinhas para Maria.”
 >
 > Alexa: “Qual é a data de entrega?”
 >
-> Amanda: “Dez de outubro.”
+> colaboradora autorizada: “Dez de outubro.”
 >
 > Alexa: “Qual é o valor total do pedido?”
 >
-> Amanda: “Cem reais.”
+> colaboradora autorizada: “Cem reais.”
 >
-> Alexa: “Amanda, no ambiente de teste: vinte caixinhas para Maria, entrega em dez de outubro de 2026, total de cem reais. Confirmar?”
+> Alexa: “colaboradora autorizada, no ambiente de teste: vinte caixinhas para Maria, entrega em dez de outubro de 2026, total de cem reais. Confirmar?”
 >
-> Amanda: “Sim.”
+> colaboradora autorizada: “Sim.”
 >
 > Alexa: “Pedido criado no seu espaço de teste.”
 
@@ -230,13 +230,13 @@ Manter configuração explícita `ALEXA_ENVIRONMENT`, `ALEXA_SKILL_ID`, `ALEXA_E
 
 ### Roteiro de validação
 
-1. Testes locais com Firebase Emulator Suite e projeto `demo-*`, sem credenciais de produção. Fixtures sintéticas de Amanda e usuário não autorizado.
+1. Testes locais com Firebase Emulator Suite e projeto `demo-*`, sem credenciais de produção. Fixtures sintéticas de colaboradora autorizada e usuário não autorizado.
 2. Testes de domínio podem chamar handlers internos com envelopes sintéticos. O endpoint HTTP implantado nunca terá `skipSignatureValidation` nem modo de identidade simulada.
 3. Implantar somente novas functions/regras necessárias em `--project luisices-dev`, usando seletores explícitos. Não usar o script genérico que implanta todas as functions e remove versões de segredos.
 4. Criar skill de teste, definir endpoint HTTPS, locale `pt-BR`, personalização, intents e slots; fazer build e ativar testing em Development.
 5. Testar diálogo no simulator. Testar assinaturas no tráfego real da Alexa; um POST manual do console não prova validação criptográfica.
-6. Habilitar a skill de desenvolvimento em um Echo da conta de desenvolvimento elegível. Validar a disponibilidade de personalização e as vozes reais da Amanda e de outra pessoa.
-7. Confirmar que o pedido aparece apenas no projeto dev e no espaço da Amanda; conferir que produção permanece sem alterações.
+6. Habilitar a skill de desenvolvimento em um Echo da conta de desenvolvimento elegível. Validar a disponibilidade de personalização e as vozes reais da colaboradora autorizada e de outra pessoa.
+7. Confirmar que o pedido aparece apenas no projeto dev e no espaço da colaboradora autorizada; conferir que produção permanece sem alterações.
 8. Registrar evidência sem dados privados: aparelho, locale, cenário, resultado, latência e versão implantada.
 
 O console permite testes antes da publicação. Simulator não substitui teste de reconhecimento no Echo. Verificar elegibilidade da conta/dispositivo e os caminhos de habilitação descritos pela Amazon. [Testes no Developer Console](https://www.developer.amazon.com/en-US/docs/alexa/devconsole/test-your-skill.html).
@@ -269,15 +269,15 @@ Em “Configurações → Alexa”: ambiente destacado, estado da integração, 
 
 Administrador vê os vínculos aprovados e eventos recentes com motivos legíveis. O titular vê seu vínculo e pode revogá-lo. Para `app_approval`, apresentar solicitações pendentes em seção própria com resumo, expiração e botões aprovar/rejeitar. Elas não entram no quadro nem nos relatórios antes de aprovação.
 
-Pedidos criados mostram selo “Alexa” e mantêm edição/exclusão normais pelo sistema. Não alterar o filtro global do administrador para esconder pedidos reais da Amanda. O objetivo de evitar poluição é impedir pedidos não autorizados, incompletos, repetidos e de teste.
+Pedidos criados mostram selo “Alexa” e mantêm edição/exclusão normais pelo sistema. Não alterar o filtro global do administrador para esconder pedidos reais da colaboradora autorizada. O objetivo de evitar poluição é impedir pedidos não autorizados, incompletos, repetidos e de teste.
 
 ## 11. Critérios de aceite e testes obrigatórios
 
 | Cenário | Resultado esperado |
 | --- | --- |
-| Amanda vinculada e autorizada confirma | Um pedido próprio, um ledger e um incremento de contador |
+| colaboradora autorizada vinculada e autorizada confirma | Um pedido próprio, um ledger e um incremento de contador |
 | Outro usuário autorizado fala | Pedido pertence ao UID dessa pessoa |
-| Visitante diz “sou Amanda” ou “no espaço da Amanda” | Nenhuma criação nem troca de proprietário |
+| Visitante diz “sou colaboradora autorizada” ou “no espaço da colaboradora autorizada” | Nenhuma criação nem troca de proprietário |
 | Conta/aparelho autorizado, pessoa desconhecida | Nenhuma criação |
 | Pessoa sem `orders.create` ou sem permissão de voz | Negação, inclusive se admin |
 | Perfil inativo, Auth desativado ou vínculo revogado | Negação |
@@ -301,7 +301,7 @@ Pedidos criados mostram selo “Alexa” e mantêm edição/exclusão normais pe
 
 Adicionar testes unitários em `tests/unit/alexa`, integração com emulador e testes de interface para permissão/aprovação. Reaproveitar os scripts `test:unit`, `test:integration`, `typecheck` e `build`; ajustar configuração para executar as novas suítes. Não considerar o script de lint das functions, atualmente sem validação real, evidência suficiente.
 
-Entregar testes de regressão da criação web e do ledger. Medir latência quente/fria e número de operações com tráfego de teste, sem prometer metas antes de medir. O teste físico com Amanda e uma segunda pessoa é requisito para liberar o modo automático.
+Entregar testes de regressão da criação web e do ledger. Medir latência quente/fria e número de operações com tráfego de teste, sem prometer metas antes de medir. O teste físico com colaboradora autorizada e uma segunda pessoa é requisito para liberar o modo automático.
 
 ## 12. Entregáveis e ordem de implementação
 
@@ -319,7 +319,7 @@ Produção permanece desabilitada até concluir testes e preencher IDs/configura
 
 > Implemente pedidos por Alexa no Luisices seguindo integralmente `docs/ESPECIFICACAO_ALEXA_ANTIGRAVITY.md`. Comece pela prova de viabilidade em `pt-BR` e reavalie o código atual, pois a especificação foi preparada sobre `0aca8fc`.
 >
-> Use Custom Skill com HTTPS direto nas Firebase Cloud Functions, sem LLM no fluxo. Separe as skills e projetos de teste e produção. Faça vínculo supervisionado e revogável de `personId` ao UID interno; nunca trate a conta do aparelho ou nome falado como pessoa autenticada. Amanda deve criar no próprio `userId`, depois de confirmar o resumo.
+> Use Custom Skill com HTTPS direto nas Firebase Cloud Functions, sem LLM no fluxo. Separe as skills e projetos de teste e produção. Faça vínculo supervisionado e revogável de `personId` ao UID interno; nunca trate a conta do aparelho ou nome falado como pessoa autenticada. colaboradora autorizada deve criar no próprio `userId`, depois de confirmar o resumo.
 >
 > Exija autorização explícita, perfil ativo e permissão `orders.create`, com validação no servidor antes do commit. Implemente rascunho fora do quadro, proteção contra troca de pessoa, assinatura Amazon, antirreplay, rate limit distribuído e idempotência por requisição e por rascunho. Grave pedido, contador, ledger e recibo em transação única, compatível com o fluxo web existente.
 >

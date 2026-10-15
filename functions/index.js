@@ -2,6 +2,9 @@
  * Ponto de Entrada Principal das Cloud Functions para Firebase (v2).
  * Arquitetura Modularizada por Domínio de Negócio - Luisices.
  */
+// Inicialize antes de importar Firebase Functions para instrumentar triggers.
+require('./common/sentry');
+
 const { initializeApp } = require('firebase-admin/app');
 
 // Inicialização do Firebase Admin SDK no escopo global

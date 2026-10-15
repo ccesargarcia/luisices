@@ -121,8 +121,8 @@ describe('Migração de Usuário (Dev ➔ Prod): Validação de Lógica e Segura
     vi.stubGlobal('fetch', mockFetch);
 
     const result = await sendPasswordResetEmailNotification({
-      userEmail: 'parceiro@luisices.com.br',
-      userName: 'Caio Garcia',
+      userEmail: 'test-user@example.invalid',
+      userName: 'Usuário de teste',
       resetLink: 'https://auth.luisices.com.br/reset?token=xyz',
       resendApiKey: 're_mock_test_key_123',
     });
@@ -137,15 +137,15 @@ describe('Migração de Usuário (Dev ➔ Prod): Validação de Lógica e Segura
     expect(options.headers['Authorization']).toBe('Bearer re_mock_test_key_123');
 
     const body = JSON.parse(options.body);
-    expect(body.to).toEqual(['parceiro@luisices.com.br']);
+    expect(body.to).toEqual(['test-user@example.invalid']);
     expect(body.subject).toContain('Defina sua senha de acesso');
     expect(body.html).toContain('https://auth.luisices.com.br/reset?token=xyz');
   });
 
   it('deve retornar falha amigável sem lançar erro quando RESEND_API_KEY não estiver configurada', async () => {
     const result = await sendPasswordResetEmailNotification({
-      userEmail: 'parceiro@luisices.com.br',
-      userName: 'Caio Garcia',
+      userEmail: 'test-user@example.invalid',
+      userName: 'Usuário de teste',
       resetLink: 'https://auth.luisices.com.br/reset?token=xyz',
       resendApiKey: '',
     });

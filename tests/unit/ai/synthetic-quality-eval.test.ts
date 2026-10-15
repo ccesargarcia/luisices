@@ -29,7 +29,7 @@ describe('IA-QA: Suíte Sintética de Avaliação e Regressão (40 Casos Obrigat
       if (opt.searchTerm) res = res.filter(c => c.name.toLowerCase().includes(opt.searchTerm.toLowerCase()) || c.city.toLowerCase().includes(opt.searchTerm.toLowerCase()));
       return { customers: res, totalScoped: syntheticCustomers.length, totalFiltered: res.length, hasMore: false };
     },
-    getTeamMembers: async () => [{ uid: 'u-admin', name: 'Admin', email: 'admin@luisices.com.br' }],
+    getTeamMembers: async () => [{ uid: 'u-admin', name: 'Admin', email: 'test-user@example.invalid' }],
     getGalleryItems: async () => [],
     getCatalogKnowledge: async () => '',
   };

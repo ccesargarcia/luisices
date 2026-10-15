@@ -15,8 +15,13 @@ config({ path: resolve(process.cwd(), '.env.local') });
 
 const host = process.env.VITE_FIREBASE_EMULATOR_HOST || '127.0.0.1';
 const projectId = process.env.VITE_FIREBASE_PROJECT_ID || 'luisices-dev';
-const email = process.env.TEST_USER_EMAIL || 'teste@luisices.com.br';
-const password = process.env.TEST_USER_PASSWORD || 'Senha123456!';
+const email = process.env.TEST_USER_EMAIL || 'test-user@example.invalid';
+const password = process.env.TEST_USER_PASSWORD;
+
+if (!password) {
+  console.error('TEST_USER_PASSWORD ausente. Configure-a localmente em .env.test ou no ambiente do emulador.');
+  process.exit(1);
+}
 
 process.env.FIREBASE_AUTH_EMULATOR_HOST = `${host}:9099`;
 process.env.FIRESTORE_EMULATOR_HOST = `${host}:8080`;

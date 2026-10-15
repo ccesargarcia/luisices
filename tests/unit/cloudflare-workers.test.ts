@@ -160,5 +160,30 @@ describe('Cloudflare Workers: Validação e Testes Unitários de Borda', () => {
       expect(headers.get('x-forwarded-for')).toBe('200.100.50.25');
       expect(headers.get('x-forwarded-proto')).toBe('https');
     });
+
+    it('deve retornar status 502 e capturar exceção quando comunicação com backend falhar', async () => {
+      const mockFetch = vi.fn().mockRejectedValue(new Error('Backend connection refused'));
+      vi.stubGlobal('fetch', mockFetch);
+
+      const request = new Request('https://api.luisices.com.br/aiAgentChat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'teste erro' }),
+      });
+
+      const env = {
+        ENVIRONMENT: 'production',
+        BACKEND_ORIGIN: 'https://us-central1-papelaria-dashboard.cloudfunctions.net',
+        SENTRY_DSN: 'https://mock@sentry.io/123456',
+      };
+
+      const response = await apiWorker.fetch(request, env, {});
+      expect(response.status).toBe(502);
+
+      const body = await response.json();
+      expect(body.error).toContain('Gateway Timeout / Falha ao comunicar com backend');
+      expect(body.message).toBe('Backend connection refused');
+    });
   });
 });
+

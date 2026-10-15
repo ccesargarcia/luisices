@@ -3,7 +3,7 @@
  * Configurado com minInstances: 0 para custo zero quando inativo.
  */
 
-const { onRequest } = require('firebase-functions/v2/https');
+const { onRequest } = require('../common/sentryFunctions');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { validateMcpRequest, touchKeyUsage } = require('./auth');
@@ -22,6 +22,7 @@ const { validateToolArguments } = require('./validation');
 const { createAiServices } = require('../ai/index');
 const { ORIGIN_SECRET } = require('../common/secrets');
 const { validateOriginSecret } = require('../originProtection');
+const { captureApiError } = require('../common/sentry');
 
 /**
  * Função utilitária para executar ferramentas pelo nome
@@ -746,7 +747,10 @@ const chatGptToolsEndpoint = onRequest(
         });
       } catch (execErr) {
         const executionTimeMs = Date.now() - startTime;
-          console.error(`[MCP] Falha na ferramenta ${toolName} (${execErr.code || 'tool_execution_error'}).`);
+        if (publicToolError(execErr).status >= 500) {
+          await captureApiError(execErr, { module: 'mcp', tool: toolName });
+        }
+        console.error(`[MCP] Falha na ferramenta ${toolName} (${execErr.code || 'tool_execution_error'}).`);
         recordMcpAuditLog(db, {
           toolName,
           keyId: keyData.keyId,
@@ -768,7 +772,8 @@ const chatGptToolsEndpoint = onRequest(
       error: 'NOT_FOUND',
       message: `Rota '${rawPath}' não encontrada. Consulte o schema em /openapi.json.`,
     });
-    } catch {
+    } catch (error) {
+      await captureApiError(error, { module: 'mcp', route: 'http' });
       console.error('[chatGptToolsEndpoint] Erro fatal não tratado.');
       return res.status(500).json({
         error: 'INTERNAL_SERVER_ERROR',

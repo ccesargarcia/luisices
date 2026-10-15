@@ -3,7 +3,8 @@
  */
 
 const { Timestamp, getFirestore } = require('firebase-admin/firestore');
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('firebase-functions/v2/https');
+const { onCall } = require('../common/sentryFunctions');
 const crypto = require('crypto');
 const { publicCatalogOrderLimiter } = require('../common/rateLimiters');
 

@@ -1,3 +1,5 @@
+import { withSentry, captureException } from '@sentry/cloudflare';
+
 /**
  * Cloudflare Worker: Reverse Proxy & API Gateway com Proteção de Origem
  *
@@ -19,7 +21,7 @@ const CORS_HEADERS = {
   'Access-Control-Max-Age': '86400',
 };
 
-export default {
+const handler = {
   async fetch(request, env, ctx) {
     // 1. Tratamento imediato de CORS Preflight
     if (request.method === 'OPTIONS') {
@@ -257,6 +259,19 @@ export default {
         headers: responseHeaders,
       });
     } catch (err) {
+      if (env?.SENTRY_DSN) {
+        captureException(err, {
+          tags: {
+            gateway: 'api-worker',
+            environment: env.ENVIRONMENT || 'dev',
+            targetHost: url.hostname,
+          },
+          extra: {
+            pathname: url.pathname,
+            method: request.method,
+          },
+        });
+      }
       return new Response(
         JSON.stringify({
           error: 'Gateway Timeout / Falha ao comunicar com backend',
@@ -273,3 +288,21 @@ export default {
     }
   },
 };
+
+export default withSentry(
+  (env) => ({
+    dsn: env?.SENTRY_DSN,
+    environment: env?.ENVIRONMENT === 'production' ? 'production' : 'development',
+    tracesSampleRate: 0.05,
+    sendDefaultPii: false,
+    beforeSend(event) {
+      if (event.request?.headers) {
+        delete event.request.headers['x-origin-secret'];
+        delete event.request.headers['authorization'];
+        delete event.request.headers['cookie'];
+      }
+      return event;
+    },
+  }),
+  handler
+);
