@@ -199,7 +199,7 @@ A API suporta dois métodos equivalentes de autenticação no cabeçalho `Author
 * **Rate Limiting:** Limite padrão de **60 requisições por hora por chave/usuário**. Exceder o limite resulta em erro `429 Too Many Requests`.
 * **Cache em Memória (15s):** A validação de chaves e configurações globais possui cache volátil de 15 segundos para alta performance em rajadas de chamadas.
 * **Trava de Risco Financeiro (> R$ 500,00):** Pedidos com valor total superior a R$ 500,00 criados via ChatGPT/MCP recebem automaticamente a flag `requiresFinancialApproval: true` e as tags `Aprovação Financeira` e `Valor Alto`. O assistente é instruído a alertar o usuário no chat.
-* **Proteção contra Duplicatas (Idempotência):** Suporte ao cabeçalho `X-Idempotency-Key` ou parâmetro `idempotencyKey`. Caso omitido em `create_order`, o sistema calcula um hash SHA-256 determinístico composto por `uid + cliente + produto + total + dataEntrega`. Tentar reexecutar um pedido idêntico dentro de 24 horas retorna o pedido já existente sem duplicar registros no banco.
+* **Proteção contra Duplicatas (Idempotência):** `create_order` exige o parâmetro `idempotencyKey`. A chave é vinculada ao usuário, à ferramenta e aos dados da operação. Repetir os mesmos dados com a mesma chave retorna o pedido original sem duplicar a gravação; reutilizar a chave com outros dados gera conflito. Omitir `confirmed` ou enviar `confirmed=true` representa a mesma operação de criação.
 * **Auditoria Contínua (`mcpAuditLogs`):** Todas as invocações (sucesso ou erro) são registradas assincronamente no Firestore contendo tempo de execução (ms), protocolo, usuário, ferramenta e número do pedido gerado.
 
 ---
@@ -684,7 +684,10 @@ Content-Type: application/json
 | `paymentMethod` | `string` | Não | `"pix"` | Enums: `"pix"`, `"cartao_credito"`, `"cartao_debito"`, `"dinheiro"`, `"transferencia"`. |
 | `theme` | `string` | Não | - | Tema ou cores. |
 | `notes` | `string` | Não | - | Instruções especiais de personalização. |
-| `idempotencyKey` | `string` | Não | Hash SHA-256 | Chave única opcional para evitar duplicação em tentativas repetidas. |
+| `idempotencyKey` | `string` | **Sim** | - | Chave de 8 a 128 caracteres. Reutilize a mesma chave nas tentativas da mesma operação. |
+| `confirmed` | `boolean` | Não | Compatibilidade | `false` prepara somente a prévia; `true` grava após autorização explícita. Conectores antigos sem esse campo mantêm a criação direta, após autorização do usuário no host. |
+
+`create_order` é uma ação de gravação. O conector deve obter autorização explícita do usuário antes de invocá-la para criar. Para apenas preparar dados, utilize `extract_order_draft` ou `confirmed=false`. A ausência de `confirmed` preserva o contrato dos conectores antigos e não deve ser usada para solicitar uma prévia. Não é necessário pedir novamente uma autorização já dada para os mesmos dados. Uma atualização do conector de chamada sem `confirmed` para `confirmed=true` reutiliza a mesma operação idempotente e retorna o mesmo pedido.
 
 #### Exemplo de Requisição HTTP:
 ```http
@@ -704,7 +707,9 @@ Content-Type: application/json
   "paymentMethod": "pix",
   "deliveryDate": "2026-11-15",
   "theme": "Safari Baby",
-  "notes": "Nome do aniversariante: Lucas (1 ano). Colocar laço verde musgo."
+  "notes": "Nome do aniversariante: Lucas (1 ano). Colocar laço verde musgo.",
+  "idempotencyKey": "msp-ord-20261013-001",
+  "confirmed": true
 }
 ```
 

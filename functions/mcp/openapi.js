@@ -303,7 +303,7 @@ const TOOLS_METADATA = [
     name: 'create_order',
     scope: 'orders:create',
     summary: 'Criar e Registrar Novo Pedido no Sistema',
-    description: 'Apresenta uma prévia do pedido. Só grava depois de mostrar os dados ao usuário e receber confirmação explícita. Na primeira chamada pode omitir confirmed ou usar confirmed=false; após a confirmação, repita com confirmed=true e a mesma chave de idempotência. Gera número sequencial (#AAAA-0001), calcula o saldo e define o status como pendente.',
+    description: 'Cria e grava um pedido após autorização explícita do usuário. Para preparar uma prévia, use extract_order_draft ou confirmed=false. Após a autorização, chame create_order com confirmed=true; conectores antigos que não expõem confirmed mantêm a criação direta. Reutilize a mesma chave de idempotência em tentativas repetidas. Gera número sequencial (#AAAA-0001), calcula o saldo e define o status como pendente.',
     requestBody: {
       type: 'object',
       required: ['customerName', 'productName', 'quantity', 'totalPrice', 'deliveryDate', 'idempotencyKey'],
@@ -378,7 +378,7 @@ const TOOLS_METADATA = [
         },
         confirmed: {
           type: 'boolean',
-          description: 'Use false para receber a prévia. Use true somente após mostrar os dados do pedido ao usuário e receber confirmação explícita; mantenha a mesma idempotencyKey.',
+          description: 'Use false para receber somente a prévia. Use true após autorização explícita do usuário. A ausência mantém a criação direta dos conectores antigos, também sujeita à autorização do usuário. Mantenha a mesma idempotencyKey.',
         },
       },
     },

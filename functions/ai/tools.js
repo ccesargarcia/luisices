@@ -2005,6 +2005,16 @@ class AiToolsExecutor {
 
     requireMcpModulePermission(scope, 'orders', 'create', 'criar pedidos');
 
+    // O contrato original de create_order não incluía confirmed. Esses clientes
+    // invocam uma ação de gravação após autorização no host. A prévia permanece
+    // disponível explicitamente, sem transformar chamadas antigas em rascunhos.
+    if (args.confirmed !== undefined && ![true, false, 'true', 'false'].includes(args.confirmed)) {
+      const error = new Error('confirmed deve ser verdadeiro ou falso.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const previewOnly = args.confirmed === false || args.confirmed === 'false';
+
     const cleanCustomer = String(args.customerName || '').trim();
     if (!cleanCustomer) {
       throw new Error('Nome do cliente é obrigatório para registrar o pedido.');
@@ -2115,10 +2125,7 @@ class AiToolsExecutor {
       cleanNotes = cleanNotes ? `Tema: ${args.theme}\n${cleanNotes}` : `Tema: ${args.theme}`;
     }
 
-    // A criação deve ser uma operação em duas etapas: a primeira chamada
-    // prepara uma prévia e só uma chamada posterior, após confirmação explícita,
-    // pode chegar ao trecho transacional que grava o pedido.
-    if (!isConfirmed(args.confirmed)) {
+    if (previewOnly) {
       return {
         success: true,
         status: 'preview',
@@ -2144,7 +2151,10 @@ class AiToolsExecutor {
     const uid = scope.uid;
     const year = new Date().getFullYear();
 
-    const idempotency = getMcpIdempotencyContext(db, scope, 'create_order', args.idempotencyKey, args);
+    // Omitido e true representam a mesma operação de criação. Normalizar evita
+    // conflito na repetição após uma atualização do schema do conector e mantém
+    // compatibilidade com hashes já gravados com confirmed=true.
+    const idempotency = getMcpIdempotencyContext(db, scope, 'create_order', args.idempotencyKey, { ...args, confirmed: true });
 
     const orderRef = db.collection('orders').doc();
     const orderId = orderRef.id;
@@ -2274,7 +2284,7 @@ class AiToolsExecutor {
 
     return {
       success: true,
-      orderId,
+      orderId: creationResult.orderId,
       orderNumber: createdOrderNumber,
       customerName: cleanCustomer,
       customerPhone: customerPhone || 'Não informado',
