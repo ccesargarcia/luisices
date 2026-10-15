@@ -303,7 +303,7 @@ const TOOLS_METADATA = [
     name: 'create_order',
     scope: 'orders:create',
     summary: 'Criar e Registrar Novo Pedido no Sistema',
-    description: 'Cria e grava um pedido após autorização explícita do usuário. Para preparar uma prévia, use extract_order_draft ou confirmed=false. Após a autorização, chame create_order com confirmed=true; conectores antigos que não expõem confirmed mantêm a criação direta. Reutilize a mesma chave de idempotência em tentativas repetidas. Gera número sequencial (#AAAA-0001), calcula o saldo e define o status como pendente.',
+    description: 'Cria e grava um pedido após autorização explícita do usuário. Para preparar uma prévia, use extract_order_draft ou confirmed=false. Após a autorização, chame create_order com confirmed=true; conectores antigos que não expõem confirmed mantêm a criação direta. Reutilize a mesma chave de idempotência em tentativas repetidas. Só anuncie criação concluída quando a resposta contiver orderId e orderNumber. Gera número sequencial (#AAAA-0001), calcula o saldo e define o status como pendente.',
     requestBody: {
       type: 'object',
       required: ['customerName', 'productName', 'quantity', 'totalPrice', 'deliveryDate', 'idempotencyKey'],
