@@ -67,17 +67,25 @@ async function main() {
     Accept: 'application/json',
   };
 
-  // 1. Listar todos os segredos do projeto
-  const listSecretsUrl = `https://secretmanager.googleapis.com/v1/projects/${projectId}/secrets?pageSize=100`;
-  const secretsRes = await fetch(listSecretsUrl, { headers });
-  if (!secretsRes.ok) {
-    const errorText = await secretsRes.text();
-    console.error(`❌ Falha ao listar segredos (${secretsRes.status}): ${errorText}`);
-    process.exit(1);
-  }
+  // 1. Listar todos os segredos do projeto (com paginação)
+  const secrets = [];
+  let secretsPageToken = '';
+  do {
+    const url = new URL(`https://secretmanager.googleapis.com/v1/projects/${projectId}/secrets`);
+    url.searchParams.set('pageSize', '100');
+    if (secretsPageToken) url.searchParams.set('pageToken', secretsPageToken);
 
-  const secretsData = await secretsRes.json();
-  const secrets = secretsData.secrets || [];
+    const secretsRes = await fetch(url.toString(), { headers });
+    if (!secretsRes.ok) {
+      const errorText = await secretsRes.text();
+      console.error(`❌ Falha ao listar segredos (${secretsRes.status}): ${errorText}`);
+      process.exit(1);
+    }
+
+    const secretsData = await secretsRes.json();
+    if (secretsData.secrets) secrets.push(...secretsData.secrets);
+    secretsPageToken = secretsData.nextPageToken || '';
+  } while (secretsPageToken);
 
   if (secrets.length === 0) {
     console.log('ℹ️  Nenhum segredo encontrado no projeto.');
@@ -96,16 +104,31 @@ async function main() {
     const secretFullName = secret.name; // projects/{num}/secrets/{secretId}
     const secretId = secretFullName.split('/').pop();
 
-    // 2. Listar todas as versões do segredo
-    const listVersionsUrl = `https://secretmanager.googleapis.com/v1/${secretFullName}/versions?pageSize=200`;
-    const versionsRes = await fetch(listVersionsUrl, { headers });
-    if (!versionsRes.ok) {
-      console.warn(`⚠️  Não foi possível listar versões do secret '${secretId}': ${versionsRes.statusText}`);
+    // 2. Listar todas as versões do segredo (com paginação)
+    const versions = [];
+    let versionsPageToken = '';
+    let versionsFetchError = false;
+
+    do {
+      const url = new URL(`https://secretmanager.googleapis.com/v1/${secretFullName}/versions`);
+      url.searchParams.set('pageSize', '100');
+      if (versionsPageToken) url.searchParams.set('pageToken', versionsPageToken);
+
+      const versionsRes = await fetch(url.toString(), { headers });
+      if (!versionsRes.ok) {
+        console.warn(`⚠️  Não foi possível listar versões do secret '${secretId}': ${versionsRes.statusText}`);
+        versionsFetchError = true;
+        break;
+      }
+
+      const versionsData = await versionsRes.json();
+      if (versionsData.versions) versions.push(...versionsData.versions);
+      versionsPageToken = versionsData.nextPageToken || '';
+    } while (versionsPageToken);
+
+    if (versionsFetchError) {
       continue;
     }
-
-    const versionsData = await versionsRes.json();
-    const versions = versionsData.versions || [];
 
     // Parse versões e seus estados
     const parsedVersions = versions.map((v) => {
@@ -121,33 +144,39 @@ async function main() {
     // Ordenar por número da versão decrescente (mais recente primeiro)
     parsedVersions.sort((a, b) => b.versionNumber - a.versionNumber);
 
-    const activeOrDisabled = parsedVersions.filter((v) => v.state === 'ENABLED' || v.state === 'DISABLED');
+    const enabledVersions = parsedVersions.filter((v) => v.state === 'ENABLED');
+    const disabledVersions = parsedVersions.filter((v) => v.state === 'DISABLED');
     const alreadyDestroyed = parsedVersions.filter((v) => v.state === 'DESTROYED');
 
-    totalActiveVersions += activeOrDisabled.length;
+    totalActiveVersions += enabledVersions.length + disabledVersions.length;
     totalAlreadyDestroyed += alreadyDestroyed.length;
 
-    if (activeOrDisabled.length === 0) {
+    if (enabledVersions.length === 0 && disabledVersions.length === 0) {
       console.log(`🔒 Secret: ${secretId} | Todas as versões já estão destruídas.`);
       continue;
     }
 
-    // A versão ativa com maior número é a que deve ser mantida
-    const latestActiveVersion = activeOrDisabled[0];
-    const obsoleteVersions = activeOrDisabled.slice(1);
+    // Preserva a versão com maior número estritamente ENABLED.
+    // Se não houver nenhuma ENABLED (ex: todas desabilitadas intencionalmente), preserva a maior DISABLED por cautela.
+    const preservedVersion = enabledVersions.length > 0 ? enabledVersions[0] : disabledVersions[0];
+
+    // Todas as outras versões ENABLED ou DISABLED são obsoletas e devem ser destruídas para zerar custos
+    const obsoleteVersions = [...enabledVersions, ...disabledVersions].filter(
+      (v) => v.versionNumber !== preservedVersion.versionNumber
+    );
 
     totalPreservedVersions += 1;
 
     console.log(`\n🔑 Secret: ${secretId}`);
-    console.log(`   Versões ativas: ${activeOrDisabled.length} | Já destruídas: ${alreadyDestroyed.length}`);
-    console.log(`   ✅ PRESERVANDO: Versão v${latestActiveVersion.versionNumber} (state: ${latestActiveVersion.state})`);
+    console.log(`   Versões ativas: ${enabledVersions.length} (ENABLED) | Desabilitadas: ${disabledVersions.length} (DISABLED) | Já destruídas: ${alreadyDestroyed.length}`);
+    console.log(`   ✅ PRESERVANDO: Versão v${preservedVersion.versionNumber} (state: ${preservedVersion.state})`);
 
     if (obsoleteVersions.length === 0) {
       console.log('   ✨ Nenhuma versão obsoleta para destruir. Tudo limpo!');
       continue;
     }
 
-    console.log(`   🗑️  Versões obsoletas a destruir: ${obsoleteVersions.length} [${obsoleteVersions.map((v) => `v${v.versionNumber}`).join(', ')}]`);
+    console.log(`   🗑️  Versões obsoletas a destruir: ${obsoleteVersions.length} [${obsoleteVersions.map((v) => `v${v.versionNumber} (${v.state})`).join(', ')}]`);
 
     for (const v of obsoleteVersions) {
       if (isDryRun) {
