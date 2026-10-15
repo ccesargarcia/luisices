@@ -1,4 +1,4 @@
-import { withSentry, captureException } from '@sentry/cloudflare';
+import { withSentry, captureException, getTraceData } from '@sentry/cloudflare';
 
 /**
  * Cloudflare Worker: Reverse Proxy & API Gateway com Proteção de Origem
@@ -17,7 +17,8 @@ const DEFAULT_ORIGINS = {
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
-  'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept, X-Client-Version, X-Requested-With, x-origin-secret',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept, X-Client-Version, X-Requested-With, x-origin-secret, sentry-trace, baggage',
+  'Access-Control-Expose-Headers': 'X-MCP-Trace-Id',
   'Access-Control-Max-Age': '86400',
 };
 
@@ -215,6 +216,11 @@ const handler = {
         }
       }
 
+      // Une o trace da borda aos spans MCP nas Functions, sem encaminhar
+      // identidade, conteúdo da chamada ou credenciais para a telemetria.
+      const traceData = getTraceData();
+      if (traceData['sentry-trace']) forwardHeaders.set('sentry-trace', traceData['sentry-trace']);
+      if (traceData.baggage) forwardHeaders.set('baggage', traceData.baggage);
       const originResponse = await fetch(targetUrl.toString(), {
         method: request.method,
         headers: forwardHeaders,
@@ -225,6 +231,7 @@ const handler = {
       // 6. Retornar resposta ao cliente garantindo cabeçalhos CORS
       const responseHeaders = new Headers(originResponse.headers);
       responseHeaders.set('Access-Control-Allow-Origin', '*');
+      responseHeaders.set('Access-Control-Expose-Headers', 'X-MCP-Trace-Id');
       responseHeaders.set('X-Proxy-Gateway', 'Luisices-Cloudflare-Worker');
 
       // Se a resposta for um redirecionamento HTTP (ex: 302, 303 no fluxo OAuth)

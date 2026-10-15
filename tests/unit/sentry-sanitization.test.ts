@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 // @ts-ignore
-import { sanitizeText, sanitizeValue, sanitizeEvent } from '../../functions/common/sentry';
+import { sanitizeText, sanitizeValue, sanitizeEvent, sanitizeSpan } from '../../functions/common/sentry';
 
 describe('Sentry Sanitization Suite', () => {
   describe('sanitizeText', () => {
@@ -77,6 +77,21 @@ describe('Sentry Sanitization Suite', () => {
   });
 
   describe('sanitizeEvent', () => {
+    it('scrubs streamed and transaction spans while retaining operational MCP fields', () => {
+      const attributes = {
+        'mcp.tool': 'create_order', 'mcp.outcome': 'preview',
+        'db.query.text': 'customerName = Private Person',
+        'http.request.header.authorization': 'Bearer sensitive-token',
+        'url.full': 'https://api.example.com/tools/create_order?access_token=private',
+        customerName: 'Private Person',
+      };
+      const streamed = sanitizeSpan({ name: 'mcp.execute', attributes });
+      expect(streamed.attributes).toMatchObject({ 'mcp.tool': 'create_order', 'mcp.outcome': 'preview', customerName: '[REDACTED]' });
+      expect(JSON.stringify(streamed)).not.toMatch(/Private Person|sensitive-token|access_token/);
+      const transaction = sanitizeEvent({ spans: [{ description: 'mcp.execute', data: attributes }] });
+      expect(JSON.stringify(transaction)).not.toMatch(/Private Person|sensitive-token|access_token/);
+      expect(sanitizeText('oauth token lui_oauth_at_syntheticsecretvalue')).not.toContain('syntheticsecretvalue');
+    });
     it('removes user identity, strips URL query parameters, and cleans exception values', () => {
       const event: any = {
         user: { id: 'user-123', email: 'admin@luisices.com.br' },

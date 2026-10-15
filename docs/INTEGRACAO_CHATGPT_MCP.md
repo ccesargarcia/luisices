@@ -202,6 +202,16 @@ A API suporta dois métodos equivalentes de autenticação no cabeçalho `Author
 * **Proteção contra Duplicatas (Idempotência):** `create_order` exige o parâmetro `idempotencyKey`. A chave é vinculada ao usuário, à ferramenta e aos dados da operação. Repetir os mesmos dados com a mesma chave retorna o pedido original sem duplicar a gravação; reutilizar a chave com outros dados gera conflito. Omitir `confirmed` ou enviar `confirmed=true` representa a mesma operação de criação.
 * **Auditoria Contínua (`mcpAuditLogs`):** Todas as invocações (sucesso ou erro) são registradas assincronamente no Firestore contendo tempo de execução (ms), protocolo, usuário, ferramenta e número do pedido gerado.
 
+### 3.4 Traces MCP no Sentry
+
+Com `SENTRY_DSN` configurado, cada requisição pode gerar um span `mcp.server`, identificado pelo protocolo e pela ferramenta. Os spans filhos medem autenticação (`mcp.authenticate`), verificação de escopo (`mcp.authorize`), validação (`mcp.validate_request` / `mcp.validate`), preparação dos serviços (`mcp.services`) e execução (`mcp.execute`). Spans automáticos do SDK podem detalhar as chamadas de rede e banco, conforme as integrações habilitadas.
+
+Filtros úteis: `mcp.protocol`, `mcp.method`, `mcp.tool`, `mcp.outcome` (`success`, `preview`, `duplicate`, `error`), `mcp.confirmation` e `mcp.idempotency_present`. A confirmação registra apenas `true`, `false`, ausência ou formato inválido; a chave de idempotência nunca é enviada. Falhas JSON-RPC são marcadas como erro mesmo quando o HTTP retorna 200. Falhas inesperadas de execução são capturadas tanto no REST quanto no JSON-RPC.
+
+O cabeçalho de resposta `X-MCP-Trace-Id` permite localizar a chamada no Sentry quando o trace foi amostrado e enviado. O Worker propaga `sentry-trace` e `baggage` para unir borda e Functions quando os SDKs estiverem configurados de forma compatível. Cada requisição usa um escopo isolado para evitar mistura de dados entre execuções simultâneas.
+
+A amostragem permanece em **5%** por padrão (`SENTRY_TRACES_SAMPLE_RATE` nas Functions). A instrumentação não coleta argumentos, conteúdo de respostas, nomes, telefones, IDs de pedidos ou credenciais. Spans passam por limpeza de atributos sensíveis e textos de consultas antes do envio. Nas Functions, apenas traces amostrados aguardam uma descarga limitada a 1 segundo no encerramento; falhas inesperadas também usam o mecanismo existente de captura de erros.
+
 ---
 
 ## 4. Endpoints de Descoberta e Infraestrutura

@@ -6,7 +6,8 @@
 const { onRequest } = require('../common/sentryFunctions');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
-const { validateMcpRequest, touchKeyUsage } = require('./auth');
+const { validateMcpRequest: validateMcpRequestWithoutTrace, touchKeyUsage } = require('./auth');
+const { traceMcpRequest, traceMcpStep } = require('./tracing');
 const {
   getOauthProtectedResourceMetadata,
   getOauthAuthorizationServerMetadata,
@@ -77,14 +78,18 @@ async function executeToolByName(toolsExecutor, toolName, args, scope) {
 }
 
 async function executeScopedToolByName(toolsExecutor, toolName, args, scope, scopes = []) {
-  const requiredScope = TOOL_SCOPE_MAP[toolName];
-  if (!requiredScope || (!scopes.includes('*') && !scopes.includes(requiredScope))) {
-    const error = new Error('Permissão insuficiente para executar esta ferramenta.');
-    error.code = 'permission-denied';
-    throw error;
-  }
-  validateToolArguments(toolName, args);
-  const result = await executeToolByName(toolsExecutor, toolName, args, { ...scope, mcpScopes: scopes });
+  traceMcpStep('authorize', () => {
+    const requiredScope = TOOL_SCOPE_MAP[toolName];
+    if (!requiredScope || (!scopes.includes('*') && !scopes.includes(requiredScope))) {
+      const error = new Error('Permissão insuficiente para executar esta ferramenta.');
+      error.code = 'permission-denied';
+      throw error;
+    }
+  });
+  traceMcpStep('validate', () => validateToolArguments(toolName, args));
+  const result = await traceMcpStep('execute', () => executeToolByName(toolsExecutor, toolName, args, { ...scope, mcpScopes: scopes }), {
+    'mcp.tool': Object.prototype.hasOwnProperty.call(TOOL_SCOPE_MAP, toolName) ? toolName : 'unknown',
+  });
   const canReadPaymentDetails = scopes.includes('payments:read') || scopes.includes('financial:read');
   if (!canReadPaymentDetails && result && typeof result === 'object') {
     const redactOrder = (order) => {
@@ -130,6 +135,15 @@ function publicToolError(error) {
   if (error?.code === 'not-found') return { status: 404, code: 'NOT_FOUND', message: error.message };
   if (error?.code === 'failed-precondition' || error?.code === 'already-exists') return { status: 409, code: 'CONFLICT', message: error.message };
   return { status: 500, code: 'TOOL_EXECUTION_ERROR', message: 'Erro interno ao processar a ferramenta.' };
+}
+
+async function validateMcpRequest(req, db) {
+  return traceMcpStep('authenticate', async (span) => {
+    const result = await validateMcpRequestWithoutTrace(req, db);
+    span.setAttribute('mcp.auth.result', result.success ? 'authorized' : 'rejected');
+    span.setStatus({ code: result.success ? 1 : 2 });
+    return result;
+  });
 }
 
 function buildBearerChallenge(hasBearerCredentials, apiOrigin) {
@@ -199,11 +213,12 @@ const chatGptToolsEndpoint = onRequest(
     timeoutSeconds: 30,
     secrets: [ORIGIN_SECRET],
   },
-  async (req, res) => {
+  (req, res) => traceMcpRequest(req, res, async () => {
     // Tratamento de preflight CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-origin-secret, x-cf-origin-token, openai-ephemeral-user-id');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-origin-secret, x-cf-origin-token, openai-ephemeral-user-id, sentry-trace, baggage');
+    res.setHeader('Access-Control-Expose-Headers', 'X-MCP-Trace-Id');
 
     if (req.method === 'OPTIONS') {
       return res.status(204).send('');
@@ -581,7 +596,7 @@ const chatGptToolsEndpoint = onRequest(
 
         const startTime = Date.now();
         try {
-          const aiServices = getSharedAiServices(db);
+          const aiServices = traceMcpStep('services', () => getSharedAiServices(db));
           const { toolsExecutor } = aiServices;
           const result = await executeScopedToolByName(toolsExecutor, toolName, toolArgs, scope, keyScopes);
           const executionTimeMs = Date.now() - startTime;
@@ -613,6 +628,9 @@ const chatGptToolsEndpoint = onRequest(
           });
         } catch (execErr) {
           const executionTimeMs = Date.now() - startTime;
+          if (publicToolError(execErr).status >= 500) {
+            await captureApiError(execErr, { module: 'mcp', tool: toolName, protocol: 'mcp-rpc' });
+          }
           recordMcpAuditLog(db, {
             toolName,
             keyId: keyData.keyId,
@@ -713,11 +731,11 @@ const chatGptToolsEndpoint = onRequest(
       // 5. Execução Segura da Ferramenta no Núcleo de IA
       let args;
       try {
-        args = validateToolArguments(toolName, req.body);
+        args = traceMcpStep('validate_request', () => validateToolArguments(toolName, req.body));
       } catch (validationError) {
         return res.status(400).json({ error: 'INVALID_ARGUMENT', message: validationError.message });
       }
-      const aiServices = getSharedAiServices(db);
+      const aiServices = traceMcpStep('services', () => getSharedAiServices(db));
       const { toolsExecutor } = aiServices;
 
       const startTime = Date.now();
@@ -780,7 +798,7 @@ const chatGptToolsEndpoint = onRequest(
         message: 'Erro interno no servidor ao processar requisição.',
       });
     }
-  }
+  })
 );
 
 module.exports = {

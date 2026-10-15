@@ -8,6 +8,7 @@ function sanitizeText(value) {
   if (typeof value !== 'string') return value;
   return value
     .replace(/\bBearer\s+[A-Za-z0-9_\-.~+/]+=*/gi, 'Bearer [REDACTED_TOKEN]')
+    .replace(/\blui_(?:oauth_at_|oauth_rt_|dev_|live_)[A-Za-z0-9_-]+\b/g, '[REDACTED_MCP_TOKEN]')
     .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, '[REDACTED_JWT]')
     .replace(/\bAIza[0-9A-Za-z-_]{35}\b/g, '[REDACTED_API_KEY]')
     .replace(/\bre_[A-Za-z0-9_]{20,}\b/g, '[REDACTED_RESEND_KEY]')
@@ -50,6 +51,7 @@ function sanitizeEvent(event) {
   if (event.extra) event.extra = sanitizeValue(event.extra);
   if (event.contexts) event.contexts = sanitizeValue(event.contexts);
   if (event.tags) event.tags = sanitizeValue(event.tags);
+  if (event.spans) event.spans = event.spans.map(sanitizeSpan);
   if (event.breadcrumbs) {
     event.breadcrumbs = event.breadcrumbs.map((breadcrumb) => ({
       ...breadcrumb,
@@ -58,6 +60,24 @@ function sanitizeEvent(event) {
     }));
   }
   return event;
+}
+
+function sanitizeSpan(span) {
+  const hasQuery = Object.keys(span.attributes || span.data || {}).some((key) => /db\.(statement|query)/i.test(key));
+  const scrubAttributes = (attributes) => Object.fromEntries(Object.entries(attributes || {}).map(([key, value]) => {
+    // Consultas e corpos podem conter nomes livres que uma regex não reconhece.
+    if (/db\.(statement|query)|body|payload|query_string/i.test(key)) return [key, '[REDACTED]'];
+    if (/url/i.test(key) && typeof value === 'string') return [key, sanitizeText(value.split(/[?#]/)[0])];
+    return [key, sanitizeValue(value, key)];
+  }));
+  const scrubName = (name) => typeof name === 'string' ? sanitizeText(name).replace(/\?[^\s]*/g, '?[REDACTED]') : name;
+  return {
+    ...span,
+    ...(span.name !== undefined ? { name: hasQuery ? 'database.query' : scrubName(span.name) } : {}),
+    ...(span.description !== undefined ? { description: hasQuery ? 'database.query' : scrubName(span.description) } : {}),
+    ...(span.attributes ? { attributes: scrubAttributes(span.attributes) } : {}),
+    ...(span.data ? { data: scrubAttributes(span.data) } : {}),
+  };
 }
 
 const dsn = process.env.SENTRY_DSN;
@@ -70,6 +90,8 @@ if (dsn) {
     sendDefaultPii: false,
     tracesSampleRate: Number.isFinite(sampleRate) && sampleRate >= 0 && sampleRate <= 1 ? sampleRate : 0.05,
     beforeSend: sanitizeEvent,
+    beforeSendSpan: sanitizeSpan,
+    beforeSendTransaction: sanitizeEvent,
     beforeBreadcrumb(breadcrumb) {
       if (breadcrumb.message) breadcrumb.message = sanitizeText(breadcrumb.message);
       if (breadcrumb.data) breadcrumb.data = sanitizeValue(breadcrumb.data);
@@ -90,4 +112,4 @@ async function captureApiError(error, tags = {}) {
   await Sentry.flush(1500);
 }
 
-module.exports = { Sentry, captureApiError, sanitizeEvent, sanitizeText, sanitizeValue };
+module.exports = { Sentry, captureApiError, sanitizeEvent, sanitizeText, sanitizeValue, sanitizeSpan };
