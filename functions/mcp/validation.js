@@ -49,7 +49,12 @@ function validateObject(value, schema, path = 'arguments') {
   }
   for (const [key, entry] of Object.entries(value)) {
     if (!Object.prototype.hasOwnProperty.call(properties, key)) invalid(`Campo não permitido: ${path}.${key}.`);
-    validateValue(entry, properties[key], `${path}.${key}`);
+    const propSchema = properties[key];
+    if (propSchema?.type === 'boolean' && typeof entry === 'string') {
+      if (entry.toLowerCase() === 'true') value[key] = true;
+      else if (entry.toLowerCase() === 'false') value[key] = false;
+    }
+    validateValue(value[key], propSchema, `${path}.${key}`);
   }
 }
 

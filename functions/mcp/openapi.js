@@ -303,10 +303,10 @@ const TOOLS_METADATA = [
     name: 'create_order',
     scope: 'orders:create',
     summary: 'Criar e Registrar Novo Pedido no Sistema',
-    description: 'Apresenta uma prévia do pedido. Só grava depois de mostrar os dados ao usuário e receber confirmação explícita. Na primeira chamada use confirmed=false; após a confirmação, repita com confirmed=true e a mesma chave de idempotência. Gera número sequencial (#AAAA-0001), calcula o saldo e define o status como pendente.',
+    description: 'Apresenta uma prévia do pedido. Só grava depois de mostrar os dados ao usuário e receber confirmação explícita. Na primeira chamada pode omitir confirmed ou usar confirmed=false; após a confirmação, repita com confirmed=true e a mesma chave de idempotência. Gera número sequencial (#AAAA-0001), calcula o saldo e define o status como pendente.',
     requestBody: {
       type: 'object',
-      required: ['customerName', 'productName', 'quantity', 'totalPrice', 'deliveryDate', 'idempotencyKey', 'confirmed'],
+      required: ['customerName', 'productName', 'quantity', 'totalPrice', 'deliveryDate', 'idempotencyKey'],
       properties: {
         customerName: {
           type: 'string',
@@ -428,7 +428,7 @@ const TOOLS_METADATA = [
     description: 'Avança pedido entre pendente, em produção e concluído. Retorna prévia e só grava com confirmação explícita, versão atual e chave de idempotência. Cancelamentos e reaberturas ficam fora deste fluxo.',
     requestBody: {
       type: 'object',
-      required: ['orderNumber', 'status', 'expectedVersion', 'idempotencyKey', 'confirmed'],
+      required: ['orderNumber', 'status', 'expectedVersion', 'idempotencyKey'],
       properties: {
         orderNumber: { type: 'string', minLength: 1, maxLength: 128 },
         status: { type: 'string', enum: ['in-progress', 'completed'], description: 'Etapa de destino. O servidor valida a transição com o estado atual.' },
@@ -445,7 +445,7 @@ const TOOLS_METADATA = [
     description: 'Apresenta prévia de uma alteração de entrega e só grava após confirmação, com controle de versão e idempotência.',
     requestBody: {
       type: 'object',
-      required: ['orderNumber', 'expectedVersion', 'idempotencyKey', 'confirmed'],
+      required: ['orderNumber', 'expectedVersion', 'idempotencyKey'],
       properties: {
         orderNumber: { type: 'string', minLength: 1, maxLength: 128 },
         deliveryDate: { type: 'string', minLength: 10, maxLength: 10, description: 'Nova data (AAAA-MM-DD).' },
@@ -476,7 +476,7 @@ const TOOLS_METADATA = [
     description: 'Apresenta uma prévia do lançamento e atualiza o saldo e o histórico financeiro. Só registre após o usuário confirmar explicitamente o valor, pedido e forma de pagamento. Reenvie o mesmo idempotencyKey em caso de repetição da chamada.',
     requestBody: {
       type: 'object',
-      required: ['orderNumber', 'amount', 'method', 'idempotencyKey', 'confirmed'],
+      required: ['orderNumber', 'amount', 'method', 'idempotencyKey'],
       properties: {
         orderNumber: { type: 'string', description: 'Número do pedido ou ID do documento.' },
         amount: { type: 'number', exclusiveMinimum: 0, description: 'Valor recebido em reais.' },
@@ -494,7 +494,7 @@ const TOOLS_METADATA = [
     description: 'Apresenta uma prévia do cadastro. Só salve após mostrar os dados e receber confirmação explícita. Se já houver cliente com o telefone, use update_customer para editar o cadastro existente.',
     requestBody: {
       type: 'object',
-      required: ['name', 'idempotencyKey', 'confirmed'],
+      required: ['name', 'idempotencyKey'],
       properties: {
         name: { type: 'string', minLength: 1, maxLength: 200, description: 'Nome completo do cliente.' },
         phone: { type: 'string', maxLength: 50, description: 'Telefone ou WhatsApp.' },
@@ -518,7 +518,7 @@ const TOOLS_METADATA = [
     description: 'Apresenta uma prévia das alterações. Só salve após mostrar os dados e receber confirmação explícita. Atualiza apenas campos fornecidos e preserva os demais.',
     requestBody: {
       type: 'object',
-      required: ['customerId', 'idempotencyKey', 'confirmed'],
+      required: ['customerId', 'idempotencyKey'],
       properties: {
         customerId: { type: 'string', description: 'ID retornado por query_customers.' },
         name: { type: 'string', minLength: 1, maxLength: 200, description: 'Novo nome.' },

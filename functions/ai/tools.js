@@ -31,6 +31,10 @@ function isValidDateOnly(value) {
     && new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
 }
 
+function isConfirmed(value) {
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
 /**
  * Calcula intervalos de data no fuso do negócio (America/Sao_Paulo - UTC-3)
  */
@@ -1460,7 +1464,7 @@ class AiToolsExecutor {
       } : {}),
       version,
     };
-    if (args.confirmed !== true) return { success: false, requiresConfirmation: true, preview: summary, message: 'Prévia pronta. Mostre as alterações ao usuário e só grave após confirmação explícita.' };
+    if (!isConfirmed(args.confirmed)) return { success: true, status: 'preview', requiresConfirmation: true, preview: summary, message: 'Prévia pronta. Mostre as alterações ao usuário e só grave após confirmação explícita.' };
 
     if (typeof args.idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(args.idempotencyKey)) {
       const error = new Error('Informe uma chave de idempotência válida para confirmar a alteração.');
@@ -1570,7 +1574,7 @@ class AiToolsExecutor {
     }
     const db = this.repos.db;
     let idempotency = null;
-    if (args.confirmed === true) {
+    if (isConfirmed(args.confirmed)) {
       idempotency = getMcpIdempotencyContext(db, scope, 'update_order_status', args.idempotencyKey, args);
       const previous = await idempotency.ref.get();
       const replay = readIdempotentResult(previous, idempotency.payloadHash);
@@ -1613,7 +1617,7 @@ class AiToolsExecutor {
       toStatus: targetStatus,
       version,
     };
-    if (args.confirmed !== true) return { success: false, requiresConfirmation: true, preview, message: 'Mostre a mudança de etapa e só grave após confirmação explícita.' };
+    if (!isConfirmed(args.confirmed)) return { success: true, status: 'preview', requiresConfirmation: true, preview, message: 'Mostre a mudança de etapa e só grave após confirmação explícita.' };
     if (typeof db?.runTransaction !== 'function') {
       const error = new Error('Gravação segura indisponível; a etapa não foi alterada.');
       error.code = 'failed-precondition';
@@ -1689,7 +1693,7 @@ class AiToolsExecutor {
     if (!customer.name) throw new Error('Nome do cliente é obrigatório.');
     const phoneDigits = String(customer.phone || '').replace(/\D/g, '');
     const preview = { ...customer };
-    if (args.confirmed !== true) return { success: false, requiresConfirmation: true, preview, message: 'Prévia pronta. Mostre os dados ao usuário e só cadastre após confirmação explícita.' };
+    if (!isConfirmed(args.confirmed)) return { success: true, status: 'preview', requiresConfirmation: true, preview, message: 'Prévia pronta. Mostre os dados ao usuário e só cadastre após confirmação explícita.' };
 
     const db = this.repos.db;
     if (!db) throw new Error('Banco de dados indisponível.');
@@ -1745,7 +1749,7 @@ class AiToolsExecutor {
     const customer = await this.repos.getScopedCustomerDocument(scope, customerId);
     if (!customer || customer.data.deletedAt || customer.data.isDeleted) throw new Error('Cliente não encontrado ou sem permissão.');
     const preview = { customerId, currentName: customer.data.name || customer.data.fullName || '', changes: updates };
-    if (args.confirmed !== true) return { success: false, requiresConfirmation: true, preview, message: 'Prévia pronta. Mostre as alterações e só salve após confirmação explícita.' };
+    if (!isConfirmed(args.confirmed)) return { success: true, status: 'preview', requiresConfirmation: true, preview, message: 'Prévia pronta. Mostre as alterações e só salve após confirmação explícita.' };
 
     const db = this.repos.db;
     const idempotency = getMcpIdempotencyContext(db, scope, 'update_customer', args.idempotencyKey, args);
@@ -1831,7 +1835,7 @@ class AiToolsExecutor {
       remainingAfterPayment: roundMoney(remainingAmount - amount),
       notes,
     };
-    if (args.confirmed !== true) return { success: false, requiresConfirmation: true, preview, message: 'Prévia pronta. Mostre o valor, pedido e forma de pagamento ao usuário; só registre após confirmação explícita.' };
+    if (!isConfirmed(args.confirmed)) return { success: true, status: 'preview', requiresConfirmation: true, preview, message: 'Prévia pronta. Mostre o valor, pedido e forma de pagamento ao usuário; só registre após confirmação explícita.' };
 
     const db = this.repos.db;
     const idempotency = getMcpIdempotencyContext(db, scope, 'register_order_payment', args.idempotencyKey, args);
@@ -2114,9 +2118,10 @@ class AiToolsExecutor {
     // A criação deve ser uma operação em duas etapas: a primeira chamada
     // prepara uma prévia e só uma chamada posterior, após confirmação explícita,
     // pode chegar ao trecho transacional que grava o pedido.
-    if (args.confirmed !== true) {
+    if (!isConfirmed(args.confirmed)) {
       return {
-        success: false,
+        success: true,
+        status: 'preview',
         requiresConfirmation: true,
         preview: {
           customerName: cleanCustomer,
