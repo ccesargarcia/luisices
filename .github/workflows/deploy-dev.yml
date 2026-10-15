@@ -71,6 +71,9 @@ jobs:
         id: filter
         uses: dorny/paths-filter@v3
         with:
+          # Na mesma branch, compara com o commit anterior ao push. O padrão
+          # compararia develop com main e repetiria deploys de mudanças antigas.
+          base: ${{ github.ref }}
           filters: |
             frontend:
               - 'src/**'
