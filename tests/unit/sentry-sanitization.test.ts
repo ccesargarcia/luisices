@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 // @ts-ignore
 import { sanitizeText, sanitizeValue, sanitizeEvent, sanitizeSpan } from '../../functions/common/sentry';
 
+// Dado sintético gerado em execução para exercitar o formato sem publicar
+// uma sequência completa que scanners de segredos confundam com credencial.
+const syntheticGoogleApiKey = `AIza${'0'.repeat(35)}`;
+
 describe('Sentry Sanitization Suite', () => {
   describe('sanitizeText', () => {
     it('redacts email addresses', () => {
@@ -32,7 +36,7 @@ describe('Sentry Sanitization Suite', () => {
     });
 
     it('redacts Google API Keys', () => {
-      const googleKey = 'AIzaSyD-abcde12345ABCDE_fghij67890FGHIJ';
+      const googleKey = syntheticGoogleApiKey;
       const input = `GCP Error: key=${googleKey} is quota exceeded`;
       expect(sanitizeText(input)).toContain('[REDACTED_API_KEY]');
       expect(sanitizeText(input)).not.toContain(googleKey);
@@ -103,7 +107,7 @@ describe('Sentry Sanitization Suite', () => {
         exception: {
           values: [
             {
-              value: 'Error with user admin@luisices.com.br using key AIzaSyD-abcde12345ABCDE_fghij67890FGHIJ',
+              value: `Error with user admin@luisices.com.br using key ${syntheticGoogleApiKey}`,
             },
           ],
         },
