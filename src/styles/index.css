@@ -86,3 +86,47 @@ body {
   scrollbar-width: thin;
   scrollbar-color: rgba(150, 150, 150, 0.25) transparent;
 }
+
+/* Regras de Impressão (Print & PDF) */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Oculta navegação, sidebar, botões e cabeçalhos não-imprimíveis */
+  header,
+  nav,
+  aside,
+  footer,
+  .no-print,
+  .print\:hidden,
+  button:not(.print-visible) {
+    display: none !important;
+  }
+
+  /* Ajusta container principal para folha de impressão */
+  main,
+  .print-area {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  th, td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 6px 8px !important;
+    font-size: 11px !important;
+    color: #0f172a !important;
+  }
+}
+

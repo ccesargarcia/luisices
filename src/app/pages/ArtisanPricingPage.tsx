@@ -56,6 +56,8 @@ import {
   Banknote,
   AlertTriangle,
   RotateCcw,
+  LayoutGrid,
+  LayoutList,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -119,6 +121,7 @@ export function ArtisanPricingPage() {
   const [supplies, setSupplies] = useState<SupplyItem[]>([]);
   const [loadingSupplies, setLoadingSupplies] = useState(true);
   const [suppliesSearch, setSuppliesSearch] = useState('');
+  const [suppliesViewMode, setSuppliesViewMode] = useState<'table' | 'grid'>('table');
 
   // Formulário de Cadastro / Edição de Insumo
   const [editingSupplyId, setEditingSupplyId] = useState<string | null>(null);
@@ -923,29 +926,29 @@ export function ArtisanPricingPage() {
         </div>
 
         {/* Alternador de Telas Interligadas */}
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border bg-muted/60 p-1 shadow-xs">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+          <div className="flex rounded-lg border bg-muted/60 p-1 shadow-xs w-full sm:w-auto overflow-x-auto">
             <button
               onClick={() => setTab('calculadora')}
-              className={`flex items-center gap-2 rounded-md px-3.5 py-1.5 text-xs font-medium transition-all ${
+              className={`flex items-center gap-2 rounded-md px-3.5 py-1.5 text-xs font-medium transition-all flex-1 sm:flex-initial text-center justify-center ${
                 activeTab === 'calculadora'
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              <Calculator className="size-3.5" />
-              Calculadora & Orçamentos
+              <Calculator className="size-3.5 shrink-0" />
+              <span>Calculadora & Orçamentos</span>
             </button>
             <button
               onClick={() => setTab('insumos')}
-              className={`flex items-center gap-2 rounded-md px-3.5 py-1.5 text-xs font-medium transition-all ${
+              className={`flex items-center gap-2 rounded-md px-3.5 py-1.5 text-xs font-medium transition-all flex-1 sm:flex-initial text-center justify-center ${
                 activeTab === 'insumos'
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              <Package className="size-3.5" />
-              Estoque de Insumos
+              <Package className="size-3.5 shrink-0" />
+              <span>Estoque de Insumos</span>
             </button>
           </div>
 
@@ -954,10 +957,11 @@ export function ArtisanPricingPage() {
               variant="outline"
               size="sm"
               onClick={() => window.print()}
-              className="gap-1.5 text-xs shadow-xs"
+              className="gap-1.5 text-xs shadow-xs h-9 shrink-0 print:hidden"
+              title="Imprimir relatório do estoque"
             >
               <Printer className="size-3.5" />
-              Imprimir estoque
+              <span className="inline">Imprimir estoque</span>
             </Button>
           )}
         </div>
@@ -1092,7 +1096,7 @@ export function ArtisanPricingPage() {
 
           {/* Card Direito: Insumos Cadastrados (7 colunas) */}
           <Card className="lg:col-span-7 shadow-xs border-border/80">
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+            <CardHeader className="pb-3 flex flex-row flex-wrap items-center justify-between gap-2">
               <div>
                 <CardTitle className="text-base font-semibold text-foreground">
                   Insumos Cadastrados
@@ -1100,6 +1104,45 @@ export function ArtisanPricingPage() {
                 <CardDescription className="text-xs">
                   {supplies.length} {supplies.length === 1 ? 'insumo cadastrado' : 'insumos cadastrados'}
                 </CardDescription>
+              </div>
+
+              {/* Controles de Visualização (Lista vs Cards) e Impressão */}
+              <div className="flex items-center gap-1.5 shrink-0 print:hidden">
+                <div className="flex items-center rounded-lg border bg-muted/60 p-0.5 shadow-2xs">
+                  <Button
+                    type="button"
+                    variant={suppliesViewMode === 'table' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    onClick={() => setSuppliesViewMode('table')}
+                    className="h-7 px-2.5 text-xs gap-1"
+                    title="Visualização em Lista / Tabela"
+                  >
+                    <LayoutList className="size-3.5" />
+                    <span className="hidden sm:inline">Lista</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={suppliesViewMode === 'grid' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    onClick={() => setSuppliesViewMode('grid')}
+                    className="h-7 px-2.5 text-xs gap-1"
+                    title="Visualização em Cards"
+                  >
+                    <LayoutGrid className="size-3.5" />
+                    <span className="hidden sm:inline">Cards</span>
+                  </Button>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.print()}
+                  className="h-7 px-2.5 text-xs gap-1 shadow-2xs"
+                  title="Imprimir lista de insumos"
+                >
+                  <Printer className="size-3.5" />
+                  <span className="hidden xs:inline">Imprimir</span>
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1114,61 +1157,131 @@ export function ArtisanPricingPage() {
                 />
               </div>
 
-              {/* Tabela de Insumos */}
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-purple-50/50 dark:bg-purple-950/20 text-purple-950 dark:text-purple-200 border-b">
-                    <tr>
-                      <th className="py-2.5 px-3 font-semibold">Insumo</th>
-                      <th className="py-2.5 px-3 font-semibold text-center">Qtd Emb.</th>
-                      <th className="py-2.5 px-3 font-semibold text-center">Estoque Atual</th>
-                      <th className="py-2.5 px-3 font-semibold text-right">Preço Pago</th>
-                      <th className="py-2.5 px-3 font-semibold text-right">Custo/Unid.</th>
-                      <th className="py-2.5 px-3 font-semibold text-center">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {loadingSupplies ? (
+              {/* MODO TABELA / LISTA */}
+              {suppliesViewMode === 'table' ? (
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-purple-50/50 dark:bg-purple-950/20 text-purple-950 dark:text-purple-200 border-b">
                       <tr>
-                        <td colSpan={6} className="py-8 text-center text-muted-foreground">
-                          <Loader2 className="size-5 animate-spin mx-auto mb-2 text-primary" />
-                          Carregando insumos do ateliê...
-                        </td>
+                        <th className="py-2.5 px-3 font-semibold">Insumo</th>
+                        <th className="py-2.5 px-3 font-semibold text-center">Qtd Emb.</th>
+                        <th className="py-2.5 px-3 font-semibold text-center">Estoque Atual</th>
+                        <th className="py-2.5 px-3 font-semibold text-right">Preço Pago</th>
+                        <th className="py-2.5 px-3 font-semibold text-right">Custo/Unid.</th>
+                        <th className="py-2.5 px-3 font-semibold text-center">Ações</th>
                       </tr>
-                    ) : filteredSupplies.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="py-8 text-center text-muted-foreground">
-                          Nenhum insumo encontrado. Cadastre seu primeiro insumo ao lado!
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredSupplies.map((supply) => (
-                        <tr key={supply.id} className="hover:bg-muted/40 transition-colors">
-                          <td className="py-2.5 px-3 font-medium text-foreground">
-                            {supply.name}
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {loadingSupplies ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                            <Loader2 className="size-5 animate-spin mx-auto mb-2 text-primary" />
+                            Carregando insumos do ateliê...
                           </td>
-                          <td className="py-2.5 px-3 text-center text-muted-foreground">
-                            {supply.packageQuantity || 1}
+                        </tr>
+                      ) : filteredSupplies.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                            Nenhum insumo encontrado. Cadastre seu primeiro insumo ao lado!
                           </td>
-                          <td className="py-2.5 px-3 text-center">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                              (supply.currentStock ?? 0) <= 5
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
-                                : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
-                            }`}>
-                              {supply.currentStock ?? supply.packageQuantity ?? 0}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 text-right text-muted-foreground">
-                            {formatCurrency(supply.purchasePrice || 0)}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-semibold text-purple-700 dark:text-purple-300">
-                            {formatCurrency(supply.unitCost || 0)}
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
+                        </tr>
+                      ) : (
+                        filteredSupplies.map((supply) => (
+                          <tr key={supply.id} className="hover:bg-muted/40 transition-colors">
+                            <td className="py-2.5 px-3 font-medium text-foreground">
+                              {supply.name}
+                            </td>
+                            <td className="py-2.5 px-3 text-center text-muted-foreground">
+                              {supply.packageQuantity || 1}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                                (supply.currentStock ?? 0) <= 5
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
+                                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                              }`}>
+                                {supply.currentStock ?? supply.packageQuantity ?? 0}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-muted-foreground">
+                              {formatCurrency(supply.purchasePrice || 0)}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-semibold text-purple-700 dark:text-purple-300">
+                              {formatCurrency(supply.unitCost || 0)}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="size-7">
+                                    <MoreVertical className="size-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="text-xs">
+                                  <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                                  <DropdownMenuItem onClick={() => handleEditSupply(supply)} className="gap-2">
+                                    <Edit2 className="size-3.5" /> Editar
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleQuickAdjustStock(supply, 1)} className="gap-2">
+                                    <Plus className="size-3.5 text-emerald-600" /> Adicionar +1 ao estoque
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleQuickAdjustStock(supply, -1)} className="gap-2">
+                                    <Minus className="size-3.5 text-amber-600" /> Diminuir -1 do estoque
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => handleDeleteSupply(supply.id, supply.name)}
+                                    className="gap-2 text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="size-3.5" /> Excluir
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                /* MODO CARDS / GRID */
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {loadingSupplies ? (
+                    <div className="col-span-full py-12 text-center text-muted-foreground">
+                      <Loader2 className="size-6 animate-spin mx-auto mb-2 text-primary" />
+                      Carregando insumos do ateliê...
+                    </div>
+                  ) : filteredSupplies.length === 0 ? (
+                    <div className="col-span-full py-12 text-center text-muted-foreground border border-dashed rounded-xl p-6">
+                      Nenhum insumo encontrado. Cadastre seu primeiro insumo ao lado!
+                    </div>
+                  ) : (
+                    filteredSupplies.map((supply) => {
+                      const stockVal = supply.currentStock ?? supply.packageQuantity ?? 0;
+                      const isLowStock = stockVal <= 5;
+                      return (
+                        <div
+                          key={supply.id}
+                          className="rounded-xl border border-border/80 bg-card p-3.5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between space-y-3 relative group"
+                        >
+                          {/* Header do Card */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="space-y-1 min-w-0 flex-1">
+                              <div className="font-semibold text-xs text-foreground truncate" title={supply.name}>
+                                {supply.name}
+                              </div>
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                                isLowStock
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
+                                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                              }`}>
+                                {isLowStock ? '⚠️ Estoque Baixo:' : '📦 Estoque:'} {stockVal} un
+                              </span>
+                            </div>
+
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="size-7">
+                                <Button variant="ghost" size="icon" className="size-7 shrink-0 -mr-1.5 -mt-1">
                                   <MoreVertical className="size-3.5" />
                                 </Button>
                               </DropdownMenuTrigger>
@@ -1192,13 +1305,65 @@ export function ArtisanPricingPage() {
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                          </div>
+
+                          {/* Detalhes Financeiros */}
+                          <div className="grid grid-cols-3 gap-1.5 py-2 px-2.5 rounded-lg bg-muted/40 text-center text-[11px]">
+                            <div>
+                              <span className="text-[9px] text-muted-foreground uppercase block">EMBALAGEM</span>
+                              <span className="font-medium text-foreground">{supply.packageQuantity || 1} un</span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-muted-foreground uppercase block">PREÇO PAGO</span>
+                              <span className="font-medium text-foreground">{formatCurrency(supply.purchasePrice || 0)}</span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-purple-700 dark:text-purple-300 uppercase block font-semibold">CUSTO/UNID</span>
+                              <span className="font-bold text-purple-700 dark:text-purple-300">{formatCurrency(supply.unitCost || 0)}</span>
+                            </div>
+                          </div>
+
+                          {/* Ações Rápidas do Card */}
+                          <div className="flex items-center justify-between gap-1.5 pt-1">
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleQuickAdjustStock(supply, -1)}
+                                className="h-7 px-2 text-[11px] gap-1"
+                                title="Diminuir 1 do estoque"
+                              >
+                                <Minus className="size-3 text-amber-600" /> -1
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleQuickAdjustStock(supply, 1)}
+                                className="h-7 px-2 text-[11px] gap-1"
+                                title="Adicionar 1 ao estoque"
+                              >
+                                <Plus className="size-3 text-emerald-600" /> +1
+                              </Button>
+                            </div>
+
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditSupply(supply)}
+                              className="h-7 px-2 text-[11px] text-primary hover:text-primary gap-1"
+                            >
+                              <Edit2 className="size-3" /> Editar
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

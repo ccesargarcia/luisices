@@ -344,8 +344,6 @@ service cloud.firestore {
 
     // Regras para clientes (customers)
     match /customers/{customerId} {
-    // Regras para clientes (customers)
-    match /customers/{customerId} {
       allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('customers', 'view'))
         || isAdmin()
         || employeeHasCustomersPerm('view');
