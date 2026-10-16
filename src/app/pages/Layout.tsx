@@ -19,6 +19,7 @@ import {
   Palette,
   ClipboardList,
   Archive,
+  Calculator,
 } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
@@ -218,6 +219,7 @@ export function Layout() {
       items: [
         { name: 'Produtos do Ateliê', href: '/produtos', icon: Package, check: (p) => p.products?.view },
         { name: 'Precificação & Custos', href: '/precificacao', icon: Coins, check: (p) => canAccessPricing(p, 'view') },
+        { name: 'Calculadora & Insumos', href: '/calculadora-insumos', icon: Calculator, check: (p) => canAccessPricing(p, 'view') },
         { name: 'Galeria de Artes', href: '/galeria', icon: Images, check: (p) => p.gallery?.view },
       ],
     },

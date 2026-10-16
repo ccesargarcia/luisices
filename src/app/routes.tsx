@@ -138,6 +138,7 @@ const StoreProducts      = lazyWithRetry(() => import('./pages/StoreProducts'), 
 const StoreOrders        = lazyWithRetry(() => import('./pages/StoreOrders'), 'StoreOrders');
 const WhatsAppChat       = lazyWithRetry(() => import('./pages/WhatsAppChat'), 'WhatsAppChat');
 const ArchivedOrders     = lazyWithRetry(() => import('./pages/ArchivedOrders'), 'ArchivedOrders');
+const ArtisanPricingPage = lazyWithRetry(() => import('./pages/ArtisanPricingPage'), 'ArtisanPricingPage');
 
 function PageLoader() {
   return (
@@ -310,6 +311,18 @@ export const router = isCatalogSubdomain
       {
         path: 'precificacao',
         element: <Lazy><PermissionRoute check={p => canAccessPricing(p, 'view')}><Pricing /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'calculadora-insumos',
+        element: <Lazy><PermissionRoute check={p => canAccessPricing(p, 'view')}><ArtisanPricingPage /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'estoque-insumos',
+        element: <Lazy><PermissionRoute check={p => canAccessPricing(p, 'view')}><ArtisanPricingPage /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'calculadora-precos',
+        element: <Navigate to="/calculadora-insumos" replace />,
       },
       {
         path: 'galeria',
