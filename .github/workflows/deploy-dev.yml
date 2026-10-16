@@ -477,7 +477,7 @@ jobs:
           npx --yes firebase-tools@15.32.1 functions:secrets:prune --project luisices-dev --force --non-interactive
 
       - name: Purgar Cache da Borda Cloudflare (OpenAPI & Manifestos MCP)
-        if: needs.detect-changes.outputs.mcp_metadata == 'true' || inputs.deploy_target == 'all'
+        if: needs.detect-changes.outputs.has_changes == 'true' || needs.detect-changes.outputs.mcp_metadata == 'true' || inputs.deploy_target == 'all'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
