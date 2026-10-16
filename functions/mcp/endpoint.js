@@ -72,6 +72,24 @@ async function executeToolByName(toolsExecutor, toolName, args, scope) {
       return await toolsExecutor.executeSearchGalleryPortfolio(args, scope);
     case 'get_user_summary':
       return await toolsExecutor.executeUserSummary(args, scope);
+    case 'calculate_artisan_pricing':
+      return await toolsExecutor.executeCalculateArtisanPricing(args, scope);
+    case 'list_supplies':
+      return await toolsExecutor.executeListSupplies(args, scope);
+    case 'list_pricing_models':
+      return await toolsExecutor.executeListPricingModels(args, scope);
+    case 'get_pricing_model':
+      return await toolsExecutor.executeGetPricingModel(args, scope);
+    case 'save_pricing_model':
+      return await toolsExecutor.executeSavePricingModel(args, scope);
+    case 'query_quotes':
+      return await toolsExecutor.executeQueryQuotes(args, scope);
+    case 'create_quote':
+      return await toolsExecutor.executeCreateQuote(args, scope);
+    case 'update_quote_status':
+      return await toolsExecutor.executeUpdateQuoteStatus(args, scope);
+    case 'list_store_products':
+      return await toolsExecutor.executeListStoreProducts(args, scope);
     default:
       throw new Error(`Ferramenta '${toolName}' não implementada.`);
   }

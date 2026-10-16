@@ -15,6 +15,12 @@ const MODULE_REQUIREMENTS = {
   'gallery:read': ['gallery', 'view'],
   'financial:read': ['reports', 'view'],
   'team:read': ['users', 'view'],
+  'supplies:read': ['pricing', 'view'],
+  'pricing:models:read': ['pricing', 'view'],
+  'pricing:models:write': ['pricing', 'create'],
+  'quotes:read': ['quotes', 'view'],
+  'quotes:write': ['quotes', 'create'],
+  'store:read': ['storeProducts', 'view'],
 };
 
 function moduleAllowsMcpScope(scopeId, profile) {

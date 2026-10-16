@@ -574,6 +574,180 @@ const TOOLS_METADATA = [
       },
     },
   },
+  {
+    name: 'calculate_artisan_pricing',
+    scope: 'pricing:estimate',
+    summary: 'Calculadora de Precificação Avançada de Artesanato',
+    description: 'Calcula sugestão de preço usando Markup sobre Custo ou Margem sobre Venda, insumos do estoque, horas de trabalho, custos fixos, taxa de pagamento e sugestão de sinal/entrada (30%, 50%, 100%).',
+    requestBody: {
+      type: 'object',
+      required: ['productName', 'quantity'],
+      properties: {
+        productName: { type: 'string', description: 'Nome do produto artesanal ou encomenda.' },
+        quantity: { type: 'integer', minimum: 1, maximum: 100000, description: 'Quantidade encomendada.' },
+        pricingMode: { type: 'string', enum: ['markup', 'margem'], default: 'markup', description: 'Modo de precificação: markup (multiplicador sobre o custo) ou margem (% de margem de lucro sobre o preço de venda).' },
+        markupPercent: { type: 'number', minimum: 0, maximum: 1000, default: 100, description: 'Percentual de markup sobre o custo total (ex: 100% dobra o custo).' },
+        profitMarginPercent: { type: 'number', minimum: 0, maximum: 95, default: 50, description: 'Percentual de margem de lucro sobre a venda.' },
+        items: {
+          type: 'array',
+          description: 'Lista de insumos utilizados na composição do produto.',
+          items: {
+            type: 'object',
+            required: ['name', 'quantity', 'unitCost'],
+            properties: {
+              name: { type: 'string', description: 'Nome do insumo ou matéria-prima.' },
+              quantity: { type: 'number', minimum: 0.001, description: 'Quantidade consumida.' },
+              unitCost: { type: 'number', minimum: 0, description: 'Custo unitário do insumo.' },
+            },
+          },
+        },
+        laborTimeMinutes: { type: 'number', minimum: 0, maximum: 60000, description: 'Tempo total de confecção em minutos.' },
+        hourlyRate: { type: 'number', minimum: 0, maximum: 10000, description: 'Valor da hora de trabalho do artesão (R$/hora).' },
+        paymentMethod: { type: 'string', enum: ['pix', 'cartao', 'dinheiro'], default: 'pix', description: 'Forma de pagamento prevista.' },
+        depositOption: { type: 'string', enum: ['50', '30', '100', 'custom'], default: '50', description: 'Opção de sinal/entrada para início da confecção.' },
+      },
+    },
+  },
+  {
+    name: 'list_supplies',
+    scope: 'supplies:read',
+    summary: 'Consultar Insumos & Estoque do Ateliê',
+    description: 'Retorna matérias-primas e insumos cadastrados no estoque do ateliê com preço pago, custo unitário e estoque disponível.',
+    requestBody: {
+      type: 'object',
+      properties: {
+        searchTerm: { type: 'string', maxLength: 200, description: 'Filtro por nome ou categoria do insumo.' },
+        limit: { type: 'integer', minimum: 1, maximum: 100, default: 50, description: 'Limite de insumos a retornar.' },
+      },
+    },
+  },
+  {
+    name: 'list_pricing_models',
+    scope: 'pricing:models:read',
+    summary: 'Listar Modelos Salvos & Receitas',
+    description: 'Lista modelos e receitas de composição salvas no ateliê para reutilização na calculadora.',
+    requestBody: {
+      type: 'object',
+      properties: {
+        searchTerm: { type: 'string', maxLength: 200, description: 'Filtro por nome do produto ou categoria.' },
+        limit: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
+      },
+    },
+  },
+  {
+    name: 'get_pricing_model',
+    scope: 'pricing:models:read',
+    summary: 'Consultar Detalhes de Modelo Salvo',
+    description: 'Obtém a composição completa de insumos, custos e parâmetro de margem/markup de um modelo de produto salvo.',
+    requestBody: {
+      type: 'object',
+      required: ['modelId'],
+      properties: {
+        modelId: { type: 'string', description: 'ID do modelo/receita de precificação.' },
+      },
+    },
+  },
+  {
+    name: 'save_pricing_model',
+    scope: 'pricing:models:write',
+    summary: 'Salvar ou Atualizar Modelo de Precificação',
+    description: 'Cria ou atualiza uma receita/modelo de produto salvo com seus insumos e método de cálculo.',
+    requestBody: {
+      type: 'object',
+      required: ['productName', 'idempotencyKey'],
+      properties: {
+        modelId: { type: 'string', description: 'ID para atualização. Se omitido, cria um novo modelo.' },
+        productName: { type: 'string', minLength: 1, maxLength: 200, description: 'Nome da composição / modelo.' },
+        category: { type: 'string', maxLength: 100, default: 'papelaria_festa' },
+        pricingMethod: { type: 'string', enum: ['markup_on_cost', 'margin_on_sale'], default: 'markup_on_cost' },
+        profitMarginPercent: { type: 'number', minimum: 0, maximum: 1000, default: 100 },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['supplyName', 'quantity', 'unitCost'],
+            properties: {
+              supplyId: { type: 'string' },
+              supplyName: { type: 'string' },
+              quantity: { type: 'number', minimum: 0.001 },
+              unitCost: { type: 'number', minimum: 0 },
+            },
+          },
+        },
+        idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{8,128}$' },
+        confirmed: { type: 'boolean', default: true },
+      },
+    },
+  },
+  {
+    name: 'query_quotes',
+    scope: 'quotes:read',
+    summary: 'Consultar Orçamentos Enviados',
+    description: 'Pesquisa orçamentos formais por cliente, status (pendente, aprovado, cancelado) ou termo de busca.',
+    requestBody: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['all', 'pending', 'approved', 'cancelled', 'rejected'], default: 'all' },
+        searchTerm: { type: 'string', maxLength: 200, description: 'Nome do cliente ou número do orçamento (#ORC-...).' },
+        limit: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
+      },
+    },
+  },
+  {
+    name: 'create_quote',
+    scope: 'quotes:write',
+    summary: 'Criar Novo Orçamento Formal',
+    description: 'Gera e registra um orçamento formal com número sequencial (#ORC-0001), valor total, cálculo de entrada/sinal e parcelas.',
+    requestBody: {
+      type: 'object',
+      required: ['customerName', 'productName', 'quantity', 'totalPrice', 'idempotencyKey'],
+      properties: {
+        customerName: { type: 'string', minLength: 1, maxLength: 200, description: 'Nome do cliente.' },
+        customerPhone: { type: 'string', maxLength: 50, description: 'Telefone/WhatsApp do cliente.' },
+        productName: { type: 'string', minLength: 1, maxLength: 500, description: 'Nome e itens da encomenda.' },
+        quantity: { type: 'integer', minimum: 1, default: 1 },
+        totalPrice: { type: 'number', minimum: 0, description: 'Valor total do orçamento.' },
+        depositPercentage: { type: 'number', minimum: 0, maximum: 100, default: 50, description: 'Percentual de entrada/sinal exigido.' },
+        paymentMethod: { type: 'string', enum: ['pix', 'cartao', 'dinheiro'], default: 'pix' },
+        validUntil: { type: 'string', maxLength: 10, description: 'Validade da proposta no formato AAAA-MM-DD.' },
+        notes: { type: 'string', maxLength: 1000 },
+        idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{8,128}$' },
+        confirmed: { type: 'boolean', default: true },
+      },
+    },
+  },
+  {
+    name: 'update_quote_status',
+    scope: 'quotes:write',
+    summary: 'Atualizar Status do Orçamento',
+    description: 'Altera o status de um orçamento para aprovado ou cancelado, ou converte o orçamento aprovado em pedido.',
+    requestBody: {
+      type: 'object',
+      required: ['quoteNumber', 'status', 'idempotencyKey'],
+      properties: {
+        quoteNumber: { type: 'string', description: 'Número do orçamento (ex: #ORC-0001) ou ID.' },
+        status: { type: 'string', enum: ['approved', 'cancelled', 'rejected'] },
+        convertToOrder: { type: 'boolean', default: false, description: 'Se true e status=approved, gera automaticamente o pedido na fila.' },
+        deliveryDate: { type: 'string', maxLength: 10, description: 'Data de entrega caso o orçamento seja convertido em pedido.' },
+        idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{8,128}$' },
+        confirmed: { type: 'boolean', default: true },
+      },
+    },
+  },
+  {
+    name: 'list_store_products',
+    scope: 'store:read',
+    summary: 'Consultar Produtos da Lojinha Virtual',
+    description: 'Consulta o catálogo de produtos cadastrados na vitrine virtual / loja online.',
+    requestBody: {
+      type: 'object',
+      properties: {
+        searchTerm: { type: 'string', maxLength: 200 },
+        category: { type: 'string', maxLength: 100 },
+        limit: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
+      },
+    },
+  },
 ];
 
 // MCP publishes JSON Schema (2020-12), where exclusiveMinimum is numeric.

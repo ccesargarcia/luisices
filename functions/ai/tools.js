@@ -2305,6 +2305,227 @@ class AiToolsExecutor {
         : `Pedido ${createdOrderNumber} criado com sucesso para ${cleanCustomer}!`,
     };
   }
+
+  async executeCalculateArtisanPricing(args = {}, scope) {
+    const productName = String(args.productName || 'Encomenda').trim();
+    const quantity = Math.max(1, Number(args.quantity) || 1);
+    const pricingMode = args.pricingMode === 'margem' ? 'margem' : 'markup';
+    const markupPercent = Number(args.markupPercent) || 100;
+    const profitMarginPercent = Number(args.profitMarginPercent) || 50;
+
+    let itemsCostTotal = 0;
+    const itemBreakdown = [];
+    if (Array.isArray(args.items)) {
+      for (const item of args.items) {
+        const qty = Number(item.quantity) || 0;
+        const unit = Number(item.unitCost) || 0;
+        const sub = Math.round(qty * unit * 100) / 100;
+        itemsCostTotal += sub;
+        itemBreakdown.push({
+          name: item.name || 'Insumo',
+          quantity: qty,
+          unitCost: unit,
+          subtotalCost: sub,
+        });
+      }
+    }
+
+    const laborTimeMinutes = Number(args.laborTimeMinutes) || 0;
+    const hourlyRate = Number(args.hourlyRate) || 20;
+    const laborCost = Math.round((laborTimeMinutes / 60) * hourlyRate * 100) / 100;
+
+    const totalCost = itemsCostTotal + laborCost;
+
+    let suggestedTotalPrice = 0;
+    if (pricingMode === 'markup') {
+      suggestedTotalPrice = Math.round(totalCost * (1 + markupPercent / 100) * 100) / 100;
+    } else {
+      const marginFrac = Math.min(0.95, profitMarginPercent / 100);
+      suggestedTotalPrice = Math.round((totalCost / (1 - marginFrac)) * 100) / 100;
+    }
+
+    const unitPrice = Math.round((suggestedTotalPrice / quantity) * 100) / 100;
+
+    const depositPct = args.depositOption === '30' ? 30 : args.depositOption === '100' ? 100 : 50;
+    const depositAmount = Math.round(suggestedTotalPrice * (depositPct / 100) * 100) / 100;
+    const remainingAmount = Math.round((suggestedTotalPrice - depositAmount) * 100) / 100;
+
+    return {
+      success: true,
+      productName,
+      quantity,
+      pricingMode,
+      itemsCostTotal,
+      laborCost,
+      totalCost,
+      suggestedTotalPrice,
+      unitPrice,
+      depositPercentage: depositPct,
+      depositAmount,
+      remainingAmount,
+      itemBreakdown,
+      formattedSummary: `💰 **Precificação calculada para "${productName}" (${quantity} un):**\n• Custo total de insumos e mão de obra: R$ ${totalCost.toFixed(2)}\n• Preço final sugerido (${pricingMode === 'markup' ? `Markup ${markupPercent}%` : `Margem ${profitMarginPercent}%`}): R$ ${suggestedTotalPrice.toFixed(2)} (R$ ${unitPrice.toFixed(2)}/un)\n• Sinal (${depositPct}%): R$ ${depositAmount.toFixed(2)} | Saldo restante: R$ ${remainingAmount.toFixed(2)}`,
+    };
+  }
+
+  async executeListSupplies(args = {}, scope) {
+    const supplies = await this.repositories.getSupplies(scope);
+    const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
+    let filtered = supplies;
+    if (searchTerm) {
+      filtered = supplies.filter((s) => s.name.toLowerCase().includes(searchTerm) || s.category.toLowerCase().includes(searchTerm));
+    }
+    const limit = Math.min(100, Math.max(1, Number(args.limit) || 50));
+    const resultList = filtered.slice(0, limit);
+    return {
+      success: true,
+      totalCount: filtered.length,
+      supplies: resultList,
+      formattedSummary: `📦 Encontrados ${resultList.length} insumos de estoque:\n` + resultList.map((s) => `• ${s.name}: R$ ${s.unitCost.toFixed(2)}/un | Estoque: ${s.currentStock || 0}`).join('\n'),
+    };
+  }
+
+  async executeListPricingModels(args = {}, scope) {
+    const recipes = await this.repositories.getPricingRecipes(scope, { limit: args.limit || 20 });
+    const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
+    let filtered = recipes;
+    if (searchTerm) {
+      filtered = recipes.filter((r) => r.productName.toLowerCase().includes(searchTerm) || r.category.toLowerCase().includes(searchTerm));
+    }
+    return {
+      success: true,
+      totalCount: filtered.length,
+      models: filtered,
+      formattedSummary: `📋 Encontrados ${filtered.length} modelos de precificação salvos:\n` + filtered.map((r) => `• ${r.productName} (R$ ${r.suggestedUnitPrice.toFixed(2)})`).join('\n'),
+    };
+  }
+
+  async executeGetPricingModel(args = {}, scope) {
+    const model = await this.repositories.getPricingRecipeById(scope, args.modelId);
+    if (!model) {
+      const err = new Error('Modelo de precificação não encontrado.');
+      err.code = 'not-found';
+      throw err;
+    }
+    return {
+      success: true,
+      model,
+      formattedSummary: `📐 **Modelo Salvo: "${model.productName}"**\n• Preço Sugerido: R$ ${model.suggestedUnitPrice.toFixed(2)}\n• Método: ${model.pricingMethod === 'markup_on_cost' ? 'Markup sobre Custo' : 'Margem sobre Venda'}\n• Insumos: ${model.items.length} itens cadastrados.`,
+    };
+  }
+
+  async executeSavePricingModel(args = {}, scope) {
+    if (!isConfirmed(args.confirmed)) {
+      return {
+        success: true,
+        preview: true,
+        productName: args.productName,
+        pricingMethod: args.pricingMethod || 'markup_on_cost',
+        message: `Prévia da gravação do modelo "${args.productName}". Confirme para salvar.`,
+      };
+    }
+
+    const saved = await this.repositories.savePricingRecipe(scope, args);
+    return {
+      success: true,
+      modelId: saved.id,
+      productName: saved.productName,
+      message: `Modelo "${saved.productName}" salvo com sucesso!`,
+    };
+  }
+
+  async executeQueryQuotes(args = {}, scope) {
+    const quotes = await this.repositories.getQuotes(scope, { limit: args.limit || 20 });
+    const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
+    const statusFilter = String(args.status || 'all').toLowerCase();
+
+    let filtered = quotes;
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter((q) => q.status.toLowerCase() === statusFilter);
+    }
+    if (searchTerm) {
+      filtered = filtered.filter((q) => q.customerName.toLowerCase().includes(searchTerm) || q.quoteNumber.toLowerCase().includes(searchTerm));
+    }
+
+    return {
+      success: true,
+      totalCount: filtered.length,
+      quotes: filtered,
+      formattedSummary: `📝 Encontrados ${filtered.length} orçamentos:\n` + filtered.map((q) => `• ${q.quoteNumber} | ${q.customerName} - R$ ${q.totalPrice.toFixed(2)} [Status: ${q.status}]`).join('\n'),
+    };
+  }
+
+  async executeCreateQuote(args = {}, scope) {
+    if (!isConfirmed(args.confirmed)) {
+      return {
+        success: true,
+        preview: true,
+        customerName: args.customerName,
+        totalPrice: args.totalPrice,
+        message: `Prévia do orçamento para ${args.customerName} (R$ ${args.totalPrice}). Confirme para gerar o orçamento oficial.`,
+      };
+    }
+
+    const quote = await this.repositories.createQuote(scope, args);
+    return {
+      success: true,
+      quoteId: quote.id,
+      quoteNumber: quote.quoteNumber,
+      customerName: quote.customerName,
+      totalPrice: quote.totalPrice,
+      message: `Orçamento ${quote.quoteNumber} gerado com sucesso para ${quote.customerName}!`,
+    };
+  }
+
+  async executeUpdateQuoteStatus(args = {}, scope) {
+    const updated = await this.repositories.updateQuoteStatus(scope, args.quoteNumber, args.status);
+    let orderCreated = null;
+
+    if (args.status === 'approved' && args.convertToOrder) {
+      const quotes = await this.repositories.getQuotes(scope, { limit: 10 });
+      const targetQuote = quotes.find((q) => q.id === updated.id || q.quoteNumber === updated.quoteNumber);
+      if (targetQuote) {
+        orderCreated = await this.executeCreateOrder({
+          customerName: targetQuote.customerName,
+          customerPhone: targetQuote.customerPhone,
+          productName: targetQuote.productName,
+          quantity: 1,
+          totalPrice: targetQuote.totalPrice,
+          paidAmount: targetQuote.totalPrice * ((targetQuote.depositPercentage || 50) / 100),
+          deliveryDate: args.deliveryDate || getBusinessDate(new Date(Date.now() + 7 * 86400000)),
+          idempotencyKey: args.idempotencyKey || `conv-quote-${updated.id}`,
+          confirmed: true,
+        }, scope);
+      }
+    }
+
+    return {
+      success: true,
+      quoteNumber: updated.quoteNumber,
+      status: updated.status,
+      orderCreated: orderCreated ? orderCreated.orderNumber : undefined,
+      message: orderCreated
+        ? `Orçamento ${updated.quoteNumber} aprovado e convertido no pedido ${orderCreated.orderNumber}!`
+        : `Status do orçamento ${updated.quoteNumber} atualizado para ${updated.status}.`,
+    };
+  }
+
+  async executeListStoreProducts(args = {}, scope) {
+    const products = await this.repositories.getStoreProducts();
+    const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
+    let filtered = products;
+    if (searchTerm) {
+      filtered = products.filter((p) => p.name.toLowerCase().includes(searchTerm) || p.category.toLowerCase().includes(searchTerm));
+    }
+    const limit = Math.min(50, Math.max(1, Number(args.limit) || 20));
+    const result = filtered.slice(0, limit);
+    return {
+      success: true,
+      totalCount: filtered.length,
+      products: result,
+      formattedSummary: `🛒 Encontrados ${result.length} produtos na loja virtual:\n` + result.map((p) => `• ${p.name} - R$ ${p.price.toFixed(2)}`).join('\n'),
+    };
+  }
 }
 
 module.exports = {

@@ -13,6 +13,12 @@ export const MCP_PROFILE_SCOPES = [
   { id: 'pricing:estimate', label: 'Calcular preços', module: 'pricing', action: 'view', defaultGranted: true },
   { id: 'whatsapp:compose', label: 'Preparar mensagens de WhatsApp', module: 'whatsapp', action: 'view', defaultGranted: true },
   { id: 'gallery:read', label: 'Consultar portfólio', module: 'gallery', action: 'view', defaultGranted: true },
+  { id: 'supplies:read', label: 'Consultar insumos e estoque', module: 'pricing', action: 'view', defaultGranted: true },
+  { id: 'pricing:models:read', label: 'Consultar modelos de precificação', module: 'pricing', action: 'view', defaultGranted: true },
+  { id: 'pricing:models:write', label: 'Salvar modelos de precificação', module: 'pricing', action: 'create', defaultGranted: false },
+  { id: 'quotes:read', label: 'Consultar orçamentos', module: 'quotes', action: 'view', defaultGranted: true },
+  { id: 'quotes:write', label: 'Criar e gerenciar orçamentos', module: 'quotes', action: 'create', defaultGranted: true },
+  { id: 'store:read', label: 'Consultar lojinha virtual', module: 'storeProducts', action: 'view', defaultGranted: true },
   { id: 'financial:read', label: 'Consultar relatórios financeiros', module: 'reports', action: 'view', defaultGranted: false, adminOnly: true },
   { id: 'team:read', label: 'Consultar produtividade da equipe', module: 'users', action: 'view', defaultGranted: false, adminOnly: true },
 ] as const;

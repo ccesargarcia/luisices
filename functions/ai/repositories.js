@@ -562,6 +562,216 @@ class AiDataRepositories {
       return '\n\n[AVISO DE DADOS] Não foi possível consultar todo o contexto de catálogo/insumos/galeria. Não afirme que uma busca foi completa nem que um item inexiste; peça nova tentativa ou confirmação manual.\n';
     }
   }
+
+  /**
+   * Busca receitas/modelos de precificação salvos
+   */
+  async getPricingRecipes(scope, options = {}) {
+    if (!this.db) return [];
+    try {
+      let snap;
+      if (scope.isAdmin || scope.canViewPricing) {
+        snap = await this.db.collection('pricingRecipes').limit(options.limit || 50).get();
+      } else {
+        snap = await this.db.collection('pricingRecipes').where('userId', '==', scope.uid).limit(options.limit || 50).get();
+      }
+      return snap.docs.map((d) => {
+        const data = d.data() || {};
+        return {
+          id: d.id,
+          productName: data.productName || 'Modelo Salvo',
+          category: data.category || 'papelaria_festa',
+          pricingMethod: data.pricingMethod || 'markup_on_cost',
+          profitMarginPercent: data.profitMarginPercent !== undefined ? Number(data.profitMarginPercent) : 100,
+          suggestedUnitPrice: data.suggestedUnitPrice !== undefined ? Number(data.suggestedUnitPrice) : 0,
+          items: Array.isArray(data.items) ? data.items : [],
+          createdAt: normalizeTimestamp(data.createdAt),
+          userId: String(data.userId || ''),
+        };
+      }).filter((r) => scope.isAdmin || scope.canViewPricing || r.userId === scope.uid);
+    } catch (err) {
+      console.warn('[getPricingRecipes] Erro ao consultar modelos:', err.message);
+      return [];
+    }
+  }
+
+  /**
+   * Obtém os detalhes de um modelo/receita de precificação por ID
+   */
+  async getPricingRecipeById(scope, modelId) {
+    if (!this.db || !modelId) return null;
+    try {
+      const docSnap = await this.db.collection('pricingRecipes').doc(modelId).get();
+      if (!docSnap.exists) return null;
+      const data = docSnap.data() || {};
+      if (!scope.isAdmin && !scope.canViewPricing && data.userId !== scope.uid) {
+        return null;
+      }
+      return {
+        id: docSnap.id,
+        productName: data.productName || 'Modelo Salvo',
+        category: data.category || 'papelaria_festa',
+        pricingMethod: data.pricingMethod || 'markup_on_cost',
+        profitMarginPercent: data.profitMarginPercent !== undefined ? Number(data.profitMarginPercent) : 100,
+        suggestedUnitPrice: data.suggestedUnitPrice !== undefined ? Number(data.suggestedUnitPrice) : 0,
+        items: Array.isArray(data.items) ? data.items : [],
+        createdAt: normalizeTimestamp(data.createdAt),
+        userId: String(data.userId || ''),
+      };
+    } catch (err) {
+      console.warn('[getPricingRecipeById] Erro ao buscar modelo:', err.message);
+      return null;
+    }
+  }
+
+  /**
+   * Salva ou atualiza um modelo de precificação
+   */
+  async savePricingRecipe(scope, data) {
+    if (!this.db) throw new Error('Banco de dados não disponível.');
+    const recipeData = {
+      productName: String(data.productName || 'Composição').trim(),
+      category: String(data.category || 'papelaria_festa').trim(),
+      pricingMethod: data.pricingMethod === 'margin_on_sale' ? 'margin_on_sale' : 'markup_on_cost',
+      profitMarginPercent: Number(data.profitMarginPercent) || 100,
+      suggestedUnitPrice: Number(data.suggestedUnitPrice) || 0,
+      items: Array.isArray(data.items) ? data.items : [],
+      updatedAt: new Date(),
+      userId: scope.uid || 'system',
+    };
+
+    if (data.modelId) {
+      const docRef = this.db.collection('pricingRecipes').doc(data.modelId);
+      await docRef.set(recipeData, { merge: true });
+      return { id: data.modelId, ...recipeData };
+    } else {
+      recipeData.createdAt = new Date();
+      const docRef = await this.db.collection('pricingRecipes').add(recipeData);
+      return { id: docRef.id, ...recipeData };
+    }
+  }
+
+  /**
+   * Busca orçamentos
+   */
+  async getQuotes(scope, options = {}) {
+    if (!this.db) return [];
+    try {
+      let snap;
+      if (scope.isAdmin) {
+        snap = await this.db.collection('quotes').limit(options.limit || 50).get();
+      } else {
+        snap = await this.db.collection('quotes').where('userId', '==', scope.uid).limit(options.limit || 50).get();
+      }
+      return snap.docs.map((d) => {
+        const data = d.data() || {};
+        return {
+          id: d.id,
+          quoteNumber: data.quoteNumber || `#ORC-${d.id.slice(-4)}`,
+          customerName: data.customerName || 'Cliente',
+          customerPhone: data.customerPhone || '',
+          productName: data.items?.[0]?.name || data.productName || 'Encomenda',
+          items: Array.isArray(data.items) ? data.items : [],
+          totalPrice: Number(data.totalPrice) || 0,
+          depositPercentage: Number(data.depositPercentage) || 50,
+          paymentMethod: data.paymentCondition || data.paymentMethod || 'pix',
+          status: data.status || 'pending',
+          validUntil: normalizeTimestamp(data.validUntil).split('T')[0] || '',
+          createdAt: normalizeTimestamp(data.createdAt),
+          userId: String(data.userId || ''),
+        };
+      }).filter((q) => scope.isAdmin || q.userId === scope.uid);
+    } catch (err) {
+      console.warn('[getQuotes] Erro ao consultar orçamentos:', err.message);
+      return [];
+    }
+  }
+
+  /**
+   * Cria um novo orçamento
+   */
+  async createQuote(scope, data) {
+    if (!this.db) throw new Error('Banco de dados não disponível.');
+    const now = new Date();
+    const counterRef = this.db.collection('users').doc(scope.uid || 'system').collection('metadata').doc('quoteCounters');
+    let quoteNum = 'ORC-0001';
+    try {
+      const snap = await counterRef.get();
+      const curr = snap.exists ? (snap.data().quoteCount || 0) : 0;
+      const next = curr + 1;
+      await counterRef.set({ quoteCount: next }, { merge: true });
+      quoteNum = `ORC-${String(next).padStart(4, '0')}`;
+    } catch {
+      quoteNum = `ORC-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+
+    const quoteData = {
+      quoteNumber: quoteNum,
+      customerName: String(data.customerName || 'Cliente').trim(),
+      customerPhone: String(data.customerPhone || '').trim(),
+      productName: String(data.productName || 'Encomenda').trim(),
+      items: [{
+        name: String(data.productName || 'Encomenda').trim(),
+        quantity: Number(data.quantity) || 1,
+        unitPrice: (Number(data.totalPrice) || 0) / (Number(data.quantity) || 1),
+      }],
+      totalPrice: Number(data.totalPrice) || 0,
+      depositPercentage: Number(data.depositPercentage) || 50,
+      paymentMethod: data.paymentMethod || 'pix',
+      status: 'pending',
+      validUntil: data.validUntil || '',
+      notes: data.notes || '',
+      createdAt: now,
+      updatedAt: now,
+      userId: scope.uid || 'system',
+    };
+
+    const docRef = await this.db.collection('quotes').add(quoteData);
+    return { id: docRef.id, ...quoteData, createdAt: now.toISOString() };
+  }
+
+  /**
+   * Atualiza status do orçamento
+   */
+  async updateQuoteStatus(scope, quoteIdentifier, newStatus) {
+    if (!this.db) throw new Error('Banco de dados não disponível.');
+    let docRef = null;
+    let docSnap = null;
+
+    if (quoteIdentifier.startsWith('#ORC-') || quoteIdentifier.startsWith('ORC-')) {
+      const num = quoteIdentifier.replace(/^#/, '');
+      const snap = await this.db.collection('quotes').where('quoteNumber', '==', num).limit(1).get();
+      if (!snap.empty) {
+        docSnap = snap.docs[0];
+        docRef = docSnap.ref;
+      }
+    }
+
+    if (!docRef) {
+      docRef = this.db.collection('quotes').doc(quoteIdentifier);
+      docSnap = await docRef.get();
+    }
+
+    if (!docSnap || !docSnap.exists) {
+      const err = new Error('Orçamento não encontrado.');
+      err.code = 'not-found';
+      throw err;
+    }
+
+    const data = docSnap.data();
+    if (!scope.isAdmin && data.userId !== scope.uid) {
+      const err = new Error('Permissão negada para alterar este orçamento.');
+      err.code = 'permission-denied';
+      throw err;
+    }
+
+    await docRef.update({
+      status: newStatus,
+      updatedAt: new Date(),
+    });
+
+    return { id: docSnap.id, quoteNumber: data.quoteNumber || `#ORC-${docSnap.id.slice(-4)}`, status: newStatus, previousStatus: data.status };
+  }
 }
 
 module.exports = {

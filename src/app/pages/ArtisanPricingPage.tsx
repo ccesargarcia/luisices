@@ -5,6 +5,7 @@ import { useOrders } from '../../contexts/OrdersContext';
 import { firebasePricingService } from '../../services/firebasePricingService';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
+import { firebaseQuoteService } from '../../services/firebaseQuoteService';
 import {
   SupplyItem,
   ProductPricingRecipe,
@@ -53,6 +54,8 @@ import {
   Minus,
   CreditCard,
   Banknote,
+  AlertTriangle,
+  RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -66,9 +69,9 @@ interface CompositionItem {
   subtotalCost: number;
 }
 
-// Estrutura de orçamento gerado no novo módulo
 interface LocalQuoteRecord {
   id: string;
+  quoteNumber?: string;
   createdAt: string;
   customerName: string;
   customerPhone?: string;
@@ -81,6 +84,8 @@ interface LocalQuoteRecord {
   costTotal: number;
   totalPrice: number;
   profitMargin: number;
+  pricingMode?: 'markup' | 'margem';
+  markupPercent?: number;
   status: 'pending' | 'approved' | 'cancelled';
   orderId?: string;
   orderNumber?: string;
@@ -138,6 +143,7 @@ export function ArtisanPricingPage() {
   const [supplyQtyToAdd, setSupplyQtyToAdd] = useState<number | string>(1);
   const [compositionName, setCompositionName] = useState('');
   const [selectedModelId, setSelectedModelId] = useState<string>('');
+  const [loadedModelId, setLoadedModelId] = useState<string | null>(null);
   const [savingModel, setSavingModel] = useState(false);
 
   // Custos, Margem e Orçamento (Coluna 2)
@@ -153,7 +159,7 @@ export function ArtisanPricingPage() {
   const [depositOption, setDepositOption] = useState<'50' | '30' | '100' | 'custom'>('50');
   const [customDepositValue, setCustomDepositValue] = useState<string>('');
 
-  // Lista de Orçamentos Gerados (Persistidos localmente)
+  // Lista de Orçamentos Gerados (Persistidos localmente com sync na nuvem)
   const [localQuotes, setLocalQuotes] = useState<LocalQuoteRecord[]>(() => {
     try {
       const stored = localStorage.getItem('luisices_artisan_quotes');
@@ -199,6 +205,44 @@ export function ArtisanPricingPage() {
       setCustomers(data || []);
     }).catch((err) => {
       console.warn('Falha não-bloqueante ao carregar clientes:', err);
+    });
+
+    // Sincronizar orçamentos salvos na nuvem
+    firebaseQuoteService.getQuotes().then((cloudQuotes) => {
+      if (cloudQuotes && cloudQuotes.length > 0) {
+        setLocalQuotes((prev) => {
+          const merged = [...prev];
+          cloudQuotes.forEach((cq) => {
+            const exists = merged.some((lq) => lq.id === cq.id || (cq.quoteNumber && lq.quoteNumber === cq.quoteNumber));
+            if (!exists) {
+              merged.push({
+                id: cq.id,
+                quoteNumber: cq.quoteNumber,
+                createdAt: cq.createdAt,
+                customerName: cq.customerName,
+                customerPhone: cq.customerPhone,
+                productName: cq.items?.[0]?.name || 'Encomenda',
+                quantity: cq.items?.[0]?.quantity || 1,
+                paymentMethod: (cq.paymentCondition?.toLowerCase().includes('pix') ? 'pix' : cq.paymentCondition?.toLowerCase().includes('cart') ? 'cartao' : 'dinheiro') as any,
+                depositPercentage: 50,
+                depositAmount: Math.round((cq.totalPrice || 0) * 0.5 * 100) / 100,
+                remainingAmount: Math.round((cq.totalPrice || 0) * 0.5 * 100) / 100,
+                costTotal: 0,
+                totalPrice: cq.totalPrice || 0,
+                profitMargin: 50,
+                status: cq.status === 'approved' ? 'approved' : cq.status === 'rejected' ? 'cancelled' : 'pending',
+                orderId: cq.orderId,
+                orderNumber: cq.orderNumber,
+                items: [],
+              });
+            }
+          });
+          merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          return merged;
+        });
+      }
+    }).catch((err) => {
+      console.warn('Falha não-bloqueante ao carregar orçamentos do Firestore:', err);
     });
 
     return () => {
@@ -387,25 +431,26 @@ export function ArtisanPricingPage() {
   };
 
   const handleUpdateItemQty = (id: string, newQty: number) => {
-    if (newQty <= 0) {
+    if (isNaN(newQty) || newQty <= 0) {
       handleRemoveCompositionItem(id);
       return;
     }
+    const cleanQty = Math.round(newQty * 1000) / 1000;
     setCompositionItems((prev) =>
       prev.map((item) =>
         item.id === id
           ? {
               ...item,
-              quantity: newQty,
-              subtotalCost: Math.round(item.unitCost * newQty * 100) / 100,
+              quantity: cleanQty,
+              subtotalCost: Math.round(item.unitCost * cleanQty * 100) / 100,
             }
           : item
       )
     );
   };
 
-  // Salvar modelo de composição
-  const handleSaveModel = async () => {
+  // Salvar modelo de composição (Atualizar existente ou Salvar como novo)
+  const handleSaveModel = async (forceNew = false) => {
     const trimmedName = compositionName.trim();
     if (!trimmedName) {
       toast.error('Digite um nome para a composição antes de salvar o modelo.');
@@ -429,7 +474,11 @@ export function ArtisanPricingPage() {
 
       const totalMatCost = compositionItems.reduce((acc, curr) => acc + curr.subtotalCost, 0);
 
-      await firebasePricingService.saveRecipe({
+      // Se não for forçado a novo e houver um modelo carregado com o mesmo nome, atualiza
+      const targetId = (!forceNew && loadedModelId) ? loadedModelId : undefined;
+
+      const saved = await firebasePricingService.saveRecipe({
+        id: targetId,
         productName: trimmedName,
         category: 'papelaria_festa',
         items: recipeItems,
@@ -443,11 +492,14 @@ export function ArtisanPricingPage() {
         fixedCostsShare: 0,
         totalUnitCost: totalMatCost,
         paymentFeePercent: 0,
-        profitMarginPercent: profitMarginPercent,
-        suggestedUnitPrice: totalCost > 0 ? (totalCost / (1 - Math.min(0.9, profitMarginPercent / 100))) : 0,
+        pricingMethod: pricingMode === 'markup' ? 'markup_on_cost' : 'margin_on_sale',
+        profitMarginPercent: pricingMode === 'markup' ? markupPercent : profitMarginPercent,
+        suggestedUnitPrice: effectiveTotalPrice,
       });
 
-      toast.success(`Modelo "${trimmedName}" salvo com sucesso!`);
+      setLoadedModelId(saved.id);
+      setSelectedModelId(saved.id);
+      toast.success(targetId ? `Modelo "${trimmedName}" atualizado com sucesso!` : `Modelo "${trimmedName}" salvo com sucesso!`);
     } catch (err: any) {
       toast.error(err.message || 'Erro ao salvar modelo.');
     } finally {
@@ -464,8 +516,18 @@ export function ArtisanPricingPage() {
     const model = recipes.find((r) => r.id === selectedModelId);
     if (!model) return;
 
+    setLoadedModelId(model.id);
     setCompositionName(model.productName);
     setOrderName(model.productName);
+
+    // Restaurar modo e margem / markup salvos no modelo
+    if (model.pricingMethod === 'markup_on_cost') {
+      setPricingMode('markup');
+      setMarkupPercent(model.profitMarginPercent || 100);
+    } else {
+      setPricingMode('margem');
+      setProfitMarginPercent(model.profitMarginPercent || 50);
+    }
 
     // Mapear insumos da receita atualizando com os preços atuais do estoque
     const loadedItems: CompositionItem[] = (model.items || []).map((item) => {
@@ -496,10 +558,27 @@ export function ArtisanPricingPage() {
     try {
       await firebasePricingService.deleteRecipe(model.id);
       toast.success('Modelo excluído.');
+      if (loadedModelId === model.id) {
+        setLoadedModelId(null);
+      }
       setSelectedModelId('');
     } catch (err: any) {
       toast.error('Erro ao excluir modelo.');
     }
+  };
+
+  // Reiniciar composição do zero para uma nova encomenda
+  const handleResetComposition = () => {
+    setCompositionItems([]);
+    setCompositionName('');
+    setSelectedModelId('');
+    setLoadedModelId(null);
+    setOrderName('');
+    setOrderQuantity(1);
+    setManualTotalPrice('');
+    setCustomCustomerName('');
+    setSelectedCustomerId('avulso');
+    toast.success('Composição reiniciada para nova encomenda.');
   };
 
   // -------------------------------------------------------------
@@ -1149,64 +1228,70 @@ export function ArtisanPricingPage() {
                   {/* Modelos Salvos */}
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Modelo salvo</Label>
-                    <div className="flex gap-2">
-                      <Select value={selectedModelId} onValueChange={setSelectedModelId}>
-                        <SelectTrigger className="h-9 text-xs flex-1">
-                          <SelectValue placeholder="Selecione um modelo..." />
-                        </SelectTrigger>
-                        <SelectContent className="text-xs">
-                          {recipes.length === 0 ? (
-                            <SelectItem value="nenhum" disabled>
-                              Nenhum modelo salvo ainda
-                            </SelectItem>
-                          ) : (
-                            recipes.map((r) => (
-                              <SelectItem key={r.id} value={r.id}>
-                                {r.productName}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="flex-1 min-w-0">
+                        <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+                          <SelectTrigger className="h-9 text-xs w-full min-w-0">
+                            <SelectValue placeholder="Selecione um modelo..." />
+                          </SelectTrigger>
+                          <SelectContent className="text-xs max-h-56 max-w-[calc(100vw-2rem)] z-50">
+                            {recipes.length === 0 ? (
+                              <SelectItem value="nenhum" disabled>
+                                Nenhum modelo salvo ainda
                               </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleLoadModel}
-                        disabled={!selectedModelId}
-                        className="text-xs h-9"
-                      >
-                        Carregar
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={handleDeleteModel}
-                        disabled={!selectedModelId}
-                        title="Excluir modelo selecionado"
-                        className="size-9 text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
+                            ) : (
+                              recipes.map((r) => (
+                                <SelectItem key={r.id} value={r.id}>
+                                  <span className="truncate block max-w-[280px] sm:max-w-md">
+                                    {r.productName}
+                                  </span>
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleLoadModel}
+                          disabled={!selectedModelId}
+                          className="text-xs h-9 flex-1 sm:flex-none"
+                        >
+                          Carregar
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={handleDeleteModel}
+                          disabled={!selectedModelId}
+                          title="Excluir modelo selecionado"
+                          className="size-9 text-destructive hover:bg-destructive/10 shrink-0"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
 
                   {/* Nome da Composição & Salvar Modelo */}
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Nome da composição</Label>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
                       <Input
                         value={compositionName}
                         onChange={(e) => setCompositionName(e.target.value)}
                         placeholder="Ex: Caneca personalizada, Kit Festa Luxo"
-                        className="h-9 text-xs flex-1"
+                        className="h-9 text-xs flex-1 min-w-0"
                       />
                       <Button
                         type="button"
-                        onClick={handleSaveModel}
+                        onClick={() => handleSaveModel(false)}
                         disabled={savingModel || !compositionName.trim()}
-                        className="bg-purple-700 hover:bg-purple-800 text-white text-xs h-9 shadow-xs"
+                        className="bg-purple-700 hover:bg-purple-800 text-white text-xs h-9 shadow-xs shrink-0 sm:w-auto"
                       >
                         {savingModel ? <Loader2 className="size-3.5 animate-spin mr-1" /> : null}
                         Salvar modelo
@@ -1220,15 +1305,15 @@ export function ArtisanPricingPage() {
                       Adicionar Insumo do Estoque:
                     </Label>
                     <div className="flex flex-col sm:flex-row gap-2">
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <Select
                           value={selectedSupplyToAdd}
                           onValueChange={setSelectedSupplyToAdd}
                         >
-                          <SelectTrigger className="h-9 text-xs">
+                          <SelectTrigger className="h-9 text-xs w-full min-w-0">
                             <SelectValue placeholder="Selecione o insumo do estoque..." />
                           </SelectTrigger>
-                          <SelectContent className="text-xs max-h-56">
+                          <SelectContent className="text-xs max-h-56 max-w-[calc(100vw-2rem)] z-50">
                             {supplies.length === 0 ? (
                               <SelectItem value="vazio" disabled>
                                 Nenhum insumo cadastrado no estoque
@@ -1236,7 +1321,9 @@ export function ArtisanPricingPage() {
                             ) : (
                               supplies.map((s) => (
                                 <SelectItem key={s.id} value={s.id}>
-                                  {s.name} ({formatCurrency(s.unitCost || 0)}/un)
+                                  <span className="truncate block max-w-[280px] sm:max-w-md">
+                                    {s.name} ({formatCurrency(s.unitCost || 0)}/un)
+                                  </span>
                                 </SelectItem>
                               ))
                             )}
@@ -1244,7 +1331,7 @@ export function ArtisanPricingPage() {
                         </Select>
                       </div>
 
-                      <div className="w-full sm:w-24">
+                      <div className="flex gap-2 shrink-0">
                         <Input
                           type="number"
                           step="any"
@@ -1252,17 +1339,16 @@ export function ArtisanPricingPage() {
                           value={supplyQtyToAdd}
                           onChange={(e) => setSupplyQtyToAdd(e.target.value)}
                           placeholder="Qtd"
-                          className="h-9 text-xs"
+                          className="h-9 text-xs w-20 sm:w-24 shrink-0"
                         />
+                        <Button
+                          type="button"
+                          onClick={handleAddSupplyToComposition}
+                          className="bg-purple-700 hover:bg-purple-800 text-white text-xs h-9 gap-1 shadow-xs flex-1 sm:flex-none shrink-0"
+                        >
+                          <Plus className="size-3.5" /> Insumo
+                        </Button>
                       </div>
-
-                      <Button
-                        type="button"
-                        onClick={handleAddSupplyToComposition}
-                        className="bg-purple-700 hover:bg-purple-800 text-white text-xs h-9 gap-1 shadow-xs"
-                      >
-                        <Plus className="size-3.5" /> Insumo
-                      </Button>
                     </div>
                   </div>
 

@@ -44,6 +44,40 @@ const INVITED_USER_PERMISSIONS = {
   pricing: { view: true, create: true, edit: true, delete: true },
 };
 
+const VALID_PERMISSION_MODULES = [
+  'dashboard', 'orders', 'archivedOrders', 'customers', 'whatsapp',
+  'aiCopilot', 'products', 'storeProducts', 'store', 'quotes',
+  'gallery', 'exchanges', 'reports', 'settings', 'users', 'emails', 'pricing', 'mcpAccess', 'mcpScopes'
+];
+
+function sanitizeAndValidatePermissions(perms) {
+  if (!perms || typeof perms !== 'object' || Array.isArray(perms)) {
+    return {};
+  }
+  const clean = {};
+  for (const key of Object.keys(perms)) {
+    if (!VALID_PERMISSION_MODULES.includes(key)) {
+      continue;
+    }
+    const val = perms[key];
+    if (typeof val === 'boolean') {
+      clean[key] = val;
+    } else if (Array.isArray(val)) {
+      if (key === 'mcpScopes') {
+        clean[key] = val.filter((s) => typeof s === 'string' && s.length <= 64);
+      }
+    } else if (val && typeof val === 'object') {
+      clean[key] = {
+        view: Boolean(val.view),
+        create: Boolean(val.create),
+        edit: Boolean(val.edit),
+        delete: Boolean(val.delete),
+      };
+    }
+  }
+  return clean;
+}
+
 async function consumeAdminUserAction(uid) {
   try {
     await adminUserActionLimiter.consume(uid);
@@ -711,8 +745,10 @@ const createUser = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Permissões inválidas.');
   }
 
+  const cleanPermissions = permissions ? sanitizeAndValidatePermissions(permissions) : {};
+
   try {
-    validateProfileMcpScopes(permissions);
+    validateProfileMcpScopes(cleanPermissions);
   } catch (err) {
     throw new HttpsError('invalid-argument', err.message);
   }
@@ -733,7 +769,7 @@ const createUser = onCall(async (request) => {
       email: normalizedEmail,
       displayName: normalizedName,
       role,
-      permissions: permissions || {},
+      permissions: cleanPermissions,
       active: true,
       createdAt: new Date().toISOString(),
       createdBy: request.auth.uid,
@@ -793,12 +829,14 @@ const updateUser = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Permissões inválidas.');
   }
 
+  const cleanUpdatedPermissions = permissions !== undefined ? sanitizeAndValidatePermissions(permissions) : undefined;
+
   try {
     const result = await userSyncService.updateUserProfile({
       uid,
       displayName,
       role,
-      permissions,
+      permissions: cleanUpdatedPermissions,
       active,
       actorUid: request.auth.uid,
     });

@@ -36,6 +36,7 @@ describe('MCP & ChatGPT Plugin / OpenAPI 3.0.3 Specification', () => {
         'calculate_pricing_estimate', 'generate_whatsapp_message', 'get_order_form',
         'extract_order_draft', 'create_order', 'get_order_edit_form', 'update_order', 'update_order_status', 'update_delivery_details', 'query_order_payments',
         'register_order_payment', 'create_customer', 'update_customer', 'search_gallery_portfolio', 'get_user_summary',
+        'calculate_artisan_pricing', 'list_supplies', 'list_pricing_models', 'get_pricing_model', 'save_pricing_model', 'query_quotes', 'create_quote', 'update_quote_status', 'list_store_products',
       ];
 
       expect(TOOLS_METADATA.map((tool) => tool.name)).toEqual(expectedTools);
