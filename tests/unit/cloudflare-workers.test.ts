@@ -69,6 +69,33 @@ describe('Cloudflare Workers: Validação e Testes Unitários de Borda', () => {
       expect(calledUrl).toContain('alt=media');
     });
 
+    it('deve encaminhar caminho do avatar codificado e preservar o token de download', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response('avatar-bytes', {
+          status: 200,
+          headers: { 'Content-Type': 'image/webp' },
+        })
+      );
+      vi.stubGlobal('fetch', mockFetch);
+
+      const request = new Request(
+        'https://cdn.luisices.com.br/users/user-123/avatar/avatar_123.webp?alt=media&token=download-token'
+      );
+      const response = await cdnWorker.fetch(
+        request,
+        { ENVIRONMENT: 'production', FIREBASE_BUCKET: 'papelaria-dashboard.firebasestorage.app' },
+        {}
+      );
+
+      expect(response.status).toBe(200);
+      const originUrl = new URL(mockFetch.mock.calls[0][0]);
+      expect(originUrl.pathname).toBe(
+        '/v0/b/papelaria-dashboard.firebasestorage.app/o/users%2Fuser-123%2Favatar%2Favatar_123.webp'
+      );
+      expect(originUrl.searchParams.get('alt')).toBe('media');
+      expect(originUrl.searchParams.get('token')).toBe('download-token');
+    });
+
     it('deve executar failover para o bucket alternativo caso o primário retorne 404', async () => {
       const mockFetch = vi
         .fn()

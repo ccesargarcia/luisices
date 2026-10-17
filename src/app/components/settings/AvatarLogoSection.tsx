@@ -5,7 +5,6 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Loader2, Upload, X, Building2 } from 'lucide-react';
-import { getCdnFallbackUrl } from '../../utils/cdnUtils';
 
 interface AvatarLogoSectionProps {
   avatarUrl?: string;
@@ -46,16 +45,7 @@ export function AvatarLogoSection({
         <CardContent className="space-y-4">
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
             <Avatar className="size-20">
-              <AvatarImage
-                src={avatarUrl}
-                alt="Avatar"
-                onError={(e) => {
-                  const fallback = getCdnFallbackUrl(avatarUrl);
-                  if (fallback && e.currentTarget.src !== fallback) {
-                    e.currentTarget.src = fallback;
-                  }
-                }}
-              />
+              <AvatarImage src={avatarUrl} alt="Avatar" />
               <AvatarFallback className="text-2xl">{userInitials}</AvatarFallback>
             </Avatar>
 
