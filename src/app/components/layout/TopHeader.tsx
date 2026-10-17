@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { getCdnFallbackUrl } from '../../utils/cdnUtils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -132,15 +133,10 @@ export function TopHeader({
               className="h-7 xs:h-8 md:h-9 max-h-8 md:max-h-9 max-w-[80px] xs:max-w-[105px] md:max-w-[140px] object-contain min-w-0 rounded-md shrink-0"
               onError={(e) => {
                 const target = e.currentTarget;
-                if (logo && (logo.includes('cdn.luisices.com.br') || logo.includes('cdn-dev.luisices.com.br'))) {
-                  const match = logo.match(/(users|store)\/.+/);
-                  if (match) {
-                    const rawUrl = `https://firebasestorage.googleapis.com/v0/b/luisices-dev.firebasestorage.app/o/${encodeURIComponent(match[0])}?alt=media`;
-                    if (target.src !== rawUrl) {
-                      target.src = rawUrl;
-                      return;
-                    }
-                  }
+                const fallback = getCdnFallbackUrl(logo);
+                if (fallback && target.src !== fallback) {
+                  target.src = fallback;
+                  return;
                 }
                 target.style.display = 'none';
               }}

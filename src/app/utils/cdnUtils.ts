@@ -57,3 +57,35 @@ export function toCdnUrl(url?: string | null): string {
 
   return trimmed;
 }
+
+/**
+ * Se a URL for do CDN próprio (Cloudflare) e falhar ao carregar no navegador,
+ * gera a URL nativa correspondente do Firebase Storage como fallback instantâneo.
+ */
+export function getCdnFallbackUrl(url?: string | null): string {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+
+  try {
+    if (trimmed.includes('cdn-dev.luisices.com.br')) {
+      const parsed = new URL(trimmed);
+      const rawPath = parsed.pathname.replace(/^\/+/, '');
+      if (rawPath) {
+        return `https://firebasestorage.googleapis.com/v0/b/luisices-dev.firebasestorage.app/o/${encodeURIComponent(rawPath)}${parsed.search}`;
+      }
+    }
+
+    if (trimmed.includes('cdn.luisices.com.br')) {
+      const parsed = new URL(trimmed);
+      const rawPath = parsed.pathname.replace(/^\/+/, '');
+      if (rawPath) {
+        return `https://firebasestorage.googleapis.com/v0/b/papelaria-dashboard.firebasestorage.app/o/${encodeURIComponent(rawPath)}${parsed.search}`;
+      }
+    }
+  } catch {
+    return trimmed;
+  }
+
+  return trimmed;
+}

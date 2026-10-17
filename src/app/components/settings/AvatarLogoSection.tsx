@@ -5,6 +5,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Loader2, Upload, X, Building2 } from 'lucide-react';
+import { getCdnFallbackUrl } from '../../utils/cdnUtils';
 
 interface AvatarLogoSectionProps {
   avatarUrl?: string;
@@ -115,15 +116,9 @@ export function AvatarLogoSection({
                 alt="Logo"
                 className="h-20 object-contain bg-muted rounded-lg p-2"
                 onError={(e) => {
-                  const target = e.currentTarget;
-                  if (logoUrl.includes('cdn.luisices.com.br') || logoUrl.includes('cdn-dev.luisices.com.br')) {
-                    const match = logoUrl.match(/(users|store)\/.+/);
-                    if (match) {
-                      const rawUrl = `https://firebasestorage.googleapis.com/v0/b/luisices-dev.firebasestorage.app/o/${encodeURIComponent(match[0])}?alt=media`;
-                      if (target.src !== rawUrl) {
-                        target.src = rawUrl;
-                      }
-                    }
+                  const fallback = getCdnFallbackUrl(logoUrl);
+                  if (fallback && e.currentTarget.src !== fallback) {
+                    e.currentTarget.src = fallback;
                   }
                 }}
               />
