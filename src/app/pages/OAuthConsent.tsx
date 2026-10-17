@@ -22,6 +22,12 @@ const SCOPE_DESCRIPTIONS: Record<string, { label: string; description: string }>
   'gallery:read': { label: 'Consultar Portfólio / Acervo', description: 'Buscar fotos e modelos da galeria de produtos.' },
   'financial:read': { label: 'Relatórios Financeiros & DRE', description: 'Acessar relatórios e métricas financeiras. Restrito a administradores.' },
   'team:read': { label: 'Auditoria & Desempenho da Equipe', description: 'Auditar pedidos e produtividade da equipe. Restrito a administradores.' },
+  'supplies:read': { label: 'Consultar Insumos & Estoque', description: 'Consultar matérias-primas e insumos cadastrados, estoque disponível e custos unitários.' },
+  'pricing:models:read': { label: 'Consultar Modelos & Receitas', description: 'Consultar modelos, receitas e composições de produtos salvas na calculadora.' },
+  'pricing:models:write': { label: 'Salvar Modelos de Precificação', description: 'Salvar e atualizar receitas e composições de produtos no ateliê.' },
+  'quotes:read': { label: 'Consultar Orçamentos', description: 'Pesquisar e consultar orçamentos formais gerados para clientes e seus status.' },
+  'quotes:write': { label: 'Criar e Gerenciar Orçamentos', description: 'Gerar novos orçamentos formais para clientes e atualizar status de aprovação.' },
+  'store:read': { label: 'Consultar Lojinha Virtual', description: 'Consultar produtos e itens cadastrados na vitrine pública da loja online.' },
 };
 
 export function OAuthConsent() {
