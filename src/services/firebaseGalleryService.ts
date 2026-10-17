@@ -77,7 +77,12 @@ export class FirebaseGalleryService {
       .filter(d => !d.data().deletedAt)
       .map(async d => {
         const item = this.fromFirestore(d.id, d.data());
-        item.imageUrl = resolveGalleryImageUrl(item.imageUrl);
+        try {
+          item.imageUrl = await resolveGalleryImageUrl(item.imageUrl);
+        } catch {
+          // Uma imagem sem token pode falhar ao assinar; isso não bloqueia as demais.
+          item.imageUrl = '';
+        }
         return item;
       }));
   }
@@ -112,7 +117,8 @@ export class FirebaseGalleryService {
     const items = await Promise.all(
       snapshot.docs.filter((d) => !d.data().deletedAt).map(async (d) => {
         const item = this.fromFirestore(d.id, d.data());
-        item.imageUrl = resolveGalleryImageUrl(item.imageUrl);
+        try { item.imageUrl = await resolveGalleryImageUrl(item.imageUrl); }
+        catch { item.imageUrl = ''; }
         return item;
       }),
     );
