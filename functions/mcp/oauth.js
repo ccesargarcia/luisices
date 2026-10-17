@@ -730,9 +730,14 @@ async function validateOAuthAccessToken(accessToken, db) {
   }
 
   if (!tokenData.sessionId) return { success: false, status: 401, code: 'SESSION_REQUIRED', message: 'Token OAuth sem sessão vinculada.' };
-  const sessionSnap = await traceMcpStep('firestore.oauth_session', () =>
-    db.collection('oauthSessions').doc(tokenData.sessionId).get(),
-  { 'db.system': 'firestore' });
+  const [sessionSnap, userSnap] = await Promise.all([
+    traceMcpStep('firestore.oauth_session', () =>
+      db.collection('oauthSessions').doc(tokenData.sessionId).get(),
+    { 'db.system': 'firestore' }),
+    traceMcpStep('firestore.oauth_user', () =>
+      db.collection(COLLECTIONS.USERS).doc(tokenData.userId).get(),
+    { 'db.system': 'firestore' }),
+  ]);
   if (!sessionSnap.exists) return { success: false, status: 401, code: 'SESSION_NOT_FOUND', message: 'Sessão OAuth vinculada não encontrada.' };
   const sessionData = sessionSnap.data();
   if (sessionData.accessTokenHash && sessionData.accessTokenHash !== accessTokenHash) {
@@ -748,9 +753,6 @@ async function validateOAuthAccessToken(accessToken, db) {
   const client = await getOAuthClient(db, tokenData.clientId);
   if (!client || client.enabled === false) return { success: false, status: 401, code: 'INVALID_CLIENT', message: 'Cliente OAuth desativado ou removido.' };
 
-  const userSnap = await traceMcpStep('firestore.oauth_user', () =>
-    db.collection(COLLECTIONS.USERS).doc(tokenData.userId).get(),
-  { 'db.system': 'firestore' });
   if (!userSnap.exists) {
     return {
       success: false,
