@@ -20,12 +20,12 @@ export function toCdnUrl(url?: string | null): string {
 
   const cleanCdnBase = cdnBase.replace(/\/+$/, '');
 
-  // 1. Se já for uma URL do CDN próprio, padroniza e remove query string (?alt=media&token=...)
+  // 1. Se já for uma URL do CDN próprio, padroniza e preserva parâmetros de busca (ex: token de acesso)
   if (trimmed.startsWith(cleanCdnBase) || trimmed.includes('cdn.luisices.com.br') || trimmed.includes('cdn-dev.luisices.com.br')) {
     try {
       const parsed = new URL(trimmed);
       const cleanPath = parsed.pathname.replace(/^\/+/, '');
-      return `${parsed.origin}/${cleanPath}`;
+      return `${parsed.origin}/${cleanPath}${parsed.search}`;
     } catch {
       return trimmed;
     }
@@ -34,18 +34,21 @@ export function toCdnUrl(url?: string | null): string {
   // 2. Se for uma URL do Firebase Storage (googleapis.com)
   if (trimmed.includes('firebasestorage.googleapis.com')) {
     try {
+      const parsed = new URL(trimmed);
+      const search = parsed.search; // Preserva ?alt=media&token=...
+
       // Padrão /o/<encodedPath>
       const match = trimmed.match(/\/o\/(.+?)(\?.*)?$/);
       if (match && match[1]) {
         const rawPath = decodeURIComponent(match[1]);
-        return `${cleanCdnBase}/${rawPath}`;
+        return `${cleanCdnBase}/${rawPath}${search}`;
       }
 
       // Padrão /o?name=<encodedPath>
       const nameMatch = trimmed.match(/[?&]name=([^&]+)/);
       if (nameMatch && nameMatch[1]) {
         const rawPath = decodeURIComponent(nameMatch[1]);
-        return `${cleanCdnBase}/${rawPath}`;
+        return `${cleanCdnBase}/${rawPath}${search}`;
       }
     } catch {
       return trimmed;

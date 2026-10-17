@@ -114,6 +114,18 @@ export function AvatarLogoSection({
                 src={logoUrl}
                 alt="Logo"
                 className="h-20 object-contain bg-muted rounded-lg p-2"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (logoUrl.includes('cdn.luisices.com.br') || logoUrl.includes('cdn-dev.luisices.com.br')) {
+                    const match = logoUrl.match(/(users|store)\/.+/);
+                    if (match) {
+                      const rawUrl = `https://firebasestorage.googleapis.com/v0/b/luisices-dev.firebasestorage.app/o/${encodeURIComponent(match[0])}?alt=media`;
+                      if (target.src !== rawUrl) {
+                        target.src = rawUrl;
+                      }
+                    }
+                  }
+                }}
               />
             </div>
           ) : (
