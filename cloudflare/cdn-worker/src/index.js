@@ -92,7 +92,9 @@ export default {
 
     const fetchFromBucket = async (bucket) => {
       return fetch(buildOriginUrl(bucket), {
-        method: request.method,
+        // Firebase Storage pode retornar 404 para HEAD no endpoint de mídia.
+        // Busca como GET e remove o corpo na resposta HEAD abaixo.
+        method: request.method === 'HEAD' ? 'GET' : request.method,
         headers: {
           'Accept': request.headers.get('Accept') || '*/*',
           'User-Agent': 'Luisices-Cloudflare-CDN',
@@ -123,7 +125,7 @@ export default {
     }
 
     if (!originResponse.ok) {
-      return new Response(originResponse.body, {
+      return new Response(request.method === 'HEAD' ? null : originResponse.body, {
         status: originResponse.status,
         headers: {
           'Access-Control-Allow-Origin': '*',
@@ -145,7 +147,7 @@ export default {
     headers.set('X-CDN-Origin-Bucket', originBucket);
     headers.delete('set-cookie');
 
-    return new Response(originResponse.body, {
+    return new Response(request.method === 'HEAD' ? null : originResponse.body, {
       status: 200,
       headers,
     });

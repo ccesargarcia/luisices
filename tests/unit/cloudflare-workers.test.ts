@@ -39,6 +39,26 @@ describe('Cloudflare Workers: Validação e Testes Unitários de Borda', () => {
       expect(response.status).toBe(405);
     });
 
+    it('deve atender HEAD buscando a imagem como GET e retornando sem corpo', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response('image-bytes', {
+          status: 200,
+          headers: { 'Content-Type': 'image/webp' },
+        })
+      );
+      vi.stubGlobal('fetch', mockFetch);
+
+      const request = new Request('https://cdn-dev.luisices.com.br/users/u1/avatar/avatar.webp', {
+        method: 'HEAD',
+      });
+      const response = await cdnWorker.fetch(request, { ENVIRONMENT: 'dev' }, {});
+
+      expect(response.status).toBe(200);
+      expect(mockFetch.mock.calls[0][1].method).toBe('GET');
+      expect(response.headers.get('Content-Type')).toBe('image/webp');
+      expect(await response.text()).toBe('');
+    });
+
     it('deve buscar arquivo na origem adicionando alt=media e retornando cabeçalhos de cache de produção', async () => {
       const mockFetch = vi.fn().mockResolvedValue(
         new Response('image-bytes', {
