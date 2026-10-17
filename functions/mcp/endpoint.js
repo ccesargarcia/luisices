@@ -421,7 +421,7 @@ const chatGptToolsEndpoint = onRequest(
           url: `${baseUrl}/openapi.json`,
           is_user_authenticated: false,
         },
-        logo_url: `https://${apiDomain}/favicon.ico`,
+        logo_url: 'https://luisices.com.br/images/chatgpt-plugin-icon.png',
         contact_email: 'contato@luisices.com.br',
         legal_info_url: 'https://luisices.com.br',
       };
