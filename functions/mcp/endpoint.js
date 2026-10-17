@@ -508,9 +508,6 @@ const chatGptToolsEndpoint = onRequest(
               name: t.name,
               description: `${t.summary}: ${t.description}`,
               inputSchema: { ...(t.requestBody || { type: 'object', properties: {} }), additionalProperties: false },
-              ...(['get_order_edit_form'].includes(t.name) ? { _meta: {
-                ui: { resourceUri: 'ui://luisices/order-edit/v1.html' },
-              } } : {}),
             })),
           },
         });
