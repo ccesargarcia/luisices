@@ -84,6 +84,8 @@ jobs:
               - 'tsconfig*.json'
             functions:
               - 'functions/**'
+              # Este script é executado durante o deploy para sincronizar secrets.
+              - 'scripts/sync-secrets-safe.mjs'
             rules:
               - 'firestore.rules'
               - 'firestore.indexes.json'
