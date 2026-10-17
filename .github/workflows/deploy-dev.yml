@@ -60,6 +60,7 @@ jobs:
       need_e2e: ${{ steps.targets.outputs.need_e2e }}
       need_functions_validation: ${{ steps.targets.outputs.need_functions_validation }}
       has_changes: ${{ steps.targets.outputs.has_changes }}
+      mcp_metadata: ${{ steps.targets.outputs.mcp_metadata }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -70,6 +71,9 @@ jobs:
         id: filter
         uses: dorny/paths-filter@v3
         with:
+          # Na mesma branch, compara com o commit anterior ao push. O padrão
+          # compararia develop com main e repetiria deploys de mudanças antigas.
+          base: ${{ github.event.before }}
           filters: |
             frontend:
               - 'src/**'
@@ -80,6 +84,8 @@ jobs:
               - 'tsconfig*.json'
             functions:
               - 'functions/**'
+              # Este script é executado durante o deploy para sincronizar secrets.
+              - 'scripts/sync-secrets-safe.mjs'
             rules:
               - 'firestore.rules'
               - 'firestore.indexes.json'
@@ -94,6 +100,10 @@ jobs:
               - 'vitest*.ts'
             integration_tests:
               - 'tests/integration/**'
+            mcp_metadata:
+              - 'functions/mcp/**'
+              - 'cloudflare/api-worker/**'
+              - 'public/.well-known/**'
             ci:
               - '.github/workflows/deploy-dev.yml'
               - '.github/workflows/test-actions.yml'
@@ -113,6 +123,7 @@ jobs:
           FILTER_UNIT_TESTS: ${{ steps.filter.outputs.unit_tests }}
           FILTER_INTEGRATION_TESTS: ${{ steps.filter.outputs.integration_tests }}
           FILTER_CI: ${{ steps.filter.outputs.ci }}
+          FILTER_MCP_METADATA: ${{ steps.filter.outputs.mcp_metadata }}
         run: |
           # 1. Identificar flags na mensagem do commit e inputs
           SKIP_TESTS=false
@@ -204,6 +215,7 @@ jobs:
           echo "need_e2e=$NEED_E2E" >> "$GITHUB_OUTPUT"
           echo "need_functions_validation=$NEED_FUNCTIONS_VALIDATION" >> "$GITHUB_OUTPUT"
           echo "has_changes=$HAS_CHANGES" >> "$GITHUB_OUTPUT"
+          echo "mcp_metadata=$FILTER_MCP_METADATA" >> "$GITHUB_OUTPUT"
 
           echo "============================================="
           echo "🎯 Estratégia de Execução da Pipeline:"
@@ -286,19 +298,12 @@ jobs:
             console.error('FIREBASE_SERVICE_ACCOUNT_DEV ausente ou com JSON inválido.');
             process.exit(1);
           }
-          const accounts = {
-            'firebase-adminsdk-fbsvc@luisices-dev.iam.gserviceaccount.com': 'Firebase Admin SDK (fbsvc)',
-            'luisices-dev-automation@luisices-dev.iam.gserviceaccount.com': 'Automação do projeto dev',
-            'luisices-dev@appspot.gserviceaccount.com': 'Conta padrão do App Engine',
-            '998962751129-compute@developer.gserviceaccount.com': 'Conta padrão do Compute Engine',
-          };
-          const email = credentials?.client_email;
-          if (typeof email !== 'string' || !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.gserviceaccount\.com$/.test(email)) {
+          const serviceAccountEmail = credentials?.client_email;
+          if (typeof serviceAccountEmail !== 'string' || !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.gserviceaccount\.com$/.test(serviceAccountEmail)) {
             console.error('O secret não contém um client_email válido de conta de serviço.');
             process.exit(1);
           }
-          console.log('Identidade do deploy: ' + (accounts[email] || 'Outra conta de serviço'));
-          console.log('E-mail da conta: ' + email);
+          console.log('Conta de serviço validada.');
           NODE
 
       - name: 🔍 Diagnóstico e Auditoria de Secrets (Dev)
@@ -383,7 +388,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DEV_VITE_FIREBASE_DATABASE_URL }}
           STORAGE_CDN_URL: ${{ secrets.DEV_VITE_STORAGE_CDN_URL || 'https://cdn-dev.luisices.com.br' }}
           FUNCTIONS_CUSTOM_DOMAIN: ${{ secrets.DEV_VITE_FUNCTIONS_CUSTOM_DOMAIN || 'https://api.dev.luisices.com.br' }}
-          SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}
+          SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN || secrets.SENTRY_DSN }}
         run: |
           printf 'VITE_FIREBASE_API_KEY=%s\n' "$API_KEY" >> .env.local
           printf 'VITE_FIREBASE_AUTH_DOMAIN=%s\n' "$AUTH_DOMAIN" >> .env.local
@@ -444,36 +449,19 @@ jobs:
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
 
-          if [ -n "$ORIGIN_SECRET" ]; then
-            echo "$ORIGIN_SECRET" > "$HOME/origin_secret.txt"
-            npx --yes firebase-tools@15.32.1 functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force || true
-          fi
-          if [ -n "$ALEXA_HMAC" ]; then
-            echo "$ALEXA_HMAC" > "$HOME/alexa_hmac.txt"
-            npx --yes firebase-tools@15.32.1 functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
-          fi
-          if [ -n "$RESEND_API_KEY" ]; then
-            echo "$RESEND_API_KEY" > "$HOME/resend_key.txt"
-            npx --yes firebase-tools@15.32.1 functions:secrets:set RESEND_API_KEY --project luisices-dev --data-file "$HOME/resend_key.txt" --non-interactive --force || true
-          fi
-          if [ -n "$RESEND_WEBHOOK_SECRET" ]; then
-            echo "$RESEND_WEBHOOK_SECRET" > "$HOME/resend_wh.txt"
-            npx --yes firebase-tools@15.32.1 functions:secrets:set RESEND_WEBHOOK_SECRET --project luisices-dev --data-file "$HOME/resend_wh.txt" --non-interactive --force || true
-          fi
-          if [ -n "$EVOLUTION_API_KEY" ]; then
-            echo "$EVOLUTION_API_KEY" > "$HOME/evolution_key.txt"
-            npx --yes firebase-tools@15.32.1 functions:secrets:set EVOLUTION_API_KEY --project luisices-dev --data-file "$HOME/evolution_key.txt" --non-interactive --force || true
-          fi
-          if [ -n "$GEMINI_API_KEY" ]; then
-            echo "$GEMINI_API_KEY" > "$HOME/gemini_key.txt"
-            npx --yes firebase-tools@15.32.1 functions:secrets:set GEMINI_API_KEY --project luisices-dev --data-file "$HOME/gemini_key.txt" --non-interactive --force || true
-          fi
+          echo "🔒 Sincronizando segredos no Google Secret Manager de forma idempotente..."
+          node scripts/sync-secrets-safe.mjs --project=luisices-dev
 
       - name: Deploy Firebase Functions (Dev)
         if: needs.detect-changes.outputs.functions == 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+          SENTRY_DSN: ${{ secrets.DEV_FUNCTIONS_SENTRY_DSN || secrets.DEV_SENTRY_DSN || secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN || secrets.SENTRY_DSN }}
         run: |
+          trap 'rm -f functions/.env.luisices-dev' EXIT
+          if [ -n "$SENTRY_DSN" ]; then
+            printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=development\n' "$SENTRY_DSN" > functions/.env.luisices-dev
+          fi
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
 
@@ -484,4 +472,16 @@ jobs:
             npx --yes firebase-tools@15.32.1 deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project luisices-dev --non-interactive
             npx --yes firebase-tools@15.32.1 deploy --only "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook" --project luisices-dev --non-interactive
             npx --yes firebase-tools@15.32.1 deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession" --project luisices-dev --non-interactive
+            npx --yes firebase-tools@15.32.1 deploy --only "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint" --project luisices-dev --non-interactive
           fi
+
+          echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Dev)..."
+          npx --yes firebase-tools@15.32.1 functions:secrets:prune --project luisices-dev --force --non-interactive
+
+      - name: Purgar Cache da Borda Cloudflare (OpenAPI & Manifestos MCP)
+        if: needs.detect-changes.outputs.has_changes == 'true' || needs.detect-changes.outputs.mcp_metadata == 'true' || inputs.deploy_target == 'all'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          echo "🧹 Alterações detectadas em rotas/schemas do MCP. Purgando cache da borda na Cloudflare (Dev)..."
+          node scripts/purge-cloudflare-cache.mjs dev

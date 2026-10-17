@@ -44,73 +44,64 @@ service cloud.firestore {
         || (permField is bool && permField == true);
     }
 
+    function userHasPerm(module, action) {
+      return isActiveUser()
+        && (isAdmin() || hasPerm(getEmployeePermissions().get(module, false), action));
+    }
+
     function isAssignedEmployeeEditor(assignedTo) {
       return isAssignedEmployee(assignedTo)
-        && ('orders' in getEmployeePermissions())
-        && hasPerm(getEmployeePermissions().orders, 'edit');
+        && userHasPerm('orders', 'edit');
     }
 
     function isAssignedEmployeeDeleter(assignedTo) {
       return isAssignedEmployee(assignedTo)
-        && ('orders' in getEmployeePermissions())
-        && hasPerm(getEmployeePermissions().orders, 'delete');
+        && userHasPerm('orders', 'delete');
     }
 
     function employeeHasPricingView() {
       return isActiveEmployee()
-        && ('pricing' in getEmployeePermissions())
-        && hasPerm(getEmployeePermissions().pricing, 'view');
+        && hasPerm(getEmployeePermissions().get('pricing', false), 'view');
     }
 
     function employeeHasPricingCreate() {
       return isActiveEmployee()
-        && ('pricing' in getEmployeePermissions())
-        && hasPerm(getEmployeePermissions().pricing, 'create');
+        && hasPerm(getEmployeePermissions().get('pricing', false), 'create');
     }
 
     function employeeHasPricingEdit() {
       return isActiveEmployee()
-        && ('pricing' in getEmployeePermissions())
-        && hasPerm(getEmployeePermissions().pricing, 'edit');
+        && hasPerm(getEmployeePermissions().get('pricing', false), 'edit');
     }
 
     function employeeHasPricingDelete() {
       return isActiveEmployee()
-        && ('pricing' in getEmployeePermissions())
-        && hasPerm(getEmployeePermissions().pricing, 'delete');
+        && hasPerm(getEmployeePermissions().get('pricing', false), 'delete');
     }
 
     function employeeHasCustomersPerm(action) {
       return isActiveEmployee()
-        && ('customers' in getEmployeePermissions())
-        && hasPerm(getEmployeePermissions().customers, action);
+        && hasPerm(getEmployeePermissions().get('customers', false), action);
     }
 
     function employeeHasQuotesPerm(action) {
       return isActiveEmployee()
-        && ('quotes' in getEmployeePermissions())
-        && hasPerm(getEmployeePermissions().quotes, action);
+        && hasPerm(getEmployeePermissions().get('quotes', false), action);
     }
 
     function employeeHasProductsPerm(action) {
       return isActiveEmployee()
-        && ('products' in getEmployeePermissions())
-        && hasPerm(getEmployeePermissions().products, action);
+        && hasPerm(getEmployeePermissions().get('products', false), action);
     }
 
     function employeeHasGalleryPerm(action) {
       return isActiveEmployee()
-        && ('gallery' in getEmployeePermissions())
-        && hasPerm(getEmployeePermissions().gallery, action);
+        && hasPerm(getEmployeePermissions().get('gallery', false), action);
     }
 
     // ─── Validações Estruturais e de Integridade de Dados no Servidor ─────────
     function canCreateOwnedModule(module) {
-      let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
-      let employee = profile.get('role', '') == 'funcionario';
-      let field = profile.get('permissions', {}).get(module, !employee);
-      return (field is bool && field == true)
-        || (field is map && field.get('create', module == 'orders' && !employee) == true);
+      return isAdmin() || userHasPerm(module, 'create');
     }
 
     function isValidCalendarDate(value) {
@@ -248,6 +239,8 @@ service cloud.firestore {
       return (!('purchasePrice' in data) || (data.purchasePrice is number && data.purchasePrice >= 0))
         && (!('unitCost' in data) || (data.unitCost is number && data.unitCost >= 0))
         && (!('packageQuantity' in data) || (data.packageQuantity is number && data.packageQuantity > 0))
+        && (!('currentStock' in data) || (data.currentStock is number && data.currentStock >= 0 && data.currentStock <= 1000000000))
+        && (!('minStock' in data) || (data.minStock is number && data.minStock >= 0 && data.minStock <= 1000000000))
         && (!('name' in data) || (data.name is string && data.name.size() >= 1 && data.name.size() <= 200));
     }
 
@@ -268,9 +261,9 @@ service cloud.firestore {
 
     // Regras para pedidos (orders)
     match /orders/{orderId} {
-      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('orders', 'view'))
         || isAdmin()
-        || (resource != null && 'assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo));
+        || (resource != null && 'assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo) && userHasPerm('orders', 'view'));
       allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && canCreateOwnedModule('orders')) || isAdmin())
         && isValidNewOrder(request.resource.data);
       allow update: if (isAdmin()
@@ -278,7 +271,13 @@ service cloud.firestore {
           resource != null
           && 'userId' in resource.data
           && isOwner(resource.data.userId)
+          && userHasPerm('orders', 'edit')
           && ('userId' in request.resource.data && request.resource.data.userId == resource.data.userId)
+          && (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['deletedAt'])
+            || userHasPerm('orders', 'delete')
+            || userHasPerm('archivedOrders', 'create')
+          )
         )
         || (
           resource != null
@@ -291,7 +290,7 @@ service cloud.firestore {
             || isAssignedEmployeeDeleter(resource.data.assignedTo)
           )
         )) && isValidOrderChanges(request.resource.data, resource.data);
-      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('orders', 'delete'))
         || isAdmin()
         || (resource != null && 'assignedTo' in resource.data && isAssignedEmployeeDeleter(resource.data.assignedTo));
     }
@@ -355,7 +354,7 @@ service cloud.firestore {
 
     // Regras para clientes (customers)
     match /customers/{customerId} {
-      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('customers', 'view'))
         || isAdmin()
         || employeeHasCustomersPerm('view');
       allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && canCreateOwnedModule('customers')) || isAdmin())
@@ -364,30 +363,30 @@ service cloud.firestore {
         && (request.resource.data.get('notes', null) == null || (request.resource.data.notes is string && request.resource.data.notes.size() <= 1000))
         && isValidCustomer(request.resource.data);
       allow update: if (
-        (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
-        || isAdmin()
+        isAdmin()
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('customers', 'edit'))
         || employeeHasCustomersPerm('edit')
       ) && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId)
         && isValidCustomer(request.resource.data);
-      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('customers', 'delete'))
         || isAdmin()
         || employeeHasCustomersPerm('delete');
     }
 
     // Regras para orçamentos (quotes)
     match /quotes/{quoteId} {
-      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('quotes', 'view'))
         || isAdmin()
         || employeeHasQuotesPerm('view');
-      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin())
+      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && canCreateOwnedModule('quotes')) || isAdmin())
         && isValidQuote(request.resource.data);
       allow update: if (
-        (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
-        || isAdmin()
+        isAdmin()
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('quotes', 'edit'))
         || employeeHasQuotesPerm('edit')
       ) && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId)
         && isValidQuote(request.resource.data);
-      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('quotes', 'delete'))
         || isAdmin()
         || employeeHasQuotesPerm('delete');
     }
@@ -395,37 +394,37 @@ service cloud.firestore {
     // Regras para produtos (products)
     match /products/{productId} {
       allow read: if (resource != null && 'isPublic' in resource.data && resource.data.isPublic == true)
-        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('products', 'view'))
         || isAdmin()
         || employeeHasProductsPerm('view');
-      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin())
+      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && canCreateOwnedModule('products')) || isAdmin())
         && isValidProduct(request.resource.data);
       allow update: if (
-        (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
-        || isAdmin()
+        isAdmin()
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('products', 'edit'))
         || employeeHasProductsPerm('edit')
       ) && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId)
         && isValidProduct(request.resource.data);
-      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('products', 'delete'))
         || isAdmin()
         || employeeHasProductsPerm('delete');
     }
 
     // Regras para galeria de artes (gallery)
     match /gallery/{itemId} {
-      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('gallery', 'view'))
         || isAdmin()
         || employeeHasGalleryPerm('view');
-      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId))
+      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && userHasPerm('gallery', 'create'))
         || isAdmin()
         || employeeHasGalleryPerm('create')) && isValidGalleryItem(request.resource.data);
       allow update: if (
-        (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
-        || isAdmin()
+        isAdmin()
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('gallery', 'delete'))
         || employeeHasGalleryPerm('delete')
       ) && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId)
         && isValidGalleryItem(request.resource.data);
-      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('gallery', 'delete'))
         || isAdmin()
         || employeeHasGalleryPerm('delete');
     }
@@ -440,13 +439,13 @@ service cloud.firestore {
       allow read: if request.auth != null && (
         isAdmin()
         || employeeHasPricingView()
-        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'view'))
       );
-      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin() || employeeHasPricingCreate())
+      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && userHasPerm('pricing', 'create')) || isAdmin() || employeeHasPricingCreate())
         && isValidSupply(request.resource.data);
-      allow update: if ((resource != null && 'userId' in resource.data && isOwner(resource.data.userId)) || isAdmin() || employeeHasPricingEdit())
+      allow update: if ((resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'edit')) || isAdmin() || employeeHasPricingEdit())
         && isValidSupply(request.resource.data);
-      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId)) || isAdmin() || employeeHasPricingDelete();
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'delete')) || isAdmin() || employeeHasPricingDelete();
     }
 
     // Regras para histórico de compras de insumos (purchaseHistory)
@@ -454,14 +453,14 @@ service cloud.firestore {
       allow read: if request.auth != null && (
         isAdmin()
         || employeeHasPricingView()
-        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
-        || (resource == null && purchaseId.matches('^' + request.auth.uid + '_.*'))
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'view'))
+        || (resource == null && purchaseId.matches('^' + request.auth.uid + '_.*') && userHasPerm('pricing', 'view'))
       );
-      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin() || employeeHasPricingCreate())
+      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && userHasPerm('pricing', 'create')) || isAdmin() || employeeHasPricingCreate())
         && isValidPurchase(request.resource.data);
-      allow update: if ((resource != null && 'userId' in resource.data && isOwner(resource.data.userId)) || isAdmin() || employeeHasPricingEdit())
+      allow update: if ((resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'edit')) || isAdmin() || employeeHasPricingEdit())
         && isValidPurchase(request.resource.data);
-      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId)) || isAdmin() || employeeHasPricingDelete();
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'delete')) || isAdmin() || employeeHasPricingDelete();
     }
 
     // Regras para fichas técnicas de precificação (pricingRecipes)
@@ -469,13 +468,13 @@ service cloud.firestore {
       allow read: if request.auth != null && (
         isAdmin()
         || employeeHasPricingView()
-        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'view'))
       );
-      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin() || employeeHasPricingCreate())
+      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && userHasPerm('pricing', 'create')) || isAdmin() || employeeHasPricingCreate())
         && isValidRecipe(request.resource.data);
-      allow update: if ((resource != null && 'userId' in resource.data && isOwner(resource.data.userId)) || isAdmin() || employeeHasPricingEdit())
+      allow update: if ((resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'edit')) || isAdmin() || employeeHasPricingEdit())
         && isValidRecipe(request.resource.data);
-      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId)) || isAdmin() || employeeHasPricingDelete();
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'delete')) || isAdmin() || employeeHasPricingDelete();
     }
 
     // Regras para configurações do ateliê (pricingSettings)
@@ -486,15 +485,15 @@ service cloud.firestore {
 
     // Regras para acompanhamento de produção (productionTracking)
     match /productionTracking/{trackingId} {
-      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'view'))
         || isAdmin()
         || employeeHasPricingView();
       allow create: if ('userId' in request.resource.data && 'recipeId' in request.resource.data)
         && request.resource.data.userId is string
         && request.resource.data.recipeId is string
-        && (isOwner(request.resource.data.userId) || isAdmin() || employeeHasPricingCreate());
+        && (('userId' in request.resource.data && isOwner(request.resource.data.userId) && userHasPerm('pricing', 'create')) || isAdmin() || employeeHasPricingCreate());
       allow update: if resource != null && 'userId' in resource.data && (
-        ('userId' in request.resource.data && request.resource.data.userId == resource.data.userId && isOwner(resource.data.userId))
+        ('userId' in request.resource.data && request.resource.data.userId == resource.data.userId && isOwner(resource.data.userId) && userHasPerm('pricing', 'edit'))
         || isAdmin()
         || (
           'userId' in request.resource.data && request.resource.data.userId == resource.data.userId
@@ -502,7 +501,7 @@ service cloud.firestore {
         )
       );
       allow delete: if resource != null && (
-        ('userId' in resource.data && isOwner(resource.data.userId))
+        ('userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'delete'))
         || isAdmin()
         || employeeHasPricingDelete()
       );
@@ -515,7 +514,7 @@ service cloud.firestore {
       allow read: if request.auth != null && (
         request.auth.uid == uid
         || (resource != null && 'email' in resource.data && resource.data.email == request.auth.token.email)
-        || (isActiveUser() && (isAdmin() || isActiveEmployee()))
+        || (isActiveUser() && (isAdmin() || userHasPerm('users', 'view')))
       );
 
       // Criação: somente Cloud Functions (Admin SDK).
@@ -707,6 +706,43 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /alexaAudit/{eventId} {
+      allow read, write: if false;
+    }
+
+    // ─── Integração MCP & ChatGPT Actions (Coleções Técnicas Internas) ────────
+    // Bloqueio total de leitura e escrita direta pelo SDK cliente web/mobile.
+    // Todas as operações devem passar exclusivamente por Cloud Functions v2 (Admin SDK).
+    match /integrationSettings/mcp {
+      allow read, write: if false;
+    }
+    match /mcpApiKeys/{keyHash} {
+      allow read, write: if false;
+    }
+    match /mcpIdempotency/{operationKey} {
+      allow read, write: if false;
+    }
+    match /mcpAuditLogs/{eventId} {
+      allow read, write: if false;
+    }
+    match /oauthClients/{clientId} {
+      allow read, write: if false;
+    }
+    match /oauthAuthorizationRequests/{requestId} {
+      allow read, write: if false;
+    }
+    match /oauthAuthCodes/{code} {
+      allow read, write: if false;
+    }
+    match /oauthAccessTokens/{tokenId} {
+      allow read, write: if false;
+    }
+    match /oauthRefreshTokens/{tokenId} {
+      allow read, write: if false;
+    }
+    match /oauthSessions/{sessionId} {
+      allow read, write: if false;
+    }
+    match /oauthRateLimits/{bucketId} {
       allow read, write: if false;
     }
   }

@@ -117,6 +117,34 @@
     ],
     "rewrites": [
       {
+        "source": "/.well-known/ai-plugin.json",
+        "function": "chatGptToolsEndpoint"
+      },
+      {
+        "source": "/.well-known/plugin.json",
+        "function": "chatGptToolsEndpoint"
+      },
+      {
+        "source": "/ai-plugin.json",
+        "function": "chatGptToolsEndpoint"
+      },
+      {
+        "source": "/plugin.json",
+        "function": "chatGptToolsEndpoint"
+      },
+      {
+        "source": "/openapi.json",
+        "function": "chatGptToolsEndpoint"
+      },
+      {
+        "source": "/openapi.yaml",
+        "function": "chatGptToolsEndpoint"
+      },
+      {
+        "source": "/chatGptToolsEndpoint/**",
+        "function": "chatGptToolsEndpoint"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

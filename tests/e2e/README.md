@@ -44,7 +44,7 @@ tests/e2e/
 cp .env.test.example .env.test
 
 # 2. Editar .env.test com suas credenciais
-# TEST_USER_EMAIL=seu-email@exemplo.com
+# TEST_USER_EMAIL=test-user@example.invalid
 # TEST_USER_PASSWORD=sua-senha
 # PLAYWRIGHT_BASE_URL=https://dev.luisices.com.br
 
@@ -278,7 +278,7 @@ Testes **mínimos e rápidos** que verificam se a aplicação está funcional:
 Arquivo: `.env.test` (não commitado, criado manualmente)
 
 ```dotenv
-TEST_USER_EMAIL=seu-email@exemplo.com
+TEST_USER_EMAIL=test-user@example.invalid
 TEST_USER_PASSWORD=sua-senha
 PLAYWRIGHT_BASE_URL=https://dev.luisices.com.br
 ```
@@ -303,7 +303,7 @@ Credenciais vêm de **GitHub Secrets**:
    - Acesse: https://console.firebase.google.com/
    - Selecione projeto `luisices-dev`
    - Authentication > Users > Add user
-   - Email: `teste@exemplo.com` (ou o que estiver no .env.test)
+   - Email: `test-user@example.invalid` (ou o que estiver no .env.test)
    - Password: `<SUA_SENHA_DE_TESTE>`
 
 2. **Firestore:**
@@ -312,7 +312,7 @@ Credenciais vêm de **GitHub Secrets**:
    - Campos:
      ```json
      {
-       "email": "teste@exemplo.com",
+       "email": "test-user@example.invalid",
        "name": "Teste E2E",
        "active": true,
        "role": "admin",
@@ -338,7 +338,7 @@ firebase use dev
 node scripts/create-test-user.mjs
 
 # Ou especificar credenciais:
-node scripts/create-test-user.mjs email@exemplo.com senha123
+node scripts/create-test-user.mjs "$TEST_USER_EMAIL" "$TEST_USER_PASSWORD"
 ```
 
 **⚠️ NÃO COMMITE** o arquivo de service account! (já está no .gitignore)

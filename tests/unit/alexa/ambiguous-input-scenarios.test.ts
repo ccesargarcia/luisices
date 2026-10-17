@@ -20,15 +20,15 @@ function createMockDb(initialData: any = {}) {
     auditLogs: [],
     salesLedger: {},
     userProfiles: {
-      'user-caio': {
+      'user-Usuário Teste': {
         active: true,
         role: 'user',
         permissions: { orders: { create: true } },
-        displayName: 'Caio Garcia',
+        displayName: 'Usuário Teste',
       },
     },
     alexaPermissions: {
-      'user-caio': {
+      'user-Usuário Teste': {
         enabled: true,
         mode: 'voice_confirm',
       },
@@ -89,8 +89,8 @@ function createMockDb(initialData: any = {}) {
 describe('Alexa: Ambiguous Input Scenarios (Testes de Regressão)', () => {
   const allowedSkillId = 'amzn1.ask.skill.ambiguous-test-skill';
   const hmacKey = 'test-secret-hmac-key-for-ambiguous-tests';
-  const userId = 'amzn1.ask.account.CAIO';
-  const personId = 'amzn1.person.caio';
+  const userId = 'amzn1.ask.account.Usuário Teste';
+  const personId = 'amzn1.person.Usuário Teste';
 
   const bindingKey = computeBindingKey('dev', allowedSkillId, userId, personId, hmacKey);
 
@@ -103,9 +103,9 @@ describe('Alexa: Ambiguous Input Scenarios (Testes de Regressão)', () => {
   };
 
   const identity = {
-    uid: 'user-caio',
+    uid: 'user-Usuário Teste',
     bindingKey,
-    displayName: 'Caio Garcia',
+    displayName: 'Usuário Teste',
     personId,
     mode: 'voice_confirm',
   };

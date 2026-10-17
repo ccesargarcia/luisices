@@ -5,7 +5,7 @@ import { ImportOrdersDialog } from '../../../src/app/components/orders/ImportOrd
 
 vi.mock('../../../src/contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: { uid: 'test-user-1', email: 'test@luisices.com.br' },
+    user: { uid: 'test-user-1', email: 'test-user@example.invalid' },
     isAdmin: true,
     hasPermission: () => true,
   }),

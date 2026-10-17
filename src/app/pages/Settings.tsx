@@ -35,6 +35,7 @@ import { HeaderFooterCustomizationSection } from '../components/settings/HeaderF
 import { WhatsAppTemplateSection } from '../components/settings/WhatsAppTemplateSection';
 import { AiSettingsSection } from '../components/settings/AiSettingsSection';
 import { AlexaSettingsSection } from '../components/settings/AlexaSettingsSection';
+import { McpSettingsSection } from '../components/settings/McpSettingsSection';
 import { DangerZoneSection } from '../components/settings/DangerZoneSection';
 
 export function Settings() {
@@ -58,11 +59,7 @@ export function Settings() {
   type TabType = typeof validTabs[number];
 
   const tabParam = searchParams.get('tab') as TabType;
-  const initialTab: TabType = validTabs.includes(tabParam)
-    ? tabParam === 'integracoes' && !isAdmin
-      ? 'empresa'
-      : tabParam
-    : 'empresa';
+  const initialTab: TabType = validTabs.includes(tabParam) ? tabParam : 'empresa';
 
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 
@@ -79,13 +76,9 @@ export function Settings() {
   useEffect(() => {
     const currentTabParam = searchParams.get('tab') as TabType;
     if (currentTabParam && validTabs.includes(currentTabParam) && currentTabParam !== activeTab) {
-      if (currentTabParam === 'integracoes' && !isAdmin) {
-        setActiveTab('empresa');
-      } else {
-        setActiveTab(currentTabParam);
-      }
+      setActiveTab(currentTabParam);
     }
-  }, [searchParams, isAdmin]);
+  }, [searchParams]);
 
   const [uploading, setUploading] = useState<'avatar' | 'logo' | 'banner' | null>(null);
   const [savingBusinessInfo, setSavingBusinessInfo] = useState(false);
@@ -467,12 +460,10 @@ export function Settings() {
               <Palette className="size-4 shrink-0" />
               <span>Aparência & Interface</span>
             </TabsTrigger>
-            {isAdmin && (
-              <TabsTrigger value="integracoes" className="gap-2 px-3.5 py-2 text-xs sm:text-sm">
-                <Sparkles className="size-4 shrink-0" />
-                <span>Integrações & IA</span>
-              </TabsTrigger>
-            )}
+            <TabsTrigger value="integracoes" className="gap-2 px-3.5 py-2 text-xs sm:text-sm">
+              <Sparkles className="size-4 shrink-0" />
+              <span>Integrações & IA</span>
+            </TabsTrigger>
             <TabsTrigger value="avancado" className="gap-2 px-3.5 py-2 text-xs sm:text-sm">
               <ShieldAlert className="size-4 shrink-0" />
               <span>Avançado</span>
@@ -600,10 +591,10 @@ export function Settings() {
           />
         </TabsContent>
 
-        {/* ─── ABA 4: INTEGRAÇÕES & IA (ADMIN) ──────────────────── */}
-        {isAdmin && (
-          <TabsContent value="integracoes" className="space-y-6">
-            {/* Atalho para Vitrine / Catálogo Público */}
+        {/* ─── ABA 4: INTEGRAÇÕES & IA ───────────────────────────── */}
+        <TabsContent value="integracoes" className="space-y-6">
+          {/* Atalho para Vitrine / Catálogo Público */}
+          {isAdmin && (
             <Card>
               <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -625,14 +616,17 @@ export function Settings() {
                 </div>
               </CardHeader>
             </Card>
+          )}
 
-            {/* Monitoramento de IA */}
-            <AiSettingsSection isAdmin={isAdmin} />
+          {/* Monitoramento de IA */}
+          <AiSettingsSection isAdmin={isAdmin} />
 
-            {/* Alexa Skill */}
-            <AlexaSettingsSection isAdmin={isAdmin} />
-          </TabsContent>
-        )}
+          {/* Alexa Skill */}
+          <AlexaSettingsSection isAdmin={isAdmin} />
+
+          {/* Assistentes Externos & ChatGPT (MCP) */}
+          <McpSettingsSection isAdmin={isAdmin} />
+        </TabsContent>
 
         {/* ─── ABA 5: AVANÇADO & SEGURANÇA ───────────────────────── */}
         <TabsContent value="avancado" className="space-y-6">

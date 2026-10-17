@@ -12,6 +12,7 @@ import { collection, query, where, orderBy, onSnapshot, QuerySnapshot, DocumentD
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { Order, UserProfile } from '../app/types';
+import { toast } from 'sonner';
 
 export interface TeamMemberOption {
   uid: string;
@@ -215,6 +216,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         exchangeItems: data.exchangeItems,
         cardColor: data.cardColor,
         userId: data.userId,
+        source: data.source,
+        idempotencyKey: data.idempotencyKey,
+        requiresFinancialApproval: Boolean(data.requiresFinancialApproval),
+        financialWarning: data.financialWarning || null,
         isArchived: Boolean(data.isArchived),
         archivedAt: data.archivedAt?.toDate
           ? data.archivedAt.toDate().toISOString()
@@ -286,6 +291,26 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     unsubscribers.push(onSnapshot(
       operationalQuery,
       (snapshot) => {
+        // Notificação em tempo real quando um novo pedido do ChatGPT / MCP for adicionado após a carga inicial
+        if (operationalLoaded) {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+              const data = change.doc.data();
+              const isMcp =
+                data.source === 'chatgpt-mcp' ||
+                data.source === 'chatgpt' ||
+                (Array.isArray(data.tags) && data.tags.some((t: any) => String(t?.name || '').toLowerCase() === 'chatgpt'));
+
+              if (isMcp) {
+                toast.success(`🤖 Novo pedido ${data.orderNumber || ''} criado via ChatGPT!`, {
+                  description: `${data.customerName || 'Cliente'} • ${data.productName || 'Personalizado'} • Entrega: ${data.deliveryDate || 'A definir'}`,
+                  duration: 8000,
+                });
+              }
+            }
+          });
+        }
+
         operationalOrders = mapSnapshot(snapshot);
         operationalLoaded = true;
         publish();

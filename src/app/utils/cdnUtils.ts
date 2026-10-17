@@ -3,43 +3,54 @@
  */
 
 /**
- * Converte uma URL do Firebase Storage para o domínio CDN configurado (Cloudflare), se disponível.
- * Se a URL já for da CDN ou não for do Firebase Storage, retorna a URL original.
+ * Converte qualquer URL do Firebase Storage para o domínio CDN configurado (Cloudflare).
+ * Garante entrega de alta velocidade e SSL próprio (ex: https://cdn-dev.luisices.com.br/users/...).
  *
  * @param url URL da imagem ou anexo
- * @returns URL formatada com o domínio CDN próprio
+ * @returns URL formatada via CDN próprio
  */
 export function toCdnUrl(url?: string | null): string {
   if (!url || typeof url !== 'string') return '';
 
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+
   const cdnBase = import.meta.env.VITE_STORAGE_CDN_URL;
-  if (!cdnBase) return url;
+  if (!cdnBase) return trimmed;
 
-  // Se já for uma URL de CDN (produção ou dev), limpa parâmetros de busca (?alt=media&token=...)
-  if (
-    url.startsWith(cdnBase) ||
-    url.includes('cdn.luisices.com.br') ||
-    url.includes('cdn-dev.luisices.com.br')
-  ) {
-    return url.split('?')[0];
+  const cleanCdnBase = cdnBase.replace(/\/+$/, '');
+
+  // 1. Se já for uma URL do CDN próprio, padroniza e remove query string (?alt=media&token=...)
+  if (trimmed.startsWith(cleanCdnBase) || trimmed.includes('cdn.luisices.com.br') || trimmed.includes('cdn-dev.luisices.com.br')) {
+    try {
+      const parsed = new URL(trimmed);
+      const cleanPath = parsed.pathname.replace(/^\/+/, '');
+      return `${parsed.origin}/${cleanPath}`;
+    } catch {
+      return trimmed;
+    }
   }
 
-  // Se não for uma URL padrão do Firebase Storage, retorna inalterada
-  if (!url.includes('firebasestorage.googleapis.com')) {
-    return url;
+  // 2. Se for uma URL do Firebase Storage (googleapis.com)
+  if (trimmed.includes('firebasestorage.googleapis.com')) {
+    try {
+      // Padrão /o/<encodedPath>
+      const match = trimmed.match(/\/o\/(.+?)(\?.*)?$/);
+      if (match && match[1]) {
+        const rawPath = decodeURIComponent(match[1]);
+        return `${cleanCdnBase}/${rawPath}`;
+      }
+
+      // Padrão /o?name=<encodedPath>
+      const nameMatch = trimmed.match(/[?&]name=([^&]+)/);
+      if (nameMatch && nameMatch[1]) {
+        const rawPath = decodeURIComponent(nameMatch[1]);
+        return `${cleanCdnBase}/${rawPath}`;
+      }
+    } catch {
+      return trimmed;
+    }
   }
 
-  try {
-    // Padrão: https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<encodedPath>?<queryParams>
-    const match = url.match(/\/o\/(.+?)(\?.*)?$/);
-    if (!match || !match[1]) return url;
-
-    const rawPath = decodeURIComponent(match[1]);
-    const cleanBase = cdnBase.replace(/\/+$/, '');
-
-    // Retorna URL limpa no formato https://cdn.luisices.com.br/path/to/file.png
-    return `${cleanBase}/${rawPath}`;
-  } catch {
-    return url;
-  }
+  return trimmed;
 }

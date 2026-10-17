@@ -79,6 +79,14 @@ Validação, limites e roteiro manual sintético: [COPILOTO_IA.md](../docs/COPIL
 
 Os nomes de parâmetros/segredos estão em [common/secrets.js](common/secrets.js) e nos módulos das integrações. Forneça valores pelo mecanismo de secrets do ambiente. Não publique valores, arquivos de service account ou identificadores de instâncias operacionais em exemplos.
 
+### Monitoramento Sentry
+
+O SDK `@sentry/node` é inicializado no começo de [index.js](index.js), antes dos módulos Firebase. Os wrappers em `common/sentryFunctions.js` capturam erros inesperados das Cloud Functions HTTP, callable e agendadas, inclusive com `firebase-functions` 7.x. Erros internos tratados pelo endpoint MCP também são enviados quando resultam em resposta 5xx. Falhas de validação/permissão não são reportadas como erros de aplicação.
+
+Configure o DSN do projeto Sentry de backend como secret de Actions `DEV_FUNCTIONS_SENTRY_DSN` e `PROD_FUNCTIONS_SENTRY_DSN`. O deploy manual também aceita `DEV_SENTRY_DSN`/`PROD_SENTRY_DSN` e, por compatibilidade, os DSNs já usados pelo frontend. Localmente, defina `SENTRY_DSN` em `functions/.env.luisices-dev` ou `functions/.env.papelaria-dashboard`; esses arquivos não devem ser versionados. Sem DSN, a captura fica desativada.
+
+O backend envia eventos sem dados pessoais padrão; remove conteúdo de requisição e identidade do usuário, oculta credenciais e sanitiza e-mail, telefone e CPF em mensagens e breadcrumbs. O tracing usa amostragem padrão de 5%, ajustável por `SENTRY_TRACES_SAMPLE_RATE` entre `0` e `1`.
+
 O workflow [DEV](../.github/workflows/deploy-dev.yml) seleciona os componentes a publicar. Há [workflow manual de Functions](../.github/workflows/deploy-functions-manual.yml). Para operação manual, selecione explicitamente o projeto e o conjunto de funções após revisão; não use comandos genéricos supondo o ambiente ativo.
 
 Alterar documentação não exige deploy. `[skip tests]` não impede publicação; para commits exclusivamente documentais sem execução dos workflows de push, use `[skip ci]`. Análises gerenciadas pelo GitHub podem continuar.

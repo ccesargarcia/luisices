@@ -4,7 +4,8 @@
 
 const { getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('firebase-functions/v2/https');
+const { onCall } = require('../common/sentryFunctions');
 const { GEMINI_API_KEY } = require('../common/secrets');
 const { assertActiveSession } = require('../common/helpers');
 const { createAiServices } = require('./index');

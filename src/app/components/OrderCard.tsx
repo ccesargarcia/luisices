@@ -3,7 +3,7 @@ import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
-import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2, Users, Mic } from 'lucide-react';
+import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2, Users, Mic, Bot, AlertCircle } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { openWhatsAppForOrder } from '../utils/whatsapp';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -113,6 +113,18 @@ export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }
                   Alexa
                 </Badge>
               )}
+              {(order.source === 'chatgpt-mcp' || order.source === 'chatgpt') && (
+                <Badge variant="outline" className="text-[10px] py-0 px-1.5 leading-4 bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 gap-0.5">
+                  <Bot className="size-2.5" />
+                  ChatGPT
+                </Badge>
+              )}
+              {order.requiresFinancialApproval && (
+                <Badge variant="outline" className="text-[10px] py-0 px-1.5 leading-4 bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800 gap-0.5">
+                  <AlertCircle className="size-2.5" />
+                  Sinal
+                </Badge>
+              )}
               <Badge className={`text-[10px] py-0 px-1.5 leading-4 ${statusColors[order.status]}`}>
                 {statusLabels[order.status]}
               </Badge>
@@ -174,6 +186,16 @@ export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }
                   {order.source === 'alexa' && (
                     <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800 gap-1 py-0 text-xs">
                       <Mic className="size-3" /> Alexa
+                    </Badge>
+                  )}
+                  {(order.source === 'chatgpt-mcp' || order.source === 'chatgpt') && (
+                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 gap-1 py-0 text-xs">
+                      <Bot className="size-3" /> ChatGPT
+                    </Badge>
+                  )}
+                  {order.requiresFinancialApproval && (
+                    <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800 gap-1 py-0 text-xs">
+                      <AlertCircle className="size-3" /> Aguardando Sinal
                     </Badge>
                   )}
                 </div>

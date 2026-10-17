@@ -97,9 +97,14 @@ jobs:
           MEASUREMENT_ID: ${{ secrets.DEV_VITE_FIREBASE_MEASUREMENT_ID || 'G-XXXXXXXX' }}
           STORAGE_CDN_URL: ${{ secrets.DEV_VITE_STORAGE_CDN_URL || 'https://cdn-dev.luisices.com.br' }}
           SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}
-          TEST_EMAIL: ${{ secrets.TEST_USER_EMAIL || 'teste@luisices.com.br' }}
-          TEST_PASS: ${{ secrets.TEST_USER_PASSWORD || 'Senha123456!' }}
+          TEST_EMAIL: ${{ secrets.TEST_USER_EMAIL || 'test-user@example.invalid' }}
+          TEST_PASS: ${{ secrets.TEST_USER_PASSWORD }}
         run: |
+          if [ -z "$TEST_PASS" ]; then
+            TEST_PASS="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(24).toString("base64url"))')"
+          fi
+          echo "::add-mask::$TEST_PASS"
+          printf 'TEST_USER_PASSWORD=%s\n' "$TEST_PASS" >> "$GITHUB_ENV"
           printf 'VITE_FIREBASE_API_KEY=%s\n' "$API_KEY" >> .env.local
           printf 'VITE_FIREBASE_AUTH_DOMAIN=%s\n' "$AUTH_DOMAIN" >> .env.local
           printf 'VITE_FIREBASE_PROJECT_ID=%s\n' "$PROJECT_ID" >> .env.local
@@ -120,8 +125,7 @@ jobs:
       - name: Run E2E tests with Firebase Emulator Suite (0 Cloud Reads)
         env:
           CI: true
-          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL || 'teste@luisices.com.br' }}
-          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD || 'Senha123456!' }}
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL || 'test-user@example.invalid' }}
           PLAYWRIGHT_BASE_URL: http://localhost:4173
           INPUT_TARGET: ${{ inputs.test_target || github.event.inputs.test_target || '' }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}

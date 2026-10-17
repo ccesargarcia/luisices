@@ -2,6 +2,9 @@
  * Ponto de Entrada Principal das Cloud Functions para Firebase (v2).
  * Arquitetura Modularizada por Domínio de Negócio - Luisices.
  */
+// Inicialize antes de importar Firebase Functions para instrumentar triggers.
+require('./common/sentry');
+
 const { initializeApp } = require('firebase-admin/app');
 
 // Inicialização do Firebase Admin SDK no escopo global
@@ -14,6 +17,7 @@ const whatsappFunctions = require('./whatsapp');
 const orderFunctions = require('./orders');
 const aiFunctions = require('./ai/callables');
 const alexaFunctions = require('./alexa');
+const mcpFunctions = require('./mcp');
 
 module.exports = {
   // ─── Gestão de Usuários e Convites ─────────────────────────────────────────
@@ -67,5 +71,17 @@ module.exports = {
   getAlexaIntegrationStatus: alexaFunctions.getAlexaIntegrationStatus,
   approveAlexaDraft: alexaFunctions.approveAlexaDraft,
   cancelAlexaDraft: alexaFunctions.cancelAlexaDraft,
+
+  // ─── Integração MCP & ChatGPT Actions ─────────────────────────────────────
+  getMcpSettingsStatus: mcpFunctions.getMcpSettingsStatus,
+  createMcpApiKey: mcpFunctions.createMcpApiKey,
+  updateMcpApiKeyScopes: mcpFunctions.updateMcpApiKeyScopes,
+  toggleMcpApiKey: mcpFunctions.toggleMcpApiKey,
+  revokeMcpApiKey: mcpFunctions.revokeMcpApiKey,
+  toggleGlobalMcp: mcpFunctions.toggleGlobalMcp,
+  setUserMcpEligibility: mcpFunctions.setUserMcpEligibility,
+  revokeMcpSession: mcpFunctions.revokeMcpSession,
+  getMcpAuditLogs: mcpFunctions.getMcpAuditLogs,
+  chatGptToolsEndpoint: mcpFunctions.chatGptToolsEndpoint,
 };
 

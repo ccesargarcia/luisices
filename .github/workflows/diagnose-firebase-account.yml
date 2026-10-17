@@ -23,18 +23,11 @@ jobs:
             console.error('FIREBASE_SERVICE_ACCOUNT_DEV ausente ou com JSON inválido.');
             process.exit(1);
           }
-          const accounts = {
-            'firebase-adminsdk-fbsvc@luisices-dev.iam.gserviceaccount.com': 'Firebase Admin SDK (fbsvc)',
-            'luisices-dev-automation@luisices-dev.iam.gserviceaccount.com': 'Automação do projeto dev',
-            'luisices-dev@appspot.gserviceaccount.com': 'Conta padrão do App Engine',
-            '998962751129-compute@developer.gserviceaccount.com': 'Conta padrão do Compute Engine',
-          };
-          const email = credentials?.client_email;
-          if (typeof email !== 'string' || !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.gserviceaccount\.com$/.test(email)) {
+          const serviceAccountEmail = credentials?.client_email;
+          if (typeof serviceAccountEmail !== 'string' || !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.gserviceaccount\.com$/.test(serviceAccountEmail)) {
             console.error('O secret não contém um client_email válido de conta de serviço.');
             process.exit(1);
           }
-          console.log('Identidade do deploy: ' + (accounts[email] || 'Outra conta de serviço'));
-          console.log('E-mail da conta: ' + email);
+          console.log('Conta de serviço validada.');
           NODE
 

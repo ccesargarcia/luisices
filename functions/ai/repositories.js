@@ -19,6 +19,12 @@ function normalizeTimestamp(val) {
   return String(val);
 }
 
+function orderOrdersByCreationDate(query) {
+  return query && typeof query.orderBy === 'function'
+    ? query.orderBy('createdAt', 'desc')
+    : query;
+}
+
 function sanitizeOrderForAi(id, data = {}) {
   const pName = data.productName || data.productSummary || data.itemsSummary || data.description || 'Personalizado Luisices';
 
@@ -94,18 +100,20 @@ function sanitizeOrderForAi(id, data = {}) {
     createdByName: String(data.createdByName || ''),
     assignedTo: String(data.assignedTo || ''),
     assignedToName: String(data.assignedToName || ''),
+    version: Number.isSafeInteger(data.version) && data.version > 0 ? data.version : 1,
     isDeleted: Boolean(data.deletedAt || data.isDeleted),
   };
 }
 
 /** Lê páginas completas até o fim ou falha claramente ao atingir o teto operacional. */
-async function readAllPages(queryFactory, { pageSize = 250, maxDocs = 5000 } = {}) {
+async function readAllPages(queryFactory, { pageSize = 250, maxDocs = 5000, allowPartial = false } = {}) {
   const docs = [];
   let cursor = null;
   while (true) {
     // Lê no máximo um registro além do teto para diferenciar conjunto completo
-    // exatamente no limite de um resultado truncado.
-    const requested = Math.min(pageSize, maxDocs - docs.length + 1);
+    // exatamente no limite de um resultado truncado (quando allowPartial é false).
+    const requested = Math.min(pageSize, maxDocs - docs.length + (allowPartial ? 0 : 1));
+    if (requested <= 0) return docs;
     let query = queryFactory().limit(requested);
     if (cursor) {
       if (typeof query.startAfter !== 'function') {
@@ -118,12 +126,30 @@ async function readAllPages(queryFactory, { pageSize = 250, maxDocs = 5000 } = {
     if (!pageDocs.length) return docs;
     docs.push(...pageDocs);
     if (docs.length > maxDocs) {
+      if (allowPartial) {
+        return docs.slice(0, maxDocs);
+      }
       throw new Error(`Consulta excedeu o limite operacional de ${maxDocs} registros; resultado parcial recusado.`);
     }
     if (pageDocs.length < requested) return docs;
+    if (docs.length >= maxDocs) {
+      if (allowPartial) return docs.slice(0, maxDocs);
+      if (typeof query.startAfter !== 'function') {
+        throw new Error('A consulta não oferece paginação segura; resultado incompleto recusado.');
+      }
+      const nextPage = await queryFactory().limit(1).startAfter(pageDocs[pageDocs.length - 1]).get();
+      if ((nextPage?.docs || []).length) {
+        throw new Error(`Consulta excedeu o limite operacional de ${maxDocs} registros; resultado parcial recusado.`);
+      }
+      return docs;
+    }
     cursor = pageDocs[pageDocs.length - 1];
   }
 }
+
+// Cache volátil em memória para evitar leituras repetidas do Firestore em interações contínuas
+const SCOPED_ORDERS_CACHE = new Map();
+const SCOPED_ORDERS_TTL_MS = 20 * 1000; // 20 segundos
 
 class AiDataRepositories {
   constructor(firestoreInstance, authInstance = null) {
@@ -137,6 +163,14 @@ class AiDataRepositories {
   async getScopedOrders(scope, options = {}) {
     if (!this.db) return [];
 
+    const isPartialAllowed = options.allowPartial ?? (options.maxLimit ? true : false);
+    const useCache = options.skipCache !== true;
+    const cacheKey = `${scope?.isAdmin ? 'admin' : (scope?.uid || 'anon')}:${options.maxLimit || 'full'}:${isPartialAllowed ? 'partial' : 'complete'}`;
+    const cached = SCOPED_ORDERS_CACHE.get(cacheKey);
+    if (useCache && cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+
     let rawDocs = [];
     const maxSafetyCeiling = options.maxLimit || 5000;
     const linkedQueryCeiling = Math.ceil(maxSafetyCeiling / 3);
@@ -144,15 +178,15 @@ class AiDataRepositories {
     try {
       if (scope.isAdmin) {
         const docs = await readAllPages(
-          () => this.db.collection('orders').where('deletedAt', '==', null),
-          { maxDocs: maxSafetyCeiling },
+          () => orderOrdersByCreationDate(this.db.collection('orders').where('deletedAt', '==', null)),
+          { maxDocs: maxSafetyCeiling, allowPartial: isPartialAllowed },
         );
         rawDocs = docs.map((d) => sanitizeOrderForAi(d.id, d.data()));
       } else {
         const [userDocs, assignedDocs, createdDocs] = await Promise.all([
-          readAllPages(() => this.db.collection('orders').where('userId', '==', scope.uid).where('deletedAt', '==', null), { maxDocs: linkedQueryCeiling }),
-          readAllPages(() => this.db.collection('orders').where('assignedTo', '==', scope.uid).where('deletedAt', '==', null), { maxDocs: linkedQueryCeiling }),
-          readAllPages(() => this.db.collection('orders').where('createdBy', '==', scope.uid).where('deletedAt', '==', null), { maxDocs: linkedQueryCeiling }),
+          readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('userId', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
+          readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('assignedTo', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
+          readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('createdBy', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
         ]);
 
         const map = new Map();
@@ -176,7 +210,37 @@ class AiDataRepositories {
       const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return (isNaN(tB) ? 0 : tB) - (isNaN(tA) ? 0 : tA);
     });
+
+    if (useCache) {
+      SCOPED_ORDERS_CACHE.set(cacheKey, {
+        data: filtered,
+        expiresAt: Date.now() + SCOPED_ORDERS_TTL_MS,
+      });
+    }
+
     return filtered;
+  }
+
+  /** Busca um pedido por ID ou número e valida a posse antes de devolvê-lo. */
+  async getScopedOrderDocument(scope, identifier) {
+    if (!this.db || typeof identifier !== 'string' || !identifier.trim()) return null;
+    const value = identifier.trim();
+    const candidates = [];
+    if (!value.includes('/')) {
+      const direct = await this.db.collection('orders').doc(value).get();
+      if (direct.exists) candidates.push(direct);
+    }
+    if (!candidates.length) {
+      const matches = await this.db.collection('orders').where('orderNumber', '==', value).limit(2).get();
+      candidates.push(...(matches.docs || []));
+    }
+    const scoped = candidates.filter((doc) => {
+      const data = doc.data() || {};
+      return filterOrdersByScope([{ ...data, id: doc.id }], scope).length > 0;
+    });
+    if (scoped.length !== 1) return null;
+    const doc = scoped[0];
+    return { id: doc.id, ref: doc.ref, data: doc.data() || {} };
   }
 
   /**
@@ -277,6 +341,16 @@ class AiDataRepositories {
     };
   }
 
+  /** Busca um cliente por ID e valida o escopo de acesso antes de devolvê-lo. */
+  async getScopedCustomerDocument(scope, customerId) {
+    if (!this.db || typeof customerId !== 'string' || !customerId.trim() || customerId.includes('/')) return null;
+    const snap = await this.db.collection('customers').doc(customerId.trim()).get();
+    if (!snap.exists) return null;
+    const data = snap.data() || {};
+    if (!filterCustomersByScope([{ ...data, id: snap.id }], scope).length) return null;
+    return { id: snap.id, ref: snap.ref, data };
+  }
+
   /**
    * Busca insumos cadastrados na coleção real 'supplies' com blindagem de escopo (R05)
    */
@@ -351,7 +425,7 @@ class AiDataRepositories {
             title: data.title || data.theme || 'Projeto',
             category: data.category || '',
             papers: Array.isArray(data.papers) ? data.papers : [],
-            tags: Array.isArray(data.tags) ? data.tags.map((t) => typeof t === 'string' ? t : t.name) : [],
+            tags: Array.isArray(data.tags) ? data.tags.map((t) => typeof t === 'string' ? t : t?.name).filter((tag) => typeof tag === 'string') : [],
             imageUrl: data.imageUrl || '',
             userId: String(data.userId || ''),
             createdBy: String(data.createdBy || ''),
@@ -381,7 +455,7 @@ class AiDataRepositories {
               title: data.title || data.theme || 'Projeto',
               category: data.category || '',
               papers: Array.isArray(data.papers) ? data.papers : [],
-              tags: Array.isArray(data.tags) ? data.tags.map((t) => typeof t === 'string' ? t : t.name) : [],
+              tags: Array.isArray(data.tags) ? data.tags.map((t) => typeof t === 'string' ? t : t?.name).filter((tag) => typeof tag === 'string') : [],
               imageUrl: data.imageUrl || '',
               userId: String(data.userId || ''),
               createdBy: String(data.createdBy || ''),
@@ -487,6 +561,240 @@ class AiDataRepositories {
       console.warn('[getCatalogKnowledge] Erro ao compilar resumo:', err.message);
       return '\n\n[AVISO DE DADOS] Não foi possível consultar todo o contexto de catálogo/insumos/galeria. Não afirme que uma busca foi completa nem que um item inexiste; peça nova tentativa ou confirmação manual.\n';
     }
+  }
+
+  /**
+   * Busca receitas/modelos de precificação salvos
+   */
+  async getPricingRecipes(scope, options = {}) {
+    if (!this.db) return [];
+    try {
+      let snap;
+      if (scope.isAdmin || scope.canViewPricing) {
+        snap = await this.db.collection('pricingRecipes').limit(options.limit || 50).get();
+      } else {
+        snap = await this.db.collection('pricingRecipes').where('userId', '==', scope.uid).limit(options.limit || 50).get();
+      }
+      return snap.docs.map((d) => {
+        const data = d.data() || {};
+        return {
+          id: d.id,
+          productName: data.productName || 'Modelo Salvo',
+          category: data.category || 'papelaria_festa',
+          pricingMethod: data.pricingMethod || 'markup_on_cost',
+          profitMarginPercent: data.profitMarginPercent !== undefined ? Number(data.profitMarginPercent) : 100,
+          suggestedUnitPrice: data.suggestedUnitPrice !== undefined ? Number(data.suggestedUnitPrice) : 0,
+          items: Array.isArray(data.items) ? data.items : [],
+          createdAt: normalizeTimestamp(data.createdAt),
+          userId: String(data.userId || ''),
+        };
+      }).filter((r) => scope.isAdmin || scope.canViewPricing || r.userId === scope.uid);
+    } catch (err) {
+      console.warn('[getPricingRecipes] Erro ao consultar modelos:', err.message);
+      return [];
+    }
+  }
+
+  /**
+   * Obtém os detalhes de um modelo/receita de precificação por ID
+   */
+  async getPricingRecipeById(scope, modelId) {
+    if (!this.db || !modelId) return null;
+    try {
+      const docSnap = await this.db.collection('pricingRecipes').doc(modelId).get();
+      if (!docSnap.exists) return null;
+      const data = docSnap.data() || {};
+      if (!scope.isAdmin && !scope.canViewPricing && data.userId !== scope.uid) {
+        return null;
+      }
+      return {
+        id: docSnap.id,
+        productName: data.productName || 'Modelo Salvo',
+        category: data.category || 'papelaria_festa',
+        pricingMethod: data.pricingMethod || 'markup_on_cost',
+        profitMarginPercent: data.profitMarginPercent !== undefined ? Number(data.profitMarginPercent) : 100,
+        suggestedUnitPrice: data.suggestedUnitPrice !== undefined ? Number(data.suggestedUnitPrice) : 0,
+        items: Array.isArray(data.items) ? data.items : [],
+        createdAt: normalizeTimestamp(data.createdAt),
+        userId: String(data.userId || ''),
+      };
+    } catch (err) {
+      console.warn('[getPricingRecipeById] Erro ao buscar modelo:', err.message);
+      return null;
+    }
+  }
+
+  /**
+   * Salva ou atualiza um modelo de precificação
+   */
+  async savePricingRecipe(scope, data) {
+    if (!this.db) throw new Error('Banco de dados não disponível.');
+    if (!scope?.uid) {
+      const error = new Error('Usuário não autenticado.');
+      error.code = 'unauthenticated';
+      throw error;
+    }
+    const recipeData = {
+      productName: String(data.productName || 'Composição').trim(),
+      category: String(data.category || 'papelaria_festa').trim(),
+      pricingMethod: data.pricingMethod === 'margin_on_sale' ? 'margin_on_sale' : 'markup_on_cost',
+      profitMarginPercent: Number(data.profitMarginPercent) || 100,
+      suggestedUnitPrice: Number(data.suggestedUnitPrice) || 0,
+      items: Array.isArray(data.items) ? data.items : [],
+      updatedAt: new Date(),
+      userId: scope.uid || 'system',
+    };
+
+    if (data.modelId) {
+      if (typeof data.modelId !== 'string' || data.modelId.includes('/') || !data.modelId.trim()) {
+        const error = new Error('Identificador do modelo inválido.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
+      const docRef = this.db.collection('pricingRecipes').doc(data.modelId);
+      const existing = await docRef.get();
+      if (!existing.exists) {
+        const error = new Error('Modelo de precificação não encontrado.');
+        error.code = 'not-found';
+        throw error;
+      }
+      const existingData = existing.data() || {};
+      if (!scope.isAdmin && existingData.userId !== scope.uid) {
+        const error = new Error('Permissão negada para editar este modelo de precificação.');
+        error.code = 'permission-denied';
+        throw error;
+      }
+      // Edições administrativas preservam o proprietário original do modelo.
+      recipeData.userId = String(existingData.userId || scope.uid);
+      await docRef.set(recipeData, { merge: true });
+      return { id: data.modelId, ...recipeData };
+    } else {
+      recipeData.createdAt = new Date();
+      const docRef = await this.db.collection('pricingRecipes').add(recipeData);
+      return { id: docRef.id, ...recipeData };
+    }
+  }
+
+  /**
+   * Busca orçamentos
+   */
+  async getQuotes(scope, options = {}) {
+    if (!this.db) return [];
+    try {
+      let snap;
+      if (scope.isAdmin) {
+        snap = await this.db.collection('quotes').limit(options.limit || 50).get();
+      } else {
+        snap = await this.db.collection('quotes').where('userId', '==', scope.uid).limit(options.limit || 50).get();
+      }
+      return snap.docs.map((d) => {
+        const data = d.data() || {};
+        return {
+          id: d.id,
+          quoteNumber: data.quoteNumber || `#ORC-${d.id.slice(-4)}`,
+          customerName: data.customerName || 'Cliente',
+          customerPhone: data.customerPhone || '',
+          productName: data.items?.[0]?.name || data.productName || 'Encomenda',
+          items: Array.isArray(data.items) ? data.items : [],
+          totalPrice: Number(data.totalPrice) || 0,
+          depositPercentage: Number(data.depositPercentage) || 50,
+          paymentMethod: data.paymentCondition || data.paymentMethod || 'pix',
+          status: data.status || 'pending',
+          validUntil: normalizeTimestamp(data.validUntil).split('T')[0] || '',
+          createdAt: normalizeTimestamp(data.createdAt),
+          userId: String(data.userId || ''),
+        };
+      }).filter((q) => scope.isAdmin || q.userId === scope.uid);
+    } catch (err) {
+      console.warn('[getQuotes] Erro ao consultar orçamentos:', err.message);
+      return [];
+    }
+  }
+
+  /**
+   * Cria um novo orçamento
+   */
+  async createQuote(scope, data) {
+    if (!this.db) throw new Error('Banco de dados não disponível.');
+    const now = new Date();
+    const counterRef = this.db.collection('users').doc(scope.uid || 'system').collection('metadata').doc('quoteCounters');
+    let quoteNum = 'ORC-0001';
+    try {
+      const snap = await counterRef.get();
+      const curr = snap.exists ? (snap.data().quoteCount || 0) : 0;
+      const next = curr + 1;
+      await counterRef.set({ quoteCount: next }, { merge: true });
+      quoteNum = `ORC-${String(next).padStart(4, '0')}`;
+    } catch {
+      quoteNum = `ORC-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+
+    const quoteData = {
+      quoteNumber: quoteNum,
+      customerName: String(data.customerName || 'Cliente').trim(),
+      customerPhone: String(data.customerPhone || '').trim(),
+      productName: String(data.productName || 'Encomenda').trim(),
+      items: [{
+        name: String(data.productName || 'Encomenda').trim(),
+        quantity: Number(data.quantity) || 1,
+        unitPrice: (Number(data.totalPrice) || 0) / (Number(data.quantity) || 1),
+      }],
+      totalPrice: Number(data.totalPrice) || 0,
+      depositPercentage: Number(data.depositPercentage) || 50,
+      paymentMethod: data.paymentMethod || 'pix',
+      status: 'pending',
+      validUntil: data.validUntil || '',
+      notes: data.notes || '',
+      createdAt: now,
+      updatedAt: now,
+      userId: scope.uid || 'system',
+    };
+
+    const docRef = await this.db.collection('quotes').add(quoteData);
+    return { id: docRef.id, ...quoteData, createdAt: now.toISOString() };
+  }
+
+  /**
+   * Atualiza status do orçamento
+   */
+  async updateQuoteStatus(scope, quoteIdentifier, newStatus) {
+    if (!this.db) throw new Error('Banco de dados não disponível.');
+    let docRef = null;
+    let docSnap = null;
+
+    if (quoteIdentifier.startsWith('#ORC-') || quoteIdentifier.startsWith('ORC-')) {
+      const num = quoteIdentifier.replace(/^#/, '');
+      const snap = await this.db.collection('quotes').where('quoteNumber', '==', num).limit(1).get();
+      if (!snap.empty) {
+        docSnap = snap.docs[0];
+        docRef = docSnap.ref;
+      }
+    }
+
+    if (!docRef) {
+      docRef = this.db.collection('quotes').doc(quoteIdentifier);
+      docSnap = await docRef.get();
+    }
+
+    if (!docSnap || !docSnap.exists) {
+      const err = new Error('Orçamento não encontrado.');
+      err.code = 'not-found';
+      throw err;
+    }
+
+    const data = docSnap.data();
+    if (!scope.isAdmin && data.userId !== scope.uid) {
+      const err = new Error('Permissão negada para alterar este orçamento.');
+      err.code = 'permission-denied';
+      throw err;
+    }
+
+    await docRef.update({
+      status: newStatus,
+      updatedAt: new Date(),
+    });
+
+    return { id: docSnap.id, quoteNumber: data.quoteNumber || `#ORC-${docSnap.id.slice(-4)}`, status: newStatus, previousStatus: data.status };
   }
 }
 

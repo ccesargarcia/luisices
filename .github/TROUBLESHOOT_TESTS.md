@@ -20,14 +20,14 @@ firebase use dev
 
 # Listar usuários (requer Firebase CLI)
 firebase auth:export users.json --project luisices-dev
-cat users.json | grep -i "admin@exemplo.com"
+cat users.json | grep -i "test-user@example.invalid"
 ```
 
 **Ou via Console:**
 1. Acesse: https://console.firebase.google.com/
 2. Selecione o projeto `luisices-dev`
 3. Authentication > Users
-4. Procure por: `admin@exemplo.com`
+4. Procure por: `test-user@example.invalid`
 
 ---
 
@@ -41,7 +41,7 @@ firebase firestore:get users/{UID} --project luisices-dev
 **Campos obrigatórios:**
 ```json
 {
-  "email": "admin@exemplo.com",
+  "email": "test-user@example.invalid",
   "active": true,  // ← DEVE SER TRUE
   "role": "admin" ou "user",
   "permissions": {
@@ -56,7 +56,7 @@ firebase firestore:get users/{UID} --project luisices-dev
 
 #### Opção A: Via Console Firebase
 1. Authentication > Add user
-   - Email: `admin@exemplo.com`
+   - Email: `test-user@example.invalid`
    - Password: `<SUA_SENHA_DE_TESTE>`
 
 2. Firestore > users > Add document
@@ -64,7 +64,7 @@ firebase firestore:get users/{UID} --project luisices-dev
    - Campos:
      ```json
      {
-       "email": "admin@exemplo.com",
+       "email": "test-user@example.invalid",
        "name": "Teste E2E",
        "active": true,
        "role": "admin",
@@ -93,7 +93,7 @@ As credenciais devem estar configuradas em:
 `https://github.com/<SEU_USUARIO>/<SEU_REPOSITORIO>/settings/secrets/actions`
 
 **Secrets necessárias:**
-- ✅ `TEST_USER_EMAIL` = admin@exemplo.com
+- ✅ `TEST_USER_EMAIL` = test-user@example.invalid
 - ✅ `TEST_USER_PASSWORD` = <SUA_SENHA_DE_TESTE>
 
 **Firebase DEV (7 secrets):**
@@ -158,8 +158,8 @@ test('✅ Login funciona', async ({ page }) => {
 
 ```bash
 # No GitHub Secrets, altere TEST_USER_EMAIL para um usuário válido do DEV
-# Exemplo: se você já tem admin@luisices.com.br no DEV
-TEST_USER_EMAIL=admin@luisices.com.br
+# Exemplo: se você já tem test-user@example.invalid no DEV
+TEST_USER_EMAIL=test-user@example.invalid
 TEST_USER_PASSWORD=<senha_desse_usuario>
 ```
 
@@ -172,7 +172,7 @@ Após criar o usuário ou ajustar credenciais, rode localmente:
 ```bash
 # 1. Configurar .env.test com credenciais do DEV
 cat > .env.test << 'EOF'
-TEST_USER_EMAIL=admin@exemplo.com
+TEST_USER_EMAIL=test-user@example.invalid
 TEST_USER_PASSWORD=<SUA_SENHA_DE_TESTE>
 PLAYWRIGHT_BASE_URL=https://dev.luisices.com.br
 EOF

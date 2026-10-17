@@ -25,7 +25,7 @@ import { getPerformance, FirebasePerformance, trace as firebaseTrace } from 'fir
 
 // Configuração do Firebase - valores vêm do .env.local (com fallback seguro para CI/testes)
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyMockKeyForUnitTestingOnly123456789',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'demo-luisices.firebaseapp.com',
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'demo-luisices',
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'demo-luisices.appspot.com',

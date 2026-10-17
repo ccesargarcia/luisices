@@ -36,8 +36,8 @@ const { processAlexaEnvelope } = require('../../../functions/alexa/index');
 const { computeBindingKey } = require('../../../functions/alexa/repository');
 
 describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => {
-  const amazonUserId = 'amzn1.ask.account.CAIO_USER';
-  const personId = 'amzn1.ask.person.CAIO123';
+  const amazonUserId = 'amzn1.ask.account.Usuário Teste_USER';
+  const personId = 'amzn1.ask.person.Usuário Teste123';
   const hmacKey = 'test-secret-hmac-key-min-32-chars-long!';
 
   const baseConfig = {
@@ -58,8 +58,8 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
   );
 
   const baseIdentity = {
-    uid: 'uid-caiogarcia',
-    displayName: 'Caio',
+    uid: 'uid-Usuário Testegarcia',
+    displayName: 'Usuário Teste',
     personId,
     bindingKey,
     mode: 'voice_confirm',
@@ -78,21 +78,21 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
         global: { isEnabled: true },
       },
       userProfiles: {
-        'uid-caiogarcia': {
+        'uid-Usuário Testegarcia': {
           active: true,
           role: 'admin',
           permissions: { 'orders.create': true },
         },
       },
       alexaPermissions: {
-        'uid-caiogarcia': {
+        'uid-Usuário Testegarcia': {
           enabled: true,
           mode: 'voice_confirm',
         },
       },
       alexaBindings: {
         [bindingKey]: {
-          uid: 'uid-caiogarcia',
+          uid: 'uid-Usuário Testegarcia',
           personId,
           bindingKey,
           active: true,
@@ -250,11 +250,11 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
           'store-inactive': { name: 'Item Inativo', price: 10, active: false },
         },
         products: {
-          'user-1': { userId: 'uid-caiogarcia', name: 'Topo de Bolo Casamento', unitPrice: 35.0 },
+          'user-1': { userId: 'uid-Usuário Testegarcia', name: 'Topo de Bolo Casamento', unitPrice: 35.0 },
         },
       });
 
-      const prods = await fetchCatalogProductsForDynamicEntities(mockDb, 'uid-caiogarcia');
+      const prods = await fetchCatalogProductsForDynamicEntities(mockDb, 'uid-Usuário Testegarcia');
       expect(prods.length).toBeGreaterThanOrEqual(2);
 
       const names = prods.map((p) => p.name);
@@ -384,13 +384,13 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
     });
 
     it('gera documento APL de Boas-Vindas válido com ações rápidas', () => {
-      const directive = buildWelcomeAplDirective({ userName: 'Caio', envLabel: 'teste' });
+      const directive = buildWelcomeAplDirective({ userName: 'Usuário Teste', envLabel: 'teste' });
 
       expect(directive.type).toBe('Alexa.Presentation.APL.RenderDocument');
       expect(directive.token).toBe('luisicesWelcomeToken');
       expect(directive.document.version).toBe('1.6');
       expect(directive.document.theme).toBe('dark');
-      expect(directive.datasources.payload.welcome.userName).toBe('Caio');
+      expect(directive.datasources.payload.welcome.userName).toBe('Usuário Teste');
       expect(directive.datasources.payload.welcome.envLabel).toBe('teste');
     });
 
@@ -643,7 +643,7 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
       const directive = buildRecentOrdersAplDirective({
         orders: mockOrders,
         envLabel: 'teste',
-        userName: 'Caio',
+        userName: 'Usuário Teste',
       });
 
       expect(directive.type).toBe('Alexa.Presentation.APL.RenderDocument');
@@ -671,7 +671,7 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
           price: 90.0,
           status: 'pending',
           deliveryDate: '2026-11-01',
-          userId: 'uid-caiogarcia',
+          userId: 'uid-Usuário Testegarcia',
           deletedAt: null,
           createdAt: new Date('2026-10-01T12:00:00Z'),
         },
@@ -735,7 +735,7 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
     });
 
     it('suporta tela circular do Echo Spot mantendo o logo do Luisices no topo e ações circulares', () => {
-      const welcomeDir = buildWelcomeAplDirective({ userName: 'Caio', envLabel: 'teste' });
+      const welcomeDir = buildWelcomeAplDirective({ userName: 'Usuário Teste', envLabel: 'teste' });
       const orderDir = buildOrderCardAplDirective({
         customer: 'Mariana',
         product: 'Caixa Milk',
@@ -886,7 +886,7 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
 
     it('REGRESSÃO: todas as 5 telas APL contêm o AlexaBackground oficial com scrim escuro e login-bg', () => {
       const directives = [
-        buildWelcomeAplDirective({ userName: 'Caio', envLabel: 'teste' }),
+        buildWelcomeAplDirective({ userName: 'Usuário Teste', envLabel: 'teste' }),
         buildOrderCardAplDirective({
           customer: 'Mariana',
           product: 'Caixa Milk',
@@ -925,7 +925,7 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
 
     it('REGRESSÃO SCHEMA APL: nenhum componente Container possui propriedade spacing inválida', () => {
       const directives = [
-        buildWelcomeAplDirective({ userName: 'Caio', envLabel: 'teste' }),
+        buildWelcomeAplDirective({ userName: 'Usuário Teste', envLabel: 'teste' }),
         buildOrderCardAplDirective({
           customer: 'Mariana',
           product: 'Caixa Milk',

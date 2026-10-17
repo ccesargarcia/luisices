@@ -4,7 +4,7 @@
  */
 
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
-const { onRequest, onCall } = require('firebase-functions/v2/https');
+const { onRequest, onCall } = require('../common/sentryFunctions');
 const { getAlexaConfig, ALEXA_IDENTITY_HMAC_KEY } = require('./config');
 const { verifyAlexaHttpRequest } = require('./verification');
 const { authorizeAlexaPerson } = require('./authorization');

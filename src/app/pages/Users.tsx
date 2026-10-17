@@ -3,6 +3,9 @@ import { useSearchParams } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { firebaseUserService, DeviceSession } from '../../services/firebaseUserService';
 import { firebaseAlexaService } from '../../services/firebaseAlexaService';
+import { deepClonePermission } from '../utils/userPermissions';
+import { McpProfilePermissions } from '../components/users/McpProfilePermissions';
+import { firebaseMcpService } from '../../services/firebaseMcpService';
 import { subscribeAdminPresence, AdminPresenceSnapshot } from '../../services/adminPresenceService';
 import {
   UserProfile,
@@ -77,6 +80,17 @@ import {
   MonitorSmartphone,
   ShieldAlert,
   LogOut,
+  Bot,
+  Package,
+  Store,
+  CheckSquare,
+  Square,
+  Eye,
+  Sparkles,
+  FolderArchive,
+  Calculator,
+  Check,
+  X,
 } from 'lucide-react';
 
 
@@ -85,56 +99,214 @@ import {
 interface ModuleConfig {
   key: keyof Permission;
   label: string;
+  description: string;
   type: 'boolean' | 'crud' | 'gallery';
+  actions?: { key: string; label: string }[];
 }
 
-const MODULES: ModuleConfig[] = [
-  { key: 'dashboard',      label: 'Dashboard',                          type: 'boolean' },
-  { key: 'orders',         label: 'Pedidos',                            type: 'crud' },
-  { key: 'archivedOrders', label: 'Pedidos Arquivados (Área de Arquivamento)', type: 'crud' },
-  { key: 'customers',      label: 'Clientes',                           type: 'crud' },
-  { key: 'whatsapp',       label: 'Atendimento (WhatsApp)',             type: 'boolean' },
-  { key: 'aiCopilot',      label: 'Copiloto de IA',                     type: 'boolean' },
-  { key: 'products',       label: 'Produtos do Ateliê (Internos)',      type: 'crud' },
-  { key: 'storeProducts',  label: 'Lojinha Online - Produtos da Vitrine', type: 'crud' },
-  { key: 'store',          label: 'Lojinha Online - Aparência & Banners', type: 'boolean' },
-  { key: 'quotes',         label: 'Orçamentos',                         type: 'crud' },
-  { key: 'gallery',        label: 'Galeria',                            type: 'gallery' },
-  { key: 'exchanges',      label: 'Permutas',                           type: 'boolean' },
-  { key: 'reports',        label: 'Relatórios',                         type: 'boolean' },
-  { key: 'settings',       label: 'Configurações',                      type: 'boolean' },
-  { key: 'users',          label: 'Usuários',                           type: 'crud' },
-  { key: 'emails',         label: 'E-mails (Central & Envio)',          type: 'crud' },
-  { key: 'pricing',        label: 'Precificação & Custos de Insumos',   type: 'crud' },
+interface ModuleCategory {
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ElementType;
+  modules: ModuleConfig[];
+}
+
+const PERMISSION_CATEGORIES: ModuleCategory[] = [
+  {
+    id: 'atelie',
+    name: 'Ateliê & Produção',
+    description: 'Gestão da esteira de fabricação, pedidos, insumos e custos',
+    icon: Package,
+    modules: [
+      {
+        key: 'orders',
+        label: 'Pedidos',
+        description: 'Fluxo principal de encomendas e pedidos ativos do ateliê',
+        type: 'crud',
+        actions: [
+          { key: 'view', label: 'Ver Pedidos' },
+          { key: 'create', label: 'Criar Pedidos' },
+          { key: 'edit', label: 'Editar Dados & Status' },
+          { key: 'delete', label: 'Excluir Pedidos' },
+        ],
+      },
+      {
+        key: 'archivedOrders',
+        label: 'Pedidos Arquivados',
+        description: 'Histórico de pedidos concluídos e área de arquivamento',
+        type: 'crud',
+        actions: [
+          { key: 'view', label: 'Ver Arquivados' },
+          { key: 'create', label: 'Arquivar Pedidos' },
+          { key: 'edit', label: 'Desarquivar Pedidos' },
+          { key: 'delete', label: 'Excluir Arquivados' },
+        ],
+      },
+      {
+        key: 'pricing',
+        label: 'Precificação, Custos & Insumos',
+        description: 'Calculadora de formação de preço, matérias-primas e modelos salvos',
+        type: 'crud',
+        actions: [
+          { key: 'view', label: 'Ver Insumos & Custos' },
+          { key: 'create', label: 'Cadastrar Insumos & Modelos' },
+          { key: 'edit', label: 'Editar Insumos & Preços' },
+          { key: 'delete', label: 'Excluir Insumos & Modelos' },
+        ],
+      },
+      {
+        key: 'products',
+        label: 'Produtos Internos',
+        description: 'Catálogo de produtos e itens fabricados pelo ateliê',
+        type: 'crud',
+        actions: [
+          { key: 'view', label: 'Ver Catálogo' },
+          { key: 'create', label: 'Cadastrar Produtos' },
+          { key: 'edit', label: 'Editar Produtos' },
+          { key: 'delete', label: 'Excluir Produtos' },
+        ],
+      },
+      {
+        key: 'gallery',
+        label: 'Galeria de Artes & Fotos',
+        description: 'Acervo de fotos de trabalhos finalizados e inspirações',
+        type: 'gallery',
+        actions: [
+          { key: 'view', label: 'Ver Galeria' },
+          { key: 'create', label: 'Enviar Fotos' },
+          { key: 'delete', label: 'Excluir Fotos' },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'comercial',
+    name: 'Comercial & Clientes',
+    description: 'Atendimento, carteira de clientes, orçamentos e inteligência',
+    icon: UsersIcon,
+    modules: [
+      {
+        key: 'customers',
+        label: 'Clientes',
+        description: 'Cadastro de clientes, raio-x e histórico da carteira',
+        type: 'crud',
+        actions: [
+          { key: 'view', label: 'Ver Carteira' },
+          { key: 'create', label: 'Cadastrar Clientes' },
+          { key: 'edit', label: 'Editar Dados' },
+          { key: 'delete', label: 'Excluir Clientes' },
+        ],
+      },
+      {
+        key: 'quotes',
+        label: 'Orçamentos',
+        description: 'Elaboração e envio de orçamentos e propostas comerciais',
+        type: 'crud',
+        actions: [
+          { key: 'view', label: 'Ver Orçamentos' },
+          { key: 'create', label: 'Gerar Orçamentos' },
+          { key: 'edit', label: 'Editar Orçamentos' },
+          { key: 'delete', label: 'Excluir Orçamentos' },
+        ],
+      },
+      {
+        key: 'whatsapp',
+        label: 'Atendimento (WhatsApp)',
+        description: 'Acesso à central de conversas e mensagens via Evolution API',
+        type: 'boolean',
+      },
+      {
+        key: 'aiCopilot',
+        label: 'Copiloto de IA',
+        description: 'Assistente inteligente para sugestão de textos, orçamentos e análise',
+        type: 'boolean',
+      },
+      {
+        key: 'exchanges',
+        label: 'Permutas & Parcerias',
+        description: 'Controle de permutas de produtos e parcerias com influenciadores',
+        type: 'boolean',
+      },
+    ],
+  },
+  {
+    id: 'loja',
+    name: 'Vitrine & Lojinha Online',
+    description: 'Catálogo público e configuração da loja virtual',
+    icon: Store,
+    modules: [
+      {
+        key: 'storeProducts',
+        label: 'Produtos da Vitrine',
+        description: 'Produtos expostos na vitrine online para pedidos públicos',
+        type: 'crud',
+        actions: [
+          { key: 'view', label: 'Ver Vitrine' },
+          { key: 'create', label: 'Cadastrar na Vitrine' },
+          { key: 'edit', label: 'Editar Produtos' },
+          { key: 'delete', label: 'Remover da Vitrine' },
+        ],
+      },
+      {
+        key: 'store',
+        label: 'Configuração da Loja',
+        description: 'Banners, aparência, modo de exibição e links públicos',
+        type: 'boolean',
+      },
+    ],
+  },
+  {
+    id: 'admin',
+    name: 'Administração & Gestão',
+    description: 'Métricas executivas, equipe, e-mails e configurações',
+    icon: ShieldCheck,
+    modules: [
+      {
+        key: 'users',
+        label: 'Gestão de Usuários & Equipe',
+        description: 'Cadastro de membros, níveis de acesso e sessões ativas',
+        type: 'crud',
+        actions: [
+          { key: 'view', label: 'Ver Usuários' },
+          { key: 'create', label: 'Convidar / Criar' },
+          { key: 'edit', label: 'Editar Perfis & Permissões' },
+          { key: 'delete', label: 'Excluir Usuários' },
+        ],
+      },
+      {
+        key: 'emails',
+        label: 'Central de E-mails',
+        description: 'Envio de confirmações, histórico e caixa de mensagens',
+        type: 'crud',
+        actions: [
+          { key: 'view', label: 'Ver Central' },
+          { key: 'create', label: 'Enviar E-mails' },
+          { key: 'edit', label: 'Alterar Status / Lido' },
+          { key: 'delete', label: 'Excluir Mensagens' },
+        ],
+      },
+      {
+        key: 'reports',
+        label: 'Relatórios Gerenciais',
+        description: 'DRE, faturamento mensal e indicadores financeiros',
+        type: 'boolean',
+      },
+      {
+        key: 'settings',
+        label: 'Configurações Gerais',
+        description: 'Parâmetros globais do ateliê e personalização do sistema',
+        type: 'boolean',
+      },
+      {
+        key: 'dashboard',
+        label: 'Dashboard Principal',
+        description: 'Acesso aos cartões de resumo e métricas da página inicial',
+        type: 'boolean',
+      },
+    ],
+  },
 ];
-
-function deepClonePermission(p?: Permission | null): Permission {
-  const source = p && typeof p === 'object' ? p as unknown as Record<string, any> : {};
-  const clone = JSON.parse(JSON.stringify(DEFAULT_USER_PERMISSIONS)) as Record<string, any>;
-  const crudKeys = ['orders', 'archivedOrders', 'customers', 'products', 'quotes', 'users', 'emails', 'pricing', 'storeProducts'];
-  const booleanKeys = ['dashboard', 'reports', 'exchanges', 'settings', 'store', 'whatsapp', 'aiCopilot'];
-
-  for (const key of crudKeys) {
-    const value = source[key];
-    if (typeof value === 'boolean') {
-      clone[key] = { view: value, create: value, edit: value, delete: value };
-    } else if (value && typeof value === 'object') {
-      clone[key] = { ...(clone[key] || {}), ...value };
-    }
-  }
-
-  if (source.gallery && typeof source.gallery === 'object') {
-    clone.gallery = { ...clone.gallery, ...source.gallery };
-  }
-
-  for (const key of booleanKeys) {
-    const value = source[key];
-    if (typeof value === 'boolean') clone[key] = value;
-    else if (value && typeof value === 'object' && typeof value.view === 'boolean') clone[key] = value.view;
-  }
-
-  return clone as Permission;
-}
 
 function formatUserDate(value?: string) {
   if (!value) return 'Nunca';
@@ -159,6 +331,8 @@ interface PermissionMatrixProps {
 }
 
 function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
+  const [activeCategoryTab, setActiveCategoryTab] = useState<string>('all');
+
   function toggleBoolean(key: keyof Permission) {
     const next = deepClonePermission(permissions);
     (next[key] as boolean) = !(next[key] as boolean);
@@ -167,7 +341,7 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
 
   function toggleCrudField(key: keyof Permission, field: keyof ModulePermission) {
     const next = deepClonePermission(permissions);
-    if (!next[key]) {
+    if (!next[key] || typeof next[key] !== 'object') {
       (next as any)[key] = { view: false, create: false, edit: false, delete: false };
     }
     const mod = next[key] as ModulePermission;
@@ -177,69 +351,360 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
 
   function toggleGalleryField(field: keyof Permission['gallery']) {
     const next = deepClonePermission(permissions);
+    if (!next.gallery) {
+      next.gallery = { view: false, create: false, delete: false };
+    }
     next.gallery[field] = !next.gallery[field];
     onChange(next);
   }
 
+  // Marcar ou desmarcar todas as ações de um módulo específico
+  function toggleAllModuleActions(modConfig: ModuleConfig) {
+    const next = deepClonePermission(permissions);
+    if (modConfig.type === 'boolean') {
+      (next[modConfig.key] as boolean) = !(next[modConfig.key] as boolean);
+    } else if (modConfig.type === 'crud') {
+      const current = (next[modConfig.key] as ModulePermission) || { view: false, create: false, edit: false, delete: false };
+      const allEnabled = current.view && current.create && current.edit && current.delete;
+      const targetState = !allEnabled;
+      (next[modConfig.key] as ModulePermission) = {
+        view: targetState,
+        create: targetState,
+        edit: targetState,
+        delete: targetState,
+      };
+    } else if (modConfig.type === 'gallery') {
+      const current = next.gallery || { view: false, create: false, delete: false };
+      const allEnabled = current.view && current.create && current.delete;
+      const targetState = !allEnabled;
+      next.gallery = {
+        view: targetState,
+        create: targetState,
+        delete: targetState,
+      };
+    }
+    onChange(next);
+  }
+
+  // Predefinições Rápidas (Acesso Total, Somente Leitura, Operador, Limpar)
+  function applyQuickPreset(preset: 'all' | 'readonly' | 'operator' | 'none') {
+    const next = deepClonePermission(permissions);
+
+    if (preset === 'all') {
+      // Ativa todas as permissões
+      Object.assign(next, deepClonePermission(ADMIN_PERMISSIONS));
+    } else if (preset === 'none') {
+      // Limpa todas as permissões
+      next.dashboard = false;
+      next.reports = false;
+      next.exchanges = false;
+      next.settings = false;
+      next.store = false;
+      next.whatsapp = false;
+      next.aiCopilot = false;
+      next.orders = { view: false, create: false, edit: false, delete: false };
+      next.archivedOrders = { view: false, create: false, edit: false, delete: false };
+      next.customers = { view: false, create: false, edit: false, delete: false };
+      next.products = { view: false, create: false, edit: false, delete: false };
+      next.storeProducts = { view: false, create: false, edit: false, delete: false };
+      next.quotes = { view: false, create: false, edit: false, delete: false };
+      next.gallery = { view: false, create: false, delete: false };
+      next.users = { view: false, create: false, edit: false, delete: false };
+      next.emails = { view: false, create: false, edit: false, delete: false };
+      next.pricing = { view: false, create: false, edit: false, delete: false };
+    } else if (preset === 'readonly') {
+      // Apenas consulta (visualização)
+      next.dashboard = true;
+      next.reports = true;
+      next.exchanges = true;
+      next.settings = false;
+      next.store = false;
+      next.whatsapp = false;
+      next.aiCopilot = false;
+      next.orders = { view: true, create: false, edit: false, delete: false };
+      next.archivedOrders = { view: true, create: false, edit: false, delete: false };
+      next.customers = { view: true, create: false, edit: false, delete: false };
+      next.products = { view: true, create: false, edit: false, delete: false };
+      next.storeProducts = { view: true, create: false, edit: false, delete: false };
+      next.quotes = { view: true, create: false, edit: false, delete: false };
+      next.gallery = { view: true, create: false, delete: false };
+      next.users = { view: false, create: false, edit: false, delete: false };
+      next.emails = { view: true, create: false, edit: false, delete: false };
+      next.pricing = { view: true, create: false, edit: false, delete: false };
+    } else if (preset === 'operator') {
+      // Operador de produção e ateliê
+      Object.assign(next, deepClonePermission(EMPLOYEE_PERMISSIONS));
+      next.pricing = { view: true, create: true, edit: true, delete: false };
+    }
+    onChange(next);
+  }
+
+  // Contagem de ações habilitadas para exibição no badge
+  function getModuleActiveCount(modConfig: ModuleConfig): { count: number; total: number; all: boolean } {
+    if (modConfig.type === 'boolean') {
+      const active = Boolean(permissions[modConfig.key]);
+      return { count: active ? 1 : 0, total: 1, all: active };
+    }
+    if (modConfig.type === 'crud') {
+      const current = (permissions[modConfig.key] as ModulePermission) || { view: false, create: false, edit: false, delete: false };
+      const count = [current.view, current.create, current.edit, current.delete].filter(Boolean).length;
+      return { count, total: 4, all: count === 4 };
+    }
+    if (modConfig.type === 'gallery') {
+      const current = permissions.gallery || { view: false, create: false, delete: false };
+      const count = [current.view, current.create, current.delete].filter(Boolean).length;
+      return { count, total: 3, all: count === 3 };
+    }
+    return { count: 0, total: 0, all: false };
+  }
+
+  const displayedCategories = activeCategoryTab === 'all'
+    ? PERMISSION_CATEGORIES
+    : PERMISSION_CATEGORIES.filter((c) => c.id === activeCategoryTab);
+
   return (
-    <div className="space-y-3 max-h-[35dvh] overflow-y-auto pr-1 sm:max-h-[40vh]">
-      {MODULES.map(({ key, label, type }) => (
-        <div key={key} className="border rounded-md p-3 space-y-2">
-          <p className="text-sm font-semibold">{label}</p>
-          {type === 'boolean' && (
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id={`perm-${key}`}
-                checked={permissions[key] as boolean}
-                onCheckedChange={() => toggleBoolean(key)}
-              />
-              <Label htmlFor={`perm-${key}`} className="text-xs font-normal">
-                Acesso habilitado
-              </Label>
-            </div>
-          )}
-          {type === 'crud' && (
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              {(['view', 'create', 'edit', 'delete'] as (keyof ModulePermission)[]).map(field => {
-                let actionLabel = field === 'view' ? 'Ver' : field === 'create' ? 'Criar' : field === 'edit' ? 'Editar' : 'Excluir';
-                if (key === 'archivedOrders') {
-                  actionLabel = field === 'view' ? 'Ver / Acessar' : field === 'create' ? 'Arquivar' : field === 'edit' ? 'Desarquivar' : 'Excluir';
-                } else if (key === 'emails') {
-                  actionLabel = field === 'view' ? 'Ver Central' : field === 'create' ? 'Enviar E-mails' : field === 'edit' ? 'Alterar Status' : 'Excluir';
-                }
-                return (
-                  <div key={field} className="flex items-center gap-1.5">
-                    <Checkbox
-                      id={`perm-${key}-${field}`}
-                      checked={Boolean((permissions[key as keyof Permission] as ModulePermission)?.[field])}
-                      onCheckedChange={() => toggleCrudField(key as keyof Permission, field)}
-                    />
-                    <Label htmlFor={`perm-${key}-${field}`} className="text-xs font-normal">
-                      {actionLabel}
-                    </Label>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {type === 'gallery' && (
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              {(['view', 'create', 'delete'] as (keyof Permission['gallery'])[]).map(field => (
-                <div key={field} className="flex items-center gap-1.5">
-                  <Checkbox
-                    id={`perm-gallery-${field}`}
-                    checked={Boolean(permissions.gallery?.[field])}
-                    onCheckedChange={() => toggleGalleryField(field)}
-                  />
-                  <Label htmlFor={`perm-gallery-${field}`} className="text-xs font-normal">
-                    {field === 'view' ? 'Ver' : field === 'create' ? 'Criar' : 'Excluir'}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          )}
+    <div className="space-y-3.5">
+      {/* Barra de Ações Rápidas / Presets de Permissão */}
+      <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg border border-border/70 bg-muted/30">
+        <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+          <Sparkles className="size-3.5 text-primary" />
+          Ações Rápidas:
         </div>
-      ))}
+        <div className="flex flex-wrap gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs font-normal"
+            onClick={() => applyQuickPreset('all')}
+            title="Marcar todas as permissões"
+          >
+            <CheckSquare className="size-3 mr-1 text-emerald-600" />
+            Marcar Todos
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs font-normal"
+            onClick={() => applyQuickPreset('readonly')}
+            title="Permitir apenas visualização sem edições ou exclusões"
+          >
+            <Eye className="size-3 mr-1 text-sky-600" />
+            Somente Leitura
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs font-normal"
+            onClick={() => applyQuickPreset('operator')}
+            title="Configurar permissões de operador de ateliê"
+          >
+            <Package className="size-3 mr-1 text-amber-600" />
+            Operador de Ateliê
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-xs font-normal text-muted-foreground hover:text-destructive"
+            onClick={() => applyQuickPreset('none')}
+            title="Desmarcar todas as permissões"
+          >
+            <Square className="size-3 mr-1" />
+            Desmarcar Tudo
+          </Button>
+        </div>
+      </div>
+
+      {/* Filtro por Categorias */}
+      <div className="flex flex-wrap gap-1 border-b pb-2">
+        <button
+          type="button"
+          onClick={() => setActiveCategoryTab('all')}
+          className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${
+            activeCategoryTab === 'all'
+              ? 'bg-primary text-primary-foreground shadow-xs'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+          }`}
+        >
+          Todas as Áreas
+        </button>
+        {PERMISSION_CATEGORIES.map((cat) => {
+          const Icon = cat.icon;
+          return (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setActiveCategoryTab(cat.id)}
+              className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+                activeCategoryTab === cat.id
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              }`}
+            >
+              <Icon className="size-3.5" />
+              {cat.name}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Lista de Módulos Agrupados */}
+      <div className="space-y-4 max-h-[46dvh] overflow-y-auto pr-1 sm:max-h-[50vh]">
+        {displayedCategories.map((category) => {
+          const CategoryIcon = category.icon;
+          return (
+            <div key={category.id} className="space-y-2.5">
+              <div className="flex items-center gap-2 pt-1">
+                <CategoryIcon className="size-4 text-primary shrink-0" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  {category.name}
+                </h4>
+                <div className="h-px flex-1 bg-border/60" />
+              </div>
+
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                {category.modules.map((modConfig) => {
+                  const { key, label, description, type, actions } = modConfig;
+                  const activeStats = getModuleActiveCount(modConfig);
+
+                  return (
+                    <div
+                      key={key}
+                      className="border rounded-lg p-3 space-y-2 bg-card hover:border-border transition-colors shadow-2xs flex flex-col justify-between"
+                    >
+                      {/* Cabeçalho do Módulo */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold truncate leading-tight text-foreground">
+                            {label}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
+                            {description}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Badge
+                            variant={activeStats.count > 0 ? 'default' : 'secondary'}
+                            className={`text-[10px] px-1.5 py-0 h-4.5 font-normal ${
+                              activeStats.all
+                                ? 'bg-emerald-600 text-white dark:bg-emerald-700'
+                                : activeStats.count > 0
+                                ? 'bg-sky-600 text-white dark:bg-sky-700'
+                                : 'text-muted-foreground'
+                            }`}
+                          >
+                            {activeStats.count === 0
+                              ? 'Inativo'
+                              : `${activeStats.count}/${activeStats.total}`}
+                          </Badge>
+                          {type !== 'boolean' && (
+                            <button
+                              type="button"
+                              onClick={() => toggleAllModuleActions(modConfig)}
+                              className="text-[10px] font-medium text-primary hover:underline px-1 py-0.5"
+                              title={activeStats.all ? 'Desmarcar ações deste módulo' : 'Marcar todas as ações deste módulo'}
+                            >
+                              {activeStats.all ? 'Limpar' : 'Todos'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Conteúdo de Permissão Booleana */}
+                      {type === 'boolean' && (
+                        <div className="pt-1 flex items-center justify-between border-t border-border/40">
+                          <Label
+                            htmlFor={`perm-${key}`}
+                            className="text-xs font-normal text-muted-foreground cursor-pointer select-none"
+                          >
+                            Acesso ao módulo liberado
+                          </Label>
+                          <Switch
+                            id={`perm-${key}`}
+                            checked={Boolean(permissions[key])}
+                            onCheckedChange={() => toggleBoolean(key)}
+                          />
+                        </div>
+                      )}
+
+                      {/* Conteúdo de Permissão Granular CRUD */}
+                      {type === 'crud' && actions && (
+                        <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 pt-1.5 border-t border-border/40">
+                          {actions.map((act) => {
+                            const field = act.key as keyof ModulePermission;
+                            const isChecked = Boolean(
+                              (permissions[key as keyof Permission] as ModulePermission)?.[field]
+                            );
+                            const id = `perm-${key}-${field}`;
+
+                            return (
+                              <div
+                                key={field}
+                                className={`flex items-center gap-1.5 p-1 rounded-md transition-colors ${
+                                  isChecked ? 'bg-primary/5 dark:bg-primary/10' : 'hover:bg-muted/40'
+                                }`}
+                              >
+                                <Checkbox
+                                  id={id}
+                                  checked={isChecked}
+                                  onCheckedChange={() => toggleCrudField(key as keyof Permission, field)}
+                                />
+                                <Label
+                                  htmlFor={id}
+                                  className="text-xs font-normal text-foreground cursor-pointer truncate select-none leading-none"
+                                  title={act.label}
+                                >
+                                  {act.label}
+                                </Label>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Conteúdo de Permissão Galeria */}
+                      {type === 'gallery' && actions && (
+                        <div className="grid grid-cols-3 gap-x-2 gap-y-1.5 pt-1.5 border-t border-border/40">
+                          {actions.map((act) => {
+                            const field = act.key as keyof Permission['gallery'];
+                            const isChecked = Boolean(permissions.gallery?.[field]);
+                            const id = `perm-gallery-${field}`;
+
+                            return (
+                              <div
+                                key={field}
+                                className={`flex items-center gap-1.5 p-1 rounded-md transition-colors ${
+                                  isChecked ? 'bg-primary/5 dark:bg-primary/10' : 'hover:bg-muted/40'
+                                }`}
+                              >
+                                <Checkbox
+                                  id={id}
+                                  checked={isChecked}
+                                  onCheckedChange={() => toggleGalleryField(field)}
+                                />
+                                <Label
+                                  htmlFor={id}
+                                  className="text-xs font-normal text-foreground cursor-pointer truncate select-none leading-none"
+                                  title={act.label}
+                                >
+                                  {act.label}
+                                </Label>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -296,7 +761,12 @@ function UserFormDialog({ open, editingUser, onClose, onSaved }: UserFormDialogP
       setDisplayName(editingUser.displayName);
       setEmail(editingUser.email);
       setRole(editingUser.role);
-      setPermissions(deepClonePermission(editingUser.permissions));
+      const loadedPermissions = deepClonePermission(editingUser.permissions);
+      const legacyScopes = (editingUser as UserProfile & { mcpScopes?: string[] }).mcpScopes;
+      if (!Object.prototype.hasOwnProperty.call(editingUser.permissions || {}, 'mcpScopes') && Array.isArray(legacyScopes)) {
+        loadedPermissions.mcpScopes = [...legacyScopes];
+      }
+      setPermissions(loadedPermissions);
       setPassword('');
       setAlexaDirty(false);
       setAlexaError(null);
@@ -462,6 +932,8 @@ function UserFormDialog({ open, editingUser, onClose, onSaved }: UserFormDialogP
             <PermissionMatrix permissions={permissions} onChange={setPermissions} />
           </div>
 
+          <McpProfilePermissions role={role} permissions={permissions} onChange={setPermissions} />
+
           {/* Integração Alexa (apenas ao editar usuário existente) */}
           {isEdit && (
             <div className="space-y-3 p-4 rounded-xl border border-sky-500/25 bg-sky-500/5 dark:bg-sky-950/20">
@@ -551,13 +1023,15 @@ interface UserDevicesDialogProps {
   open: boolean;
   user: UserProfile | null;
   onClose: () => void;
+  onSaved?: () => void;
 }
 
-function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
+function UserDevicesDialog({ open, user, onClose, onSaved }: UserDevicesDialogProps) {
   const { user: currentUser, logout } = useAuth();
   const [devices, setDevices] = useState<DeviceSession[]>([]);
   const [loading, setLoading] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
+  const [revokingMcp, setRevokingMcp] = useState(false);
 
   const currentDeviceId = typeof window !== 'undefined' ? localStorage.getItem('luisices_device_id') : null;
 
@@ -585,6 +1059,23 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
       toast.error('Erro ao carregar dispositivos');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleRevokeMcpSession() {
+    if (!user) return;
+    setRevokingMcp(true);
+    try {
+      await firebaseMcpService.revokeUserSessions(user.uid);
+      toast.success(`Conexão MCP / ChatGPT de ${user.displayName} revogada com sucesso.`);
+      if (user) {
+        user.mcpSessionActive = false;
+      }
+      onSaved?.();
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao revogar conexão MCP');
+    } finally {
+      setRevokingMcp(false);
     }
   }
 
@@ -625,12 +1116,18 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
     setRevoking('all');
     try {
       const result = await firebaseUserService.revokeAllSessions(user.uid);
+      // Revoga também sessões MCP/ChatGPT ativas
+      await firebaseMcpService.revokeUserSessions(user.uid).catch(() => {});
+      if (user) {
+        user.mcpSessionActive = false;
+      }
       if (result.synced === true) {
         toast.success('Revogação global concluída. As sessões anteriores precisam de novo login.');
       } else {
         toast.warning('Revogação global iniciada, com sincronização pendente. Confira o estado antes de considerar o bloqueio concluído.');
       }
       setConfirmRevoke(false);
+      onSaved?.();
       if (currentUser?.uid === user?.uid) {
         localStorage.removeItem('luisices_device_id');
         localStorage.removeItem('luisices_device_last_reg');
@@ -657,6 +1154,51 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
           </DialogHeader>
 
           <DialogBody className="p-4 sm:p-6 overflow-y-auto space-y-4 bg-muted/10">
+            {user?.mcpSessionActive && (
+              <Card className="border-emerald-500/40 bg-emerald-500/10 dark:bg-emerald-500/15 overflow-hidden shadow-xs">
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-start sm:items-center gap-3">
+                      <div className="relative p-2 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shrink-0">
+                        <Bot className="size-5" />
+                        <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                      </div>
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-foreground">Conexão MCP / ChatGPT</span>
+                          <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] py-0">
+                            🟢 Sessão Aberta
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Autenticado via OAuth 2.1 com permissão de assistente de IA.
+                          {user.lastMcpConnectedAt && ` Conectado em: ${formatUserDate(user.lastMcpConnectedAt)}`}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive hover:bg-destructive/10 border-destructive/30 shrink-0 h-8 text-xs font-medium"
+                      disabled={revokingMcp || loading}
+                      onClick={handleRevokeMcpSession}
+                    >
+                      {revokingMcp ? (
+                        <Loader2 className="size-3.5 animate-spin mr-1" />
+                      ) : (
+                        <LogOut className="size-3.5 mr-1" />
+                      )}
+                      Revogar Sessão MCP
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {loading ? (
               <div className="flex items-center justify-center h-40">
                 <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -1178,7 +1720,15 @@ export function Users() {
                     {paginatedUsers.map(u => (
                       <TableRow key={u.uid} className="group">
                         <TableCell className="font-medium">
-                          <div className="flex items-center">{renderPresence(u.uid)} {u.displayName}{u.uid === currentUser?.uid && <Badge variant="outline" className="ml-2 text-xs">você</Badge>}</div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {renderPresence(u.uid)} {u.displayName}
+                            {u.uid === currentUser?.uid && <Badge variant="outline" className="text-xs">você</Badge>}
+                            {u.mcpSessionActive && (
+                              <Badge className="bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] py-0 gap-1 font-medium" title="Sessão aberta via MCP / ChatGPT">
+                                <Bot className="size-3 text-emerald-500" /> MCP Conectado
+                              </Badge>
+                            )}
+                          </div>
                           <div className="text-muted-foreground text-xs font-normal">{u.email}</div>
                         </TableCell>
                         <TableCell>
@@ -1251,10 +1801,15 @@ export function Users() {
                     <CardContent className="p-4 space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="font-semibold truncate flex items-center">
+                          <p className="font-semibold truncate flex items-center flex-wrap gap-1">
                             {renderPresence(u.uid)} {u.displayName}
                             {u.uid === currentUser?.uid && (
-                              <Badge variant="outline" className="ml-2 text-xs">você</Badge>
+                              <Badge variant="outline" className="text-xs">você</Badge>
+                            )}
+                            {u.mcpSessionActive && (
+                              <Badge className="bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] py-0 gap-1 font-medium">
+                                <Bot className="size-3 text-emerald-500" /> MCP
+                              </Badge>
                             )}
                           </p>
                           <p className="text-xs text-muted-foreground truncate">{u.email}</p>
@@ -1466,6 +2021,7 @@ export function Users() {
         open={Boolean(viewDevicesUser)}
         user={viewDevicesUser}
         onClose={() => setViewDevicesUser(null)}
+        onSaved={fetchUsers}
       />
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>

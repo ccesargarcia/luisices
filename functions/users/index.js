@@ -4,11 +4,13 @@
 
 const { FieldValue, Timestamp, getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('firebase-functions/v2/https');
+const { onCall } = require('../common/sentryFunctions');
 const crypto = require('crypto');
 const { RESEND_API_KEY, EVOLUTION_API_KEY } = require('../common/secrets');
 const { passwordResetLimiter, adminUserActionLimiter } = require('../common/rateLimiters');
 const userSyncService = require('./userSyncService');
+const { validateProfileMcpScopes } = require('../mcp/profilePermissions');
 const helpers = require('../common/helpers');
 const {
   getResend,
@@ -41,6 +43,40 @@ const INVITED_USER_PERMISSIONS = {
   emails: { view: false, create: false, edit: false, delete: false },
   pricing: { view: true, create: true, edit: true, delete: true },
 };
+
+const VALID_PERMISSION_MODULES = [
+  'dashboard', 'orders', 'archivedOrders', 'customers', 'whatsapp',
+  'aiCopilot', 'products', 'storeProducts', 'store', 'quotes',
+  'gallery', 'exchanges', 'reports', 'settings', 'users', 'emails', 'pricing', 'mcpAccess', 'mcpScopes'
+];
+
+function sanitizeAndValidatePermissions(perms) {
+  if (!perms || typeof perms !== 'object' || Array.isArray(perms)) {
+    return {};
+  }
+  const clean = {};
+  for (const key of Object.keys(perms)) {
+    if (!VALID_PERMISSION_MODULES.includes(key)) {
+      continue;
+    }
+    const val = perms[key];
+    if (typeof val === 'boolean') {
+      clean[key] = val;
+    } else if (Array.isArray(val)) {
+      if (key === 'mcpScopes') {
+        clean[key] = val.filter((s) => typeof s === 'string' && s.length <= 64);
+      }
+    } else if (val && typeof val === 'object') {
+      clean[key] = {
+        view: val.view === true,
+        create: val.create === true,
+        edit: val.edit === true,
+        delete: val.delete === true,
+      };
+    }
+  }
+  return clean;
+}
 
 async function consumeAdminUserAction(uid) {
   try {
@@ -709,6 +745,13 @@ const createUser = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Permissões inválidas.');
   }
 
+  const cleanPermissions = permissions ? sanitizeAndValidatePermissions(permissions) : {};
+
+  try {
+    validateProfileMcpScopes(cleanPermissions);
+  } catch (err) {
+    throw new HttpsError('invalid-argument', err.message);
+  }
   const normalizedEmail = email.trim().toLowerCase();
   const normalizedName = displayName.trim();
 
@@ -726,7 +769,7 @@ const createUser = onCall(async (request) => {
       email: normalizedEmail,
       displayName: normalizedName,
       role,
-      permissions: permissions || {},
+      permissions: cleanPermissions,
       active: true,
       createdAt: new Date().toISOString(),
       createdBy: request.auth.uid,
@@ -786,12 +829,14 @@ const updateUser = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Permissões inválidas.');
   }
 
+  const cleanUpdatedPermissions = permissions !== undefined ? sanitizeAndValidatePermissions(permissions) : undefined;
+
   try {
     const result = await userSyncService.updateUserProfile({
       uid,
       displayName,
       role,
-      permissions,
+      permissions: cleanUpdatedPermissions,
       active,
       actorUid: request.auth.uid,
     });
@@ -803,6 +848,9 @@ const updateUser = onCall(async (request) => {
       pendingSteps: result.pendingSteps,
     };
   } catch (err) {
+    if (err.code === 'invalid-argument') {
+      throw new HttpsError('invalid-argument', err.message);
+    }
     if (err.code === 'failed-precondition') {
       throw new HttpsError('failed-precondition', err.message);
     }

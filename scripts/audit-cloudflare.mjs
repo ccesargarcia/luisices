@@ -258,18 +258,24 @@ async function main() {
       const browserCacheTtl = await cfFetch(`/zones/${z.id}/settings/browser_cache_ttl`).catch(() => ({}));
       const alwaysHttps = await cfFetch(`/zones/${z.id}/settings/always_use_https`).catch(() => ({}));
       const brotli = await cfFetch(`/zones/${z.id}/settings/brotli`).catch(() => ({}));
+      const browserCheck = await cfFetch(`/zones/${z.id}/settings/browser_check`).catch(() => ({}));
+      const secLevel = await cfFetch(`/zones/${z.id}/settings/security_level`).catch(() => ({}));
 
-      console.log(`\n    ⚙️ Configurações Globais de Cache & Rede:`);
+      console.log(`\n    ⚙️ Configurações Globais de Cache, Segurança & Rede:`);
       console.log(`      - Nível de Cache (Cache Level): ${cacheLevel.value || 'standard'}`);
       console.log(`      - Browser Cache TTL: ${browserCacheTtl.value === 0 ? 'Respeitar cabeçalhos existentes da origem' : `${browserCacheTtl.value}s`}`);
       console.log(`      - Always Use HTTPS: ${alwaysHttps.value || 'off'}`);
       console.log(`      - Compressão Brotli: ${brotli.value || 'off'}`);
+      console.log(`      - Browser Integrity Check (BIC): ${browserCheck.value || 'N/A'}${browserCheck.value === 'off' ? ' (Permite MCP / OpenAPI ✅)' : ' (Risco de Erro 1010 ⚠️)'}`);
+      console.log(`      - Security Level: ${secLevel.value || 'N/A'}`);
 
       markdownReport += `**Configurações Globais de Cache & Rede:**\n\n`;
       markdownReport += `- **Nível de Cache:** \`${cacheLevel.value || 'standard'}\`\n`;
       markdownReport += `- **Browser Cache TTL:** \`${browserCacheTtl.value === 0 ? 'Respeitar cabeçalhos existentes da origem' : `${browserCacheTtl.value}s`}\`\n`;
       markdownReport += `- **Always Use HTTPS:** \`${alwaysHttps.value || 'off'}\`\n`;
-      markdownReport += `- **Compressão Brotli:** \`${brotli.value || 'off'}\`\n\n`;
+      markdownReport += `- **Compressão Brotli:** \`${brotli.value || 'off'}\`\n`;
+      markdownReport += `- **Browser Integrity Check (BIC):** \`${browserCheck.value || 'N/A'}\`\n`;
+      markdownReport += `- **Security Level:** \`${secLevel.value || 'N/A'}\`\n\n`;
     } catch {
       // Ignorar se não puder ler settings
     }

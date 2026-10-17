@@ -1,4 +1,4 @@
-const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { onSchedule } = require('../common/sentryFunctions');
 const { getStorage } = require('firebase-admin/storage');
 const { cleanupEmailDraftFiles, EMAIL_DRAFT_MAX_AGE_MS } = require('./cleanupCore');
 

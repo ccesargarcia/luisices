@@ -1,0 +1,46 @@
+import type { Permission, UserRole } from '../types';
+
+export const MCP_PROFILE_SCOPES = [
+  { id: 'orders:read', label: 'Consultar pedidos, prazos e agenda', description: 'Pesquisa pedidos e consulta a agenda de entregas em períodos de até 31 dias.', module: 'orders', action: 'view', defaultGranted: true },
+  { id: 'orders:draft', label: 'Preparar rascunhos de pedidos', module: 'orders', action: 'view', defaultGranted: false },
+  { id: 'orders:create', label: 'Criar pedidos', module: 'orders', action: 'create', defaultGranted: true },
+  { id: 'orders:update', label: 'Editar pedidos, entregas e etapas', description: 'Altera dados e valores do pedido, atualiza informações de entrega e avança a etapa de produção com confirmação.', module: 'orders', action: 'edit', defaultGranted: false },
+  { id: 'customers:read', label: 'Consultar clientes e histórico', description: 'Pesquisa clientes e consulta pedidos associados; o histórico de pedidos também exige “Consultar pedidos”.', module: 'customers', action: 'view', defaultGranted: true },
+  { id: 'customers:create', label: 'Criar clientes', module: 'customers', action: 'create', defaultGranted: false },
+  { id: 'customers:update', label: 'Editar clientes', module: 'customers', action: 'edit', defaultGranted: false },
+  { id: 'payments:read', label: 'Consultar pagamentos', module: 'orders', action: 'view', defaultGranted: false },
+  { id: 'payments:write', label: 'Registrar pagamentos', module: 'orders', action: 'edit', defaultGranted: false },
+  { id: 'pricing:estimate', label: 'Calcular preços', module: 'pricing', action: 'view', defaultGranted: true },
+  { id: 'whatsapp:compose', label: 'Preparar mensagens de WhatsApp', module: 'whatsapp', action: 'view', defaultGranted: true },
+  { id: 'gallery:read', label: 'Consultar portfólio', module: 'gallery', action: 'view', defaultGranted: true },
+  { id: 'supplies:read', label: 'Consultar insumos e estoque', module: 'pricing', action: 'view', defaultGranted: true },
+  { id: 'pricing:models:read', label: 'Consultar modelos de precificação', module: 'pricing', action: 'view', defaultGranted: true },
+  { id: 'pricing:models:write', label: 'Salvar modelos de precificação', module: 'pricing', action: 'create', defaultGranted: false },
+  { id: 'quotes:read', label: 'Consultar orçamentos', module: 'quotes', action: 'view', defaultGranted: true },
+  { id: 'quotes:write', label: 'Criar e gerenciar orçamentos', module: 'quotes', action: 'create', defaultGranted: true },
+  { id: 'store:read', label: 'Consultar lojinha virtual', module: 'storeProducts', action: 'view', defaultGranted: true },
+  { id: 'financial:read', label: 'Consultar relatórios financeiros', module: 'reports', action: 'view', defaultGranted: false, adminOnly: true },
+  { id: 'team:read', label: 'Consultar produtividade da equipe', module: 'users', action: 'view', defaultGranted: false, adminOnly: true },
+] as const;
+
+export function canUseMcpScope(scopeId: string, role: UserRole, permissions: Permission): boolean {
+  const scope = MCP_PROFILE_SCOPES.find((item) => item.id === scopeId);
+  if (!scope) return false;
+  if ('adminOnly' in scope && scope.adminOnly && role !== 'admin') return false;
+  if (role === 'admin') return true;
+  const permission = permissions[scope.module];
+  if (permission === undefined) return false;
+  if (typeof permission === 'boolean') return permission;
+  return Boolean((permission as unknown as Record<string, unknown>)?.[scope.action] === true);
+}
+
+export function getProfileMcpScopes(role: UserRole, permissions: Permission): string[] {
+  if (Object.prototype.hasOwnProperty.call(permissions, 'mcpScopes')) {
+    return Array.isArray(permissions.mcpScopes)
+      ? [...new Set(permissions.mcpScopes.filter((id) => MCP_PROFILE_SCOPES.some((scope) => scope.id === id)))]
+      : [];
+  }
+  return MCP_PROFILE_SCOPES
+    .filter((scope) => scope.defaultGranted && canUseMcpScope(scope.id, role, permissions))
+    .map((scope) => scope.id);
+}

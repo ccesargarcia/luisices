@@ -120,7 +120,7 @@ describe('Alexa: Fluxo de Pareamento Supervisionado e Vinculação de Voz', () =
         'admin-uid': {
           role: 'admin',
           active: true,
-          displayName: 'Caio Garcia',
+          displayName: 'Usuário Teste',
         },
         'amanda-uid': {
           role: 'user',
@@ -134,7 +134,7 @@ describe('Alexa: Fluxo de Pareamento Supervisionado e Vinculação de Voz', () =
     const approvalResult = await approveAlexaPairingAdmin({
       code: rawCode,
       targetUid: 'amanda-uid',
-      request: { auth: { uid: 'admin-uid', token: { email: 'admin@luisices.com.br' } } },
+      request: { auth: { uid: 'admin-uid', token: { email: 'test-user@example.invalid' } } },
       db: mockDb,
       config: baseConfig,
     });
@@ -225,7 +225,7 @@ describe('Alexa: Fluxo de Pareamento Supervisionado e Vinculação de Voz', () =
         context: {
           System: {
             application: { applicationId: 'amzn1.ask.skill.test-dev' },
-            person: { personId: 'amzn1.ask.person.CAIO' },
+            person: { personId: 'amzn1.ask.person.Usuário Teste' },
             user: { userId: 'amzn1.ask.account.HOME' },
             device: { deviceId: 'echo-pop-1' },
           },

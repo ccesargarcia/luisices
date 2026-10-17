@@ -23,8 +23,10 @@ on:
           - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,syncAllOrdersToAiView,submitPublicCatalogOrder'
           - 'cleanupEmailDrafts,resendReceivingWebhook,sendCustomEmail,getEmailUsage'
           - 'updateUser,recordUserPasswordChange,completeUserInvitation,createUserInvitation,createUser,getUserAccountMetadata,deleteUser,revokeAllSessions,repairUserClaims,registerDeviceSession,revokeDeviceSession,sendAdminPasswordReset,sendPasswordResetEmail,sendVerificationEmail,validateUserInvitation'
+          - 'getMcpSettingsStatus,createMcpApiKey,toggleMcpApiKey,revokeMcpApiKey,toggleGlobalMcp,setUserMcpEligibility,chatGptToolsEndpoint'
           - 'alexaWebhook'
           - 'aiAgentChat'
+          - 'chatGptToolsEndpoint'
           - 'sendWhatsAppDirectMessage'
           - 'evolutionWhatsAppWebhook'
           - 'cleanupEmailDrafts'
@@ -81,11 +83,16 @@ jobs:
         if: steps.env.outputs.target == 'dev'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+          SENTRY_DSN: ${{ secrets.DEV_FUNCTIONS_SENTRY_DSN || secrets.DEV_SENTRY_DSN || secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}
           RESEND_API_KEY: ${{ secrets.DEV_RESEND_API_KEY || secrets.RESEND_API_KEY }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.DEV_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.DEV_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.dev_gemini || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
         run: |
+          trap 'rm -f functions/.env.luisices-dev' EXIT
+          if [ -n "$SENTRY_DSN" ]; then
+            printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=development\n' "$SENTRY_DSN" > functions/.env.luisices-dev
+          fi
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           firebase use luisices-dev --project luisices-dev --non-interactive
@@ -137,6 +144,10 @@ jobs:
 
           # Determina quais funções publicar via seleção
           INPUT_FN="${{ inputs.functions_target }}"
+          if [ "${{ inputs.update_secrets }}" = "true" ] && [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ]; then
+            echo "🔐 Secrets serão atualizados; publicando todas as funções para que nenhuma continue usando uma versão antiga."
+            INPUT_FN="all"
+          fi
           if [ -z "$INPUT_FN" ] || [ "$INPUT_FN" = "all" ]; then
             DEPLOY_TARGET="functions"
           else
@@ -166,22 +177,23 @@ jobs:
               firebase deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project luisices-dev --non-interactive --force
               echo "📦 4/5: Alexa..."
               firebase deploy --only "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook" --project luisices-dev --non-interactive --force
-              echo "📦 5/5: Usuários e Autenticação..."
+              echo "📦 5/6: Usuários e Autenticação..."
               firebase deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation" --project luisices-dev --non-interactive --force
+              echo "📦 6/6: MCP & ChatGPT Actions..."
+              firebase deploy --only "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint" --project luisices-dev --non-interactive --force
             fi
           else
             firebase deploy --only "$DEPLOY_TARGET" --project luisices-dev --non-interactive --force
           fi
 
-          if [ "${{ inputs.update_secrets }}" = "true" ]; then
-            echo "🧹 Podando versões obsoletas de segredos no Secret Manager (Dev)..."
-            firebase functions:secrets:prune --project luisices-dev -f --non-interactive || true
-          fi
+          echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Dev)..."
+          firebase functions:secrets:prune --project luisices-dev -f --non-interactive
 
       - name: Deploy Firebase Functions & Rules (Production)
         if: steps.env.outputs.target == 'prod'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.PROD_FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SENTRY_DSN: ${{ secrets.PROD_FUNCTIONS_SENTRY_DSN || secrets.PROD_SENTRY_DSN || secrets.PROD_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}
           RESEND_API_KEY: ${{ secrets.PROD_RESEND_API_KEY || secrets.RESEND_API_KEY }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.PROD_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.PROD_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
@@ -190,6 +202,10 @@ jobs:
           ALEXA_HMAC: ${{ secrets.PROD_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY }}
           ALEXA_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID || secrets.ALEXA_PROD_SKILL_ID || secrets.ALEXA_SKILL_ID }}
         run: |
+          trap 'rm -f functions/.env.papelaria-dashboard' EXIT
+          if [ -n "$SENTRY_DSN" ]; then
+            printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=production\n' "$SENTRY_DSN" > functions/.env.papelaria-dashboard
+          fi
           if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
             echo "❌ ERRO: Secret FIREBASE_SERVICE_ACCOUNT_PROD não encontrado no GitHub."
             exit 1
@@ -318,6 +334,10 @@ jobs:
 
           # Determina quais funções publicar via seleção
           INPUT_FN="${{ inputs.functions_target }}"
+          if [ "${{ inputs.update_secrets }}" = "true" ] && [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ]; then
+            echo "🔐 Secrets serão atualizados; publicando todas as funções para que nenhuma continue usando uma versão antiga."
+            INPUT_FN="all"
+          fi
           if [ -z "$INPUT_FN" ] || [ "$INPUT_FN" = "all" ]; then
             DEPLOY_TARGET="functions"
           else
@@ -347,14 +367,14 @@ jobs:
               firebase deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project papelaria-dashboard --non-interactive --force
               echo "📦 4/5: Alexa..."
               firebase deploy --only "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook" --project papelaria-dashboard --non-interactive --force
-              echo "📦 5/5: Usuários e Autenticação..."
+              echo "📦 5/6: Usuários e Autenticação..."
               firebase deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation" --project papelaria-dashboard --non-interactive --force
+              echo "📦 6/6: MCP & ChatGPT Actions..."
+              firebase deploy --only "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint" --project papelaria-dashboard --non-interactive --force
             fi
           else
             firebase deploy --only "$DEPLOY_TARGET" --project papelaria-dashboard --non-interactive --force
           fi
 
-          if [ "${{ inputs.update_secrets }}" = "true" ]; then
-            echo "🧹 Podando versões obsoletas de segredos no Secret Manager (Prod)..."
-            firebase functions:secrets:prune --project papelaria-dashboard -f --non-interactive || true
-          fi
+          echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Prod)..."
+          firebase functions:secrets:prune --project papelaria-dashboard -f --non-interactive

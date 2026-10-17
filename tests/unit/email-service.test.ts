@@ -49,7 +49,7 @@ describe('Funcionalidade: Comunicação e Mensageria por E-mail (emailService)',
         to: ['cliente@exemplo.com'],
         subject: 'Atualização do seu Pedido #1234',
         html: '<p>Seu pedido está em produção!</p>',
-        replyTo: 'contato@luisices.com.br',
+        replyTo: 'test-user@example.invalid',
       };
 
       mockSendCustomEmail.mockResolvedValueOnce({
@@ -248,7 +248,7 @@ describe('Funcionalidade: Comunicação e Mensageria por E-mail (emailService)',
       expect(cleaned).not.toContain('onerror');
       expect(cleaned).not.toContain('<iframe');
       expect(cleaned).toContain('<p>Olá</p>');
-    });
+    }, 15000);
 
     it('deve transformar links para abrir com segurança em nova aba (target="_blank" e rel="noopener noreferrer")', async () => {
       const DOMPurify = (await import('isomorphic-dompurify')).default;

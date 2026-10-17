@@ -104,13 +104,16 @@ export interface Order {
   cardColor?: string | null;      // Cor de destaque do card
   realCost?: number;       // Custo real da produção
   version?: number;        // Versão para controle de concorrência
-  source?: 'web' | 'alexa' | 'store' | string; // Origem do pedido (web, alexa, lojinha)
+  source?: 'web' | 'alexa' | 'store' | 'chatgpt-mcp' | 'chatgpt' | string; // Origem do pedido (web, alexa, lojinha, chatgpt)
   createdByUid?: string;   // UID do criador
   voiceDraftId?: string;   // Rascunho de voz de origem
   voiceConfirmationMode?: 'voice_confirm' | 'app_approval';
   isArchived?: boolean;    // Pedido arquivado (fora do painel principal para não poluir a tela)
   archivedAt?: string | null; // Data/hora do arquivamento em formato ISO
   archivedBy?: string | null; // UID do usuário que realizou o arquivamento
+  idempotencyKey?: string;
+  requiresFinancialApproval?: boolean;
+  financialWarning?: string | null;
 }
 
 
@@ -298,6 +301,8 @@ export interface Permission {
   storeProducts?: ModulePermission;
   whatsapp?: boolean;
   aiCopilot?: boolean;
+  mcpAccess?: boolean;
+  mcpScopes?: string[];
 }
 
 /**
@@ -590,6 +595,8 @@ export interface UserProfile {
   lastPasswordResetRequestedAt?: string;
   whatsappPhone?: string;
   tokensValidAfterTime?: number;
+  mcpSessionActive?: boolean;
+  lastMcpConnectedAt?: string;
 }
 
 export const ADMIN_PERMISSIONS: Permission = {
@@ -610,6 +617,7 @@ export const ADMIN_PERMISSIONS: Permission = {
   storeProducts: { view: true, create: true, edit: true, delete: true },
   whatsapp:  true,
   aiCopilot: true,
+  mcpAccess: true,
 };
 
 export const DEFAULT_USER_PERMISSIONS: Permission = {
@@ -630,6 +638,8 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   storeProducts: { view: true, create: true, edit: true, delete: false },
   whatsapp:  true,
   aiCopilot: true,
+  mcpAccess: true,
+  mcpScopes: ['orders:read', 'orders:draft', 'orders:create', 'customers:read', 'pricing:estimate', 'whatsapp:compose', 'gallery:read'],
 };
 
 export const EMPLOYEE_PERMISSIONS: Permission = {
@@ -650,6 +660,8 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   storeProducts: { view: false, create: false, edit: false, delete: false },
   whatsapp:  false,
   aiCopilot: false,
+  mcpAccess: true,
+  mcpScopes: ['orders:read', 'orders:draft', 'customers:read', 'gallery:read'],
 };
 
 // Tipos para sistema de compartilhamento de dados
@@ -1047,4 +1059,105 @@ export interface AlexaIntegrationStatus {
     timestamp?: string | null;
   }>;
   isAdmin: boolean;
+}
+
+// ─── Integração MCP & ChatGPT Actions ─────────────────────────────────────
+export interface McpScopeInfo {
+  id: string;
+  label: string;
+  description: string;
+  module: string;
+  requiresAdmin: boolean;
+  defaultGranted: boolean;
+}
+
+export interface McpApiKey {
+  keyId: string;
+  keyPrefix: string;
+  keyName: string;
+  userId: string;
+  userName: string;
+  userRole: string;
+  enabled: boolean;
+  scopes: string[];
+  rateLimitPerHour: number;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+  totalCalls: number;
+}
+
+export interface McpTeamMember {
+  uid: string;
+  displayName: string;
+  email: string;
+  role: string;
+  active: boolean;
+  mcpAccess: boolean;
+  mcpScopes?: string[];
+  mcpSessionActive?: boolean;
+  lastMcpConnectedAt?: string | null;
+}
+
+export interface McpSession {
+  sessionId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userRole: string;
+  clientId: string;
+  clientName: string;
+  scopes: string[];
+  createdAt: string | null;
+  lastUsedAt: string | null;
+  expiresAt: number | string | null;
+  totalCalls?: number;
+  active: boolean;
+  revoked?: boolean;
+}
+
+export interface McpSettingsStatus {
+  success: boolean;
+  environment: 'dev' | 'prod';
+  globalEnabled: boolean;
+  endpointBaseUrl: string;
+  openapiUrl: string;
+  pluginManifestUrl?: string;
+  keys: McpApiKey[];
+  sessions?: McpSession[];
+  myActiveSession?: McpSession | null;
+  hasActiveMcpSession?: boolean;
+  availableScopes: McpScopeInfo[];
+  teamMembers: McpTeamMember[];
+}
+
+export interface CreateMcpKeyParams {
+  userId: string;
+  keyName: string;
+  scopes: string[];
+  rateLimitPerHour?: number;
+  idempotencyKey: string;
+}
+
+export interface CreateMcpKeyResult {
+  success: boolean;
+  rawKey: string;
+  keyId: string;
+  keyPrefix: string;
+  keyName: string;
+  userName: string;
+  scopes: string[];
+}
+
+export interface McpAuditLog {
+  id: string;
+  toolName: string;
+  keyId: string;
+  callerUid: string;
+  callerName: string;
+  clientProtocol: string;
+  executionTimeMs: number;
+  success: boolean;
+  errorMessage?: string | null;
+  orderNumber?: string | null;
+  timestamp: string;
 }

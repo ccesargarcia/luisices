@@ -7,6 +7,8 @@ on:
       - main
     paths:
       - 'cloudflare/**'
+      - 'scripts/ensure-mcp-cache-bypass.mjs'
+      - 'scripts/purge-cloudflare-cache.mjs'
       - '.github/workflows/deploy-cloudflare.yml'
 
   workflow_dispatch:
@@ -61,6 +63,16 @@ jobs:
           fi
           echo "✅ Secret CLOUDFLARE_API_TOKEN presente."
 
+      - name: Aplicar bypass de cache para APIs MCP e OAuth
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/ensure-mcp-cache-bypass.mjs
+
+      - name: Aplicar Ajustes de Conformidade & WAF (Desativar BIC / Erro 1010, SSL Strict, DKIM)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npm run cloudflare:fix
+
       # ─── DEPLOY NO AMBIENTE DE DESENVOLVIMENTO (DEV) ────────────────────────
       - name: Deploy CDN Worker (Dev)
         if: |
@@ -85,7 +97,13 @@ jobs:
           if [ -n "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ]; then
             echo "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" | npx wrangler secret put ORIGIN_SECRET -c cloudflare/api-worker/wrangler.toml -e dev || true
           fi
+          DEV_SENTRY_DSN="${{ secrets.DEV_CLOUDFLARE_SENTRY_DSN || secrets.DEV_FUNCTIONS_SENTRY_DSN || secrets.DEV_SENTRY_DSN || secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN || secrets.SENTRY_DSN }}"
+          if [ -n "$DEV_SENTRY_DSN" ]; then
+            echo "$DEV_SENTRY_DSN" | npx wrangler secret put SENTRY_DSN -c cloudflare/api-worker/wrangler.toml -e dev || true
+          fi
           npx wrangler deploy -c cloudflare/api-worker/wrangler.toml -e dev
+          echo "🧹 Purgando cache das rotas MCP após deploy do API Gateway Worker (Dev)..."
+          node scripts/purge-cloudflare-cache.mjs dev
 
       # ─── DEPLOY NO AMBIENTE DE PRODUÇÃO ─────────────────────────────────────
       - name: Deploy CDN Worker (Produção)
@@ -111,4 +129,10 @@ jobs:
           if [ -n "${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ]; then
             echo "${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" | npx wrangler secret put ORIGIN_SECRET -c cloudflare/api-worker/wrangler.toml -e production || true
           fi
+          PROD_SENTRY_DSN="${{ secrets.PROD_CLOUDFLARE_SENTRY_DSN || secrets.PROD_FUNCTIONS_SENTRY_DSN || secrets.PROD_SENTRY_DSN || secrets.PROD_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}"
+          if [ -n "$PROD_SENTRY_DSN" ]; then
+            echo "$PROD_SENTRY_DSN" | npx wrangler secret put SENTRY_DSN -c cloudflare/api-worker/wrangler.toml -e production || true
+          fi
           npx wrangler deploy -c cloudflare/api-worker/wrangler.toml -e production
+          echo "🧹 Purgando cache das rotas MCP após deploy do API Gateway Worker (Produção)..."
+          node scripts/purge-cloudflare-cache.mjs prod

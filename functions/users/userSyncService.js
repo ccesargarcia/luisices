@@ -17,6 +17,7 @@
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { getDatabase } = require('firebase-admin/database');
+const { preserveProfileMcpScopes } = require('../mcp/profilePermissions');
 
 const LEASE_TTL_MS = 15000; // 15 segundos de lease para processamento externo
 const MAX_RECONCILIATION_ATTEMPTS = 3; // Limite de iterações do loop de reconciliação pós-escrita
@@ -78,6 +79,7 @@ async function updateUserProfile(params, deps = {}) {
     }
 
     const current = profileSnap.data();
+    const nextPermissions = preserveProfileMcpScopes(permissions, current.permissions);
     const nextRole = role !== undefined ? role : (current.role || 'user');
     const nextActive = active !== undefined ? active : (current.active !== false);
 
@@ -130,7 +132,7 @@ async function updateUserProfile(params, deps = {}) {
     const updateData = {
       ...(displayName !== undefined ? { displayName: displayName.trim() } : {}),
       ...(role !== undefined ? { role } : {}),
-      ...(permissions !== undefined ? { permissions } : {}),
+      ...(nextPermissions !== undefined ? { permissions: nextPermissions } : {}),
       ...(active !== undefined ? { active } : {}),
       syncVersion: nextVersion,
       updatedAt: FieldValue.serverTimestamp(),

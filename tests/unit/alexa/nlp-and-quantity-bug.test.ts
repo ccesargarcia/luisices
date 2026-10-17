@@ -67,7 +67,7 @@ function createMockDb(initialData = {}) {
 
 describe('NLP e Correção de Bug de Quantidade e Decimais na Alexa', () => {
   const baseConfig = { environment: 'dev', timezone: 'America/Sao_Paulo' };
-  const identity = { uid: 'user-caio', bindingKey: 'dev-key', displayName: 'Caio', personId: 'amzn1.person.caio' };
+  const identity = { uid: 'user-Usuário Teste', bindingKey: 'dev-key', displayName: 'Usuário Teste', personId: 'amzn1.person.Usuário Teste' };
 
   describe('1. Normalização de NLP de Quantidades e Ordinais', () => {
     it('interpreta cardinais simples e compostos', () => {

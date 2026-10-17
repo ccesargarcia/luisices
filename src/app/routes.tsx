@@ -9,6 +9,7 @@ import { Register } from './pages/Register';
 import { Login } from './pages/Login';
 import { ResetPassword } from './pages/ResetPassword';
 import { AuthAction } from './pages/AuthAction';
+import { OAuthConsent } from './pages/OAuthConsent';
 import { OrdersProvider } from '../contexts/OrdersContext';
 import { UserSettingsProvider } from '../contexts/UserSettingsContext';
 import { canAccessPricing, canAccessArchivedOrders, canAccessEmails } from './types';
@@ -137,6 +138,7 @@ const StoreProducts      = lazyWithRetry(() => import('./pages/StoreProducts'), 
 const StoreOrders        = lazyWithRetry(() => import('./pages/StoreOrders'), 'StoreOrders');
 const WhatsAppChat       = lazyWithRetry(() => import('./pages/WhatsAppChat'), 'WhatsAppChat');
 const ArchivedOrders     = lazyWithRetry(() => import('./pages/ArchivedOrders'), 'ArchivedOrders');
+const ArtisanPricingPage = lazyWithRetry(() => import('./pages/ArtisanPricingPage'), 'ArtisanPricingPage');
 
 function PageLoader() {
   return (
@@ -227,6 +229,11 @@ export const router = isCatalogSubdomain
         errorElement: <ErrorBoundary />,
       },
       {
+        path: '/oauth-consent',
+        element: <OAuthConsent />,
+        errorElement: <ErrorBoundary />,
+      },
+      {
         path: '/loja',
         element: <Lazy><PublicCatalog /></Lazy>,
         errorElement: <ErrorBoundary />,
@@ -304,6 +311,18 @@ export const router = isCatalogSubdomain
       {
         path: 'precificacao',
         element: <Lazy><PermissionRoute check={p => canAccessPricing(p, 'view')}><Pricing /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'calculadora-insumos',
+        element: <Lazy><PermissionRoute check={p => canAccessPricing(p, 'view')}><ArtisanPricingPage /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'estoque-insumos',
+        element: <Lazy><PermissionRoute check={p => canAccessPricing(p, 'view')}><ArtisanPricingPage /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'calculadora-precos',
+        element: <Navigate to="/calculadora-insumos" replace />,
       },
       {
         path: 'galeria',

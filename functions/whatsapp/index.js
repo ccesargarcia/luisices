@@ -3,7 +3,8 @@
  */
 
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
-const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('firebase-functions/v2/https');
+const { onCall, onRequest } = require('../common/sentryFunctions');
 const { EVOLUTION_API_KEY, ORIGIN_SECRET } = require('../common/secrets');
 const {
   EVOLUTION_API_URL,

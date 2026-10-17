@@ -4,6 +4,36 @@
 
 const { BUSINESS_TIMEZONE, TOOL_LIMITS } = require('./config');
 const { calculateRecipePricing, calculateHourlyRate, DEFAULT_PRICING_SETTINGS } = require('./pricing/pricingCalculator');
+const { sanitizeCollaboratorInfo, filterOrdersByScope } = require('./authorization');
+
+function getBusinessDate(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: BUSINESS_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const part = (type) => parts.find((entry) => entry.type === type)?.value || '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+function normalizeMcpTimestamp(value) {
+  if (!value) return '';
+  if (typeof value.toDate === 'function') return value.toDate().toISOString();
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object' && Number.isFinite(value._seconds)) return new Date(value._seconds * 1000).toISOString();
+  return String(value);
+}
+
+function isValidDateOnly(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`))
+    && new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
+}
+
+function isConfirmed(value) {
+  return value === true || value === 'true';
+}
 
 /**
  * Calcula intervalos de data no fuso do negócio (America/Sao_Paulo - UTC-3)
@@ -131,7 +161,7 @@ function getPeriodInterval(period = 'month', baseDate = new Date()) {
     };
   }
 
-  if (cleanPeriod === 'week' || cleanPeriod === 'semana' || cleanPeriod === 'ultimos_7_dias') {
+  if (cleanPeriod === 'week' || cleanPeriod === 'semana' || cleanPeriod === 'esta_semana' || cleanPeriod === 'ultimos_7_dias') {
     const start = new Date(d.getTime() - 7 * 24 * 60 * 60 * 1000);
     return {
       startDate: start,
@@ -200,6 +230,130 @@ function normalizePhone(phone) {
   return digits.startsWith('55') ? digits : `55${digits}`;
 }
 
+/**
+ * Validação rigorosa de prazos de entrega no fuso horário do negócio (America/Sao_Paulo)
+ */
+function validateAndNormalizeDeliveryDate(rawDateString) {
+  let rawDate = String(rawDateString || '').trim();
+  if (!rawDate) {
+    throw new Error('Data de entrega é obrigatória para registrar o pedido.');
+  }
+
+  // Normaliza DD/MM/AAAA ou DD-MM-AAAA para AAAA-MM-DD
+  const brMatch = rawDate.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (brMatch) {
+    const day = brMatch[1].padStart(2, '0');
+    const month = brMatch[2].padStart(2, '0');
+    const year = brMatch[3];
+    rawDate = `${year}-${month}-${day}`;
+  }
+
+  const dateMatch = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!dateMatch) {
+    throw new Error(`Formato de data de entrega inválido ("${rawDateString}"). Utilize o formato AAAA-MM-DD ou DD/MM/AAAA.`);
+  }
+
+  // Obter a data de hoje no fuso horário do negócio
+  const todayParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: BUSINESS_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+
+  const getP = (type) => todayParts.find((p) => p.type === type)?.value || '00';
+  const todayStr = `${getP('year')}-${getP('month')}-${getP('day')}`;
+
+  if (rawDate < todayStr) {
+    throw new Error(
+      `Data de entrega inválida (${rawDate}). A data de entrega não pode ser anterior à data de hoje (${todayStr} no horário de Brasília).`
+    );
+  }
+
+  const isToday = rawDate === todayStr;
+  const deliveryTime = new Date(`${rawDate}T12:00:00-03:00`).getTime();
+  const todayTime = new Date(`${todayStr}T12:00:00-03:00`).getTime();
+  const diffDays = Math.round((deliveryTime - todayTime) / (24 * 60 * 60 * 1000));
+  const isUrgent = diffDays <= 1;
+
+  return {
+    deliveryDate: rawDate,
+    todayStr,
+    isToday,
+    diffDays,
+    isUrgent,
+  };
+}
+
+function requireMcpModulePermission(scope, module, action, label) {
+  if (!scope?.uid) {
+    const error = new Error('Usuário não autenticado.');
+    error.code = 'unauthenticated';
+    throw error;
+  }
+  const permission = scope.permissions?.[module];
+  const allowed = scope.isAdmin || permission === true || (permission && typeof permission === 'object' && permission[action] === true);
+  if (!allowed) {
+    const error = new Error(`Você não possui permissão para ${label}.`);
+    error.code = 'permission-denied';
+    throw error;
+  }
+}
+
+function roundMoney(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function normalizePaymentMethod(value) {
+  const aliases = {
+    pix: 'pix',
+    dinheiro: 'cash', cash: 'cash',
+    cartao_credito: 'credit', credito: 'credit', credit: 'credit',
+    cartao_debito: 'debit', debito: 'debit', debit: 'debit',
+    transferencia: 'transfer', transfer: 'transfer',
+  };
+  return aliases[String(value || '').trim().toLowerCase()] || null;
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function getMcpIdempotencyContext(db, scope, toolName, key, args) {
+  const idempotencyKey = typeof key === 'string' ? key.trim() : '';
+  if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
+    const error = new Error('Informe uma chave de idempotência válida com 8 a 128 caracteres.');
+    error.code = 'invalid-argument';
+    throw error;
+  }
+  const crypto = require('crypto');
+  const operationId = crypto.createHash('sha256').update(`${scope.uid}:${toolName}:${idempotencyKey}`).digest('hex');
+  const payload = { ...args };
+  delete payload.idempotencyKey;
+  const payloadHash = crypto.createHash('sha256').update(canonicalJson(payload)).digest('hex');
+  return { ref: db.collection('mcpIdempotency').doc(operationId), payloadHash };
+}
+
+function readIdempotentResult(snapshot, payloadHash) {
+  if (!snapshot.exists) return null;
+  const previous = snapshot.data() || {};
+  if (previous.payloadHash !== payloadHash) {
+    const error = new Error('Esta chave de idempotência já foi usada com outros dados. Gere uma nova chave para uma operação diferente.');
+    error.code = 'already-exists';
+    throw error;
+  }
+  if (!previous.completed || !previous.result) {
+    const error = new Error('Esta operação ainda está sendo processada. Repita a chamada com a mesma chave em alguns instantes.');
+    error.code = 'failed-precondition';
+    throw error;
+  }
+  return previous.result;
+}
+
 class AiToolsExecutor {
   constructor(repositories) {
     this.repos = repositories;
@@ -233,7 +387,7 @@ class AiToolsExecutor {
     const validatedArgs = typeof args === 'object' && args !== null ? args : { period: String(args || 'month') };
     const period = validatedArgs.period || 'month';
 
-    let orders = await this.repos.getScopedOrders(scope);
+    let orders = await this.repos.getScopedOrders(scope, { skipCache: true });
 
     // Filtro por colaborador específico (apenas admin pode auditar outro colaborador)
     if (scope.isAdmin && validatedArgs.userIdentifier) {
@@ -352,8 +506,13 @@ class AiToolsExecutor {
    * Ferramenta 2: Daily Briefing
    */
   async executeDailyBriefing(args, scope) {
-    const orders = (await this.repos.getScopedOrders(scope)).filter((o) => !o.isDeleted);
-    const todayDate = new Date().toISOString().split('T')[0];
+    const orders = (await this.repos.getScopedOrders(scope, { skipCache: true })).filter((o) => !o.isDeleted);
+    const todayDate = args?.date ? String(args.date).trim() : getBusinessDate();
+    if (!isValidDateOnly(todayDate)) {
+      const error = new Error('A data de referência deve usar o formato AAAA-MM-DD.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
 
     const delayedOrders = orders.filter(
       (o) =>
@@ -394,30 +553,187 @@ class AiToolsExecutor {
    * Ferramenta 3: Consulta de Pedidos com Filtro e Paginação
    */
   async executeQueryOrdersView(args = {}, scope) {
-    const orders = await this.repos.getScopedOrders(scope);
+    const limit = Math.min(Math.max(Number(args.limit) || TOOL_LIMITS.ORDERS_PAGE_LIMIT, 1), 50);
+    // Otimização de performance: busca apenas a janela necessária no Firestore
+    const hasStatusFilter = args.status && !['all', 'todos'].includes(String(args.status).toLowerCase().trim());
+    const hasHistoryFilter = Boolean(args.searchTerm || args.startDate || args.endDate || hasStatusFilter);
+    const maxLimit = hasHistoryFilter ? 5000 : Math.max(limit * 2, 50);
+    const orders = await this.repos.getScopedOrders(scope, { maxLimit, allowPartial: !hasHistoryFilter, skipCache: true });
     let filtered = orders;
 
-    if (args.status && args.status !== 'all') {
-      filtered = filtered.filter((o) => o.status === args.status);
+    const statusAliases = {
+      all: 'all',
+      todos: 'all',
+      pending: 'pending',
+      pendente: 'pending',
+      'in-progress': 'in-progress',
+      in_progress: 'in-progress',
+      em_producao: 'in-progress',
+      'em produção': 'in-progress',
+      'em producao': 'in-progress',
+      completed: 'completed',
+      concluido: 'completed',
+      concluído: 'completed',
+      entregue: 'completed',
+      delivered: 'completed',
+      cancelled: 'cancelled',
+      canceled: 'cancelled',
+      cancelado: 'cancelled',
+      cancelada: 'cancelled',
+      atrasado: 'overdue',
+    };
+    const requestedStatus = args.status == null ? 'all' : statusAliases[String(args.status).toLowerCase().trim()];
+    if (!requestedStatus) {
+      const error = new Error('Status inválido para consulta de pedidos.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    if (requestedStatus === 'overdue') {
+      const today = getBusinessDate();
+      filtered = filtered.filter((o) => o.deliveryDate && o.deliveryDate < today && !['completed', 'cancelled'].includes(o.status));
+    } else if (requestedStatus !== 'all') {
+      filtered = filtered.filter((o) => o.status === requestedStatus);
     }
 
+    const startDate = args.startDate ? String(args.startDate).trim() : '';
+    const endDate = args.endDate ? String(args.endDate).trim() : '';
+    if ((startDate && !isValidDateOnly(startDate)) || (endDate && !isValidDateOnly(endDate))) {
+      const error = new Error('As datas devem usar o formato AAAA-MM-DD.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    if (startDate) filtered = filtered.filter((o) => o.deliveryDate && o.deliveryDate >= startDate);
+    if (endDate) filtered = filtered.filter((o) => o.deliveryDate && o.deliveryDate <= endDate);
     if (args.searchTerm) {
       const term = String(args.searchTerm).toLowerCase().trim();
       const phoneDigits = term.replace(/\D/g, '');
       filtered = filtered.filter((o) => {
-        const numMatch = o.orderNumber && o.orderNumber.toLowerCase().includes(term);
-        const nameMatch = o.customerName && o.customerName.toLowerCase().includes(term);
-        const prodMatch = (o.productName || o.productSummary) && (o.productName || o.productSummary).toLowerCase().includes(term);
-        const phoneMatch = phoneDigits && o.customerPhone && o.customerPhone.replace(/\D/g, '').includes(phoneDigits);
+        const numMatch = String(o.orderNumber || '').toLowerCase().includes(term);
+        const nameMatch = String(o.customerName || '').toLowerCase().includes(term);
+        const prodMatch = String(o.productName || o.productSummary || '').toLowerCase().includes(term);
+        const phoneMatch = phoneDigits && String(o.customerPhone || '').replace(/\D/g, '').includes(phoneDigits);
         return numMatch || nameMatch || prodMatch || phoneMatch;
       });
     }
 
-    const limit = Math.min(Math.max(Number(args.limit) || TOOL_LIMITS.ORDERS_PAGE_LIMIT, 1), 50);
     return {
       orders: filtered.slice(0, limit),
       totalFound: filtered.length,
       hasMore: filtered.length > limit,
+    };
+  }
+
+  /** Agenda limitada por janela e por propriedade do pedido para reduzir leituras. */
+  async executeQueryDeliverySchedule(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'view', 'consultar a agenda de entregas');
+    const startDate = String(args.startDate || '').trim();
+    const endDate = String(args.endDate || '').trim();
+    if (!isValidDateOnly(startDate) || !isValidDateOnly(endDate)) {
+      const error = new Error('Informe as datas no formato AAAA-MM-DD.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const spanDays = (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400000;
+    if (spanDays < 0 || spanDays > 30) {
+      const error = new Error('O período deve ser válido e ter no máximo 31 dias.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const status = args.status || 'all';
+    const limit = Math.min(Math.max(Number(args.limit) || 20, 1), 50);
+    const db = this.repos.db;
+    if (!db) throw new Error('Banco de dados indisponível.');
+    const baseQuery = () => db.collection('orders').where('deliveryDate', '>=', startDate).where('deliveryDate', '<=', endDate).orderBy('deliveryDate', 'asc');
+    const queryLimit = 100;
+    let snapshots;
+    if (scope.isAdmin) {
+      snapshots = [await baseQuery().limit(queryLimit).get()];
+    } else {
+      snapshots = await Promise.all(['userId', 'assignedTo', 'createdBy'].map((field) =>
+        baseQuery().where(field, '==', scope.uid).limit(queryLimit).get()
+      ));
+    }
+    const docsById = new Map();
+    snapshots.flatMap((snapshot) => snapshot.docs || []).forEach((doc) => docsById.set(doc.id, doc));
+    const statusAliases = { pending: 'pending', pendente: 'pending', received: 'pending', recebido: 'pending', in_contact: 'pending', 'in-progress': 'in-progress', in_progress: 'in-progress', em_producao: 'in-progress', 'em produção': 'in-progress', 'em producao': 'in-progress', 'em-andamento': 'in-progress', em_andamento: 'in-progress', producao: 'in-progress', produção: 'in-progress', completed: 'completed', concluido: 'completed', concluído: 'completed', delivered: 'completed', entregue: 'completed', pronto: 'completed', finished: 'completed', cancelled: 'cancelled', canceled: 'cancelled', cancelado: 'cancelled', cancelada: 'cancelled' };
+    const authorized = filterOrdersByScope(Array.from(docsById.values(), (doc) => ({ ...(doc.data() || {}), id: doc.id })), scope)
+      .filter((order) => String(order.deliveryDate || '').slice(0, 10) >= startDate && String(order.deliveryDate || '').slice(0, 10) <= endDate)
+      .filter((order) => status === 'all' || statusAliases[String(order.status || 'pending').toLowerCase().trim()] === status)
+      .sort((a, b) => String(a.deliveryDate).localeCompare(String(b.deliveryDate)) || String(a.orderNumber).localeCompare(String(b.orderNumber)));
+    const canReadPayments = scope.mcpScopes?.includes('payments:read') || scope.mcpScopes?.includes('financial:read');
+    const orders = authorized.slice(0, limit).map((order) => ({
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      productName: order.productName,
+      quantity: order.quantity,
+      deliveryDate: String(order.deliveryDate || '').slice(0, 10),
+      status: statusAliases[String(order.status || 'pending').toLowerCase().trim()] || 'unknown',
+      ...(canReadPayments ? { totalPrice: order.totalPrice, paidAmount: order.paidAmount, remainingAmount: order.remainingAmount } : {}),
+    }));
+    return {
+      startDate,
+      endDate,
+      orders,
+      totalFound: authorized.length,
+      hasMore: authorized.length > limit || snapshots.some((snapshot) => (snapshot.docs || []).length === queryLimit),
+    };
+  }
+
+  /** Histórico restrito ao cliente autorizado e aos pedidos visíveis ao usuário. */
+  async executeGetCustomerHistory(args = {}, scope) {
+    requireMcpModulePermission(scope, 'customers', 'view', 'consultar o histórico do cliente');
+    const customer = await this.repos.getScopedCustomerDocument(scope, String(args.customerId || ''));
+    if (!customer || customer.data.deletedAt || customer.data.isDeleted) {
+      const error = new Error('Cliente não encontrado ou sem permissão para consultá-lo.');
+      error.code = 'not-found';
+      throw error;
+    }
+    const db = this.repos.db;
+    const customerName = String(customer.data.name || customer.data.fullName || '').trim();
+    const customerPhone = String(customer.data.phone || customer.data.whatsapp || '').replace(/\D/g, '');
+    const canReadOrders = scope.isAdmin || scope.mcpScopes?.includes('orders:read');
+    if (!canReadOrders) {
+      return {
+        customer: { id: customer.id, name: customerName, phone: customer.data.phone || customer.data.whatsapp || '', city: customer.data.city || '' },
+        orders: [],
+        totalFound: 0,
+        hasMore: false,
+        ordersPermissionRequired: 'orders:read',
+      };
+    }
+    const queries = [db.collection('orders').where('customerId', '==', customer.id).limit(100).get()];
+    // Compatibilidade com pedidos antigos sem customerId: fallback com nome e telefone exatos.
+    if (customerName && customerPhone) {
+      queries.push(db.collection('orders').where('customerName', '==', customerName).limit(100).get());
+    }
+    const snapshots = await Promise.all(queries);
+    const unique = new Map();
+    snapshots.flatMap((snapshot) => snapshot.docs || []).forEach((doc) => unique.set(doc.id, doc));
+    const visible = filterOrdersByScope(Array.from(unique.values(), (doc) => ({ ...(doc.data() || {}), id: doc.id })), scope)
+      .filter((order) => order.customerId === customer.id || (
+        String(order.customerName || '').trim() === customerName &&
+        (!customerPhone || String(order.customerPhone || '').replace(/\D/g, '') === customerPhone)
+      ))
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    const limit = Math.min(Math.max(Number(args.limit) || 10, 1), 20);
+    const canReadPayments = scope.mcpScopes?.includes('payments:read') || scope.mcpScopes?.includes('financial:read');
+    return {
+      customer: { id: customer.id, name: customerName, phone: customer.data.phone || customer.data.whatsapp || '', city: customer.data.city || '' },
+      orders: visible.slice(0, limit).map((order) => ({
+        orderNumber: order.orderNumber || order.id,
+        productName: order.productName || order.productSummary || '',
+        quantity: Number(order.quantity) || 1,
+        deliveryDate: order.deliveryDate || null,
+        status: order.status || 'pending',
+        createdAt: normalizeMcpTimestamp(order.createdAt) || null,
+        ...(canReadPayments ? {
+          totalPrice: Number(order.price ?? order.totalPrice ?? order.payment?.totalAmount) || 0,
+          paidAmount: Number(order.payment?.paidAmount ?? order.paidAmount) || 0,
+          remainingAmount: Number(order.payment?.remainingAmount ?? order.remainingAmount) || 0,
+        } : {}),
+      })),
+      totalFound: visible.length,
+      hasMore: visible.length > limit || snapshots.some((snapshot) => (snapshot.docs || []).length === 100),
     };
   }
 
@@ -443,7 +759,7 @@ class AiToolsExecutor {
 
       if (matchedMember || args.userIdentifier) {
         const uid = matchedMember ? String(matchedMember.uid) : term;
-        const allOrders = await this.repos.getScopedOrders(scope);
+        const allOrders = await this.repos.getScopedOrders(scope, { skipCache: true });
         const collaboratorOrders = allOrders.filter((o) =>
           o.userId === uid ||
           o.createdBy === uid ||
@@ -489,7 +805,9 @@ class AiToolsExecutor {
               totalFiltered: derivedCustomers.length,
               isFiltered: true,
               hasMore: derivedCustomers.length > limit,
-              collaboratorFound: matchedMember ? { name: matchedMember.name, email: matchedMember.email } : { identifier: term },
+              collaboratorFound: matchedMember
+                ? sanitizeCollaboratorInfo(matchedMember, scope)
+                : { identifier: term },
             };
           }
         }
@@ -551,20 +869,29 @@ class AiToolsExecutor {
       inputs[field] = { value, source, label: labels[field], ...(configField ? { configurationField: configField } : {}) };
       return value;
     };
-    // Valida ambos os aliases; divergência é ambígua, não deve ser resolvida silenciosamente.
-    const alias = args.unitCostRaw !== undefined ? parse(args.unitCostRaw, 'unitCostRaw') : undefined;
-    const raw = args.rawMaterialsCost !== undefined ? parse(args.rawMaterialsCost, 'rawMaterialsCost') : undefined;
-    if (alias !== undefined && raw !== undefined && alias !== raw) invalid('unitCostRaw/rawMaterialsCost (valores divergentes)');
-    const rawCost = raw ?? alias ?? 15;
-    inputs.rawMaterialsCost = { value: rawCost, source: raw !== undefined || alias !== undefined ? 'argument' : 'default', label: labels.rawMaterialsCost, argumentFields: ['rawMaterialsCost', 'unitCostRaw'].filter((key) => args[key] !== undefined) };
-    const qty = read('quantity', 1, null, 1);
+    const qty = read('quantity', 1, null, 1, 100000);
     if (!Number.isSafeInteger(qty)) invalid('quantity');
-    const customCost = read('customizationCost', 5);
-    const laborTimeMinutes = read('laborTimeMinutes', 15);
-    const setupTimeMinutes = read('setupTimeMinutes', 0);
-    const profitMarginPercent = read('profitMarginPercent', studioSettings.defaultProfitMarginPercent, 'defaultProfitMarginPercent', 0, 95);
-    const paymentFeePercent = read('paymentFeePercent', studioSettings.defaultPaymentFeePercent, 'defaultPaymentFeePercent');
-    const wasteMarginPercent = read('wasteMarginPercent', studioSettings.defaultWasteMarginPercent, 'defaultWasteMarginPercent');
+    // Contrato legado: esses valores representam o lote inteiro; o motor calcula custo unitário.
+    const batchMaterials = args.materialsCost !== undefined ? parse(args.materialsCost, 'materialsCost', 0, 10000000) / qty : undefined;
+    const batchLaborMinutes = args.laborHours !== undefined ? parse(args.laborHours, 'laborHours', 0, 1000) * 60 / qty : undefined;
+    const targetMargin = args.targetMarginPercent !== undefined ? parse(args.targetMarginPercent, 'targetMarginPercent', 0, 95) : undefined;
+    if (batchMaterials !== undefined && args.rawMaterialsCost !== undefined && batchMaterials !== parse(args.rawMaterialsCost, 'rawMaterialsCost')) invalid('materialsCost/rawMaterialsCost (valores divergentes)');
+    if (batchMaterials !== undefined && args.unitCostRaw !== undefined && batchMaterials !== parse(args.unitCostRaw, 'unitCostRaw')) invalid('materialsCost/unitCostRaw (valores divergentes)');
+    if (batchLaborMinutes !== undefined && args.laborTimeMinutes !== undefined && batchLaborMinutes !== parse(args.laborTimeMinutes, 'laborTimeMinutes')) invalid('laborHours/laborTimeMinutes (valores divergentes)');
+    if (targetMargin !== undefined && args.profitMarginPercent !== undefined && targetMargin !== parse(args.profitMarginPercent, 'profitMarginPercent', 0, 95)) invalid('targetMarginPercent/profitMarginPercent (valores divergentes)');
+    const alias = args.unitCostRaw !== undefined ? parse(args.unitCostRaw, 'unitCostRaw', 0, 10000000) : undefined;
+    const raw = args.rawMaterialsCost !== undefined ? parse(args.rawMaterialsCost, 'rawMaterialsCost', 0, 10000000) : undefined;
+    if (alias !== undefined && raw !== undefined && alias !== raw) invalid('unitCostRaw/rawMaterialsCost (valores divergentes)');
+    const rawCost = batchMaterials ?? raw ?? alias ?? 15;
+    inputs.rawMaterialsCost = { value: rawCost, source: batchMaterials !== undefined || raw !== undefined || alias !== undefined ? 'argument' : 'default', label: labels.rawMaterialsCost, argumentFields: ['materialsCost', 'rawMaterialsCost', 'unitCostRaw'].filter((key) => args[key] !== undefined) };
+    const customCost = read('customizationCost', 5, null, 0, 10000000);
+    const laborTimeMinutes = batchLaborMinutes ?? read('laborTimeMinutes', 15, null, 0, 60000);
+    inputs.laborTimeMinutes = { value: laborTimeMinutes, source: batchLaborMinutes !== undefined ? 'argument' : (args.laborTimeMinutes !== undefined ? 'argument' : 'default'), label: labels.laborTimeMinutes, argumentFields: ['laborHours', 'laborTimeMinutes'].filter((key) => args[key] !== undefined) };
+    const setupTimeMinutes = read('setupTimeMinutes', 0, null, 0, 600000);
+    const profitMarginPercent = targetMargin ?? read('profitMarginPercent', studioSettings.defaultProfitMarginPercent, 'defaultProfitMarginPercent', 0, 95);
+    if (targetMargin !== undefined) inputs.profitMarginPercent = { value: targetMargin, source: 'argument', label: labels.profitMarginPercent, argumentFields: ['targetMarginPercent'] };
+    const paymentFeePercent = read('paymentFeePercent', studioSettings.defaultPaymentFeePercent, 'defaultPaymentFeePercent', 0, 100);
+    const wasteMarginPercent = read('wasteMarginPercent', studioSettings.defaultWasteMarginPercent, 'defaultWasteMarginPercent', 0, 1000);
     const sourceLabels = { argument: 'argumento recebido pela ferramenta (origem humana não comprovada)', configuration: 'configuração cadastrada', default: 'padrão assumido' };
     const assumptions = Object.values(inputs).map((input) => `${input.label}: ${input.value} — ${sourceLabels[input.source]}${input.invalidConfiguration ? ' (configuração inválida substituída)' : ''}.`);
 
@@ -671,9 +998,13 @@ class AiToolsExecutor {
     let phone = args.recipientPhone || '';
     let realOrder = null;
 
-    const orders = (await this.repos.getScopedOrders(scope)).filter((order) => !order.isDeleted);
+    const orders = (await this.repos.getScopedOrders(scope, { skipCache: true })).filter((order) => !order.isDeleted);
     const cleanTarget = String(orderNumber || '').toLowerCase().replace('#', '').trim();
     const nameTarget = String(recipientName).trim().toLowerCase();
+    const canReadPaymentDetails = !Array.isArray(scope?.mcpScopes)
+      || scope.mcpScopes.includes('*')
+      || scope.mcpScopes.includes('payments:read')
+      || scope.mcpScopes.includes('financial:read');
     const matches = orders.filter((order) => cleanTarget
       ? String(order.orderId || '').toLowerCase() === cleanTarget || String(order.orderNumber || '').toLowerCase().replace('#', '').trim() === cleanTarget
       : String(order.customerName || '').trim().toLowerCase() === nameTarget)
@@ -733,18 +1064,22 @@ class AiToolsExecutor {
         orderId: realOrder.orderId,
         orderNumber: realOrder.orderNumber,
         customerName: realOrder.customerName,
-        totalPrice: realOrder.totalPrice,
-        paidAmount: realOrder.paidAmount,
-        remainingAmount: realOrder.remainingAmount,
         status: realOrder.status,
-        paymentStatus: realOrder.paymentStatus,
         deliveryDate: realOrder.deliveryDate,
+        ...(canReadPaymentDetails ? {
+          totalPrice: realOrder.totalPrice,
+          paidAmount: realOrder.paidAmount,
+          remainingAmount: realOrder.remainingAmount,
+          paymentStatus: realOrder.paymentStatus,
+        } : {}),
       };
 
       if (realOrder.status === 'cancelled') {
         generatedText = `Olá, ${realOrder.customerName}! Consta em nosso sistema que o pedido ${realOrder.orderNumber} (${realOrder.productSummary}) foi cancelado. Se desejar reativar ou tiver dúvidas, estamos à disposição! ✨`;
       } else if (normalizedType === 'cobranca') {
-        if (realOrder.paymentStatus === 'paid' || remaining <= 0) {
+        if (!canReadPaymentDetails) {
+          generatedText = `Olá, ${realOrder.customerName}! Tudo bem? Seu pedido ${realOrder.orderNumber} (${realOrder.productSummary})${dateFmt} está registrado. Para consultar os valores e o saldo, fale conosco por aqui. ✨`;
+        } else if (realOrder.paymentStatus === 'paid' || remaining <= 0) {
           generatedText = `Olá, ${realOrder.customerName}! Tudo bem? Passando para avisar que seu pedido ${realOrder.orderNumber} (${realOrder.productSummary}) já está com pagamento totalmente quitado! Qualquer dúvida estamos à disposição. ✨`;
         } else {
           // O saldo restante oficial SEMPRE prevalece sobre valores arbitrários
@@ -805,7 +1140,7 @@ class AiToolsExecutor {
         (m.email && identifier.includes(m.email.toLowerCase().split('@')[0]))
     );
 
-    const allScopedOrders = await this.repos.getScopedOrders(scope);
+    const allScopedOrders = await this.repos.getScopedOrders(scope, { skipCache: true });
 
     if (!target) {
       const matchingOrder = allScopedOrders.find(
@@ -956,9 +1291,655 @@ class AiToolsExecutor {
   }
 
   /**
+   * Ferramenta de Formulário Estruturado de Pedido
+   */
+  async executeGetOrderForm(args = {}, scope) {
+    const cName = args.customerName ? ` para **${args.customerName}**` : '';
+    const category = args.productCategory ? `\n**Categoria selecionada:** ${String(args.productCategory).trim()}` : '';
+    const formMarkdown = [
+      `📋 **Formulário de Pedido — Luisices Ateliê de Papelaria Personalizada**${cName}${category}`,
+      `*Preencha ou responda os campos abaixo no chat (você pode responder tudo de uma vez, em lista, por partes ou enviar um áudio):*`,
+      ``,
+      `1. **Nome do Cliente:** ${args.customerName || ''}`,
+      `2. **Telefone / WhatsApp:** `,
+      `3. **Produto / Kit Desejado:** *(ex: Kit Festinha, 30 Caixas Milk, Topo de Bolo, Convites)*`,
+      `4. **Tema ou Paleta de Cores:** *(ex: Safari Baby, Sereia, Jardim Encantado, Dourado e Rosa)*`,
+      `5. **Nome e Idade do Aniversariante:** *(ex: Bernardo, 5 anos)*`,
+      `6. **Data de Entrega / Data da Festa:** *(no formato DD/MM/AAAA ou AAAA-MM-DD)*`,
+      `7. **Quantidade de Peças:** `,
+      `8. **Valor Total Combinado (R$):** *(se já orçado)*`,
+      `9. **Sinal / Valor de Entrada (R$):** *(ex: 50% de entrada)*`,
+      `10. **Forma de Pagamento:** *(PIX, Cartão, Dinheiro)*`,
+      `11. **Observações & Acabamentos:** *(ex: Laço de cetim azul marinho, lamination fosca)*`,
+      ``,
+      `💡 *Após o preenchimento, a IA processará os dados com extract_order_draft para conferência e create_order para gravar o pedido oficial no sistema.*`,
+    ].join('\n');
+
+    return {
+      success: true,
+      templateTitle: 'Formulário Estruturado de Pedido',
+      formMarkdown,
+      instructions: 'Apresente o formulário em Markdown acima para o usuário preencher no chat.',
+    };
+  }
+
+  /** Carrega os dados autorizados de um pedido para o formulário MCP Apps. */
+  async executeGetOrderEditForm(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'edit', 'editar pedidos');
+    const identifier = String(args.orderNumber || '').trim();
+    if (!identifier) {
+      const error = new Error('Informe o número ou ID do pedido.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const order = await this.repos.getScopedOrderDocument(scope, identifier);
+    if (!order || order.data.deletedAt || order.data.isDeleted) {
+      const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
+      error.code = 'not-found';
+      throw error;
+    }
+    const statusAliases = { pending: 'pending', pendente: 'pending', received: 'pending', recebido: 'pending', in_contact: 'pending', 'in-progress': 'in-progress', in_progress: 'in-progress', em_producao: 'in-progress', 'em produção': 'in-progress', 'em producao': 'in-progress', 'em-andamento': 'in-progress', em_andamento: 'in-progress', producao: 'in-progress', produção: 'in-progress', completed: 'completed', concluido: 'completed', concluído: 'completed', delivered: 'completed', entregue: 'completed', pronto: 'completed', finished: 'completed', cancelled: 'cancelled', canceled: 'cancelled', cancelado: 'cancelled', cancelada: 'cancelled' };
+    return {
+      state: 'editing',
+      order: {
+        orderNumber: order.data.orderNumber || identifier,
+        customerName: order.data.customerName || '',
+        customerPhone: order.data.customerPhone || '',
+        productName: order.data.productName || '',
+        quantity: Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
+        totalPrice: Number(order.data.price ?? order.data.totalPrice ?? order.data.payment?.totalAmount ?? 0),
+        deliveryDate: order.data.deliveryDate || '',
+        theme: order.data.theme || '',
+        notes: order.data.notes || '',
+        status: statusAliases[String(order.data.status || 'pending').toLowerCase().trim()] || 'unknown',
+        version: Number.isSafeInteger(order.data.version) && order.data.version > 0 ? order.data.version : 1,
+      },
+      message: 'Preencha os campos desejados. Escolha valor total ou unitário; o total unitário será calculado pelo servidor.',
+    };
+  }
+
+  /** Atualiza dados operacionais e valor do pedido autorizado, preservando o histórico de pagamentos. */
+  async executeUpdateOrder(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'edit', 'editar pedidos');
+    const identifier = String(args.orderNumber || '').trim();
+    if (!identifier) {
+      const error = new Error('Informe o número ou ID do pedido.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const updates = {};
+    const textFields = { customerName: 200, customerPhone: 50, productName: 300, theme: 200, notes: 1000 };
+    for (const [field, maxLength] of Object.entries(textFields)) {
+      if (args[field] === undefined) continue;
+      if (typeof args[field] !== 'string' || args[field].length > maxLength || (field === 'customerName' || field === 'productName') && !args[field].trim()) {
+        const error = new Error(`O campo ${field} é inválido ou excede ${maxLength} caracteres.`);
+        error.code = 'invalid-argument';
+        throw error;
+      }
+      updates[field] = args[field].trim() || null;
+    }
+    if (args.quantity !== undefined) {
+      const quantity = Number(args.quantity);
+      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000) {
+        const error = new Error('A quantidade deve ser um inteiro entre 1 e 10000.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
+      updates.quantity = quantity;
+    }
+    if (args.totalPrice !== undefined && args.unitPrice !== undefined) {
+      const error = new Error('Informe totalPrice ou unitPrice, nunca os dois.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const requestedPrice = args.totalPrice !== undefined ? args.totalPrice : args.unitPrice;
+    if (requestedPrice !== undefined) {
+      if (typeof requestedPrice !== 'number' || !Number.isFinite(requestedPrice) || requestedPrice < 0) {
+        const error = new Error('O valor informado deve ser um número não negativo em reais.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
+      const cents = Math.round(requestedPrice * 100);
+      const maxCents = args.totalPrice !== undefined ? 1000000000 : 100000000;
+      if (!Number.isSafeInteger(cents) || cents > maxCents) {
+        const error = new Error('O valor informado excede o limite permitido.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
+      updates.price = cents / 100;
+    }
+    if (args.deliveryDate !== undefined) {
+      try {
+        updates.deliveryDate = validateAndNormalizeDeliveryDate(args.deliveryDate).deliveryDate;
+      } catch (cause) {
+        const error = new Error(cause.message || 'A data de entrega informada é inválida.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
+    }
+    if (!Object.keys(updates).length) {
+      return await this.executeGetOrderEditForm(args, scope);
+    }
+    const order = await this.repos.getScopedOrderDocument(scope, identifier);
+    if (!order || order.data.deletedAt || order.data.isDeleted) {
+      const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
+      error.code = 'not-found';
+      throw error;
+    }
+    if (requestedPrice !== undefined && args.unitPrice !== undefined) {
+      const quantity = updates.quantity ?? (Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1);
+      const totalCents = Math.round(requestedPrice * 100) * quantity;
+      if (!Number.isSafeInteger(totalCents) || totalCents > 1000000000) {
+        const error = new Error('O total calculado excede o limite permitido.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
+      updates.price = totalCents / 100;
+    }
+    if (requestedPrice !== undefined) {
+      const alreadyPaid = Math.max(0, Number(order.data.payment?.paidAmount) || 0);
+      if (alreadyPaid > updates.price) {
+        const error = new Error('O novo valor não pode ficar abaixo do total já recebido. Ajuste o valor recebido pelo fluxo financeiro autorizado.');
+        error.code = 'failed-precondition';
+        throw error;
+      }
+    }
+    const version = Number.isSafeInteger(order.data.version) && order.data.version > 0 ? order.data.version : 1;
+    if (!Number.isSafeInteger(Number(args.expectedVersion)) || Number(args.expectedVersion) !== version) {
+      const error = new Error(`A versão do pedido mudou ou não foi informada. Consulte novamente antes de editar (versão atual: ${version}).`);
+      error.code = 'failed-precondition';
+      throw error;
+    }
+
+    const summary = {
+      orderNumber: order.data.orderNumber || identifier,
+      customerName: order.data.customerName || '',
+      changes: updates,
+      ...(requestedPrice !== undefined ? {
+        pricing: {
+          mode: args.unitPrice !== undefined ? 'unit' : 'total',
+          unitPrice: args.unitPrice !== undefined ? Math.round(Number(args.unitPrice) * 100) / 100 : Math.round((updates.price / (updates.quantity ?? (Number(order.data.quantity) || 1))) * 100) / 100,
+          totalPrice: updates.price,
+        },
+      } : {}),
+      version,
+    };
+    if (!isConfirmed(args.confirmed)) return { success: true, status: 'preview', requiresConfirmation: true, preview: summary, message: 'Prévia pronta. Mostre as alterações ao usuário e só grave após confirmação explícita.' };
+
+    if (typeof args.idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(args.idempotencyKey)) {
+      const error = new Error('Informe uma chave de idempotência válida para confirmar a alteração.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+
+    const db = this.repos.db;
+    const idempotency = getMcpIdempotencyContext(db, scope, 'update_order', args.idempotencyKey, args);
+    const now = new Date().toISOString();
+    const result = await db.runTransaction(async (transaction) => {
+      const orderRef = db.collection('orders').doc(order.id);
+      const saleRef = db.collection('salesLedger').doc(order.id);
+      const [idempotencySnap, orderSnap, saleSnap] = await Promise.all([
+        transaction.get(idempotency.ref), transaction.get(orderRef), transaction.get(saleRef),
+      ]);
+      const replay = readIdempotentResult(idempotencySnap, idempotency.payloadHash);
+      if (replay) return replay;
+      if (!orderSnap.exists) {
+        const error = new Error('Pedido não encontrado.');
+        error.code = 'not-found';
+        throw error;
+      }
+      const current = orderSnap.data() || {};
+      const { filterOrdersByScope } = require('./authorization');
+      if (current.deletedAt || current.isDeleted || !filterOrdersByScope([{ ...current, id: order.id }], scope).length) {
+        const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
+        error.code = 'not-found';
+        throw error;
+      }
+      const currentVersion = Number.isSafeInteger(current.version) && current.version > 0 ? current.version : 1;
+      if (currentVersion !== version) {
+        const error = new Error(`O pedido foi alterado durante a operação. Consulte novamente e tente de novo (versão atual: ${currentVersion}).`);
+        error.code = 'failed-precondition';
+        throw error;
+      }
+      const orderUpdates = { ...updates, version: currentVersion + 1, updatedAt: now };
+      if (requestedPrice !== undefined) {
+        orderUpdates.totalPrice = updates.price;
+        const payment = current.payment && typeof current.payment === 'object' ? current.payment : {};
+        const paidAmount = Math.max(0, Number(payment.paidAmount) || 0);
+        if (paidAmount > updates.price) {
+          const error = new Error('O novo valor não pode ficar abaixo do total já recebido. Ajuste o valor recebido pelo fluxo financeiro autorizado.');
+          error.code = 'failed-precondition';
+          throw error;
+        }
+        const remainingAmount = Math.round((updates.price - paidAmount) * 100) / 100;
+        const paymentStatus = paidAmount === 0 ? 'pending' : paidAmount === updates.price ? 'paid' : 'partial';
+        orderUpdates.payment = { ...payment, status: paymentStatus, totalAmount: updates.price, paidAmount, remainingAmount };
+      }
+      transaction.update(orderRef, orderUpdates);
+      if (saleSnap.exists) {
+        const saleUpdates = { updatedAt: now };
+        for (const field of ['customerName', 'customerPhone', 'productName', 'quantity', 'deliveryDate']) {
+          if (updates[field] !== undefined) saleUpdates[field] = updates[field];
+        }
+        if (requestedPrice !== undefined) {
+          saleUpdates.amount = updates.price;
+          saleUpdates.paymentStatus = orderUpdates.payment.status;
+          saleUpdates.paidAmount = orderUpdates.payment.paidAmount;
+        }
+        transaction.update(saleRef, saleUpdates);
+      } else if (requestedPrice !== undefined) {
+        const payment = orderUpdates.payment;
+        transaction.set(saleRef, {
+          id: order.id,
+          orderId: order.id,
+          orderNumber: current.orderNumber || identifier,
+          userId: current.userId || scope.uid,
+          assignedTo: current.assignedTo || null,
+          assignedToName: current.assignedToName || null,
+          customerId: current.customerId || null,
+          customerName: updates.customerName ?? current.customerName ?? 'Cliente não informado',
+          customerPhone: updates.customerPhone ?? current.customerPhone ?? null,
+          productName: updates.productName ?? current.productName ?? 'Produto',
+          quantity: updates.quantity ?? current.quantity ?? 1,
+          amount: updates.price,
+          paymentStatus: payment.status,
+          paidAmount: payment.paidAmount,
+          paymentMethod: payment.method || null,
+          date: current.createdAt || now,
+          deliveryDate: updates.deliveryDate ?? current.deliveryDate ?? null,
+          status: current.status || 'pending',
+          isDeletedFromOrders: false,
+          notes: updates.notes ?? current.notes ?? null,
+          tags: current.tags || null,
+          createdAt: current.createdAt || now,
+          updatedAt: now,
+        });
+      }
+      const response = { success: true, orderNumber: order.data.orderNumber || identifier, version: version + 1, message: 'Pedido atualizado.' };
+      transaction.set(idempotency.ref, { payloadHash: idempotency.payloadHash, result: response, completed: true, createdAt: now });
+      return response;
+    });
+    return result;
+  }
+
+  /** Atualização de etapa com transição monotônica, prévia, versão e idempotência. */
+  async executeUpdateOrderStatus(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'edit', 'atualizar a etapa de produção');
+    const identifier = String(args.orderNumber || '').trim();
+    const targetStatus = args.status;
+    if (!identifier || !['in-progress', 'completed'].includes(targetStatus)) {
+      const error = new Error('Informe o pedido e uma etapa de destino válida.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const db = this.repos.db;
+    let idempotency = null;
+    if (isConfirmed(args.confirmed)) {
+      idempotency = getMcpIdempotencyContext(db, scope, 'update_order_status', args.idempotencyKey, args);
+      const previous = await idempotency.ref.get();
+      const replay = readIdempotentResult(previous, idempotency.payloadHash);
+      if (replay) return replay;
+    }
+    const order = await this.repos.getScopedOrderDocument(scope, identifier);
+    if (!order || order.data.deletedAt || order.data.isDeleted) {
+      const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
+      error.code = 'not-found';
+      throw error;
+    }
+    const statusAliases = {
+      pending: 'pending', pendente: 'pending', received: 'pending', recebido: 'pending', in_contact: 'pending',
+      'in-progress': 'in-progress', in_progress: 'in-progress', em_producao: 'in-progress', 'em produção': 'in-progress', 'em producao': 'in-progress', 'em-andamento': 'in-progress', em_andamento: 'in-progress', producao: 'in-progress', produção: 'in-progress',
+      completed: 'completed', concluido: 'completed', concluído: 'completed', delivered: 'completed', entregue: 'completed', pronto: 'completed', finished: 'completed',
+      cancelled: 'cancelled', canceled: 'cancelled', cancelado: 'cancelled', cancelada: 'cancelled',
+    };
+    const currentStatus = statusAliases[String(order.data.status || 'pending').toLowerCase().trim()];
+    if (!currentStatus) {
+      const error = new Error('O status atual do pedido não é reconhecido; nenhuma alteração foi feita.');
+      error.code = 'failed-precondition';
+      throw error;
+    }
+    const allowedNext = { pending: ['in-progress'], 'in-progress': ['completed'], completed: [], cancelled: [] };
+    if (!allowedNext[currentStatus]?.includes(targetStatus)) {
+      const error = new Error(`Transição não permitida: ${currentStatus} para ${targetStatus}. O fluxo só permite pendente → em produção → concluído.`);
+      error.code = 'failed-precondition';
+      throw error;
+    }
+    const version = Number.isSafeInteger(order.data.version) && order.data.version > 0 ? order.data.version : 1;
+    if (!Number.isSafeInteger(args.expectedVersion) || args.expectedVersion !== version) {
+      const error = new Error(`A versão do pedido mudou ou não foi informada. Consulte novamente antes de alterar (versão atual: ${version}).`);
+      error.code = 'failed-precondition';
+      throw error;
+    }
+    const preview = {
+      orderNumber: order.data.orderNumber || identifier,
+      customerName: order.data.customerName || '',
+      fromStatus: currentStatus,
+      toStatus: targetStatus,
+      version,
+    };
+    if (!isConfirmed(args.confirmed)) return { success: true, status: 'preview', requiresConfirmation: true, preview, message: 'Mostre a mudança de etapa e só grave após confirmação explícita.' };
+    if (typeof db?.runTransaction !== 'function') {
+      const error = new Error('Gravação segura indisponível; a etapa não foi alterada.');
+      error.code = 'failed-precondition';
+      throw error;
+    }
+    const now = new Date().toISOString();
+    return db.runTransaction(async (transaction) => {
+      const orderRef = db.collection('orders').doc(order.id);
+      const saleRef = db.collection('salesLedger').doc(order.id);
+      const [idempotencySnap, orderSnap, saleSnap] = await Promise.all([
+        transaction.get(idempotency.ref), transaction.get(orderRef), transaction.get(saleRef),
+      ]);
+      const replay = readIdempotentResult(idempotencySnap, idempotency.payloadHash);
+      if (replay) return replay;
+      if (!orderSnap.exists) {
+        const error = new Error('Pedido não encontrado.');
+        error.code = 'not-found';
+        throw error;
+      }
+      const current = orderSnap.data() || {};
+      if (current.deletedAt || current.isDeleted || !filterOrdersByScope([{ ...current, id: order.id }], scope).length) {
+        const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
+        error.code = 'not-found';
+        throw error;
+      }
+      const currentVersion = Number.isSafeInteger(current.version) && current.version > 0 ? current.version : 1;
+      const liveStatus = statusAliases[String(current.status || 'pending').toLowerCase().trim()];
+      if (currentVersion !== version || !liveStatus || liveStatus !== currentStatus || !allowedNext[liveStatus]?.includes(targetStatus)) {
+        const error = new Error('O pedido mudou durante a operação. Consulte novamente e tente outra vez.');
+        error.code = 'failed-precondition';
+        throw error;
+      }
+      transaction.update(orderRef, { status: targetStatus, version: currentVersion + 1, updatedAt: now });
+      if (saleSnap.exists) transaction.update(saleRef, { status: targetStatus, updatedAt: now });
+      const response = { success: true, orderNumber: current.orderNumber || identifier, status: targetStatus, version: currentVersion + 1, message: 'Etapa do pedido atualizada.' };
+      transaction.set(idempotency.ref, { payloadHash: idempotency.payloadHash, result: response, completed: true, createdAt: now });
+      return response;
+    });
+  }
+
+  /** Atalho com schema restrito para alterações de entrega; reutiliza toda a validação transacional existente. */
+  async executeUpdateDeliveryDetails(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'edit', 'alterar dados de entrega');
+    if (args.deliveryDate === undefined && args.notes === undefined) {
+      const error = new Error('Informe uma nova data ou observação de entrega.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    return this.executeUpdateOrder({
+      orderNumber: args.orderNumber,
+      ...(args.deliveryDate !== undefined ? { deliveryDate: args.deliveryDate } : {}),
+      ...(args.notes !== undefined ? { notes: args.notes } : {}),
+      expectedVersion: args.expectedVersion,
+      idempotencyKey: `${String(args.idempotencyKey).slice(0, 119)}:delivery`,
+      confirmed: args.confirmed,
+    }, scope);
+  }
+
+  /** Cria um cliente com campos permitidos e confirmação explícita. */
+  async executeCreateCustomer(args = {}, scope) {
+    requireMcpModulePermission(scope, 'customers', 'create', 'cadastrar clientes');
+    const fields = ['name', 'phone', 'email', 'street', 'number', 'complement', 'city', 'state', 'zipCode', 'notes'];
+    const limits = { name: 200, phone: 50, email: 254, street: 200, number: 30, complement: 100, city: 100, state: 50, zipCode: 20, notes: 1000 };
+    const customer = {};
+    for (const field of fields) {
+      if (args[field] === undefined) continue;
+      if (typeof args[field] !== 'string' || args[field].length > limits[field]) throw new Error(`O campo ${field} é inválido ou excede ${limits[field]} caracteres.`);
+      const value = args[field].trim();
+      if (field === 'name' && !value) throw new Error('Nome do cliente é obrigatório.');
+      if (field === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new Error('Informe um e-mail válido.');
+      customer[field] = value;
+    }
+    if (!customer.name) throw new Error('Nome do cliente é obrigatório.');
+    const phoneDigits = String(customer.phone || '').replace(/\D/g, '');
+    const preview = { ...customer };
+    if (!isConfirmed(args.confirmed)) return { success: true, status: 'preview', requiresConfirmation: true, preview, message: 'Prévia pronta. Mostre os dados ao usuário e só cadastre após confirmação explícita.' };
+
+    const db = this.repos.db;
+    if (!db) throw new Error('Banco de dados indisponível.');
+    const customerRef = db.collection('customers').doc();
+    const idempotency = getMcpIdempotencyContext(db, scope, 'create_customer', args.idempotencyKey, args);
+    const now = new Date().toISOString();
+    const result = await db.runTransaction(async (transaction) => {
+      const idempotencySnap = await transaction.get(idempotency.ref);
+      const replay = readIdempotentResult(idempotencySnap, idempotency.payloadHash);
+      if (replay) return replay;
+      if (phoneDigits) {
+        const duplicateQuery = db.collection('customers').where('phoneDigits', '==', phoneDigits);
+        const duplicateSnap = await transaction.get(duplicateQuery);
+        const { filterCustomersByScope } = require('./authorization');
+        const duplicate = (duplicateSnap.docs || []).some((doc) => filterCustomersByScope([{ ...(doc.data() || {}), id: doc.id }], scope).length > 0);
+        if (duplicate) throw new Error('Já existe um cliente acessível com este telefone. Consulte a base e atualize o cadastro existente.');
+      }
+      transaction.set(customerRef, {
+        ...customer,
+        phoneDigits,
+        userId: scope.uid,
+        createdBy: scope.uid,
+        createdByName: scope.displayName || scope.email || 'ChatGPT',
+        createdAt: now,
+        updatedAt: now,
+        totalOrders: 0,
+        totalSpent: 0,
+      });
+      const response = { success: true, customerId: customerRef.id, message: 'Cliente cadastrado.' };
+      transaction.set(idempotency.ref, { payloadHash: idempotency.payloadHash, result: response, completed: true, createdAt: now });
+      return response;
+    });
+    return result;
+  }
+
+  /** Atualiza somente campos de contato permitidos de um cliente autorizado. */
+  async executeUpdateCustomer(args = {}, scope) {
+    requireMcpModulePermission(scope, 'customers', 'edit', 'editar clientes');
+    const customerId = String(args.customerId || '').trim();
+    if (!customerId || customerId.includes('/')) throw new Error('Informe um ID de cliente válido.');
+    const fields = ['name', 'phone', 'email', 'street', 'number', 'complement', 'city', 'state', 'zipCode', 'notes'];
+    const limits = { name: 200, phone: 50, email: 254, street: 200, number: 30, complement: 100, city: 100, state: 50, zipCode: 20, notes: 1000 };
+    const updates = {};
+    for (const field of fields) {
+      if (args[field] === undefined) continue;
+      if (typeof args[field] !== 'string' || args[field].length > limits[field]) throw new Error(`O campo ${field} é inválido ou excede ${limits[field]} caracteres.`);
+      const value = args[field].trim();
+      if (field === 'name' && !value) throw new Error('O nome do cliente não pode ficar vazio.');
+      if (field === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new Error('Informe um e-mail válido.');
+      updates[field] = value;
+    }
+    if (!Object.keys(updates).length) throw new Error('Informe pelo menos um campo para alterar.');
+    const customer = await this.repos.getScopedCustomerDocument(scope, customerId);
+    if (!customer || customer.data.deletedAt || customer.data.isDeleted) throw new Error('Cliente não encontrado ou sem permissão.');
+    const preview = { customerId, currentName: customer.data.name || customer.data.fullName || '', changes: updates };
+    if (!isConfirmed(args.confirmed)) return { success: true, status: 'preview', requiresConfirmation: true, preview, message: 'Prévia pronta. Mostre as alterações e só salve após confirmação explícita.' };
+
+    const db = this.repos.db;
+    const idempotency = getMcpIdempotencyContext(db, scope, 'update_customer', args.idempotencyKey, args);
+    const customerRef = db.collection('customers').doc(customerId);
+    const result = await db.runTransaction(async (transaction) => {
+      const [idempotencySnap, customerSnap] = await Promise.all([transaction.get(idempotency.ref), transaction.get(customerRef)]);
+      const replay = readIdempotentResult(idempotencySnap, idempotency.payloadHash);
+      if (replay) return replay;
+      if (!customerSnap.exists) throw new Error('Cliente não encontrado ou sem permissão.');
+      const current = customerSnap.data() || {};
+      const { filterCustomersByScope } = require('./authorization');
+      if (!filterCustomersByScope([{ ...current, id: customerId }], scope).length) throw new Error('Cliente não encontrado ou sem permissão.');
+      if (updates.phone !== undefined) {
+        const phoneDigits = updates.phone.replace(/\D/g, '');
+        if (phoneDigits) {
+          const duplicateQuery = db.collection('customers').where('phoneDigits', '==', phoneDigits);
+          const duplicateSnap = await transaction.get(duplicateQuery);
+          const duplicate = (duplicateSnap.docs || []).some((doc) => doc.id !== customerId && filterCustomersByScope([{ ...(doc.data() || {}), id: doc.id }], scope).length > 0);
+          if (duplicate) throw new Error('Já existe outro cliente acessível com este telefone.');
+        }
+        updates.phoneDigits = phoneDigits;
+      }
+      const now = new Date().toISOString();
+      transaction.update(customerRef, { ...updates, updatedAt: now });
+      const response = { success: true, customerId, message: 'Cliente atualizado.' };
+      transaction.set(idempotency.ref, { payloadHash: idempotency.payloadHash, result: response, completed: true, createdAt: now });
+      return response;
+    });
+    return result;
+  }
+
+  /** Consulta histórico de pagamentos sem expor pedidos fora do escopo do usuário. */
+  async executeQueryOrderPayments(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'view', 'consultar pagamentos de pedidos');
+    const identifier = String(args.orderNumber || '').trim();
+    if (!identifier) throw new Error('Informe o número ou ID do pedido.');
+    const order = await this.repos.getScopedOrderDocument(scope, identifier);
+    if (!order || order.data.deletedAt || order.data.isDeleted) throw new Error('Pedido não encontrado ou sem permissão.');
+    const payment = order.data.payment || {};
+    const totalAmount = Number(payment.totalAmount ?? order.data.price ?? order.data.totalPrice ?? 0);
+    const paidAmount = Number(payment.paidAmount ?? order.data.paidAmount ?? 0);
+    const remainingAmount = Math.max(0, roundMoney(totalAmount - paidAmount));
+    return {
+      orderNumber: order.data.orderNumber || identifier,
+      customerName: order.data.customerName || '',
+      totalAmount: roundMoney(totalAmount),
+      paidAmount: roundMoney(paidAmount),
+      remainingAmount,
+      status: payment.status || (remainingAmount === 0 && totalAmount > 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'pending'),
+      history: Array.isArray(payment.history) ? payment.history : [],
+      historyAvailable: Array.isArray(payment.history),
+    };
+  }
+
+  /** Registra um pagamento em transação, com saldo validado e idempotência. */
+  async executeRegisterOrderPayment(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'edit', 'registrar pagamentos');
+    const identifier = String(args.orderNumber || '').trim();
+    const amount = roundMoney(args.amount);
+    const method = normalizePaymentMethod(args.method);
+    const idempotencyKey = String(args.idempotencyKey || '').trim();
+    if (!identifier) throw new Error('Informe o número ou ID do pedido.');
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000) throw new Error('O valor do pagamento deve ser maior que zero e menor ou igual a R$ 1.000.000,00.');
+    if (!method) throw new Error('Forma de pagamento inválida. Utilize PIX, dinheiro, crédito, débito ou transferência.');
+    if (idempotencyKey.length < 8 || idempotencyKey.length > 128) throw new Error('Informe uma chave de idempotência entre 8 e 128 caracteres.');
+    const notes = args.notes === undefined ? '' : String(args.notes).trim();
+    if (notes.length > 300) throw new Error('A observação do pagamento deve ter no máximo 300 caracteres.');
+
+    const order = await this.repos.getScopedOrderDocument(scope, identifier);
+    if (!order || order.data.deletedAt || order.data.isDeleted) throw new Error('Pedido não encontrado ou sem permissão.');
+    const currentPayment = order.data.payment || {};
+    const totalAmount = roundMoney(currentPayment.totalAmount ?? order.data.price ?? order.data.totalPrice ?? 0);
+    const paidAmount = roundMoney(currentPayment.paidAmount ?? order.data.paidAmount ?? 0);
+    const remainingAmount = Math.max(0, roundMoney(totalAmount - paidAmount));
+    if (amount > remainingAmount) throw new Error(`O pagamento supera o saldo do pedido (R$ ${remainingAmount.toFixed(2)}). Consulte os pagamentos antes de tentar novamente.`);
+    const preview = {
+      orderNumber: order.data.orderNumber || identifier,
+      customerName: order.data.customerName || '',
+      amount,
+      method,
+      currentPaidAmount: paidAmount,
+      newPaidAmount: roundMoney(paidAmount + amount),
+      remainingAfterPayment: roundMoney(remainingAmount - amount),
+      notes,
+    };
+    if (!isConfirmed(args.confirmed)) return { success: true, status: 'preview', requiresConfirmation: true, preview, message: 'Prévia pronta. Mostre o valor, pedido e forma de pagamento ao usuário; só registre após confirmação explícita.' };
+
+    const db = this.repos.db;
+    const idempotency = getMcpIdempotencyContext(db, scope, 'register_order_payment', args.idempotencyKey, args);
+    const paymentEntry = {
+      amount,
+      date: new Date().toISOString(),
+      method,
+      notes: notes || null,
+      idempotencyKey,
+      registeredBy: scope.uid,
+      source: 'chatgpt-mcp',
+    };
+    const result = await db.runTransaction(async (transaction) => {
+      const orderRef = db.collection('orders').doc(order.id);
+      const saleRef = db.collection('salesLedger').doc(order.id);
+      const [idempotencySnap, orderSnap, saleSnap] = await Promise.all([
+        transaction.get(idempotency.ref), transaction.get(orderRef), transaction.get(saleRef),
+      ]);
+      const replay = readIdempotentResult(idempotencySnap, idempotency.payloadHash);
+      if (replay) return { response: replay };
+      if (!orderSnap.exists) throw new Error('Pedido não encontrado.');
+      const current = orderSnap.data() || {};
+      const { filterOrdersByScope } = require('./authorization');
+      if (current.deletedAt || current.isDeleted || !filterOrdersByScope([{ ...current, id: order.id }], scope).length) {
+        throw new Error('Pedido não encontrado ou sem permissão.');
+      }
+      const payment = current.payment || {};
+      const liveTotal = roundMoney(payment.totalAmount ?? current.price ?? current.totalPrice ?? 0);
+      const livePaid = roundMoney(payment.paidAmount ?? current.paidAmount ?? 0);
+      const history = Array.isArray(payment.history) ? payment.history : [];
+      const duplicate = history.find((entry) => entry?.idempotencyKey === idempotencyKey);
+      if (duplicate) {
+        if (roundMoney(duplicate.amount) !== amount || duplicate.method !== method || (duplicate.notes || '') !== (notes || '')) {
+          const error = new Error('Esta chave de pagamento já foi usada com dados diferentes.');
+          error.code = 'already-exists';
+          throw error;
+        }
+        const response = { success: true, duplicate: true, orderNumber: current.orderNumber || identifier, payment: duplicate, message: 'Este pagamento já havia sido registrado; nenhuma duplicata foi criada.' };
+        transaction.set(idempotency.ref, { payloadHash: idempotency.payloadHash, result: response, completed: true, createdAt: paymentEntry.date });
+        return { response };
+      }
+      const liveRemaining = Math.max(0, roundMoney(liveTotal - livePaid));
+      if (amount > liveRemaining) throw new Error(`O saldo mudou durante a operação. Saldo atual: R$ ${liveRemaining.toFixed(2)}.`);
+      const newPaid = roundMoney(livePaid + amount);
+      const status = newPaid >= liveTotal && liveTotal > 0 ? 'paid' : 'partial';
+      const newHistory = [...history, paymentEntry];
+      const updatedPayment = {
+        ...payment,
+        status,
+        method,
+        totalAmount: liveTotal,
+        paidAmount: newPaid,
+        remainingAmount: roundMoney(liveTotal - newPaid),
+        paymentDate: paymentEntry.date,
+        history: newHistory,
+      };
+      const now = new Date().toISOString();
+      transaction.update(orderRef, {
+        payment: updatedPayment,
+        version: (Number.isSafeInteger(current.version) && current.version > 0 ? current.version : 1) + 1,
+        updatedAt: now,
+      });
+      if (saleSnap.exists) {
+        transaction.update(saleRef, { paidAmount: newPaid, paymentStatus: status, paymentMethod: method, updatedAt: now });
+      } else {
+        transaction.set(saleRef, {
+          id: order.id,
+          orderId: order.id,
+          orderNumber: current.orderNumber || '',
+          userId: current.userId || scope.uid,
+          assignedTo: current.assignedTo || null,
+          assignedToName: current.assignedToName || null,
+          customerId: current.customerId || null,
+          customerName: current.customerName || 'Cliente não informado',
+          customerPhone: current.customerPhone || null,
+          productName: current.productName || 'Produto',
+          quantity: Number(current.quantity) || 1,
+          amount: liveTotal,
+          paymentStatus: status,
+          paidAmount: newPaid,
+          paymentMethod: method,
+          date: current.createdAt || now,
+          deliveryDate: current.deliveryDate || null,
+          status: current.status || 'pending',
+          isDeletedFromOrders: false,
+          createdAt: current.createdAt || now,
+          updatedAt: now,
+        });
+      }
+      const response = { success: true, orderNumber: current.orderNumber || identifier, paidAmount: newPaid, remainingAmount: updatedPayment.remainingAmount, status, message: `Pagamento de R$ ${amount.toFixed(2)} registrado no pedido ${current.orderNumber || identifier}.` };
+      transaction.set(idempotency.ref, { payloadHash: idempotency.payloadHash, result: response, completed: true, createdAt: paymentEntry.date });
+      return { response };
+    });
+    return result.response;
+  }
+
+  /**
    * Ferramenta 9: Rascunho de Pedido com Contrato Compatível (IA-03 & R03)
    */
   async executeExtractOrderDraft(args = {}, scope) {
+    if (!args.customerName && !args.productSummary && !args.productName) {
+      return await this.executeGetOrderForm(args, scope);
+    }
+
     const identity = await this.resolveCustomerIdentity(args.customerName, args.customerPhone, scope);
     if (identity.ambiguous) {
       return { preparationStatus: 'identification_required', requiresIdentification: true,
@@ -967,6 +1948,34 @@ class AiToolsExecutor {
     const phone = identity.phone;
 
     const pName = args.productName || args.productSummary || 'Personalizado Luisices';
+
+    let draftDeliveryDate = args.deliveryDate || '';
+    const draftWarnings = [];
+    if (draftDeliveryDate) {
+      try {
+        const dVal = validateAndNormalizeDeliveryDate(draftDeliveryDate);
+        draftDeliveryDate = dVal.deliveryDate;
+        if (dVal.isUrgent) {
+          draftWarnings.push('Prazo urgente detectado: data de entrega em menos de 24-48 horas.');
+        }
+      } catch (dErr) {
+        draftWarnings.push(`Atenção ao prazo: ${dErr.message}`);
+      }
+    }
+
+    const draftLines = [
+      `📝 **Rascunho de Pedido Preparado**`,
+      `• **Cliente:** ${args.customerName || 'Cliente'}${phone ? ` (${normalizePhone(phone)})` : ''}`,
+      `• **Produto:** ${pName}${args.quantity ? ` (${args.quantity} un)` : ''}`,
+    ];
+    if (args.theme) draftLines.push(`• **Tema:** ${args.theme}`);
+    if (draftDeliveryDate) draftLines.push(`• **Data Prevista:** ${draftDeliveryDate}`);
+    if (args.totalPrice != null && args.totalPrice !== '') draftLines.push(`• **Valor Estimado:** R$ ${Number(args.totalPrice).toFixed(2)}`);
+    if (draftWarnings.length > 0) {
+      draftLines.push(`⚠️ **Alertas:** ${draftWarnings.join(' | ')}`);
+    }
+    draftLines.push(`\n💡 *Para confirmar e salvar oficialmente este pedido na fila do ateliê, execute a ferramenta create_order com estes dados.*`);
+    const formattedSummary = draftLines.join('\n');
 
     return {
       preparationStatus: 'draft_prepared',
@@ -977,9 +1986,565 @@ class AiToolsExecutor {
       quantity: args.quantity != null && Number(args.quantity) > 0 && Number.isFinite(Number(args.quantity)) ? Number(args.quantity) : undefined,
       totalPrice: args.totalPrice != null && args.totalPrice !== '' && Number.isFinite(Number(args.totalPrice)) ? Number(args.totalPrice) : undefined,
       paidAmount: args.paidAmount != null && args.paidAmount !== '' && Number.isFinite(Number(args.paidAmount)) ? Number(args.paidAmount) : undefined,
-      deliveryDate: args.deliveryDate || '',
+      deliveryDate: draftDeliveryDate,
       theme: args.theme || '',
       notes: args.notes || '',
+      warnings: draftWarnings.length > 0 ? draftWarnings : undefined,
+      formattedSummary,
+      nextActionHint: 'Para gravar e registrar oficialmente este pedido na fila de produção do sistema Luisices, execute a ferramenta create_order com estes parâmetros.',
+    };
+  }
+
+  /**
+   * Ferramenta 10: Criar e Registrar Pedido no Sistema (via ChatGPT / MCP)
+   */
+  async executeCreateOrder(args = {}, scope) {
+    if (!scope || !scope.uid) {
+      throw new Error('Usuário não autenticado.');
+    }
+
+    requireMcpModulePermission(scope, 'orders', 'create', 'criar pedidos');
+
+    // O contrato original de create_order não incluía confirmed. Esses clientes
+    // invocam uma ação de gravação após autorização no host. A prévia permanece
+    // disponível explicitamente, sem transformar chamadas antigas em rascunhos.
+    if (args.confirmed !== undefined && ![true, false, 'true', 'false'].includes(args.confirmed)) {
+      const error = new Error('confirmed deve ser verdadeiro ou falso.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const previewOnly = args.confirmed === false || args.confirmed === 'false';
+
+    const cleanCustomer = String(args.customerName || '').trim();
+    if (!cleanCustomer) {
+      throw new Error('Nome do cliente é obrigatório para registrar o pedido.');
+    }
+
+    const cleanProduct = String(args.productName || args.productSummary || '').trim();
+    if (!cleanProduct) {
+      throw new Error('Nome do produto é obrigatório para registrar o pedido.');
+    }
+
+    const rawQuantity = Number(args.quantity);
+    const rawTotalPrice = Number(args.totalPrice);
+    const rawPaidAmount = args.paidAmount === undefined ? 0 : Number(args.paidAmount);
+    if (!Number.isSafeInteger(rawQuantity) || rawQuantity < 1 || rawQuantity > 100000) {
+      const error = new Error('A quantidade deve ser um inteiro entre 1 e 100000.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    if (!Number.isFinite(rawTotalPrice) || rawTotalPrice < 0 || rawTotalPrice > 10000000) {
+      const error = new Error('O valor total deve estar entre R$ 0,00 e R$ 10.000.000,00.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    if (!Number.isFinite(rawPaidAmount) || rawPaidAmount < 0 || rawPaidAmount > rawTotalPrice) {
+      const error = new Error('O valor pago deve ser não negativo e não pode superar o total do pedido.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const cleanQuantity = rawQuantity;
+    const cleanTotalPrice = roundMoney(rawTotalPrice);
+    const cleanPaidAmount = roundMoney(rawPaidAmount);
+    if ((cleanPaidAmount > 0 || args.paymentMethod !== undefined) && !scope.mcpScopes?.includes('payments:write')) {
+      const error = new Error('A permissão Registrar Pagamentos é necessária para informar um pagamento inicial no pedido.');
+      error.code = 'permission-denied';
+      throw error;
+    }
+    const remainingAmount = Math.max(0, Math.round((cleanTotalPrice - cleanPaidAmount) * 100) / 100);
+
+    // Validação rigorosa de prazo no fuso de Brasília
+    const dateValidation = validateAndNormalizeDeliveryDate(args.deliveryDate);
+    const rawDate = dateValidation.deliveryDate;
+
+    // Busca cliente na base
+    let customerPhone = normalizePhone(args.customerPhone || '');
+    let customerId = null;
+    try {
+      const identity = await this.resolveCustomerIdentity(cleanCustomer, customerPhone, scope);
+      if (identity && identity.phone) {
+        customerPhone = identity.phone;
+      }
+      const custMatches = await this.repos.getScopedCustomers(scope, { searchTerm: cleanCustomer });
+      const found = (custMatches.customers || []).find(
+        (c) => String(c.name || '').toLowerCase().trim() === cleanCustomer.toLowerCase()
+      );
+      if (found) {
+        customerId = found.id;
+        if (!customerPhone && found.phone) {
+          customerPhone = normalizePhone(found.phone);
+        }
+      }
+    } catch (_cErr) {
+      // Ignora erro de busca de cliente
+    }
+
+    // Determina status de pagamento
+    let paymentStatus = 'pending';
+    if (cleanPaidAmount >= cleanTotalPrice && cleanTotalPrice > 0) {
+      paymentStatus = 'completed';
+    } else if (cleanPaidAmount > 0) {
+      paymentStatus = 'partial';
+    }
+
+    // ─── Trava de Alçada e Análise de Risco Financeiro ───
+    const isHighValue = cleanTotalPrice >= 500;
+    const isSuperHighValue = cleanTotalPrice >= 1500;
+    const isZeroDeposit = cleanPaidAmount === 0 && cleanTotalPrice > 0;
+    const minimumRecommendedDeposit = Math.round(cleanTotalPrice * 0.3 * 100) / 100;
+
+    let requiresFinancialApproval = false;
+    let financialWarning = null;
+
+    if (isSuperHighValue && isZeroDeposit && !scope.isAdmin) {
+      requiresFinancialApproval = true;
+      financialWarning = `Pedido de grande porte (R$ ${cleanTotalPrice.toFixed(2)}) registrado sem entrada. A produção aguardará aprovação da administração ou pagamento de sinal mínimo (R$ ${minimumRecommendedDeposit.toFixed(2)}).`;
+    } else if (isHighValue && isZeroDeposit) {
+      financialWarning = `Atenção: Pedido com valor de R$ ${cleanTotalPrice.toFixed(2)} registrado sem sinal. Recomenda-se cobrar pelo menos R$ ${minimumRecommendedDeposit.toFixed(2)} antes de iniciar a produção.`;
+    }
+
+    // Tags
+    const tags = [{ name: 'ChatGPT', color: '#10a37f' }];
+    if (dateValidation.isUrgent) {
+      tags.push({ name: 'Prazo Urgente', color: '#ef4444' });
+    }
+    if (isZeroDeposit && cleanTotalPrice > 0) {
+      tags.push({ name: 'Aguardando Sinal', color: '#f59e0b' });
+    }
+    if (Array.isArray(args.tags)) {
+      for (const t of args.tags) {
+        if (typeof t === 'string' && t.trim() && t.trim().toLowerCase() !== 'chatgpt' && t.trim().toLowerCase() !== 'prazo urgente' && t.trim().toLowerCase() !== 'aguardando sinal') {
+          tags.push({ name: t.trim(), color: '#6366f1' });
+        }
+      }
+    }
+
+    // Observações
+    let cleanNotes = String(args.notes || '').trim();
+    if (args.theme) {
+      cleanNotes = cleanNotes ? `Tema: ${args.theme}\n${cleanNotes}` : `Tema: ${args.theme}`;
+    }
+
+    if (previewOnly) {
+      return {
+        success: true,
+        status: 'preview',
+        requiresConfirmation: true,
+        preview: {
+          customerName: cleanCustomer,
+          customerPhone: customerPhone || null,
+          productName: cleanProduct,
+          quantity: cleanQuantity,
+          totalPrice: cleanTotalPrice,
+          paidAmount: cleanPaidAmount,
+          remainingAmount,
+          deliveryDate: rawDate,
+          theme: args.theme || null,
+          notes: cleanNotes || null,
+          paymentMethod: args.paymentMethod || null,
+        },
+        message: 'Prévia do pedido gerada com sucesso. Apresente os dados com clareza ao usuário e confirme se deseja oficializar a gravação.',
+      };
+    }
+
+    const db = this.repos.db;
+    const uid = scope.uid;
+    const year = new Date().getFullYear();
+
+    // Omitido e true representam a mesma operação de criação. Normalizar evita
+    // conflito na repetição após uma atualização do schema do conector e mantém
+    // compatibilidade com hashes já gravados com confirmed=true.
+    const idempotency = getMcpIdempotencyContext(db, scope, 'create_order', args.idempotencyKey, { ...args, confirmed: true });
+
+    const orderRef = db.collection('orders').doc();
+    const orderId = orderRef.id;
+
+    let FieldValue = null;
+    try {
+      FieldValue = require('firebase-admin/firestore').FieldValue;
+    } catch (_e) {
+      // fallback
+    }
+
+    if (typeof db.runTransaction !== 'function') {
+      const error = new Error('A gravação segura não está disponível; o pedido não foi criado.');
+      error.code = 'failed-precondition';
+      throw error;
+    }
+    const creationResult = await db.runTransaction(async (transaction) => {
+        const idempotencySnap = await transaction.get(idempotency.ref);
+        const replay = readIdempotentResult(idempotencySnap, idempotency.payloadHash);
+        if (replay) return { ...replay, replayed: true };
+        const counterRef = db.doc(`users/${uid}/metadata/counters`);
+        const counterSnap = await transaction.get(counterRef);
+        const currentCount = counterSnap.exists ? Number(counterSnap.data()?.orderCounter || 0) : 0;
+        const nextCount = currentCount + 1;
+        const orderNumber = `#${year}-${String(nextCount).padStart(4, '0')}`;
+
+        transaction.set(counterRef, { orderCounter: nextCount }, { merge: true });
+
+        const newOrderDoc = {
+          userId: uid,
+          createdByName: scope.displayName || scope.email || 'ChatGPT Assistant',
+          createdByUid: uid,
+          orderNumber,
+          customerName: cleanCustomer,
+          customerPhone: customerPhone || '',
+          customerId: customerId || null,
+          productName: cleanProduct,
+          quantity: cleanQuantity,
+          price: cleanTotalPrice,
+          totalPrice: cleanTotalPrice,
+          status: 'pending',
+          deliveryDate: rawDate,
+          notes: cleanNotes || null,
+          theme: args.theme || null,
+          tags,
+          assignedTo: null,
+          assignedToName: null,
+          assignedAt: null,
+          assignedBy: null,
+          payment: {
+            status: paymentStatus,
+            method: args.paymentMethod || (cleanPaidAmount > 0 ? 'pix' : null),
+            totalAmount: cleanTotalPrice,
+            paidAmount: cleanPaidAmount,
+            remainingAmount,
+            paymentDate: cleanPaidAmount > 0 ? new Date().toISOString() : null,
+            notes: null,
+            history: cleanPaidAmount > 0 ? [{
+              amount: cleanPaidAmount,
+              date: new Date().toISOString(),
+              method: args.paymentMethod || 'sinal',
+              notes: 'Sinal registrado via ChatGPT'
+            }] : null,
+          },
+          source: 'chatgpt-mcp',
+          idempotencyKey: String(args.idempotencyKey).trim(),
+          requiresFinancialApproval: Boolean(requiresFinancialApproval),
+          financialWarning: financialWarning || null,
+          productionWorkflow: {
+            currentStep: 'design',
+            steps: {
+              design: { completed: false },
+              approval: { completed: false },
+              printing: { completed: false },
+              cutting: { completed: false },
+              assembly: { completed: false },
+              'quality-check': { completed: false },
+              packaging: { completed: false },
+            },
+            startedAt: new Date().toISOString(),
+          },
+          version: 1,
+          createdAt: FieldValue && FieldValue.serverTimestamp ? FieldValue.serverTimestamp() : new Date().toISOString(),
+          updatedAt: FieldValue && FieldValue.serverTimestamp ? FieldValue.serverTimestamp() : new Date().toISOString(),
+          deletedAt: null,
+        };
+
+        transaction.set(orderRef, newOrderDoc);
+        const result = { orderId, orderNumber };
+        transaction.set(idempotency.ref, {
+          payloadHash: idempotency.payloadHash,
+          result,
+          completed: true,
+          createdAt: new Date().toISOString(),
+        });
+        return { ...result, replayed: false };
+      });
+    const createdOrderNumber = creationResult.orderNumber;
+
+    let brDisplayDate = rawDate;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+      const [y, m, d] = rawDate.split('-');
+      brDisplayDate = `${d}/${m}/${y}`;
+    }
+
+    const summaryLines = [
+      `✅ **Pedido ${createdOrderNumber} Registrado no Sistema Luisices!**`,
+      `• **Cliente:** ${cleanCustomer}${customerPhone ? ` (${customerPhone})` : ''}`,
+      `• **Produto:** ${cleanProduct} (${cleanQuantity} un)`,
+    ];
+    if (args.theme) summaryLines.push(`• **Tema:** ${args.theme}`);
+    summaryLines.push(
+      `• **Data de Entrega:** ${brDisplayDate} (${dateValidation.diffDays === 0 ? 'Hoje' : dateValidation.diffDays === 1 ? 'Amanhã' : `em ${dateValidation.diffDays} dias`})`
+    );
+    summaryLines.push(
+      `• **Financeiro:** Total R$ ${cleanTotalPrice.toFixed(2)} | Sinal pago: R$ ${cleanPaidAmount.toFixed(2)} | Saldo a receber: R$ ${remainingAmount.toFixed(2)}`
+    );
+    summaryLines.push(`• **Fila de Produção:** Etapa Inicial (Design)`);
+    if (financialWarning) {
+      summaryLines.push(`⚠️ **Aviso Financeiro:** ${financialWarning}`);
+    }
+    if (dateValidation.isUrgent) {
+      summaryLines.push(`🚨 **Urgência:** Pedido com tag de Prazo Urgente.`);
+    }
+
+    const formattedSummary = summaryLines.join('\n');
+
+    return {
+      success: true,
+      orderId: creationResult.orderId,
+      orderNumber: createdOrderNumber,
+      customerName: cleanCustomer,
+      customerPhone: customerPhone || 'Não informado',
+      productName: cleanProduct,
+      quantity: cleanQuantity,
+      totalPrice: cleanTotalPrice,
+      paidAmount: cleanPaidAmount,
+      remainingAmount,
+      paymentStatus,
+      deliveryDate: rawDate,
+      status: 'pending',
+      requiresFinancialApproval,
+      financialWarning: financialWarning || undefined,
+      formattedSummary,
+      isDuplicate: creationResult.replayed,
+      message: creationResult.replayed
+        ? `Pedido ${createdOrderNumber} já havia sido criado para ${cleanCustomer}; nenhuma duplicata foi gravada.`
+        : `Pedido ${createdOrderNumber} criado com sucesso para ${cleanCustomer}!`,
+    };
+  }
+
+  async executeCalculateArtisanPricing(args = {}, scope) {
+    const productName = String(args.productName || 'Encomenda').trim();
+    const quantity = Math.max(1, Number(args.quantity) || 1);
+    const pricingMode = args.pricingMode === 'margem' ? 'margem' : 'markup';
+    const markupPercent = Number(args.markupPercent) || 100;
+    const profitMarginPercent = Number(args.profitMarginPercent) || 50;
+
+    let itemsCostTotal = 0;
+    const itemBreakdown = [];
+    if (Array.isArray(args.items)) {
+      for (const item of args.items) {
+        const qty = Number(item.quantity) || 0;
+        const unit = Number(item.unitCost) || 0;
+        const sub = Math.round(qty * unit * 100) / 100;
+        itemsCostTotal += sub;
+        itemBreakdown.push({
+          name: item.name || 'Insumo',
+          quantity: qty,
+          unitCost: unit,
+          subtotalCost: sub,
+        });
+      }
+    }
+
+    const laborTimeMinutes = Number(args.laborTimeMinutes) || 0;
+    const hourlyRate = Number(args.hourlyRate) || 20;
+    const laborCost = Math.round((laborTimeMinutes / 60) * hourlyRate * 100) / 100;
+
+    const totalCost = itemsCostTotal + laborCost;
+
+    let suggestedTotalPrice = 0;
+    if (pricingMode === 'markup') {
+      suggestedTotalPrice = Math.round(totalCost * (1 + markupPercent / 100) * 100) / 100;
+    } else {
+      const marginFrac = Math.min(0.95, profitMarginPercent / 100);
+      suggestedTotalPrice = Math.round((totalCost / (1 - marginFrac)) * 100) / 100;
+    }
+
+    const unitPrice = Math.round((suggestedTotalPrice / quantity) * 100) / 100;
+
+    const depositPct = args.depositOption === '30' ? 30 : args.depositOption === '100' ? 100 : 50;
+    const depositAmount = Math.round(suggestedTotalPrice * (depositPct / 100) * 100) / 100;
+    const remainingAmount = Math.round((suggestedTotalPrice - depositAmount) * 100) / 100;
+
+    return {
+      success: true,
+      productName,
+      quantity,
+      pricingMode,
+      itemsCostTotal,
+      laborCost,
+      totalCost,
+      suggestedTotalPrice,
+      unitPrice,
+      depositPercentage: depositPct,
+      depositAmount,
+      remainingAmount,
+      itemBreakdown,
+      formattedSummary: `💰 **Precificação calculada para "${productName}" (${quantity} un):**\n• Custo total de insumos e mão de obra: R$ ${totalCost.toFixed(2)}\n• Preço final sugerido (${pricingMode === 'markup' ? `Markup ${markupPercent}%` : `Margem ${profitMarginPercent}%`}): R$ ${suggestedTotalPrice.toFixed(2)} (R$ ${unitPrice.toFixed(2)}/un)\n• Sinal (${depositPct}%): R$ ${depositAmount.toFixed(2)} | Saldo restante: R$ ${remainingAmount.toFixed(2)}`,
+    };
+  }
+
+  async executeListSupplies(args = {}, scope) {
+    const supplies = await this.repositories.getSupplies(scope);
+    const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
+    let filtered = supplies;
+    if (searchTerm) {
+      filtered = supplies.filter((s) => s.name.toLowerCase().includes(searchTerm) || s.category.toLowerCase().includes(searchTerm));
+    }
+    const limit = Math.min(100, Math.max(1, Number(args.limit) || 50));
+    const resultList = filtered.slice(0, limit);
+    return {
+      success: true,
+      totalCount: filtered.length,
+      supplies: resultList,
+      formattedSummary: `📦 Encontrados ${resultList.length} insumos de estoque:\n` + resultList.map((s) => `• ${s.name}: R$ ${s.unitCost.toFixed(2)}/un | Estoque: ${s.currentStock || 0}`).join('\n'),
+    };
+  }
+
+  async executeListPricingModels(args = {}, scope) {
+    const recipes = await this.repositories.getPricingRecipes(scope, { limit: args.limit || 20 });
+    const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
+    let filtered = recipes;
+    if (searchTerm) {
+      filtered = recipes.filter((r) => r.productName.toLowerCase().includes(searchTerm) || r.category.toLowerCase().includes(searchTerm));
+    }
+    return {
+      success: true,
+      totalCount: filtered.length,
+      models: filtered,
+      formattedSummary: `📋 Encontrados ${filtered.length} modelos de precificação salvos:\n` + filtered.map((r) => `• ${r.productName} (R$ ${r.suggestedUnitPrice.toFixed(2)})`).join('\n'),
+    };
+  }
+
+  async executeGetPricingModel(args = {}, scope) {
+    const model = await this.repositories.getPricingRecipeById(scope, args.modelId);
+    if (!model) {
+      const err = new Error('Modelo de precificação não encontrado.');
+      err.code = 'not-found';
+      throw err;
+    }
+    return {
+      success: true,
+      model,
+      formattedSummary: `📐 **Modelo Salvo: "${model.productName}"**\n• Preço Sugerido: R$ ${model.suggestedUnitPrice.toFixed(2)}\n• Método: ${model.pricingMethod === 'markup_on_cost' ? 'Markup sobre Custo' : 'Margem sobre Venda'}\n• Insumos: ${model.items.length} itens cadastrados.`,
+    };
+  }
+
+  async executeSavePricingModel(args = {}, scope) {
+    requireMcpModulePermission(scope, 'pricing', 'create', 'salvar modelos de precificação');
+    if (!isConfirmed(args.confirmed)) {
+      return {
+        success: true,
+        preview: true,
+        productName: args.productName,
+        pricingMethod: args.pricingMethod || 'markup_on_cost',
+        message: `Prévia da gravação do modelo "${args.productName}". Confirme para salvar.`,
+      };
+    }
+
+    const saved = await this.repositories.savePricingRecipe(scope, args);
+    return {
+      success: true,
+      modelId: saved.id,
+      productName: saved.productName,
+      message: `Modelo "${saved.productName}" salvo com sucesso!`,
+    };
+  }
+
+  async executeQueryQuotes(args = {}, scope) {
+    const quotes = await this.repositories.getQuotes(scope, { limit: args.limit || 20 });
+    const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
+    const statusFilter = String(args.status || 'all').toLowerCase();
+
+    let filtered = quotes;
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter((q) => q.status.toLowerCase() === statusFilter);
+    }
+    if (searchTerm) {
+      filtered = filtered.filter((q) => q.customerName.toLowerCase().includes(searchTerm) || q.quoteNumber.toLowerCase().includes(searchTerm));
+    }
+
+    return {
+      success: true,
+      totalCount: filtered.length,
+      quotes: filtered,
+      formattedSummary: `📝 Encontrados ${filtered.length} orçamentos:\n` + filtered.map((q) => `• ${q.quoteNumber} | ${q.customerName} - R$ ${q.totalPrice.toFixed(2)} [Status: ${q.status}]`).join('\n'),
+    };
+  }
+
+  async executeCreateQuote(args = {}, scope) {
+    requireMcpModulePermission(scope, 'quotes', 'create', 'criar orçamentos');
+    if (!isConfirmed(args.confirmed)) {
+      return {
+        success: true,
+        preview: true,
+        customerName: args.customerName,
+        totalPrice: args.totalPrice,
+        message: `Prévia do orçamento para ${args.customerName} (R$ ${args.totalPrice}). Confirme para gerar o orçamento oficial.`,
+      };
+    }
+
+    const quote = await this.repositories.createQuote(scope, args);
+    return {
+      success: true,
+      quoteId: quote.id,
+      quoteNumber: quote.quoteNumber,
+      customerName: quote.customerName,
+      totalPrice: quote.totalPrice,
+      message: `Orçamento ${quote.quoteNumber} gerado com sucesso para ${quote.customerName}!`,
+    };
+  }
+
+  async executeUpdateQuoteStatus(args = {}, scope) {
+    requireMcpModulePermission(scope, 'quotes', 'edit', 'atualizar orçamentos');
+    if (args.confirmed === false) {
+      return {
+        success: true,
+        preview: true,
+        quoteNumber: args.quoteNumber,
+        status: args.status,
+        convertToOrder: Boolean(args.convertToOrder),
+        message: `Prévia da atualização do orçamento ${args.quoteNumber} para ${args.status}. Confirme para aplicar.`,
+      };
+    }
+
+    if (args.convertToOrder && !scope?.mcpScopes?.includes('*') && !scope?.mcpScopes?.includes('orders:create')) {
+      const error = new Error('Permissão insuficiente para criar pedidos a partir de orçamentos.');
+      error.code = 'permission-denied';
+      throw error;
+    }
+
+    const updated = await this.repositories.updateQuoteStatus(scope, args.quoteNumber, args.status);
+    let orderCreated = null;
+
+    if (args.status === 'approved' && args.convertToOrder) {
+      const quotes = await this.repositories.getQuotes(scope, { limit: 10 });
+      const targetQuote = quotes.find((q) => q.id === updated.id || q.quoteNumber === updated.quoteNumber);
+      if (targetQuote) {
+        orderCreated = await this.executeCreateOrder({
+          customerName: targetQuote.customerName,
+          customerPhone: targetQuote.customerPhone,
+          productName: targetQuote.productName,
+          quantity: 1,
+          totalPrice: targetQuote.totalPrice,
+          // Aprovar o orçamento não comprova que o sinal foi recebido.
+          paidAmount: 0,
+          deliveryDate: args.deliveryDate || getBusinessDate(new Date(Date.now() + 7 * 86400000)),
+          idempotencyKey: args.idempotencyKey || `conv-quote-${updated.id}`,
+          confirmed: true,
+        }, scope);
+      }
+    }
+
+    return {
+      success: true,
+      quoteNumber: updated.quoteNumber,
+      status: updated.status,
+      orderCreated: orderCreated ? orderCreated.orderNumber : undefined,
+      message: orderCreated
+        ? `Orçamento ${updated.quoteNumber} aprovado e convertido no pedido ${orderCreated.orderNumber}!`
+        : `Status do orçamento ${updated.quoteNumber} atualizado para ${updated.status}.`,
+    };
+  }
+
+  async executeListStoreProducts(args = {}, scope) {
+    const products = await this.repositories.getStoreProducts();
+    const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
+    let filtered = products;
+    if (searchTerm) {
+      filtered = products.filter((p) => p.name.toLowerCase().includes(searchTerm) || p.category.toLowerCase().includes(searchTerm));
+    }
+    const limit = Math.min(50, Math.max(1, Number(args.limit) || 20));
+    const result = filtered.slice(0, limit);
+    return {
+      success: true,
+      totalCount: filtered.length,
+      products: result,
+      formattedSummary: `🛒 Encontrados ${result.length} produtos na loja virtual:\n` + result.map((p) => `• ${p.name} - R$ ${p.price.toFixed(2)}`).join('\n'),
     };
   }
 }
@@ -988,4 +2553,5 @@ module.exports = {
   AiToolsExecutor,
   getPeriodInterval,
   normalizePhone,
+  validateAndNormalizeDeliveryDate,
 };

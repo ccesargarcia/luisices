@@ -68,7 +68,7 @@ export default {
     const cacheTtlSeconds = env.CACHE_TTL ? Number(env.CACHE_TTL) : (isDev ? 300 : 31536000);
 
     const buildOriginUrl = (bucket) =>
-      `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPath}?${searchParams.toString()}`;
+      `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?name=${encodeURIComponent(rawPath)}&${searchParams.toString()}`;
 
     const fetchFromBucket = async (bucket) => {
       return fetch(buildOriginUrl(bucket), {

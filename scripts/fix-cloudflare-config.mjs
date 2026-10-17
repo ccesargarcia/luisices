@@ -122,6 +122,59 @@ async function run() {
     console.warn(`⚠️ Não foi possível alterar a configuração SSL: ${err.message}`);
   }
 
+  // 6. Desativar Browser Integrity Check (BIC) - Resolve Cloudflare Error 1010
+  console.log('\n--- 4. Desativando Browser Integrity Check (BIC - Corrige Erro 1010) ---');
+  try {
+    const bic = await cfRequest(`/zones/${zone.id}/settings/browser_check`);
+    if (bic.value !== 'off') {
+      process.stdout.write(`• Status atual do BIC: ${bic.value}. Desativando para permitir MCP e Plugins... `);
+      await cfRequest(`/zones/${zone.id}/settings/browser_check`, {
+        method: 'PATCH',
+        body: JSON.stringify({ value: 'off' }),
+      });
+      console.log('✅ Desativado com sucesso (Error 1010 eliminado)!');
+    } else {
+      console.log('• Browser Integrity Check já está desativado (off).');
+    }
+  } catch (err) {
+    console.warn(`⚠️ Não foi possível alterar Browser Integrity Check: ${err.message}`);
+  }
+
+  // 7. Ajustar Security Level para evitar desafios de captcha em chamadas automatizadas de MCP/APIs
+  console.log('\n--- 5. Ajustando Nível de Segurança (Security Level) para APIs/MCP ---');
+  try {
+    const sec = await cfRequest(`/zones/${zone.id}/settings/security_level`);
+    if (sec.value !== 'essentially_off' && sec.value !== 'low') {
+      process.stdout.write(`• Nível atual: ${sec.value}. Ajustando para permissivo em APIs... `);
+      try {
+        await cfRequest(`/zones/${zone.id}/settings/security_level`, {
+          method: 'PATCH',
+          body: JSON.stringify({ value: 'essentially_off' }),
+        });
+        console.log('✅ Atualizado para essentially_off!');
+      } catch {
+        await cfRequest(`/zones/${zone.id}/settings/security_level`, {
+          method: 'PATCH',
+          body: JSON.stringify({ value: 'low' }),
+        });
+        console.log('✅ Atualizado para low!');
+      }
+    } else {
+      console.log(`• Security Level já está em nível brando (${sec.value}).`);
+    }
+  } catch (err) {
+    console.warn(`⚠️ Não foi possível alterar Security Level: ${err.message}`);
+  }
+
+  // 8. Otimizar Challenge TTL para reduzir repetição de desafios
+  console.log('\n--- 6. Verificando Challenge TTL ---');
+  try {
+    const challengeTtl = await cfRequest(`/zones/${zone.id}/settings/challenge_ttl`);
+    console.log(`• Challenge TTL atual: ${challengeTtl.value}s.`);
+  } catch (err) {
+    // Ignorar se não suportado
+  }
+
   console.log('\n======================================================');
   console.log('🎉 TODOS OS AJUSTES FORAM APLICADOS COM SUCESSO!');
   console.log('======================================================\n');

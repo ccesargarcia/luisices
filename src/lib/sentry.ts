@@ -7,7 +7,6 @@
 
 import * as Sentry from '@sentry/react';
 
-const DEFAULT_SENTRY_DSN = 'https://d29ba26f91dac0c5c56b94866f16c461@o4512090827980800.ingest.us.sentry.io/4512090844626944';
 
 export function sanitizePii(str: string): string {
   if (typeof str !== 'string') return str;
@@ -43,7 +42,7 @@ export function sanitizeObject<T>(obj: T, seen = new WeakSet()): T {
 }
 
 export function initSentry() {
-  const dsn = import.meta.env.VITE_SENTRY_DSN || DEFAULT_SENTRY_DSN;
+  const dsn = import.meta.env.VITE_SENTRY_DSN;
 
   if (!dsn || typeof window === 'undefined') return;
 

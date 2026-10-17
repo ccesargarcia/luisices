@@ -79,7 +79,7 @@ Para os testes E2E funcionarem, você precisa:
 
 ```bash
 # Exemplo de criação via Firebase CLI
-firebase auth:create teste@exemplo.com --password "SenhaSegura123!"
+firebase auth:create teste@exemplo.com --password "$TEST_USER_PASSWORD"
 ```
 
 Depois, adicione o usuário nas collections do Firestore se necessário.

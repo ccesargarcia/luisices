@@ -11,7 +11,7 @@ const {
 
 describe('IA-01: Subsistema de Autorização e Isolamento de Escopo', () => {
   it('deve autorizar administrador ativo com escopo global', () => {
-    const scope = getCallerScope('admin-1', { role: 'admin', active: true, email: 'admin@luisices.com.br' });
+    const scope = getCallerScope('admin-1', { role: 'admin', active: true, email: 'test-user@example.invalid' });
     expect(scope.isAdmin).toBe(true);
     expect(scope.canAiCopilot).toBe(true);
     expect(() => validateAiAccess(scope)).not.toThrow();

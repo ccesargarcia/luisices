@@ -54,6 +54,10 @@ function getCallerScope(callerUid, callerProfile) {
     isEmployee,
     isUser,
     canAiCopilot,
+    canViewPricing: isEmployee && (
+      permissions.pricing === true
+      || (permissions.pricing && typeof permissions.pricing === 'object' && permissions.pricing.view === true)
+    ),
     permissions,
     email: profile.email || '',
     displayName: profile.displayName || '',
@@ -204,11 +208,55 @@ function filterGalleryByScope(items = [], scope) {
   });
 }
 
+/**
+ * Sanitiza e formata metadados de colaborador/perfil respeitando o escopo do solicitante.
+ * - Admins e Funcionários ativos: recebem nome e email do colaborador.
+ * - Próprio usuário ativo: recebe nome e email do próprio perfil.
+ * - Usuário comum consultando outro colaborador: recebe APENAS nome (sem e-mail ou dados privados).
+ *
+ * @param {Object} member - Objeto contendo { uid, name, email, role, active }
+ * @param {Object} scope - Escopo autenticado e validado do solicitante
+ * @returns {Object|null} Objeto sanitizado com campos estritamente permitidos
+ */
+function sanitizeCollaboratorInfo(member, scope) {
+  if (!member || typeof member !== 'object') return null;
+
+  const targetUid = String(member.uid || '');
+  const targetEmail = String(member.email || '').trim().toLowerCase();
+  const callerUid = String(scope?.uid || '');
+  const callerEmail = String(scope?.email || '').trim().toLowerCase();
+
+  const isSelf = Boolean(
+    (targetUid && callerUid && targetUid === callerUid) ||
+    (targetEmail && callerEmail && targetEmail === callerEmail)
+  );
+
+  const canAccessPrivateDetails = Boolean(
+    scope?.active && (scope.isAdmin || scope.isEmployee || isSelf)
+  );
+
+  const name = member.name || member.displayName || 'Colaborador';
+
+  if (canAccessPrivateDetails) {
+    const result = { name };
+    if (member.email) {
+      result.email = member.email;
+    }
+    return result;
+  }
+
+  // Para usuário comum consultando outro colaborador, omitir e-mail e outros campos privados.
+  return {
+    name,
+  };
+}
+
 module.exports = {
   getCallerScope,
   validateAiAccess,
   validateGalleryAccess,
   canAccessUserData,
+  sanitizeCollaboratorInfo,
   filterOrdersByScope,
   filterCustomersByScope,
   filterGalleryByScope,
