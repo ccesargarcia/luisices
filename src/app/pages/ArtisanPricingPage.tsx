@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router';
+import { useLocation, useSearchParams } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
 import { firebasePricingService } from '../../services/firebasePricingService';
@@ -15,6 +15,7 @@ import {
   PaymentMethod,
   PaymentStatus,
   canAccessPricing,
+  SupplyUnit,
 } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -66,6 +67,7 @@ interface CompositionItem {
   id: string;
   supplyId: string;
   name: string;
+  unit: SupplyUnit;
   quantity: number;
   unitCost: number;
   subtotalCost: number;
@@ -97,15 +99,20 @@ interface LocalQuoteRecord {
 export function ArtisanPricingPage() {
   const { userProfile, isAdmin, hasPermission } = useAuth();
   const { refreshOrders } = useOrders();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const canView = isAdmin || hasPermission((p) => canAccessPricing(p, 'view'));
   const canCreate = isAdmin || hasPermission((p) => canAccessPricing(p, 'create'));
   const canEdit = isAdmin || hasPermission((p) => canAccessPricing(p, 'edit'));
   const canDelete = isAdmin || hasPermission((p) => canAccessPricing(p, 'delete'));
+  const canCreateOrder = isAdmin || hasPermission((p) => p.orders?.create ?? false);
+  const canCreateQuote = isAdmin || hasPermission((p) => p.quotes?.create ?? false);
+  const canEditQuote = isAdmin || hasPermission((p) => p.quotes?.edit ?? false);
 
   // Aba ativa: 'calculadora' ou 'insumos'
-  const activeTab = (searchParams.get('tab') === 'insumos' ? 'insumos' : 'calculadora') as 'calculadora' | 'insumos';
+  const defaultTab = location.pathname.endsWith('/estoque-insumos') ? 'insumos' : 'calculadora';
+  const activeTab = (searchParams.get('tab') === 'insumos' ? 'insumos' : searchParams.get('tab') === 'calculadora' ? 'calculadora' : defaultTab) as 'calculadora' | 'insumos';
 
   const setTab = (tab: 'calculadora' | 'insumos') => {
     setSearchParams((prev) => {
@@ -127,6 +134,7 @@ export function ArtisanPricingPage() {
   const [editingSupplyId, setEditingSupplyId] = useState<string | null>(null);
   const [supplyName, setSupplyName] = useState('');
   const [packageQty, setPackageQty] = useState<number | string>(1);
+  const [supplyUnit, setSupplyUnit] = useState<SupplyUnit>('unidade');
   const [purchasePrice, setPurchasePrice] = useState<number | string>('');
   const [currentStock, setCurrentStock] = useState<number | string>('');
   const [savingSupply, setSavingSupply] = useState(false);
@@ -163,19 +171,33 @@ export function ArtisanPricingPage() {
   const [customDepositValue, setCustomDepositValue] = useState<string>('');
 
   // Lista de Orçamentos Gerados (Persistidos localmente com sync na nuvem)
-  const [localQuotes, setLocalQuotes] = useState<LocalQuoteRecord[]>(() => {
+  const [localQuoteState, setLocalQuoteState] = useState<{ uid: string | null; quotes: LocalQuoteRecord[] }>(() => {
     try {
-      const stored = localStorage.getItem('luisices_artisan_quotes');
-      return stored ? JSON.parse(stored) : [];
+      const uid = userProfile?.uid || null;
+      const stored = uid ? localStorage.getItem(`luisices_artisan_quotes_${uid}`) : null;
+      return { uid, quotes: stored ? JSON.parse(stored) : [] };
     } catch {
-      return [];
+      return { uid: userProfile?.uid || null, quotes: [] };
     }
   });
+  const localQuotes = localQuoteState.uid === (userProfile?.uid || null) ? localQuoteState.quotes : [];
+
+  useEffect(() => {
+    const uid = userProfile?.uid || null;
+    try {
+      const stored = uid ? localStorage.getItem(`luisices_artisan_quotes_${uid}`) : null;
+      setLocalQuoteState({ uid, quotes: stored ? JSON.parse(stored) : [] });
+    } catch {
+      setLocalQuoteState({ uid, quotes: [] });
+    }
+  }, [userProfile?.uid]);
 
   const saveLocalQuotes = (quotes: LocalQuoteRecord[]) => {
-    setLocalQuotes(quotes);
+    const uid = userProfile?.uid || null;
+    if (!uid) return;
+    setLocalQuoteState({ uid, quotes });
     try {
-      localStorage.setItem('luisices_artisan_quotes', JSON.stringify(quotes));
+      localStorage.setItem(`luisices_artisan_quotes_${uid}`, JSON.stringify(quotes));
     } catch (e) {
       console.warn('Erro ao salvar orçamentos no cache local:', e);
     }
@@ -184,10 +206,13 @@ export function ArtisanPricingPage() {
   // Carregar Insumos, Modelos e Clientes do Firestore
   useEffect(() => {
     if (!canView || !userProfile?.uid) return;
+    let isActive = true;
+    const uid = userProfile.uid;
 
     setLoadingSupplies(true);
     const unsubSupplies = firebasePricingService.subscribeToSupplies(
       (data: SupplyItem[]) => {
+        if (!isActive) return;
         setSupplies(data);
         setLoadingSupplies(false);
       },
@@ -197,6 +222,7 @@ export function ArtisanPricingPage() {
     setLoadingRecipes(true);
     const unsubRecipes = firebasePricingService.subscribeToRecipes(
       (data: ProductPricingRecipe[]) => {
+        if (!isActive) return;
         setRecipes(data);
         setLoadingRecipes(false);
       },
@@ -205,16 +231,16 @@ export function ArtisanPricingPage() {
 
     // Carregar clientes do ateliê
     firebaseCustomerService.getCustomers(userProfile.uid).then((data: Customer[]) => {
-      setCustomers(data || []);
+      if (isActive) setCustomers(data || []);
     }).catch((err) => {
       console.warn('Falha não-bloqueante ao carregar clientes:', err);
     });
 
     // Sincronizar orçamentos salvos na nuvem
     firebaseQuoteService.getQuotes().then((cloudQuotes) => {
-      if (cloudQuotes && cloudQuotes.length > 0) {
-        setLocalQuotes((prev) => {
-          const merged = [...prev];
+      if (isActive && cloudQuotes && cloudQuotes.length > 0) {
+        setLocalQuoteState((prev) => {
+          const merged = [...(prev.uid === uid ? prev.quotes : [])];
           cloudQuotes.forEach((cq) => {
             const exists = merged.some((lq) => lq.id === cq.id || (cq.quoteNumber && lq.quoteNumber === cq.quoteNumber));
             if (!exists) {
@@ -241,7 +267,8 @@ export function ArtisanPricingPage() {
             }
           });
           merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          return merged;
+          try { localStorage.setItem(`luisices_artisan_quotes_${uid}`, JSON.stringify(merged)); } catch (_error) {}
+          return { uid, quotes: merged };
         });
       }
     }).catch((err) => {
@@ -249,6 +276,7 @@ export function ArtisanPricingPage() {
     });
 
     return () => {
+      isActive = false;
       unsubSupplies();
       unsubRecipes();
     };
@@ -284,16 +312,20 @@ export function ArtisanPricingPage() {
 
     const pkg = Number(packageQty) || 1;
     const price = Number(purchasePrice) || 0;
-    if (pkg <= 0) {
+    if (!Number.isFinite(pkg) || pkg <= 0) {
       toast.error('A quantidade na embalagem deve ser maior que zero.');
       return;
     }
-    if (price < 0) {
-      toast.error('O preço pago não pode ser negativo.');
+    if (!Number.isFinite(price) || price < 0) {
+      toast.error('Informe um preço válido, igual ou maior que zero.');
       return;
     }
 
     const stock = currentStock !== '' ? Number(currentStock) : pkg;
+    if (!Number.isFinite(stock) || stock < 0) {
+      toast.error('O estoque atual precisa ser um número igual ou maior que zero.');
+      return;
+    }
     const unitCost = Math.round((price / pkg) * 100) / 100;
 
     setSavingSupply(true);
@@ -305,7 +337,7 @@ export function ArtisanPricingPage() {
           purchasePrice: price,
           unitCost: unitCost,
           currentStock: stock,
-          unit: 'unidade',
+          unit: supplyUnit,
           category: 'outros',
         });
         toast.success('Insumo atualizado com sucesso!');
@@ -316,7 +348,7 @@ export function ArtisanPricingPage() {
           purchasePrice: price,
           unitCost: unitCost,
           currentStock: stock,
-          unit: 'unidade',
+          unit: supplyUnit,
           category: 'outros',
         });
         toast.success('Insumo cadastrado com sucesso!');
@@ -326,6 +358,7 @@ export function ArtisanPricingPage() {
       setEditingSupplyId(null);
       setSupplyName('');
       setPackageQty(1);
+      setSupplyUnit('unidade');
       setPurchasePrice('');
       setCurrentStock('');
     } catch (err: any) {
@@ -339,6 +372,7 @@ export function ArtisanPricingPage() {
     setEditingSupplyId(supply.id);
     setSupplyName(supply.name);
     setPackageQty(supply.packageQuantity || 1);
+    setSupplyUnit(supply.unit || 'unidade');
     setPurchasePrice(supply.purchasePrice || 0);
     setCurrentStock(supply.currentStock ?? supply.packageQuantity ?? 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -358,6 +392,7 @@ export function ArtisanPricingPage() {
         setEditingSupplyId(null);
         setSupplyName('');
         setPackageQty(1);
+        setSupplyUnit('unidade');
         setPurchasePrice('');
         setCurrentStock('');
       }
@@ -418,6 +453,7 @@ export function ArtisanPricingPage() {
           id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           supplyId: supply.id,
           name: supply.name,
+          unit: supply.unit,
           quantity: qty,
           unitCost,
           subtotalCost: subtotal,
@@ -463,13 +499,18 @@ export function ArtisanPricingPage() {
       toast.error('Adicione pelo menos um insumo para compor o modelo.');
       return;
     }
+    const targetId = (!forceNew && loadedModelId) ? loadedModelId : undefined;
+    if (targetId ? !canEdit : !canCreate) {
+      toast.error(targetId ? 'Você não tem permissão para editar modelos.' : 'Você não tem permissão para criar modelos.');
+      return;
+    }
 
     setSavingModel(true);
     try {
       const recipeItems: RecipeItem[] = compositionItems.map((c) => ({
         supplyId: c.supplyId,
         name: c.name,
-        unit: 'unidade',
+        unit: c.unit,
         quantityUsed: c.quantity,
         unitCost: c.unitCost,
         totalCost: c.subtotalCost,
@@ -478,8 +519,6 @@ export function ArtisanPricingPage() {
       const totalMatCost = compositionItems.reduce((acc, curr) => acc + curr.subtotalCost, 0);
 
       // Se não for forçado a novo e houver um modelo carregado com o mesmo nome, atualiza
-      const targetId = (!forceNew && loadedModelId) ? loadedModelId : undefined;
-
       const saved = await firebasePricingService.saveRecipe({
         id: targetId,
         productName: trimmedName,
@@ -497,7 +536,7 @@ export function ArtisanPricingPage() {
         paymentFeePercent: 0,
         pricingMethod: pricingMode === 'markup' ? 'markup_on_cost' : 'margin_on_sale',
         profitMarginPercent: pricingMode === 'markup' ? markupPercent : profitMarginPercent,
-        suggestedUnitPrice: effectiveTotalPrice,
+        suggestedUnitPrice: Math.round((effectiveTotalPrice / numEncomendadas) * 100) / 100,
       });
 
       setLoadedModelId(saved.id);
@@ -541,6 +580,7 @@ export function ArtisanPricingPage() {
         id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         supplyId: item.supplyId || '',
         name: item.name || currentSupply?.name || 'Insumo',
+        unit: (item.unit || currentSupply?.unit || 'unidade') as SupplyUnit,
         quantity: qty,
         unitCost,
         subtotalCost: Math.round(unitCost * qty * 100) / 100,
@@ -553,6 +593,10 @@ export function ArtisanPricingPage() {
 
   // Excluir modelo
   const handleDeleteModel = async () => {
+    if (!canDelete) {
+      toast.error('Você não tem permissão para excluir modelos.');
+      return;
+    }
     if (!selectedModelId) return;
     const model = recipes.find((r) => r.id === selectedModelId);
     if (!model) return;
@@ -624,7 +668,7 @@ export function ArtisanPricingPage() {
 
   // Margem Real em R$
   const effectiveMarginAmount = useMemo(() => {
-    return Math.max(0, Math.round((effectiveTotalPrice - totalCost) * 100) / 100);
+    return Math.round((effectiveTotalPrice - totalCost) * 100) / 100;
   }, [effectiveTotalPrice, totalCost]);
 
   // Cálculo do Sinal de Entrada
@@ -708,6 +752,10 @@ export function ArtisanPricingPage() {
   // HANDLER: GERAR ORÇAMENTO (Salva na lista aguardando aprovação)
   // -------------------------------------------------------------
   const handleGenerateQuote = () => {
+    if (!canCreateQuote) {
+      toast.error('Você não tem permissão para gerar orçamentos.');
+      return;
+    }
     if (compositionItems.length === 0) {
       toast.error('Adicione pelo menos um insumo para compor o produto.');
       return;
@@ -747,12 +795,23 @@ export function ArtisanPricingPage() {
   const [launchingSale, setLaunchingSale] = useState(false);
 
   const handleLaunchDirectSale = async () => {
+    if (!canCreateOrder) {
+      toast.error('Você não tem permissão para criar pedidos.');
+      return;
+    }
     if (compositionItems.length === 0) {
       toast.error('Adicione insumos à composição antes de lançar a venda.');
       return;
     }
     if (effectiveTotalPrice <= 0) {
       toast.error('O valor total deve ser maior que zero.');
+      return;
+    }
+    const trackedSupplyIds = compositionItems
+      .filter((item) => supplies.some((supply) => supply.id === item.supplyId && supply.currentStock !== undefined))
+      .map((item) => item.supplyId);
+    if (trackedSupplyIds.length > 0 && !canEdit) {
+      toast.error('Para lançar esta venda e baixar o estoque, você também precisa de permissão para editar insumos.');
       return;
     }
 
@@ -799,17 +858,27 @@ export function ArtisanPricingPage() {
       });
 
       // Abate do estoque físico dos insumos utilizados
+      let inventoryUpdated = true;
       for (const item of compositionItems) {
         const supply = supplies.find((s) => s.id === item.supplyId);
         if (supply && supply.currentStock !== undefined) {
           const usedTotal = item.quantity * numEncomendadas;
           const updatedStock = Math.max(0, supply.currentStock - usedTotal);
-          await firebasePricingService.updateSupply(supply.id, { currentStock: updatedStock }).catch(console.warn);
+          try {
+            await firebasePricingService.updateSupply(supply.id, { currentStock: updatedStock });
+          } catch (error) {
+            inventoryUpdated = false;
+            console.warn('Não foi possível atualizar o estoque após criar o pedido:', error);
+          }
         }
       }
 
       refreshOrders();
-      toast.success(`🎉 Venda lançada com sucesso! Pedido ${order.orderNumber} registrado no Dashboard.`);
+      if (inventoryUpdated) {
+        toast.success(`🎉 Venda lançada com sucesso! Pedido ${order.orderNumber} registrado no Dashboard.`);
+      } else {
+        toast.warning(`Pedido ${order.orderNumber} criado, mas o estoque não foi atualizado por completo. Confira os insumos utilizados.`);
+      }
     } catch (err: any) {
       toast.error(err.message || 'Erro ao lançar pedido oficial.');
     } finally {
@@ -823,6 +892,17 @@ export function ArtisanPricingPage() {
   const [approvingQuoteId, setApprovingQuoteId] = useState<string | null>(null);
 
   const handleApproveQuote = async (quote: LocalQuoteRecord) => {
+    if (!canCreateOrder) {
+      toast.error('Você não tem permissão para criar pedidos.');
+      return;
+    }
+    const trackedSupplyIds = quote.items
+      .filter((item) => supplies.some((supply) => supply.id === item.supplyId && supply.currentStock !== undefined))
+      .map((item) => item.supplyId);
+    if (trackedSupplyIds.length > 0 && !canEdit) {
+      toast.error('Para aprovar este orçamento e baixar o estoque, você também precisa de permissão para editar insumos.');
+      return;
+    }
     setApprovingQuoteId(quote.id);
     try {
       const futureDate = new Date();
@@ -858,6 +938,21 @@ export function ArtisanPricingPage() {
         notes: `Aprovado a partir de orçamento rápido.\nSinal pago: ${formatCurrency(quote.depositAmount)}. Restante na entrega: ${formatCurrency(quote.remainingAmount)}.`,
       });
 
+      let inventoryUpdated = true;
+      for (const item of quote.items) {
+        const supply = supplies.find((candidate) => candidate.id === item.supplyId);
+        if (supply && supply.currentStock !== undefined) {
+          const usedTotal = item.quantity * quote.quantity;
+          const updatedStock = Math.max(0, supply.currentStock - usedTotal);
+          try {
+            await firebasePricingService.updateSupply(supply.id, { currentStock: updatedStock });
+          } catch (error) {
+            inventoryUpdated = false;
+            console.warn('Não foi possível atualizar o estoque após aprovar o orçamento:', error);
+          }
+        }
+      }
+
       // Atualiza o registro local
       const updated = localQuotes.map((q) =>
         q.id === quote.id
@@ -867,7 +962,11 @@ export function ArtisanPricingPage() {
       saveLocalQuotes(updated);
       refreshOrders();
 
-      toast.success(`Orçamento aprovado! Pedido ${order.orderNumber} gerado na fila de produção.`);
+      if (inventoryUpdated) {
+        toast.success(`Orçamento aprovado! Pedido ${order.orderNumber} gerado na fila de produção.`);
+      } else {
+        toast.warning(`Pedido ${order.orderNumber} criado, mas o estoque não foi atualizado por completo. Confira os insumos utilizados.`);
+      }
     } catch (err: any) {
       toast.error(err.message || 'Erro ao aprovar orçamento.');
     } finally {
@@ -876,6 +975,10 @@ export function ArtisanPricingPage() {
   };
 
   const handleCancelQuote = (id: string) => {
+    if (!canEditQuote) {
+      toast.error('Você não tem permissão para editar orçamentos.');
+      return;
+    }
     const updated = localQuotes.map((q) =>
       q.id === id ? { ...q, status: 'cancelled' as const } : q
     );
@@ -1017,6 +1120,20 @@ export function ArtisanPricingPage() {
                   </div>
 
                   <div className="space-y-1.5">
+                    <Label htmlFor="supply-unit" className="text-xs font-medium">Unidade de medida</Label>
+                    <Select value={supplyUnit} onValueChange={(value) => setSupplyUnit(value as SupplyUnit)}>
+                      <SelectTrigger id="supply-unit" className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {(['unidade', 'folha', 'metro', 'cm', 'ml', 'g', 'pacote', 'rolo', 'kit', 'par'] as SupplyUnit[]).map((unit) => (
+                          <SelectItem key={unit} value={unit}>{unit}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="space-y-1.5">
                     <Label htmlFor="purchase-price" className="text-xs font-medium">
                       Preço Pago (R$)
                     </Label>
@@ -1036,7 +1153,7 @@ export function ArtisanPricingPage() {
 
                 <div className="space-y-1.5">
                   <Label htmlFor="current-stock" className="text-xs font-medium">
-                    Estoque Atual (unidades em mãos)
+                    Estoque Atual ({supplyUnit} em mãos)
                   </Label>
                   <Input
                     id="current-stock"
@@ -1056,14 +1173,14 @@ export function ArtisanPricingPage() {
                 <div className="rounded-lg border bg-muted/40 p-3 text-xs flex items-center justify-between">
                   <span className="text-muted-foreground">Custo Unitário Calculado:</span>
                   <span className="font-semibold text-primary text-sm">
-                    {formatCurrency(calculatedUnitCostPreview)} / un
+                    {formatCurrency(calculatedUnitCostPreview)} / {supplyUnit}
                   </span>
                 </div>
 
                 <div className="flex gap-2 pt-2">
                   <Button
                     type="submit"
-                    disabled={savingSupply}
+                    disabled={savingSupply || (editingSupplyId ? !canEdit : !canCreate)}
                     className="flex-1 bg-purple-700 hover:bg-purple-800 text-white font-medium text-xs h-9 shadow-xs"
                   >
                     {savingSupply ? (
@@ -1081,6 +1198,7 @@ export function ArtisanPricingPage() {
                         setEditingSupplyId(null);
                         setSupplyName('');
                         setPackageQty(1);
+                        setSupplyUnit('unidade');
                         setPurchasePrice('');
                         setCurrentStock('');
                       }}
@@ -1192,15 +1310,15 @@ export function ArtisanPricingPage() {
                               {supply.name}
                             </td>
                             <td className="py-2.5 px-3 text-center text-muted-foreground">
-                              {supply.packageQuantity || 1}
+                              {supply.packageQuantity || 1} {supply.unit}
                             </td>
                             <td className="py-2.5 px-3 text-center">
                               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                                (supply.currentStock ?? 0) <= 5
+                                (supply.currentStock ?? supply.packageQuantity ?? 0) <= (supply.minStock ?? 5)
                                   ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
                                   : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
                               }`}>
-                                {supply.currentStock ?? supply.packageQuantity ?? 0}
+                                {supply.currentStock ?? supply.packageQuantity ?? 0} {supply.unit}
                               </span>
                             </td>
                             <td className="py-2.5 px-3 text-right text-muted-foreground">
@@ -1218,18 +1336,19 @@ export function ArtisanPricingPage() {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="text-xs">
                                   <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                  <DropdownMenuItem onClick={() => handleEditSupply(supply)} className="gap-2">
+                                  <DropdownMenuItem onClick={() => handleEditSupply(supply)} disabled={!canEdit} className="gap-2">
                                     <Edit2 className="size-3.5" /> Editar
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleQuickAdjustStock(supply, 1)} className="gap-2">
+                                  <DropdownMenuItem onClick={() => handleQuickAdjustStock(supply, 1)} disabled={!canEdit} className="gap-2">
                                     <Plus className="size-3.5 text-emerald-600" /> Adicionar +1 ao estoque
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleQuickAdjustStock(supply, -1)} className="gap-2">
+                                  <DropdownMenuItem onClick={() => handleQuickAdjustStock(supply, -1)} disabled={!canEdit} className="gap-2">
                                     <Minus className="size-3.5 text-amber-600" /> Diminuir -1 do estoque
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem
                                     onClick={() => handleDeleteSupply(supply.id, supply.name)}
+                                    disabled={!canDelete}
                                     className="gap-2 text-destructive focus:text-destructive"
                                   >
                                     <Trash2 className="size-3.5" /> Excluir
@@ -1258,7 +1377,7 @@ export function ArtisanPricingPage() {
                   ) : (
                     filteredSupplies.map((supply) => {
                       const stockVal = supply.currentStock ?? supply.packageQuantity ?? 0;
-                      const isLowStock = stockVal <= 5;
+                      const isLowStock = stockVal <= (supply.minStock ?? 5);
                       return (
                         <div
                           key={supply.id}
@@ -1275,7 +1394,7 @@ export function ArtisanPricingPage() {
                                   ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
                                   : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
                               }`}>
-                                {isLowStock ? '⚠️ Estoque Baixo:' : '📦 Estoque:'} {stockVal} un
+                                {isLowStock ? '⚠️ Estoque Baixo:' : '📦 Estoque:'} {stockVal} {supply.unit}
                               </span>
                             </div>
 
@@ -1287,18 +1406,19 @@ export function ArtisanPricingPage() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="text-xs">
                                 <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                <DropdownMenuItem onClick={() => handleEditSupply(supply)} className="gap-2">
+                                <DropdownMenuItem onClick={() => handleEditSupply(supply)} disabled={!canEdit} className="gap-2">
                                   <Edit2 className="size-3.5" /> Editar
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleQuickAdjustStock(supply, 1)} className="gap-2">
+                                <DropdownMenuItem onClick={() => handleQuickAdjustStock(supply, 1)} disabled={!canEdit} className="gap-2">
                                   <Plus className="size-3.5 text-emerald-600" /> Adicionar +1 ao estoque
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleQuickAdjustStock(supply, -1)} className="gap-2">
+                                <DropdownMenuItem onClick={() => handleQuickAdjustStock(supply, -1)} disabled={!canEdit} className="gap-2">
                                   <Minus className="size-3.5 text-amber-600" /> Diminuir -1 do estoque
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={() => handleDeleteSupply(supply.id, supply.name)}
+                                  disabled={!canDelete}
                                   className="gap-2 text-destructive focus:text-destructive"
                                 >
                                   <Trash2 className="size-3.5" /> Excluir
@@ -1331,6 +1451,7 @@ export function ArtisanPricingPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleQuickAdjustStock(supply, -1)}
+                                disabled={!canEdit}
                                 className="h-7 px-2 text-[11px] gap-1"
                                 title="Diminuir 1 do estoque"
                               >
@@ -1341,6 +1462,7 @@ export function ArtisanPricingPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleQuickAdjustStock(supply, 1)}
+                                disabled={!canEdit}
                                 className="h-7 px-2 text-[11px] gap-1"
                                 title="Adicionar 1 ao estoque"
                               >
@@ -1353,6 +1475,7 @@ export function ArtisanPricingPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleEditSupply(supply)}
+                              disabled={!canEdit}
                               className="h-7 px-2 text-[11px] text-primary hover:text-primary gap-1"
                             >
                               <Edit2 className="size-3" /> Editar
@@ -1432,7 +1555,7 @@ export function ArtisanPricingPage() {
                           variant="ghost"
                           size="icon"
                           onClick={handleDeleteModel}
-                          disabled={!selectedModelId}
+                          disabled={!selectedModelId || !canDelete}
                           title="Excluir modelo selecionado"
                           className="size-9 text-destructive hover:bg-destructive/10 shrink-0"
                         >
@@ -1455,7 +1578,7 @@ export function ArtisanPricingPage() {
                       <Button
                         type="button"
                         onClick={() => handleSaveModel(false)}
-                        disabled={savingModel || !compositionName.trim()}
+                        disabled={savingModel || !compositionName.trim() || (loadedModelId ? !canEdit : !canCreate)}
                         className="bg-purple-700 hover:bg-purple-800 text-white text-xs h-9 shadow-xs shrink-0 sm:w-auto"
                       >
                         {savingModel ? <Loader2 className="size-3.5 animate-spin mr-1" /> : null}
@@ -1487,7 +1610,7 @@ export function ArtisanPricingPage() {
                               supplies.map((s) => (
                                 <SelectItem key={s.id} value={s.id}>
                                   <span className="truncate block max-w-[280px] sm:max-w-md">
-                                    {s.name} ({formatCurrency(s.unitCost || 0)}/un)
+                                    {s.name} ({formatCurrency(s.unitCost || 0)}/{s.unit})
                                   </span>
                                 </SelectItem>
                               ))
@@ -1918,9 +2041,11 @@ export function ArtisanPricingPage() {
                       </span>
                     </div>
 
-                    <div className="rounded border bg-emerald-50/50 dark:bg-emerald-950/20 p-2">
-                      <span className="text-[10px] text-emerald-800 dark:text-emerald-300 uppercase block font-medium">MARGEM DE LUCRO</span>
-                      <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                    <div className={`rounded border p-2 ${effectiveMarginAmount < 0 ? 'bg-red-50/60 dark:bg-red-950/20' : 'bg-emerald-50/50 dark:bg-emerald-950/20'}`}>
+                      <span className={`text-[10px] uppercase block font-medium ${effectiveMarginAmount < 0 ? 'text-red-800 dark:text-red-300' : 'text-emerald-800 dark:text-emerald-300'}`}>
+                        {effectiveMarginAmount < 0 ? 'PREJUÍZO ESTIMADO' : 'MARGEM DE LUCRO'}
+                      </span>
+                      <span className={`text-xs font-bold ${effectiveMarginAmount < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                         {formatCurrency(effectiveMarginAmount)}
                       </span>
                     </div>
@@ -1931,6 +2056,7 @@ export function ArtisanPricingPage() {
                     <Button
                       type="button"
                       onClick={handleGenerateQuote}
+                      disabled={!canCreateQuote}
                       className="bg-purple-700 hover:bg-purple-800 text-white text-xs h-10 font-semibold shadow-xs"
                     >
                       📄 Gerar Orçamento
@@ -1939,7 +2065,7 @@ export function ArtisanPricingPage() {
                     <Button
                       type="button"
                       onClick={handleLaunchDirectSale}
-                      disabled={launchingSale}
+                      disabled={launchingSale || !canCreateOrder}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-10 font-semibold shadow-xs"
                     >
                       {launchingSale ? <Loader2 className="size-4 animate-spin mr-1" /> : null}
@@ -2029,7 +2155,7 @@ export function ArtisanPricingPage() {
                                 <Button
                                   size="sm"
                                   onClick={() => handleApproveQuote(q)}
-                                  disabled={approvingQuoteId === q.id}
+                                  disabled={approvingQuoteId === q.id || !canCreateOrder}
                                   className="h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] shadow-xs"
                                 >
                                   {approvingQuoteId === q.id ? (
@@ -2050,6 +2176,7 @@ export function ArtisanPricingPage() {
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => handleCancelQuote(q.id)}
+                                  disabled={!canEditQuote}
                                   className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive"
                                   title="Cancelar orçamento"
                                 >

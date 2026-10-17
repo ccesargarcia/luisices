@@ -339,6 +339,12 @@ class FirebasePricingService {
     if (supply.packageQuantity !== undefined && (Number(supply.packageQuantity) <= 0 || isNaN(Number(supply.packageQuantity)))) {
       throw new Error('Quantidade da embalagem deve ser maior que zero.');
     }
+    if (supply.currentStock !== undefined && (!Number.isFinite(Number(supply.currentStock)) || Number(supply.currentStock) < 0 || Number(supply.currentStock) > 1000000000)) {
+      throw new Error('Estoque atual deve ser um número entre zero e um bilhão.');
+    }
+    if (supply.minStock !== undefined && (!Number.isFinite(Number(supply.minStock)) || Number(supply.minStock) < 0 || Number(supply.minStock) > 1000000000)) {
+      throw new Error('Estoque mínimo deve ser um número entre zero e um bilhão.');
+    }
   }
 
   async createSupply(

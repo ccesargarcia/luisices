@@ -239,6 +239,8 @@ service cloud.firestore {
       return (!('purchasePrice' in data) || (data.purchasePrice is number && data.purchasePrice >= 0))
         && (!('unitCost' in data) || (data.unitCost is number && data.unitCost >= 0))
         && (!('packageQuantity' in data) || (data.packageQuantity is number && data.packageQuantity > 0))
+        && (!('currentStock' in data) || (data.currentStock is number && data.currentStock >= 0 && data.currentStock <= 1000000000))
+        && (!('minStock' in data) || (data.minStock is number && data.minStock >= 0 && data.minStock <= 1000000000))
         && (!('name' in data) || (data.name is string && data.name.size() >= 1 && data.name.size() <= 200));
     }
 
