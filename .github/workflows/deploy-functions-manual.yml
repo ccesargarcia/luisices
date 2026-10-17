@@ -309,7 +309,7 @@ jobs:
 
           if [ -n "$ALEXA_SKILL_ID" ]; then
             echo "🔧 Sincronizando allowedSkillId no Firestore (papelaria-dashboard)..."
-            node -e '
+            NODE_PATH=functions/node_modules node -e '
               const { initializeApp } = require("firebase-admin/app");
               const { getFirestore } = require("firebase-admin/firestore");
               initializeApp({ projectId: "papelaria-dashboard" });
