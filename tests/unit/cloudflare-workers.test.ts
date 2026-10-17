@@ -39,6 +39,26 @@ describe('Cloudflare Workers: Validação e Testes Unitários de Borda', () => {
       expect(response.status).toBe(405);
     });
 
+    it('deve atender HEAD buscando a imagem como GET e retornando sem corpo', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response('image-bytes', {
+          status: 200,
+          headers: { 'Content-Type': 'image/webp' },
+        })
+      );
+      vi.stubGlobal('fetch', mockFetch);
+
+      const request = new Request('https://cdn-dev.luisices.com.br/users/u1/avatar/avatar.webp', {
+        method: 'HEAD',
+      });
+      const response = await cdnWorker.fetch(request, { ENVIRONMENT: 'dev' }, {});
+
+      expect(response.status).toBe(200);
+      expect(mockFetch.mock.calls[0][1].method).toBe('GET');
+      expect(response.headers.get('Content-Type')).toBe('image/webp');
+      expect(await response.text()).toBe('');
+    });
+
     it('deve buscar arquivo na origem adicionando alt=media e retornando cabeçalhos de cache de produção', async () => {
       const mockFetch = vi.fn().mockResolvedValue(
         new Response('image-bytes', {
@@ -69,6 +89,88 @@ describe('Cloudflare Workers: Validação e Testes Unitários de Borda', () => {
       expect(calledUrl).toContain('alt=media');
     });
 
+    it('deve encaminhar caminho do avatar codificado e preservar o token de download', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response('avatar-bytes', {
+          status: 200,
+          headers: { 'Content-Type': 'image/webp' },
+        })
+      );
+      vi.stubGlobal('fetch', mockFetch);
+
+      const request = new Request(
+        'https://cdn.luisices.com.br/users/user-123/avatar/avatar_123.webp?alt=media&token=download-token'
+      );
+      const response = await cdnWorker.fetch(
+        request,
+        { ENVIRONMENT: 'production', FIREBASE_BUCKET: 'papelaria-dashboard.firebasestorage.app' },
+        {}
+      );
+
+      expect(response.status).toBe(200);
+      const originUrl = new URL(mockFetch.mock.calls[0][0]);
+      expect(originUrl.pathname).toBe(
+        '/v0/b/papelaria-dashboard.firebasestorage.app/o/users%2Fuser-123%2Favatar%2Favatar_123.webp'
+      );
+      expect(originUrl.searchParams.get('alt')).toBe('media');
+      expect(originUrl.searchParams.get('token')).toBe('download-token');
+    });
+
+    it('deve priorizar o bucket de desenvolvimento no domínio cdn-dev mesmo com vars de produção', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response('avatar-bytes', {
+          status: 200,
+          headers: { 'Content-Type': 'image/webp' },
+        })
+      );
+      vi.stubGlobal('fetch', mockFetch);
+
+      const request = new Request('https://cdn-dev.luisices.com.br/users/u1/logo/logo_123.webp');
+      const response = await cdnWorker.fetch(
+        request,
+        {
+          ENVIRONMENT: 'production',
+          FIREBASE_BUCKET: 'papelaria-dashboard.firebasestorage.app',
+          FIREBASE_FALLBACK_BUCKET: 'papelaria-dashboard.appspot.com',
+          CACHE_TTL: '31536000',
+        },
+        {}
+      );
+
+      expect(response.status).toBe(200);
+      expect(new URL(mockFetch.mock.calls[0][0]).hostname).toBe('firebasestorage.googleapis.com');
+      expect(mockFetch.mock.calls[0][0]).toContain('luisices-dev.firebasestorage.app');
+      expect(mockFetch.mock.calls[0][1].cf.cacheTtl).toBe(300);
+      expect(response.headers.get('Cache-Control')).toContain('max-age=300');
+    });
+
+    it('deve manter bucket e TTL de produção no domínio cdn mesmo com vars de desenvolvimento', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response('image-bytes', {
+          status: 200,
+          headers: { 'Content-Type': 'image/webp' },
+        })
+      );
+      vi.stubGlobal('fetch', mockFetch);
+
+      const request = new Request('https://cdn.luisices.com.br/users/u1/avatar/avatar_123.webp');
+      const response = await cdnWorker.fetch(
+        request,
+        {
+          ENVIRONMENT: 'dev',
+          FIREBASE_BUCKET: 'luisices-dev.firebasestorage.app',
+          FIREBASE_FALLBACK_BUCKET: 'luisices-dev.appspot.com',
+          CACHE_TTL: '300',
+        },
+        {}
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockFetch.mock.calls[0][0]).toContain('papelaria-dashboard.firebasestorage.app');
+      expect(mockFetch.mock.calls[0][1].cf.cacheTtl).toBe(31536000);
+      expect(response.headers.get('Cache-Control')).toContain('max-age=31536000');
+    });
+
     it('deve executar failover para o bucket alternativo caso o primário retorne 404', async () => {
       const mockFetch = vi
         .fn()
@@ -96,6 +198,7 @@ describe('Cloudflare Workers: Validação e Testes Unitários de Borda', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(mockFetch.mock.calls[0][0]).toContain('papelaria-dashboard.firebasestorage.app');
       expect(mockFetch.mock.calls[1][0]).toContain('papelaria-dashboard.appspot.com');
+      expect(response.headers.get('X-CDN-Origin-Bucket')).toBe('papelaria-dashboard.appspot.com');
     });
   });
 

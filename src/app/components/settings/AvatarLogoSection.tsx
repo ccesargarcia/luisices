@@ -46,16 +46,7 @@ export function AvatarLogoSection({
         <CardContent className="space-y-4">
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
             <Avatar className="size-20">
-              <AvatarImage
-                src={avatarUrl}
-                alt="Avatar"
-                onError={(e) => {
-                  const fallback = getCdnFallbackUrl(avatarUrl);
-                  if (fallback && e.currentTarget.src !== fallback) {
-                    e.currentTarget.src = fallback;
-                  }
-                }}
-              />
+              <AvatarImage src={avatarUrl} alt="Avatar" />
               <AvatarFallback className="text-2xl">{userInitials}</AvatarFallback>
             </Avatar>
 

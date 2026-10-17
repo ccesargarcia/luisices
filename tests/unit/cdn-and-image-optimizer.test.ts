@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { toCdnUrl } from '../../src/app/utils/cdnUtils';
+import { getCdnFallbackUrl, toCdnUrl } from '../../src/app/utils/cdnUtils';
 import { optimizeImageToWebP, optimizeImageForAi } from '../../src/app/utils/imageOptimizer';
 
 describe('Funcionalidade: Otimização de Mídias e CDN de Armazenamento', () => {
@@ -31,20 +31,38 @@ describe('Funcionalidade: Otimização de Mídias e CDN de Armazenamento', () =>
 
       const cdnUrl = toCdnUrl(firebaseUrl);
 
-      expect(cdnUrl).toBe('https://cdn.luisices.com.br/users/user123/gallery/topo_bolo.png');
+      expect(cdnUrl).toBe(
+        'https://cdn.luisices.com.br/users/user123/gallery/topo_bolo.png?alt=media&token=abcdef-12345'
+      );
     });
 
-    it('deve limpar query strings de tokens de URLs que já estão no domínio CDN', () => {
+    it('deve preservar tokens em URLs que já estão no domínio CDN', () => {
       (import.meta.env as any).VITE_STORAGE_CDN_URL = 'https://cdn.luisices.com.br';
 
       const existingCdnUrl =
         'https://cdn.luisices.com.br/users/user123/banners/hero.webp?alt=media&token=sec123';
 
-      expect(toCdnUrl(existingCdnUrl)).toBe('https://cdn.luisices.com.br/users/user123/banners/hero.webp');
+      expect(toCdnUrl(existingCdnUrl)).toBe(
+        'https://cdn.luisices.com.br/users/user123/banners/hero.webp?alt=media&token=sec123'
+      );
 
       const devCdnUrl =
         'https://cdn-dev.luisices.com.br/products/box.jpg?version=1';
-      expect(toCdnUrl(devCdnUrl)).toBe('https://cdn-dev.luisices.com.br/products/box.jpg');
+      expect(toCdnUrl(devCdnUrl)).toBe('https://cdn-dev.luisices.com.br/products/box.jpg?version=1');
+    });
+
+    it('deve gerar fallback Firebase com bucket do ambiente e preservar o token', () => {
+      expect(
+        getCdnFallbackUrl('https://cdn.luisices.com.br/users/u1/avatar/avatar_123.webp?alt=media&token=prod-token')
+      ).toBe(
+        'https://firebasestorage.googleapis.com/v0/b/papelaria-dashboard.firebasestorage.app/o/users%2Fu1%2Favatar%2Favatar_123.webp?alt=media&token=prod-token'
+      );
+
+      expect(
+        getCdnFallbackUrl('https://cdn-dev.luisices.com.br/users/u1/avatar/avatar_123.webp?alt=media&token=dev-token')
+      ).toBe(
+        'https://firebasestorage.googleapis.com/v0/b/luisices-dev.firebasestorage.app/o/users%2Fu1%2Favatar%2Favatar_123.webp?alt=media&token=dev-token'
+      );
     });
 
     it('deve manter inalteradas URLs de origens externas que não sejam do Firebase Storage', () => {

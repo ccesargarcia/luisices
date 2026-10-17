@@ -358,16 +358,7 @@ export function TopHeader({
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" aria-label="Abrir menu do usuário" className="relative size-8 sm:size-9 rounded-full shrink-0 p-0 ml-0.5 ring-1 ring-border/50">
                 <Avatar className="size-8 sm:size-9">
-                  <AvatarImage
-                  src={avatarUrl}
-                  alt="Avatar"
-                  onError={(e) => {
-                    const fallback = getCdnFallbackUrl(avatarUrl);
-                    if (fallback && e.currentTarget.src !== fallback) {
-                      e.currentTarget.src = fallback;
-                    }
-                  }}
-                />
+                  <AvatarImage src={avatarUrl} alt="Avatar" />
                   <AvatarFallback className="bg-primary text-primary-foreground text-xs sm:text-sm font-semibold">
                     {userInitials}
                   </AvatarFallback>

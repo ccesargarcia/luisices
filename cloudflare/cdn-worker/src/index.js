@@ -46,10 +46,23 @@ export default {
       });
     }
 
-    // 2. Determinar ambiente e bucket de destino
-    const isDev = url.hostname.includes('dev') || env.ENVIRONMENT === 'dev';
-    const primaryBucket = env.FIREBASE_BUCKET || (isDev ? DEFAULT_BUCKETS.dev : DEFAULT_BUCKETS.prod);
-    const fallbackBucket = env.FIREBASE_FALLBACK_BUCKET || (isDev ? FALLBACK_BUCKETS.dev : FALLBACK_BUCKETS.prod);
+    // 2. Determinar ambiente e bucket de destino.
+    // O domínio explícito da CDN deve prevalecer sobre vars que possam ter sido
+    // herdadas/implantadas incorretamente no ambiente do Worker.
+    const hostname = url.hostname.toLowerCase();
+    const isDevHost = hostname === 'cdn-dev.luisices.com.br';
+    const isProdHost = hostname === 'cdn.luisices.com.br';
+    const isDev = isDevHost || (!isProdHost && env.ENVIRONMENT === 'dev');
+    const primaryBucket = isDevHost
+      ? DEFAULT_BUCKETS.dev
+      : isProdHost
+        ? DEFAULT_BUCKETS.prod
+        : env.FIREBASE_BUCKET || (isDev ? DEFAULT_BUCKETS.dev : DEFAULT_BUCKETS.prod);
+    const fallbackBucket = isDevHost
+      ? FALLBACK_BUCKETS.dev
+      : isProdHost
+        ? FALLBACK_BUCKETS.prod
+        : env.FIREBASE_FALLBACK_BUCKET || (isDev ? FALLBACK_BUCKETS.dev : FALLBACK_BUCKETS.prod);
 
     // 3. Extrair e codificar o caminho com segurança
     const rawPath = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
@@ -64,15 +77,24 @@ export default {
       searchParams.set('alt', 'media');
     }
 
-    // Cache TTL: 1 ano em prod (31536000s) e 5 min em dev (300s)
-    const cacheTtlSeconds = env.CACHE_TTL ? Number(env.CACHE_TTL) : (isDev ? 300 : 31536000);
+    // Cache TTL acompanha o domínio em ambientes conhecidos; variáveis podem
+    // estar herdadas do ambiente errado. Hosts internos continuam configuráveis.
+    const configuredCacheTtl = Number(env.CACHE_TTL);
+    const defaultCacheTtl = isDev ? 300 : 31536000;
+    const cacheTtlSeconds = isDevHost || isProdHost
+      ? defaultCacheTtl
+      : Number.isFinite(configuredCacheTtl) && configuredCacheTtl > 0
+        ? configuredCacheTtl
+        : defaultCacheTtl;
 
     const buildOriginUrl = (bucket) =>
       `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(rawPath)}?${searchParams.toString()}`;
 
     const fetchFromBucket = async (bucket) => {
       return fetch(buildOriginUrl(bucket), {
-        method: request.method,
+        // Firebase Storage pode retornar 404 para HEAD no endpoint de mídia.
+        // Busca como GET e remove o corpo na resposta HEAD abaixo.
+        method: request.method === 'HEAD' ? 'GET' : request.method,
         headers: {
           'Accept': request.headers.get('Accept') || '*/*',
           'User-Agent': 'Luisices-Cloudflare-CDN',
@@ -90,18 +112,20 @@ export default {
     };
 
     // 5. Tenta o bucket primário
-    let originResponse = await fetchFromBucket(primaryBucket);
+    let originBucket = primaryBucket;
+    let originResponse = await fetchFromBucket(originBucket);
 
     // Se retornar 404 e houver bucket alternativo (.firebasestorage.app vs .appspot.com)
     if (originResponse.status === 404 && fallbackBucket && fallbackBucket !== primaryBucket) {
       const fallbackResponse = await fetchFromBucket(fallbackBucket);
       if (fallbackResponse.ok) {
         originResponse = fallbackResponse;
+        originBucket = fallbackBucket;
       }
     }
 
     if (!originResponse.ok) {
-      return new Response(originResponse.body, {
+      return new Response(request.method === 'HEAD' ? null : originResponse.body, {
         status: originResponse.status,
         headers: {
           'Access-Control-Allow-Origin': '*',
@@ -120,10 +144,10 @@ export default {
         : 'public, max-age=31536000, immutable'
     );
     headers.set('X-Content-Type-Options', 'nosniff');
-    headers.set('X-CDN-Origin-Bucket', primaryBucket);
+    headers.set('X-CDN-Origin-Bucket', originBucket);
     headers.delete('set-cookie');
 
-    return new Response(originResponse.body, {
+    return new Response(request.method === 'HEAD' ? null : originResponse.body, {
       status: 200,
       headers,
     });
