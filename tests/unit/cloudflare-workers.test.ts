@@ -112,6 +112,7 @@ describe('Cloudflare Workers: Validação e Testes Unitários de Borda', () => {
           ENVIRONMENT: 'production',
           FIREBASE_BUCKET: 'papelaria-dashboard.firebasestorage.app',
           FIREBASE_FALLBACK_BUCKET: 'papelaria-dashboard.appspot.com',
+          CACHE_TTL: '31536000',
         },
         {}
       );
@@ -119,6 +120,35 @@ describe('Cloudflare Workers: Validação e Testes Unitários de Borda', () => {
       expect(response.status).toBe(200);
       expect(new URL(mockFetch.mock.calls[0][0]).hostname).toBe('firebasestorage.googleapis.com');
       expect(mockFetch.mock.calls[0][0]).toContain('luisices-dev.firebasestorage.app');
+      expect(mockFetch.mock.calls[0][1].cf.cacheTtl).toBe(300);
+      expect(response.headers.get('Cache-Control')).toContain('max-age=300');
+    });
+
+    it('deve manter bucket e TTL de produção no domínio cdn mesmo com vars de desenvolvimento', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response('image-bytes', {
+          status: 200,
+          headers: { 'Content-Type': 'image/webp' },
+        })
+      );
+      vi.stubGlobal('fetch', mockFetch);
+
+      const request = new Request('https://cdn.luisices.com.br/users/u1/avatar/avatar_123.webp');
+      const response = await cdnWorker.fetch(
+        request,
+        {
+          ENVIRONMENT: 'dev',
+          FIREBASE_BUCKET: 'luisices-dev.firebasestorage.app',
+          FIREBASE_FALLBACK_BUCKET: 'luisices-dev.appspot.com',
+          CACHE_TTL: '300',
+        },
+        {}
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockFetch.mock.calls[0][0]).toContain('papelaria-dashboard.firebasestorage.app');
+      expect(mockFetch.mock.calls[0][1].cf.cacheTtl).toBe(31536000);
+      expect(response.headers.get('Cache-Control')).toContain('max-age=31536000');
     });
 
     it('deve executar failover para o bucket alternativo caso o primário retorne 404', async () => {
@@ -148,6 +178,7 @@ describe('Cloudflare Workers: Validação e Testes Unitários de Borda', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(mockFetch.mock.calls[0][0]).toContain('papelaria-dashboard.firebasestorage.app');
       expect(mockFetch.mock.calls[1][0]).toContain('papelaria-dashboard.appspot.com');
+      expect(response.headers.get('X-CDN-Origin-Bucket')).toBe('papelaria-dashboard.appspot.com');
     });
   });
 

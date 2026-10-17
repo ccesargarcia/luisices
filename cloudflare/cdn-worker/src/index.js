@@ -77,8 +77,15 @@ export default {
       searchParams.set('alt', 'media');
     }
 
-    // Cache TTL: 1 ano em prod (31536000s) e 5 min em dev (300s)
-    const cacheTtlSeconds = env.CACHE_TTL ? Number(env.CACHE_TTL) : (isDev ? 300 : 31536000);
+    // Cache TTL acompanha o domínio em ambientes conhecidos; variáveis podem
+    // estar herdadas do ambiente errado. Hosts internos continuam configuráveis.
+    const configuredCacheTtl = Number(env.CACHE_TTL);
+    const defaultCacheTtl = isDev ? 300 : 31536000;
+    const cacheTtlSeconds = isDevHost || isProdHost
+      ? defaultCacheTtl
+      : Number.isFinite(configuredCacheTtl) && configuredCacheTtl > 0
+        ? configuredCacheTtl
+        : defaultCacheTtl;
 
     const buildOriginUrl = (bucket) =>
       `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(rawPath)}?${searchParams.toString()}`;
@@ -103,13 +110,15 @@ export default {
     };
 
     // 5. Tenta o bucket primário
-    let originResponse = await fetchFromBucket(primaryBucket);
+    let originBucket = primaryBucket;
+    let originResponse = await fetchFromBucket(originBucket);
 
     // Se retornar 404 e houver bucket alternativo (.firebasestorage.app vs .appspot.com)
     if (originResponse.status === 404 && fallbackBucket && fallbackBucket !== primaryBucket) {
       const fallbackResponse = await fetchFromBucket(fallbackBucket);
       if (fallbackResponse.ok) {
         originResponse = fallbackResponse;
+        originBucket = fallbackBucket;
       }
     }
 
@@ -133,7 +142,7 @@ export default {
         : 'public, max-age=31536000, immutable'
     );
     headers.set('X-Content-Type-Options', 'nosniff');
-    headers.set('X-CDN-Origin-Bucket', primaryBucket);
+    headers.set('X-CDN-Origin-Bucket', originBucket);
     headers.delete('set-cookie');
 
     return new Response(originResponse.body, {
