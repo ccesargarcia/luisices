@@ -151,6 +151,11 @@ async function main() {
           skippedCount++;
           continue;
         }
+      } else if (accessRes.status !== 404) {
+        const errText = await accessRes.text();
+        console.error(`❌ Falha ao ler a versão atual de ${name} (${accessRes.status}): ${errText}`);
+        failures.push({ name, error: `Falha ao ler versão atual (${accessRes.status}): ${errText}` });
+        continue;
       }
 
       // 3. O valor mudou ou não há versão ativa: adicionar nova versão

@@ -99,6 +99,7 @@ async function main() {
   let totalPreservedVersions = 0;
   let totalDestroyedVersions = 0;
   let totalAlreadyDestroyed = 0;
+  const failures = [];
 
   for (const secret of secrets) {
     const secretFullName = secret.name; // projects/{num}/secrets/{secretId}
@@ -117,6 +118,7 @@ async function main() {
       const versionsRes = await fetch(url.toString(), { headers });
       if (!versionsRes.ok) {
         console.warn(`⚠️  Não foi possível listar versões do secret '${secretId}': ${versionsRes.statusText}`);
+        failures.push({ secretId, error: `Falha ao listar versões (${versionsRes.status} ${versionsRes.statusText})` });
         versionsFetchError = true;
         break;
       }
@@ -193,6 +195,11 @@ async function main() {
           console.log(`      ✓ Destruída: v${v.versionNumber}`);
         } else {
           console.error(`      ✗ Falha ao destruir v${v.versionNumber}: ${destroyRes.status} ${destroyRes.statusText}`);
+          failures.push({
+            secretId,
+            version: v.versionNumber,
+            error: `Falha ao destruir (${destroyRes.status} ${destroyRes.statusText})`,
+          });
         }
       }
     }
@@ -209,6 +216,14 @@ async function main() {
   console.log(`• Versões obsoletas DESTRUÍDAS:   ${totalDestroyedVersions} ${isDryRun ? '(simulação)' : ''}`);
   console.log(`• Versões já destruídas antes:    ${totalAlreadyDestroyed}`);
   console.log(`• Economia mensal estimada:       US$ ${monthlySavings} / mês`);
+  if (failures.length > 0) {
+    console.error(`❌ ${failures.length} falha(s) durante a limpeza:`);
+    for (const failure of failures) {
+      const versionLabel = failure.version ? ` v${failure.version}` : '';
+      console.error(`   - ${failure.secretId}${versionLabel}: ${failure.error}`);
+    }
+    process.exitCode = 1;
+  }
   console.log('='.repeat(70));
 
   if (isDryRun && totalDestroyedVersions > 0) {
