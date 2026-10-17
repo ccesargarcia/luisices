@@ -303,7 +303,7 @@ const TOOLS_METADATA = [
     name: 'create_order',
     scope: 'orders:create',
     summary: 'Criar e Registrar Novo Pedido no Sistema',
-    description: 'Cria e registra oficialmente um novo pedido no sistema. Quando o usuário já fornecer os dados necessários, execute diretamente. Para preparar apenas uma prévia antes de gravar, use confirmed=false. Trate a idempotencyKey em background e apresente a confirmação de forma amigável ao usuário. Só anuncie criação concluída quando a resposta contiver orderId e orderNumber. Gera número sequencial (#AAAA-0001), calcula o saldo e define o status como pendente.',
+    description: 'Fluxo seguro de criação: primeiro chame com confirmed=false, mostre a prévia e peça confirmação explícita; após o usuário confirmar, chame novamente com os mesmos dados e confirmed=true. Não trate bloqueio, prévia ou erro como gravação concluída; só informe sucesso quando o backend retornar success=true, orderId e orderNumber. Gere e preserve a mesma idempotencyKey nas duas chamadas. Não envie paidAmount nem paymentMethod salvo se o usuário disser explicitamente que já recebeu um sinal; informar pagamento inicial também exige o escopo payments:write. Gera número sequencial (#AAAA-0001), calcula o saldo e define o status como pendente.',
     requestBody: {
       type: 'object',
       required: ['customerName', 'productName', 'quantity', 'totalPrice', 'deliveryDate', 'idempotencyKey'],
@@ -339,14 +339,14 @@ const TOOLS_METADATA = [
         },
         paidAmount: {
           type: 'number',
-          description: 'Valor de entrada ou sinal já pago pelo cliente (ex: 100.00). Padrão: 0.',
+          description: 'Valor de entrada ou sinal efetivamente já recebido (ex: 100.00). Omita se não houve pagamento; exige payments:write.',
           default: 0,
           maximum: 10000000,
         },
         paymentMethod: {
           type: 'string',
           enum: ['pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'transferencia', 'outro'],
-          description: 'Forma de pagamento utilizada pelo cliente.',
+          description: 'Forma do pagamento inicial já recebido. Omita quando ainda não houve pagamento; exige payments:write.',
         },
         deliveryDate: {
           type: 'string',
@@ -378,7 +378,7 @@ const TOOLS_METADATA = [
         },
         confirmed: {
           type: 'boolean',
-          description: 'Use false para receber somente a prévia. Use true (ou omita) para criar e gravar o pedido oficialmente.',
+          description: 'Obrigatório no fluxo conversacional: false retorna prévia sem gravar; true grava após confirmação explícita do usuário. Preserve os demais dados e a idempotencyKey entre as chamadas.',
         },
       },
     },
@@ -387,12 +387,12 @@ const TOOLS_METADATA = [
     name: 'get_order_edit_form',
     scope: 'orders:update',
     summary: 'Formulário para Editar Pedido',
-    description: 'Carrega um formulário interativo para revisar e editar dados operacionais e o valor de um pedido. O valor pode ser informado como total do pedido ou preço unitário; neste caso o total é calculado pela quantidade. A gravação sempre exige prévia, confirmação explícita, versão atual e chave de idempotência.',
+    description: 'Carrega um formulário interativo para revisar e editar dados operacionais e o valor de um pedido. Aceita o número visível do pedido com ou sem # ou o ID interno. O valor pode ser informado como total do pedido ou preço unitário; neste caso o total é calculado pela quantidade. A gravação sempre exige prévia, confirmação explícita, versão atual e chave de idempotência.',
     requestBody: {
       type: 'object',
       required: ['orderNumber'],
       properties: {
-        orderNumber: { type: 'string', minLength: 1, maxLength: 100, description: 'Número ou ID do pedido a editar.' },
+        orderNumber: { type: 'string', minLength: 1, maxLength: 100, description: 'Número mostrado ao usuário (ex.: #2026-0042 ou 2026-0042) ou ID interno do documento.' },
       },
     },
   },
@@ -400,7 +400,7 @@ const TOOLS_METADATA = [
     name: 'update_order',
     scope: 'orders:update',
     summary: 'Editar um Pedido Existente',
-    description: 'Mostra uma prévia das alterações de pedido. Só grave após apresentar os campos ao usuário e receber confirmação explícita. Pode alterar dados operacionais e valor total ou unitário; o preço unitário é multiplicado pela quantidade (incluindo a quantidade atualizada, se alterada). Não registra nem altera pagamentos recebidos.',
+    description: 'Aceita número do pedido com ou sem # ou ID interno. Mostra uma prévia das alterações. Só grave após apresentar os campos ao usuário e receber confirmação explícita, repetindo os mesmos dados, expectedVersion e idempotencyKey com confirmed=true. Pode alterar dados operacionais e valor total ou unitário; o preço unitário é multiplicado pela quantidade final. Não registra nem altera pagamentos recebidos.',
     requestBody: {
       type: 'object',
       required: ['orderNumber'],

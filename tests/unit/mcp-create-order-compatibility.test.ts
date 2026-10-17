@@ -58,6 +58,19 @@ describe('MCP create_order: compatibilidade e gravação idempotente', () => {
     expect(orderDocuments()).toHaveLength(1);
   });
 
+  it('cria pedido sem sinal com apenas orders:create e confirma a gravação do backend', async () => {
+    const { paymentMethod: _paymentMethod, ...orderWithoutPayment } = args;
+    const createScope = { ...scope, mcpScopes: ['orders:create'] };
+    const preview = await executor.executeCreateOrder({ ...orderWithoutPayment, confirmed: false }, createScope);
+    expect(preview).toMatchObject({ success: true, status: 'preview', requiresConfirmation: true });
+    expect(db.runTransaction).not.toHaveBeenCalled();
+
+    const saved = await executeScopedToolByName(executor, 'create_order', { ...orderWithoutPayment, confirmed: true }, createScope, createScope.mcpScopes);
+    expect(saved).toMatchObject({ success: true, orderId: 'generated-1', orderNumber: expect.stringMatching(/^#\d{4}-0001$/) });
+    expect(db.runTransaction).toHaveBeenCalledOnce();
+    expect(orderDocuments()).toHaveLength(1);
+  });
+
   it.each([undefined, true, 'true'])('repetição com confirmed=%s retorna o ID original sem duplicar', async (confirmed) => {
     const first = await executor.executeCreateOrder({ ...args, confirmed: true }, scope);
     transaction.set.mockClear();

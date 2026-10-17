@@ -247,16 +247,24 @@ class AiDataRepositories {
   async getScopedOrderDocument(scope, identifier) {
     if (!this.db || typeof identifier !== 'string' || !identifier.trim()) return null;
     const value = identifier.trim();
+    const orderNumber = value.replace(/^#\s*/, '').trim();
+    const orderNumberCandidates = [...new Set([value, orderNumber, `#${orderNumber}`].filter(Boolean))];
     const candidates = [];
     if (!value.includes('/')) {
       const direct = await this.db.collection('orders').doc(value).get();
       if (direct.exists) candidates.push(direct);
     }
     if (!candidates.length) {
-      const matches = await this.db.collection('orders').where('orderNumber', '==', value).limit(2).get();
-      candidates.push(...(matches.docs || []));
+      // O ChatGPT pode omitir o # do número apresentado ao usuário. Busque as
+      // formas com e sem prefixo, mantendo a autorização e a checagem de
+      // ambiguidade abaixo como fonte final da decisão.
+      for (const candidate of orderNumberCandidates) {
+        const matches = await this.db.collection('orders').where('orderNumber', '==', candidate).limit(50).get();
+        candidates.push(...(matches.docs || []));
+      }
     }
-    const scoped = candidates.filter((doc) => {
+    const uniqueCandidates = [...new Map(candidates.map((doc) => [doc.id, doc])).values()];
+    const scoped = uniqueCandidates.filter((doc) => {
       const data = doc.data() || {};
       return filterOrdersByScope([{ ...data, id: doc.id }], scope).length > 0;
     });
