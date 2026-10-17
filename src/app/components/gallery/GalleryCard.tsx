@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { GalleryItem } from '../../types';
 import { Skeleton } from '../ui/skeleton';
 import { ImageOff, User, ZoomIn, Sparkles, CheckSquare, Square, Share2, Copy } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { cn } from '../ui/utils';
 import { toast } from 'sonner';
+import { getCdnFallbackUrl } from '../../utils/cdnUtils';
 
 interface GalleryCardProps {
   item: GalleryItem;
@@ -27,6 +28,15 @@ export function GalleryCard({
   const canUseAi = isAdmin || hasPermission((p) => Boolean(p?.aiCopilot));
   const [loaded, setLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [imageSrc, setImageSrc] = useState(item.imageUrl);
+  const [triedFallback, setTriedFallback] = useState(false);
+
+  useEffect(() => {
+    setImageSrc(item.imageUrl);
+    setLoaded(false);
+    setImageError(false);
+    setTriedFallback(false);
+  }, [item.imageUrl]);
 
   const handleShareWhatsApp = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -78,11 +88,18 @@ export function GalleryCard({
           </div>
         ) : (
           <img
-            src={item.imageUrl}
+            src={imageSrc}
             alt={item.title}
             loading="lazy"
+            decoding="async"
             onLoad={() => setLoaded(true)}
             onError={() => {
+              const fallbackUrl = getCdnFallbackUrl(item.imageUrl);
+              if (!triedFallback && fallbackUrl && fallbackUrl !== imageSrc) {
+                setTriedFallback(true);
+                setImageSrc(fallbackUrl);
+                return;
+              }
               setImageError(true);
               setLoaded(false);
             }}

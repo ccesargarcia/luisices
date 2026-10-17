@@ -77,12 +77,7 @@ export class FirebaseGalleryService {
       .filter(d => !d.data().deletedAt)
       .map(async d => {
         const item = this.fromFirestore(d.id, d.data());
-        try {
-          item.imageUrl = await resolveGalleryImageUrl(item.imageUrl);
-        } catch {
-          // Uma imagem indisponível não deve impedir a listagem das demais artes.
-          item.imageUrl = '';
-        }
+        item.imageUrl = resolveGalleryImageUrl(item.imageUrl);
         return item;
       }));
   }
@@ -117,8 +112,7 @@ export class FirebaseGalleryService {
     const items = await Promise.all(
       snapshot.docs.filter((d) => !d.data().deletedAt).map(async (d) => {
         const item = this.fromFirestore(d.id, d.data());
-        try { item.imageUrl = await resolveGalleryImageUrl(item.imageUrl); }
-        catch { item.imageUrl = ''; }
+        item.imageUrl = resolveGalleryImageUrl(item.imageUrl);
         return item;
       }),
     );

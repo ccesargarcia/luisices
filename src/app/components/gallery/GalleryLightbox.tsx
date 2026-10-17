@@ -37,6 +37,7 @@ import { firebaseGalleryService } from '../../../services/firebaseGalleryService
 import { useAuth } from '../../../contexts/AuthContext';
 import { cn } from '../ui/utils';
 import { toast } from 'sonner';
+import { getCdnFallbackUrl } from '../../utils/cdnUtils';
 
 function formatDate(iso: string) {
   try {
@@ -71,6 +72,8 @@ export function GalleryLightbox({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [analyzingAi, setAnalyzingAi] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
+  const [imageSrc, setImageSrc] = useState(items[initialIndex]?.imageUrl || '');
+  const [triedImageFallback, setTriedImageFallback] = useState(false);
   const { hasPermission, isAdmin } = useAuth();
   const canUseAi = isAdmin || hasPermission((p) => Boolean(p?.aiCopilot));
   const canDelete = isAdmin || hasPermission((p) => p.gallery?.delete ?? false);
@@ -79,7 +82,9 @@ export function GalleryLightbox({
   // Reset zoom when navigating images
   useEffect(() => {
     setIsZoomed(false);
-  }, [idx]);
+    setImageSrc(item?.imageUrl || '');
+    setTriedImageFallback(false);
+  }, [idx, item?.imageUrl]);
 
   const handleEnrichAi = async () => {
     if (!item?.id || analyzingAi) return;
@@ -248,10 +253,18 @@ export function GalleryLightbox({
                 title={isZoomed ? 'Clique para reduzir o zoom' : 'Clique para dar zoom e inspecionar detalhes'}
               >
                 <img
-                  src={item.imageUrl}
+                  src={imageSrc}
                   alt={item.title}
                   className="max-w-full max-h-[50vh] md:max-h-[75vh] w-auto h-auto object-contain select-none"
                   loading="lazy"
+                  decoding="async"
+                  onError={() => {
+                    const fallbackUrl = getCdnFallbackUrl(item.imageUrl);
+                    if (!triedImageFallback && fallbackUrl && fallbackUrl !== imageSrc) {
+                      setTriedImageFallback(true);
+                      setImageSrc(fallbackUrl);
+                    }
+                  }}
                 />
               </div>
 
