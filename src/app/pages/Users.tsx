@@ -587,13 +587,12 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <Badge
-                            variant={activeStats.count > 0 ? 'default' : 'secondary'}
-                            className={`text-[10px] px-1.5 py-0 h-4.5 font-normal ${
+                            className={`text-[10px] px-1.5 py-0 h-4.5 font-medium border ${
                               activeStats.all
-                                ? 'bg-emerald-600 text-white dark:bg-emerald-700'
+                                ? 'bg-emerald-600 text-white dark:bg-emerald-600 border-emerald-500/40'
                                 : activeStats.count > 0
-                                ? 'bg-sky-600 text-white dark:bg-sky-700'
-                                : 'text-muted-foreground'
+                                ? 'bg-sky-600 text-white dark:bg-sky-600 border-sky-500/40'
+                                : 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700'
                             }`}
                           >
                             {activeStats.count === 0

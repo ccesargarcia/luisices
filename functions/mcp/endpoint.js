@@ -407,7 +407,7 @@ const chatGptToolsEndpoint = onRequest(
         name_for_human: isDev ? 'Luisices Dev' : 'Luisices Ateliê',
         name_for_model: 'luisices',
         description_for_human: 'Assistente de produção, pedidos, clientes e precificação do Ateliê Luisices.',
-        description_for_model: 'Ferramentas do sistema Luisices para consultar pedidos por status/data, detalhes de clientes, resumo operacional e calcular precificação.',
+        description_for_model: 'Ferramentas do sistema Luisices para consultar pedidos por status/data, detalhes de clientes, resumo operacional e calcular precificação (modo Margem de Lucro % por padrão).',
         auth: {
           type: 'oauth',
           client_url: `${protocol}://${apiDomain}/oauth/authorize`,
