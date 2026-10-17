@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { getCdnFallbackUrl } from '../../utils/cdnUtils';
 import {
   DropdownMenu,
   DropdownMenuContent,

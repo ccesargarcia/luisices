@@ -5,6 +5,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Loader2, Upload, X, Building2 } from 'lucide-react';
+import { getCdnFallbackUrl } from '../../utils/cdnUtils';
 
 interface AvatarLogoSectionProps {
   avatarUrl?: string;
