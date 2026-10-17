@@ -5,6 +5,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Loader2, Upload, X, Building2 } from 'lucide-react';
+import { getCdnFallbackUrl } from '../../utils/cdnUtils';
 
 interface AvatarLogoSectionProps {
   avatarUrl?: string;
@@ -114,6 +115,12 @@ export function AvatarLogoSection({
                 src={logoUrl}
                 alt="Logo"
                 className="h-20 object-contain bg-muted rounded-lg p-2"
+                onError={(e) => {
+                  const fallback = getCdnFallbackUrl(logoUrl);
+                  if (fallback && e.currentTarget.src !== fallback) {
+                    e.currentTarget.src = fallback;
+                  }
+                }}
               />
             </div>
           ) : (

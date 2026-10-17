@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { getCdnFallbackUrl } from '../../utils/cdnUtils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -130,6 +131,15 @@ export function TopHeader({
               src={logo}
               alt={businessName}
               className="h-7 xs:h-8 md:h-9 max-h-8 md:max-h-9 max-w-[80px] xs:max-w-[105px] md:max-w-[140px] object-contain min-w-0 rounded-md shrink-0"
+              onError={(e) => {
+                const target = e.currentTarget;
+                const fallback = getCdnFallbackUrl(logo);
+                if (fallback && target.src !== fallback) {
+                  target.src = fallback;
+                  return;
+                }
+                target.style.display = 'none';
+              }}
             />
           ) : headerLogoStyle !== 'hidden' && businessName ? (
             <div className="flex items-center justify-center size-7 xs:size-8 sm:size-9 bg-primary text-primary-foreground rounded-lg shrink-0 shadow-xs">
