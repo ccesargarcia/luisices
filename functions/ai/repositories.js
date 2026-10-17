@@ -629,6 +629,11 @@ class AiDataRepositories {
    */
   async savePricingRecipe(scope, data) {
     if (!this.db) throw new Error('Banco de dados não disponível.');
+    if (!scope?.uid) {
+      const error = new Error('Usuário não autenticado.');
+      error.code = 'unauthenticated';
+      throw error;
+    }
     const recipeData = {
       productName: String(data.productName || 'Composição').trim(),
       category: String(data.category || 'papelaria_festa').trim(),
@@ -641,7 +646,26 @@ class AiDataRepositories {
     };
 
     if (data.modelId) {
+      if (typeof data.modelId !== 'string' || data.modelId.includes('/') || !data.modelId.trim()) {
+        const error = new Error('Identificador do modelo inválido.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
       const docRef = this.db.collection('pricingRecipes').doc(data.modelId);
+      const existing = await docRef.get();
+      if (!existing.exists) {
+        const error = new Error('Modelo de precificação não encontrado.');
+        error.code = 'not-found';
+        throw error;
+      }
+      const existingData = existing.data() || {};
+      if (!scope.isAdmin && existingData.userId !== scope.uid) {
+        const error = new Error('Permissão negada para editar este modelo de precificação.');
+        error.code = 'permission-denied';
+        throw error;
+      }
+      // Edições administrativas preservam o proprietário original do modelo.
+      recipeData.userId = String(existingData.userId || scope.uid);
       await docRef.set(recipeData, { merge: true });
       return { id: data.modelId, ...recipeData };
     } else {

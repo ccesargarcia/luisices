@@ -24,6 +24,7 @@ const { createAiServices } = require('../ai/index');
 const { ORIGIN_SECRET } = require('../common/secrets');
 const { validateOriginSecret } = require('../originProtection');
 const { captureApiError } = require('../common/sentry');
+const { formatToolResultText, publicErrorMessage } = require('./presentation');
 
 /**
  * Função utilitária para executar ferramentas pelo nome
@@ -148,11 +149,11 @@ async function executeScopedToolByName(toolsExecutor, toolName, args, scope, sco
 }
 
 function publicToolError(error) {
-  if (error?.code === 'permission-denied') return { status: 403, code: 'PERMISSION_DENIED', message: error.message };
-  if (error?.code === 'invalid-argument') return { status: 400, code: 'INVALID_ARGUMENT', message: error.message };
-  if (error?.code === 'not-found') return { status: 404, code: 'NOT_FOUND', message: error.message };
-  if (error?.code === 'failed-precondition' || error?.code === 'already-exists') return { status: 409, code: 'CONFLICT', message: error.message };
-  return { status: 500, code: 'TOOL_EXECUTION_ERROR', message: 'Erro interno ao processar a ferramenta.' };
+  if (error?.code === 'permission-denied') return { status: 403, code: 'PERMISSION_DENIED', message: publicErrorMessage(error) };
+  if (error?.code === 'invalid-argument') return { status: 400, code: 'INVALID_ARGUMENT', message: publicErrorMessage(error) };
+  if (error?.code === 'not-found') return { status: 404, code: 'NOT_FOUND', message: publicErrorMessage(error) };
+  if (error?.code === 'failed-precondition' || error?.code === 'already-exists') return { status: 409, code: 'CONFLICT', message: publicErrorMessage(error) };
+  return { status: 500, code: 'TOOL_EXECUTION_ERROR', message: publicErrorMessage(error) };
 }
 
 async function validateMcpRequest(req, db) {
@@ -582,7 +583,7 @@ const chatGptToolsEndpoint = onRequest(
             id: rpcId,
             error: {
               code: -32601,
-              message: `Ferramenta '${toolName}' não reconhecida pelo sistema Luisices.`,
+              message: 'Não consegui identificar a ação solicitada. Tente novamente com outra solicitação.',
             },
           });
         }
@@ -595,7 +596,7 @@ const chatGptToolsEndpoint = onRequest(
             id: rpcId,
             error: {
               code: -32003,
-              message: `Permissão negada para o escopo '${requiredScope}'.`,
+              message: 'Esta ação não está liberada para sua conta. Peça a um administrador para revisar seu acesso.',
             },
           });
         }
@@ -607,7 +608,7 @@ const chatGptToolsEndpoint = onRequest(
             id: rpcId,
             error: {
               code: -32003,
-              message: `Acesso restrito: a ferramenta '${toolName}' exige privilégios de Administrador.`,
+              message: 'Esta ação está disponível apenas para um administrador da conta.',
             },
           });
         }
@@ -637,7 +638,7 @@ const chatGptToolsEndpoint = onRequest(
               content: [
                 {
                   type: 'text',
-                  text: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+                  text: formatToolResultText(toolName, result),
                 },
               ],
               structuredContent: result && typeof result === 'object' ? result : { result },
@@ -742,7 +743,7 @@ const chatGptToolsEndpoint = onRequest(
       if (scopeDef?.requiresAdmin && !scope.isAdmin) {
         return res.status(403).json({
           error: 'ADMIN_REQUIRED',
-          message: `Acesso restrito: a ferramenta '${toolName}' exige privilégios de Administrador no Luisices.`,
+          message: 'Esta ação está disponível apenas para um administrador da conta.',
         });
       }
 
@@ -751,7 +752,7 @@ const chatGptToolsEndpoint = onRequest(
       try {
         args = traceMcpStep('validate_request', () => validateToolArguments(toolName, req.body));
       } catch (validationError) {
-        return res.status(400).json({ error: 'INVALID_ARGUMENT', message: validationError.message });
+        return res.status(400).json({ error: 'INVALID_ARGUMENT', message: publicErrorMessage(validationError) });
       }
       const aiServices = traceMcpStep('services', () => getSharedAiServices(db));
       const { toolsExecutor } = aiServices;

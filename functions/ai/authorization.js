@@ -54,6 +54,10 @@ function getCallerScope(callerUid, callerProfile) {
     isEmployee,
     isUser,
     canAiCopilot,
+    canViewPricing: isEmployee && (
+      permissions.pricing === true
+      || (permissions.pricing && typeof permissions.pricing === 'object' && permissions.pricing.view === true)
+    ),
     permissions,
     email: profile.email || '',
     displayName: profile.displayName || '',

@@ -60,35 +60,43 @@ service cloud.firestore {
     }
 
     function employeeHasPricingView() {
-      return userHasPerm('pricing', 'view');
+      return isActiveEmployee()
+        && hasPerm(getEmployeePermissions().get('pricing', false), 'view');
     }
 
     function employeeHasPricingCreate() {
-      return userHasPerm('pricing', 'create');
+      return isActiveEmployee()
+        && hasPerm(getEmployeePermissions().get('pricing', false), 'create');
     }
 
     function employeeHasPricingEdit() {
-      return userHasPerm('pricing', 'edit');
+      return isActiveEmployee()
+        && hasPerm(getEmployeePermissions().get('pricing', false), 'edit');
     }
 
     function employeeHasPricingDelete() {
-      return userHasPerm('pricing', 'delete');
+      return isActiveEmployee()
+        && hasPerm(getEmployeePermissions().get('pricing', false), 'delete');
     }
 
     function employeeHasCustomersPerm(action) {
-      return userHasPerm('customers', action);
+      return isActiveEmployee()
+        && hasPerm(getEmployeePermissions().get('customers', false), action);
     }
 
     function employeeHasQuotesPerm(action) {
-      return userHasPerm('quotes', action);
+      return isActiveEmployee()
+        && hasPerm(getEmployeePermissions().get('quotes', false), action);
     }
 
     function employeeHasProductsPerm(action) {
-      return userHasPerm('products', action);
+      return isActiveEmployee()
+        && hasPerm(getEmployeePermissions().get('products', false), action);
     }
 
     function employeeHasGalleryPerm(action) {
-      return userHasPerm('gallery', action);
+      return isActiveEmployee()
+        && hasPerm(getEmployeePermissions().get('gallery', false), action);
     }
 
     // ─── Validações Estruturais e de Integridade de Dados no Servidor ─────────

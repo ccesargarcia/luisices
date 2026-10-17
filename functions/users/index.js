@@ -68,10 +68,10 @@ function sanitizeAndValidatePermissions(perms) {
       }
     } else if (val && typeof val === 'object') {
       clean[key] = {
-        view: Boolean(val.view),
-        create: Boolean(val.create),
-        edit: Boolean(val.edit),
-        delete: Boolean(val.delete),
+        view: val.view === true,
+        create: val.create === true,
+        edit: val.edit === true,
+        delete: val.delete === true,
       };
     }
   }

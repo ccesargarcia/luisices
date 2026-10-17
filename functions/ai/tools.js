@@ -2415,6 +2415,7 @@ class AiToolsExecutor {
   }
 
   async executeSavePricingModel(args = {}, scope) {
+    requireMcpModulePermission(scope, 'pricing', 'create', 'salvar modelos de precificação');
     if (!isConfirmed(args.confirmed)) {
       return {
         success: true,
@@ -2456,6 +2457,7 @@ class AiToolsExecutor {
   }
 
   async executeCreateQuote(args = {}, scope) {
+    requireMcpModulePermission(scope, 'quotes', 'create', 'criar orçamentos');
     if (!isConfirmed(args.confirmed)) {
       return {
         success: true,
@@ -2478,6 +2480,24 @@ class AiToolsExecutor {
   }
 
   async executeUpdateQuoteStatus(args = {}, scope) {
+    requireMcpModulePermission(scope, 'quotes', 'edit', 'atualizar orçamentos');
+    if (args.confirmed === false) {
+      return {
+        success: true,
+        preview: true,
+        quoteNumber: args.quoteNumber,
+        status: args.status,
+        convertToOrder: Boolean(args.convertToOrder),
+        message: `Prévia da atualização do orçamento ${args.quoteNumber} para ${args.status}. Confirme para aplicar.`,
+      };
+    }
+
+    if (args.convertToOrder && !scope?.mcpScopes?.includes('*') && !scope?.mcpScopes?.includes('orders:create')) {
+      const error = new Error('Permissão insuficiente para criar pedidos a partir de orçamentos.');
+      error.code = 'permission-denied';
+      throw error;
+    }
+
     const updated = await this.repositories.updateQuoteStatus(scope, args.quoteNumber, args.status);
     let orderCreated = null;
 
@@ -2491,7 +2511,8 @@ class AiToolsExecutor {
           productName: targetQuote.productName,
           quantity: 1,
           totalPrice: targetQuote.totalPrice,
-          paidAmount: targetQuote.totalPrice * ((targetQuote.depositPercentage || 50) / 100),
+          // Aprovar o orçamento não comprova que o sinal foi recebido.
+          paidAmount: 0,
           deliveryDate: args.deliveryDate || getBusinessDate(new Date(Date.now() + 7 * 86400000)),
           idempotencyKey: args.idempotencyKey || `conv-quote-${updated.id}`,
           confirmed: true,

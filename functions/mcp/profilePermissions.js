@@ -19,7 +19,8 @@ const MODULE_REQUIREMENTS = {
   'pricing:models:read': ['pricing', 'view'],
   'pricing:models:write': ['pricing', 'create'],
   'quotes:read': ['quotes', 'view'],
-  'quotes:write': ['quotes', 'create'],
+  // The scope covers both write tools. Each tool enforces its own CRUD action.
+  'quotes:write': ['quotes', ['create', 'edit']],
   'store:read': ['storeProducts', 'view'],
 };
 
@@ -31,7 +32,10 @@ function moduleAllowsMcpScope(scopeId, profile) {
   const permission = profile?.permissions?.[module];
   if (permission === undefined) return false;
   if (typeof permission === 'boolean') return permission;
-  return permission !== null && typeof permission === 'object' && permission[action] === true;
+  if (permission === null || typeof permission !== 'object') return false;
+  return Array.isArray(action)
+    ? action.some((requiredAction) => permission[requiredAction] === true)
+    : permission[action] === true;
 }
 
 function validateProfileMcpScopes(permissions) {
