@@ -162,7 +162,7 @@ export function ArtisanPricingPage() {
   const [customCustomerName, setCustomCustomerName] = useState<string>('');
   const [orderName, setOrderName] = useState('');
   const [orderQuantity, setOrderQuantity] = useState<number | string>(1);
-  const [pricingMode, setPricingMode] = useState<'markup' | 'margem'>('markup');
+  const [pricingMode, setPricingMode] = useState<'markup' | 'margem'>('margem');
   const [markupPercent, setMarkupPercent] = useState<number>(100); // Ex: 100% dobra o custo
   const [profitMarginPercent, setProfitMarginPercent] = useState<number>(50); // Padrão 50%
   const [manualTotalPrice, setManualTotalPrice] = useState<string>('');

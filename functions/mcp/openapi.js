@@ -585,7 +585,7 @@ const TOOLS_METADATA = [
       properties: {
         productName: { type: 'string', description: 'Nome do produto artesanal ou encomenda.' },
         quantity: { type: 'integer', minimum: 1, maximum: 100000, description: 'Quantidade encomendada.' },
-        pricingMode: { type: 'string', enum: ['markup', 'margem'], default: 'markup', description: 'Modo de precificação: markup (multiplicador sobre o custo) ou margem (% de margem de lucro sobre o preço de venda).' },
+        pricingMode: { type: 'string', enum: ['margem', 'markup'], default: 'margem', description: 'Modo de precificação: margem (% de margem de lucro sobre o preço de venda - PADRÃO DO SISTEMA) ou markup (multiplicador sobre o custo).' },
         markupPercent: { type: 'number', minimum: 0, maximum: 1000, default: 100, description: 'Percentual de markup sobre o custo total (ex: 100% dobra o custo).' },
         profitMarginPercent: { type: 'number', minimum: 0, maximum: 95, default: 50, description: 'Percentual de margem de lucro sobre a venda.' },
         items: {

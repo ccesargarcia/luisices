@@ -478,7 +478,7 @@ Content-Type: application/json
 ### <a id="5-calculate_pricing_estimate"></a>5. `calculate_pricing_estimate` — Calculadora de Precificação
 
 * **Escopo Requerido:** `pricing:estimate`
-* **Descrição:** Realiza a estimativa de preço de venda ideal com base no custo de materiais/insumos, tempo de mão de obra/máquina e margem de lucro desejada.
+* **Descrição:** Realiza a estimativa de preço de venda ideal com base no custo de materiais/insumos, tempo de mão de obra e margem de lucro sobre a venda (modo padrão do sistema) ou markup sobre o custo.
 
 #### Parâmetros de Entrada:
 | Campo | Tipo | Obrigatório | Padrão | Descrição |
