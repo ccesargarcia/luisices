@@ -132,23 +132,26 @@ export function Gallery() {
   // Carregar dados iniciais do Firestore (executa 1 vez com cache em memória)
   useEffect(() => {
     if (!user) return;
-    const loadData = async () => {
-      try {
-        const isAdmin = userProfile?.role === 'admin';
-        const [galleryItems, cList] = await Promise.all([
-          firebaseGalleryService.getItems(user.uid, isAdmin),
-          firebaseCustomerService.getCustomers(user.uid, isAdmin),
-        ]);
-        setItems(galleryItems);
-        setCustomers(cList);
-      } catch (err) {
+    let cancelled = false;
+    const isAdmin = userProfile?.role === 'admin';
+    setLoading(true);
+
+    // A galeria aparece assim que seus itens chegam; dados de clientes não
+    // devem bloquear a renderização das imagens.
+    firebaseGalleryService.getItems(user.uid, isAdmin)
+      .then((galleryItems) => { if (!cancelled) setItems(galleryItems); })
+      .catch((err) => {
+        if (cancelled) return;
         toast.error('Erro ao carregar galeria');
         console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    firebaseCustomerService.getCustomers(user.uid, isAdmin)
+      .then((cList) => { if (!cancelled) setCustomers(cList); })
+      .catch((err) => { if (!cancelled) console.error('Erro ao carregar clientes da galeria:', err); });
+
+    return () => { cancelled = true; };
   }, [user, userProfile?.role]);
 
   // Filtragem reativa em memória por parceiro ativo (Zero Custo Firestore, 0ms)
