@@ -46,10 +46,23 @@ export default {
       });
     }
 
-    // 2. Determinar ambiente e bucket de destino
-    const isDev = url.hostname.includes('dev') || env.ENVIRONMENT === 'dev';
-    const primaryBucket = env.FIREBASE_BUCKET || (isDev ? DEFAULT_BUCKETS.dev : DEFAULT_BUCKETS.prod);
-    const fallbackBucket = env.FIREBASE_FALLBACK_BUCKET || (isDev ? FALLBACK_BUCKETS.dev : FALLBACK_BUCKETS.prod);
+    // 2. Determinar ambiente e bucket de destino.
+    // O domínio explícito da CDN deve prevalecer sobre vars que possam ter sido
+    // herdadas/implantadas incorretamente no ambiente do Worker.
+    const hostname = url.hostname.toLowerCase();
+    const isDevHost = hostname === 'cdn-dev.luisices.com.br';
+    const isProdHost = hostname === 'cdn.luisices.com.br';
+    const isDev = isDevHost || (!isProdHost && env.ENVIRONMENT === 'dev');
+    const primaryBucket = isDevHost
+      ? DEFAULT_BUCKETS.dev
+      : isProdHost
+        ? DEFAULT_BUCKETS.prod
+        : env.FIREBASE_BUCKET || (isDev ? DEFAULT_BUCKETS.dev : DEFAULT_BUCKETS.prod);
+    const fallbackBucket = isDevHost
+      ? FALLBACK_BUCKETS.dev
+      : isProdHost
+        ? FALLBACK_BUCKETS.prod
+        : env.FIREBASE_FALLBACK_BUCKET || (isDev ? FALLBACK_BUCKETS.dev : FALLBACK_BUCKETS.prod);
 
     // 3. Extrair e codificar o caminho com segurança
     const rawPath = decodeURIComponent(url.pathname.replace(/^\/+/, ''));

@@ -96,6 +96,31 @@ describe('Cloudflare Workers: Validação e Testes Unitários de Borda', () => {
       expect(originUrl.searchParams.get('token')).toBe('download-token');
     });
 
+    it('deve priorizar o bucket de desenvolvimento no domínio cdn-dev mesmo com vars de produção', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response('avatar-bytes', {
+          status: 200,
+          headers: { 'Content-Type': 'image/webp' },
+        })
+      );
+      vi.stubGlobal('fetch', mockFetch);
+
+      const request = new Request('https://cdn-dev.luisices.com.br/users/u1/logo/logo_123.webp');
+      const response = await cdnWorker.fetch(
+        request,
+        {
+          ENVIRONMENT: 'production',
+          FIREBASE_BUCKET: 'papelaria-dashboard.firebasestorage.app',
+          FIREBASE_FALLBACK_BUCKET: 'papelaria-dashboard.appspot.com',
+        },
+        {}
+      );
+
+      expect(response.status).toBe(200);
+      expect(new URL(mockFetch.mock.calls[0][0]).hostname).toBe('firebasestorage.googleapis.com');
+      expect(mockFetch.mock.calls[0][0]).toContain('luisices-dev.firebasestorage.app');
+    });
+
     it('deve executar failover para o bucket alternativo caso o primário retorne 404', async () => {
       const mockFetch = vi
         .fn()
