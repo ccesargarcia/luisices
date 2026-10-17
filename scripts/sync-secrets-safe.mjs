@@ -192,12 +192,13 @@ async function main() {
       console.error(`   - ${f.name}: ${f.error}`);
     }
     console.log('='.repeat(70));
-    process.exit(1);
+    // Deixa stdout/stderr esvaziarem para não perder o resumo da falha.
+    process.exitCode = 1;
   }
   console.log('='.repeat(70));
 }
 
 main().catch((err) => {
   console.error('❌ Erro fatal na sincronização de secrets:', err);
-  process.exit(1);
+  process.exitCode = 1;
 });
