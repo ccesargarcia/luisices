@@ -1,4 +1,5 @@
 import { GalleryItem } from '../../types';
+import { GalleryImage } from '../gallery/GalleryImage';
 import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -65,8 +66,8 @@ export function NewOrderGallerySelect({
             if (!item) return null;
             return (
               <div key={id} className="relative group">
-                <img
-                  src={item.imageUrl}
+                <GalleryImage
+                  itemId={item.id}
                   alt={item.title}
                   className="w-full aspect-square object-cover rounded-md border"
                   loading="lazy"
@@ -156,8 +157,8 @@ export function NewOrderGallerySelect({
                               : 'border-border hover:border-primary/50'
                           }`}
                         >
-                          <img
-                            src={item.imageUrl}
+                          <GalleryImage
+                            itemId={item.id}
                             alt={item.title}
                             className="w-full aspect-square object-cover"
                             loading="lazy"

@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { GalleryItem } from '../../types';
-import { SafeImg } from '../SafeMedia';
+import { GalleryImage } from '../gallery/GalleryImage';
 import { Images, Plus, ZoomIn, X, Loader2 } from 'lucide-react';
 import { firebaseGalleryService } from '../../../services/firebaseGalleryService';
 import {
@@ -127,8 +127,8 @@ export function OrderGallerySection({
               onClick={() => setGalleryLightbox(item)}
               className="group relative aspect-square rounded-md overflow-hidden border bg-muted"
             >
-              <SafeImg
-                src={item.imageUrl}
+              <GalleryImage
+                itemId={item.id}
                 alt={item.title}
                 className="w-full h-full object-cover transition-transform group-hover:scale-105"
               />
@@ -148,7 +148,7 @@ export function OrderGallerySection({
           </DialogHeader>
           <DialogBody className="p-4 sm:p-6 space-y-3">
             {galleryUploadPreview && (
-              <SafeImg
+              <img
                 src={galleryUploadPreview}
                 alt="preview"
                 className="w-full max-h-44 object-contain rounded-lg border bg-muted/30"
@@ -204,8 +204,8 @@ export function OrderGallerySection({
               </DialogTitle>
             </div>
             <div className="flex-1 flex items-center justify-center p-2 min-h-60 overflow-hidden">
-              <SafeImg
-                src={galleryLightbox.imageUrl}
+              <GalleryImage
+                itemId={galleryLightbox.id}
                 alt={galleryLightbox.title}
                 className="max-w-full max-h-[75vh] object-contain rounded"
               />

@@ -16,6 +16,8 @@ import { firebaseGalleryService } from '../../../services/firebaseGalleryService
 import { FOLDER_COLORS } from './FolderCard';
 import { cn } from '../ui/utils';
 import { toast } from 'sonner';
+import { GalleryImage } from './GalleryImage';
+import { extractGalleryStoragePath } from '../../../services/firebaseGalleryImageService';
 
 interface EditFolderDialogProps {
   open: boolean;
@@ -51,7 +53,7 @@ export function EditFolderDialog({
   useEffect(() => {
     if (open) {
       setColor(currentColor);
-      setCover(currentCover ?? null);
+      setCover(currentCover ? extractGalleryStoragePath(currentCover) : null);
       setTags(currentTags ?? []);
       setUploadPreview(null);
       setUploadFile(null);
@@ -114,12 +116,17 @@ export function EditFolderDialog({
 
             {displayCover ? (
               <div className="relative rounded-xl overflow-hidden border aspect-video">
-                <img
-                  src={displayCover}
+                {uploadPreview ? <img
+                  src={uploadPreview}
                   alt="capa"
                   className="w-full h-full object-cover"
                   loading="lazy"
-                />
+                /> : <GalleryImage
+                  storagePath={displayCover}
+                  alt="capa"
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                />}
                 <button
                   type="button"
                   onClick={() => {
@@ -174,8 +181,8 @@ export function EditFolderDialog({
                           : 'border-transparent hover:border-muted-foreground/40'
                       )}
                     >
-                      <img
-                        src={item.imageUrl}
+                      <GalleryImage
+                        itemId={item.id}
                         alt={item.title}
                         className="w-full h-full object-cover"
                         loading="lazy"

@@ -17,7 +17,7 @@ import {
 import { httpsCallable } from 'firebase/functions';
 import { auth } from '../../src/lib/firebase';
 import { firebaseStorageService } from '../../src/services/firebaseStorageService';
-import { resolveGalleryImageUrl } from '../../src/services/firebaseGalleryImageService';
+import { extractGalleryStoragePath } from '../../src/services/firebaseGalleryImageService';
 
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn((_db, name) => ({ path: name })),
@@ -59,7 +59,7 @@ vi.mock('../../src/services/firebaseStorageService', () => ({
 }));
 
 vi.mock('../../src/services/firebaseGalleryImageService', () => ({
-  resolveGalleryImageUrl: vi.fn(async (url: string) => `https://cdn.luisices.com.br/${url}`),
+  extractGalleryStoragePath: vi.fn((url: string) => url.replace(/^https:\/\/cdn\.luisices\.com\.br\//, '')),
 }));
 
 describe('Funcionalidade: Galeria de Mídias e Portfólio (firebaseGalleryService)', () => {
@@ -101,7 +101,7 @@ describe('Funcionalidade: Galeria de Mídias e Portfólio (firebaseGalleryServic
       expect(items).toHaveLength(1);
       expect(items[0].id).toBe('item-1');
       expect(items[0].title).toBe('Topo de Bolo Shaker');
-      expect(items[0].imageUrl).toBe('https://cdn.luisices.com.br/art1.png');
+      expect(items[0].imageUrl).toBe('art1.png');
     });
 
     it('deve consultar toda a coleção sem filtro de userId quando for admin', async () => {
@@ -136,7 +136,7 @@ describe('Funcionalidade: Galeria de Mídias e Portfólio (firebaseGalleryServic
       expect(page.cursor).toBe(deleted);
       expect(page.hasMore).toBe(true);
       expect(page.items).toHaveLength(1);
-      expect(resolveGalleryImageUrl).toHaveBeenCalledTimes(1);
+      expect(extractGalleryStoragePath).toHaveBeenCalledTimes(1);
       (getDocs as any).mockResolvedValueOnce({ docs: [] });
       const next = await firebaseGalleryService.getCustomerPage('user-owner', 'cust', 2, page.cursor);
       expect(startAfter).toHaveBeenCalledWith(deleted);
@@ -149,7 +149,7 @@ describe('Funcionalidade: Galeria de Mídias e Portfólio (firebaseGalleryServic
       expect(page.items).toEqual([]);
       expect(page.hasMore).toBe(true);
       expect(page.cursor).toBe(deleted);
-      expect(resolveGalleryImageUrl).not.toHaveBeenCalled();
+      expect(extractGalleryStoragePath).not.toHaveBeenCalled();
     });
     it.each([0, -1, 101, 1.5])('rejeita tamanho inválido %s sem consultar', async (size) => {
       await expect(firebaseGalleryService.getCustomerPage('user-owner', 'cust', size)).rejects.toThrow('tamanho da página');

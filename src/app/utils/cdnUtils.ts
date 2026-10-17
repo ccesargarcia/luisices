@@ -58,6 +58,43 @@ export function toCdnUrl(url?: string | null): string {
   return trimmed;
 }
 
+/** Builds a tokenless CDN URL only for Storage paths explicitly readable by the public. */
+export function toPublicCdnUrl(value?: string | null): string {
+  if (!value || typeof value !== 'string') return '';
+  const input = value.trim();
+  if (!input) return '';
+
+  let path = input;
+  let existingOrigin = '';
+  try {
+    const parsed = new URL(input);
+    if (parsed.hostname === 'firebasestorage.googleapis.com') {
+      const match = parsed.pathname.match(/\/o\/(.+)$/);
+      if (!match) return input;
+      path = decodeURIComponent(match[1]);
+    } else if (parsed.hostname === 'cdn.luisices.com.br' || parsed.hostname === 'cdn-dev.luisices.com.br') {
+      path = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''));
+      existingOrigin = parsed.origin;
+    } else {
+      return input;
+    }
+  } catch {
+    path = input.replace(/^\/+/, '').split('?')[0];
+  }
+
+  const isPublicUserImage = /^users\/[^/]+\/(avatar|logo|banner|products|customers|catalog-logo|catalog-banner|catalog-header|catalog-about)\/[^/]+$/.test(path);
+  const isPublicStoreImage = /^store\/[^/]+\/[^/]+$/.test(path);
+  const isPublicAsset = /^public\/(?!.*(?:^|\/)\.\.\/).+$/.test(path);
+  if (!isPublicUserImage && !isPublicStoreImage && !isPublicAsset) return input;
+
+  const cdnBase = import.meta.env.VITE_STORAGE_CDN_URL || existingOrigin;
+  if (cdnBase) return `${cdnBase.replace(/\/+$/, '')}/${path}`;
+
+  const bucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
+  if (!bucket) return input;
+  return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(path)}?alt=media`;
+}
+
 /**
  * Se a URL for do CDN próprio (Cloudflare) e falhar ao carregar no navegador,
  * gera a URL nativa correspondente do Firebase Storage como fallback instantâneo.

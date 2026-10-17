@@ -123,6 +123,11 @@ const handler = {
 
     // 3. Montar URL de encaminhamento preservando path e query params
     let targetPath = url.pathname;
+    const galleryMediaMatch = targetPath.match(/^\/media\/gallery\/([A-Za-z0-9_-]{1,150})$/);
+    if (galleryMediaMatch || targetPath === '/media/gallery') {
+      targetPath = '/galleryMedia';
+      if (galleryMediaMatch) url.searchParams.set('itemId', galleryMediaMatch[1]);
+    } else
     if (
       targetPath === '/openapi.json' ||
       targetPath === '/openapi.yaml' ||

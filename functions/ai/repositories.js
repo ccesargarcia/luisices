@@ -19,6 +19,23 @@ function normalizeTimestamp(val) {
   return String(val);
 }
 
+function sanitizeGalleryImagePath(value) {
+  if (typeof value !== 'string' || !value) return '';
+  try {
+    const url = new URL(value);
+    if (url.hostname === 'firebasestorage.googleapis.com') {
+      const match = url.pathname.match(/\/o\/(.+)$/);
+      return match ? decodeURIComponent(match[1]) : '';
+    }
+    if (url.hostname === 'cdn.luisices.com.br' || url.hostname === 'cdn-dev.luisices.com.br') {
+      return decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+    }
+    return '';
+  } catch {
+    return value.split('?')[0].replace(/^\/+/, '');
+  }
+}
+
 function orderOrdersByCreationDate(query) {
   return query && typeof query.orderBy === 'function'
     ? query.orderBy('createdAt', 'desc')
@@ -426,7 +443,7 @@ class AiDataRepositories {
             category: data.category || '',
             papers: Array.isArray(data.papers) ? data.papers : [],
             tags: Array.isArray(data.tags) ? data.tags.map((t) => typeof t === 'string' ? t : t?.name).filter((tag) => typeof tag === 'string') : [],
-            imageUrl: data.imageUrl || '',
+            imageUrl: sanitizeGalleryImagePath(data.imagePath || data.imageUrl),
             userId: String(data.userId || ''),
             createdBy: String(data.createdBy || ''),
             ownerUid: String(data.ownerUid || ''),
@@ -456,7 +473,7 @@ class AiDataRepositories {
               category: data.category || '',
               papers: Array.isArray(data.papers) ? data.papers : [],
               tags: Array.isArray(data.tags) ? data.tags.map((t) => typeof t === 'string' ? t : t?.name).filter((tag) => typeof tag === 'string') : [],
-              imageUrl: data.imageUrl || '',
+              imageUrl: sanitizeGalleryImagePath(data.imagePath || data.imageUrl),
               userId: String(data.userId || ''),
               createdBy: String(data.createdBy || ''),
               ownerUid: String(data.ownerUid || ''),

@@ -5,7 +5,7 @@ import { ImageOff, User, ZoomIn, Sparkles, CheckSquare, Square, Share2, Copy } f
 import { useAuth } from '../../../contexts/AuthContext';
 import { cn } from '../ui/utils';
 import { toast } from 'sonner';
-import { getCdnFallbackUrl } from '../../utils/cdnUtils';
+import { GalleryImage } from './GalleryImage';
 
 interface GalleryCardProps {
   item: GalleryItem;
@@ -28,28 +28,26 @@ export function GalleryCard({
   const canUseAi = isAdmin || hasPermission((p) => Boolean(p?.aiCopilot));
   const [loaded, setLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const [imageSrc, setImageSrc] = useState(item.imageUrl);
-  const [triedFallback, setTriedFallback] = useState(false);
 
   useEffect(() => {
-    setImageSrc(item.imageUrl);
     setLoaded(false);
     setImageError(false);
-    setTriedFallback(false);
-  }, [item.imageUrl]);
+  }, [item.id]);
+
+  const galleryPageUrl = `${window.location.origin}/galeria?image=${encodeURIComponent(item.id)}`;
 
   const handleShareWhatsApp = (e: React.MouseEvent) => {
     e.stopPropagation();
     const text = encodeURIComponent(
-      `Confira esta arte do nosso catálogo: *${item.title}* ✨\n${item.imageUrl}`
+      `Confira esta arte do nosso catálogo: *${item.title}* ✨\n${galleryPageUrl}`
     );
     window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
   };
 
   const handleCopyLink = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (item.imageUrl) {
-      navigator.clipboard.writeText(item.imageUrl);
+    if (item.id) {
+      navigator.clipboard.writeText(galleryPageUrl);
       toast.success('Link da arte copiado!');
     }
   };
@@ -87,19 +85,13 @@ export function GalleryCard({
             <span className="text-xs font-medium">Imagem indisponível</span>
           </div>
         ) : (
-          <img
-            src={imageSrc}
+          <GalleryImage
+            itemId={item.id}
             alt={item.title}
             loading="lazy"
             decoding="async"
             onLoad={() => setLoaded(true)}
-            onError={() => {
-              const fallbackUrl = getCdnFallbackUrl(item.imageUrl);
-              if (!triedFallback && fallbackUrl && fallbackUrl !== imageSrc) {
-                setTriedFallback(true);
-                setImageSrc(fallbackUrl);
-                return;
-              }
+            onImageError={() => {
               setImageError(true);
               setLoaded(false);
             }}

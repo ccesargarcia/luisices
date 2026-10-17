@@ -611,7 +611,7 @@ function createGetAiUsageHandler(deps = {}) {
  * Cria o handler para enrichGalleryItemWithAi (R02 & R10)
  */
 function createEnrichGalleryItemHandler(deps = {}) {
-  const { geminiClient, db, budgetManager } = deps;
+  const { geminiClient, db, budgetManager, storage } = deps;
 
   return async function handleEnrichGalleryItemWithAi(request) {
     const callerUid = request?.auth?.uid;
@@ -648,7 +648,17 @@ function createEnrichGalleryItemHandler(deps = {}) {
     const itemData = itemSnap.data();
     validateGalleryAccess(scope, itemData);
 
-    if (!itemData.imageUrl) {
+    const galleryPath = itemData.imagePath || (() => {
+      const value = itemData.imageUrl;
+      if (typeof value !== 'string') return '';
+      try {
+        const url = new URL(value);
+        if (url.hostname === 'firebasestorage.googleapis.com') return decodeURIComponent(url.pathname.match(/\/o\/(.+)$/)?.[1] || '');
+        if (url.hostname === 'cdn.luisices.com.br' || url.hostname === 'cdn-dev.luisices.com.br') return decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+      } catch { return value.split('?')[0].replace(/^\/+/, ''); }
+      return '';
+    })();
+    if (!galleryPath || !galleryPath.startsWith(`users/${itemData.userId}/gallery/`) || !storage) {
       const err = new Error('O item não possui imagem para análise.');
       err.code = 'invalid-argument';
       throw err;
@@ -667,7 +677,16 @@ function createEnrichGalleryItemHandler(deps = {}) {
 
     try {
       // 2. Download e Validação Real da Imagem (R02)
-      const { base64Image, mimeType } = await downloadImageAsBase64(itemData.imageUrl);
+      const file = storage.bucket().file(galleryPath);
+      const [metadata] = await file.getMetadata();
+      if (!String(metadata.contentType || '').startsWith('image/') || Number(metadata.size || 0) > INPUT_LIMITS.MAX_IMAGE_DOWNLOAD_BYTES) {
+        const err = new Error('A imagem excede o formato ou tamanho permitido.');
+        err.code = 'invalid-argument';
+        throw err;
+      }
+      const [imageBuffer] = await file.download();
+      const base64Image = imageBuffer.toString('base64');
+      const mimeType = metadata.contentType;
 
       const payload = {
         contents: [{
