@@ -80,45 +80,99 @@ function humanizeValue(value, key) {
   return value;
 }
 
-function renderFields(value, depth = 0) {
-  if (Array.isArray(value)) {
-    if (!value.length) return 'Nenhum registro encontrado.';
-    return value.map((item, index) => {
-      if (item && typeof item === 'object' && !Array.isArray(item)) {
-        const fields = Object.entries(item).filter(([key, fieldValue]) => !isHiddenField(key) && fieldValue != null && fieldValue !== '');
-        return `${'  '.repeat(depth)}${index + 1}. ${fields.map(([key, fieldValue]) => `${humanizeKey(key)}: ${fieldValue && typeof fieldValue === 'object' ? renderFields(fieldValue, depth + 1) : humanizeValue(fieldValue, key)}`).join(' · ')}`;
-      }
-      return `${'  '.repeat(depth)}${index + 1}. ${humanizeValue(item, '')}`;
-    }).join('\n');
-  }
-  if (value && typeof value === 'object') {
-    const fields = Object.entries(value).filter(([key, fieldValue]) => !isHiddenField(key) && fieldValue !== undefined);
-    return fields.map(([key, fieldValue]) => {
-      const label = humanizeKey(key);
-      if (Array.isArray(fieldValue)) return `${label} (${fieldValue.length}):\n${renderFields(fieldValue, depth + 1)}`;
-      if (fieldValue && typeof fieldValue === 'object') return `${label}:\n${renderFields(fieldValue, depth + 1)}`;
-      return `${label}: ${humanizeValue(fieldValue, key)}`;
-    }).join('\n');
-  }
-  return humanizeValue(value, '');
-}
-
 function formatToolResultText(toolName, result) {
-  const body = renderFields(result);
-  const headers = {
-    query_orders_view: 'Aqui está o resultado da consulta de pedidos:',
-    daily_briefing: 'Resumo do dia:',
-    query_customers: 'Aqui estão os clientes encontrados:',
-    get_customer_history: 'Histórico do cliente:',
-    query_delivery_schedule: 'Agenda de entregas:',
-    get_financial_summary: 'Resumo financeiro:',
-    create_order: 'Pedido:', create_customer: 'Cliente:', create_quote: 'Orçamento:',
-    update_order: 'Atualização do pedido:', update_order_status: 'Atualização do pedido:',
-    update_quote_status: 'Atualização do orçamento:', register_order_payment: 'Pagamento:',
-    calculate_pricing_estimate: 'Estimativa de preço:', calculate_artisan_pricing: 'Sugestão de preço:',
-    generate_whatsapp_message: 'Mensagem preparada:',
+  if (toolName === 'get_order_form' && result?.formMarkdown) return result.formMarkdown;
+
+  if (toolName === 'daily_briefing') {
+    return [
+      '📌 Resumo do dia',
+      result.todayDate && `Data: ${humanizeValue(result.todayDate, 'todayDate')}`,
+      `Atrasadas: ${result.delayedCount ?? 0} · Entregas hoje: ${result.todayDeliveriesCount ?? 0}`,
+      `Em produção: ${result.inProgressCount ?? 0} · Concluídos: ${result.completedCount ?? 0}`,
+      result.pendingPaymentTotal != null && `A receber: ${humanizeValue(result.pendingPaymentTotal, 'pendingPaymentTotal')}`,
+    ].filter(Boolean).join('\n');
+  }
+
+  if (toolName === 'get_financial_summary') {
+    return [
+      `💰 Resumo financeiro${result.periodLabel ? ` · ${result.periodLabel}` : ''}`,
+      result.faturamentoRealizado != null && `Faturamento: ${humanizeValue(result.faturamentoRealizado, 'faturamentoRealizado')}`,
+      result.totalPendenteReceber != null && `A receber: ${humanizeValue(result.totalPendenteReceber, 'totalPendenteReceber')}`,
+      result.ticketMedio != null && `Ticket médio: ${humanizeValue(result.ticketMedio, 'ticketMedio')}`,
+      result.pedidosCriadosNoPeriodo != null && `Pedidos: ${result.pedidosCriadosNoPeriodo} · Concluídos: ${result.pedidosConcluidos ?? 0}`,
+    ].filter(Boolean).join('\n');
+  }
+
+  if (toolName === 'generate_whatsapp_message' && (result?.messageText || result?.text)) {
+    return `💬 Mensagem pronta para revisar:\n${result.messageText || result.text}`;
+  }
+
+  const preview = result?.preview || {};
+  if (result?.requiresConfirmation || result?.status === 'preview') {
+    const changes = preview.changes && typeof preview.changes === 'object'
+      ? Object.entries(preview.changes).filter(([key]) => !isHiddenField(key)).slice(0, 4).map(([key, value]) => `${humanizeKey(key)}: ${humanizeValue(value, key)}`)
+      : [];
+    const summary = [
+      preview.orderNumber && `Pedido ${preview.orderNumber}`,
+      preview.customerName && `Cliente: ${preview.customerName}`,
+      preview.productName && `Produto: ${preview.productName}`,
+      preview.quantity && `Quantidade: ${preview.quantity}`,
+      preview.totalPrice != null && `Total: ${humanizeValue(preview.totalPrice, 'totalPrice')}`,
+      preview.deliveryDate && `Entrega: ${humanizeValue(preview.deliveryDate, 'deliveryDate')}`,
+      preview.toStatus && `Nova etapa: ${humanizeValue(preview.toStatus, 'status')}`,
+      ...changes,
+    ].filter(Boolean);
+    return `📝 Prévia pronta para revisar.\n${summary.join('\n')}\nAguardando sua confirmação para salvar.`;
+  }
+
+  const completionLabels = {
+    create_order: '✅ Pedido registrado',
+    update_order: '✅ Pedido atualizado',
+    update_order_status: '✅ Etapa do pedido atualizada',
+    register_order_payment: '✅ Pagamento registrado',
+    create_customer: '✅ Cliente cadastrado',
+    create_quote: '✅ Orçamento criado',
+    update_quote_status: '✅ Orçamento atualizado',
   };
-  return `${headers[toolName] || 'Resultado:'}\n${body || 'Operação concluída.'}`;
+  if (result?.success === true && completionLabels[toolName]) {
+    const completed = completionLabels[toolName];
+    const details = [
+      result.orderNumber && `Pedido ${result.orderNumber}`,
+      result.customerName && `Cliente: ${result.customerName}`,
+      result.productName && `Produto: ${result.productName}`,
+      result.totalPrice != null && `Total: ${humanizeValue(result.totalPrice, 'totalPrice')}`,
+      result.message && String(result.message).slice(0, 240),
+    ].filter(Boolean);
+    return [completed, ...details].join('\n');
+  }
+
+  const listFields = [
+    ['orders', 'pedidos', 'pedido', (item) => [item.orderNumber, item.customerName, item.productName || item.productSummary, item.deliveryDate && humanizeValue(item.deliveryDate, 'deliveryDate'), item.status && humanizeValue(item.status, 'status')].filter(Boolean).join(' · ')],
+    ['customers', 'clientes', 'cliente', (item) => [item.name, item.phone, item.city].filter(Boolean).join(' · ')],
+    ['items', 'itens', toolName === 'search_gallery_portfolio' ? 'arte' : 'item', (item) => [item.title || item.name || item.orderNumber, item.category, ...(Array.isArray(item.tags) ? item.tags.slice(0, 2) : [])].filter(Boolean).join(' · ')],
+    ['deliveries', 'entregas', 'entrega', (item) => [item.orderNumber, item.customerName, item.productName, item.deliveryDate && humanizeValue(item.deliveryDate, 'deliveryDate')].filter(Boolean).join(' · ')],
+    ['quotes', 'orçamentos', 'orçamento', (item) => [item.quoteNumber, item.customerName, item.title, item.totalPrice != null && humanizeValue(item.totalPrice, 'totalPrice')].filter(Boolean).join(' · ')],
+  ];
+  for (const [field, label, singular, describe] of listFields) {
+    const items = result?.[field];
+    if (Array.isArray(items)) {
+      const total = result.totalFound ?? result.totalFiltered ?? result.totalScoped ?? result.totalCount ?? items.length;
+      const examples = items.slice(0, 3).map((item) => describe(item)).filter(Boolean);
+      const countLabel = total === 1 ? `1 ${singular} encontrado` : `${total} ${label} encontrados`;
+      const more = items.length > 3 ? `E mais ${items.length - 3} nesta página.` : result.hasMore ? 'Há mais resultados disponíveis.' : '';
+      return [`🔎 ${countLabel}.`, ...examples.map((item) => `• ${item}`), more].filter(Boolean).join('\n');
+    }
+  }
+
+  const details = [
+    result?.orderNumber && `Pedido ${result.orderNumber}`,
+    result?.customerName && `Cliente: ${result.customerName}`,
+    result?.totalFound != null && `${result.totalFound} resultados encontrados`,
+    result?.totalPrice != null && `Total: ${humanizeValue(result.totalPrice, 'totalPrice')}`,
+    result?.pendingPaymentTotal != null && `Pendente: ${humanizeValue(result.pendingPaymentTotal, 'pendingPaymentTotal')}`,
+    result?.message && String(result.message).slice(0, 240),
+  ].filter(Boolean);
+  return details.length ? `✅ Consulta concluída.\n${details.join('\n')}` : '✅ Consulta concluída. Os dados detalhados estão disponíveis para responder à sua solicitação.';
 }
 
 function publicErrorMessage(error) {
