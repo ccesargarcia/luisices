@@ -18,12 +18,13 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
   'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept, X-Client-Version, X-Requested-With, x-origin-secret, sentry-trace, baggage',
-  'Access-Control-Expose-Headers': 'X-MCP-Trace-Id',
+  'Access-Control-Expose-Headers': 'X-MCP-Trace-Id, X-Edge-Origin-Ms, X-Edge-Elapsed-Ms, Server-Timing',
   'Access-Control-Max-Age': '86400',
 };
 
 const handler = {
   async fetch(request, env, ctx) {
+    const workerStartedAt = performance.now();
     // 1. Tratamento imediato de CORS Preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -226,18 +227,24 @@ const handler = {
       const traceData = getTraceData();
       if (traceData['sentry-trace']) forwardHeaders.set('sentry-trace', traceData['sentry-trace']);
       if (traceData.baggage) forwardHeaders.set('baggage', traceData.baggage);
+      const originStartedAt = performance.now();
       const originResponse = await fetch(targetUrl.toString(), {
         method: request.method,
         headers: forwardHeaders,
         body: requestBody,
         redirect: 'manual',
       });
+      const originDurationMs = performance.now() - originStartedAt;
 
       // 6. Retornar resposta ao cliente garantindo cabeçalhos CORS
       const responseHeaders = new Headers(originResponse.headers);
       responseHeaders.set('Access-Control-Allow-Origin', '*');
-      responseHeaders.set('Access-Control-Expose-Headers', 'X-MCP-Trace-Id');
+      responseHeaders.set('Access-Control-Expose-Headers', 'X-MCP-Trace-Id, X-Edge-Origin-Ms, X-Edge-Elapsed-Ms, Server-Timing');
       responseHeaders.set('X-Proxy-Gateway', 'Luisices-Cloudflare-Worker');
+      const elapsedMs = performance.now() - workerStartedAt;
+      responseHeaders.set('X-Edge-Origin-Ms', String(Math.round(originDurationMs)));
+      responseHeaders.set('X-Edge-Elapsed-Ms', String(Math.round(elapsedMs)));
+      responseHeaders.set('Server-Timing', `origin;dur=${originDurationMs.toFixed(1)}, edge;dur=${elapsedMs.toFixed(1)}`);
 
       // Se a resposta for um redirecionamento HTTP (ex: 302, 303 no fluxo OAuth)
       // reescreve domínios internos para o domínio público da API caso necessário,
@@ -284,6 +291,7 @@ const handler = {
           },
         });
       }
+      const elapsedMs = performance.now() - workerStartedAt;
       return new Response(
         JSON.stringify({
           error: 'Gateway Timeout / Falha ao comunicar com backend',
@@ -294,6 +302,8 @@ const handler = {
           headers: {
             ...CORS_HEADERS,
             'Content-Type': 'application/json; charset=utf-8',
+            'X-Edge-Elapsed-Ms': String(Math.round(elapsedMs)),
+            'Server-Timing': `edge;dur=${elapsedMs.toFixed(1)}`,
           },
         }
       );

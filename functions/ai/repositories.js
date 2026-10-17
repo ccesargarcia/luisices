@@ -4,6 +4,7 @@
 
 const { filterOrdersByScope, filterCustomersByScope, filterGalleryByScope } = require('./authorization');
 const { TOOL_LIMITS } = require('./config');
+const { traceMcpStep } = require('../mcp/tracing');
 
 function normalizeTimestamp(val) {
   if (!val) return '';
@@ -194,16 +195,20 @@ class AiDataRepositories {
 
     try {
       if (scope.isAdmin) {
-        const docs = await readAllPages(
+        const docs = await traceMcpStep('firestore.orders_read', () => readAllPages(
           () => orderOrdersByCreationDate(this.db.collection('orders').where('deletedAt', '==', null)),
           { maxDocs: maxSafetyCeiling, allowPartial: isPartialAllowed },
-        );
+        ), {
+          'db.system': 'firestore',
+          'mcp.query.partition': 'admin',
+          'mcp.query.max_documents': maxSafetyCeiling,
+        });
         rawDocs = docs.map((d) => sanitizeOrderForAi(d.id, d.data()));
       } else {
         const [userDocs, assignedDocs, createdDocs] = await Promise.all([
-          readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('userId', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
-          readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('assignedTo', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
-          readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('createdBy', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
+          traceMcpStep('firestore.orders_read', () => readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('userId', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }), { 'db.system': 'firestore', 'mcp.query.partition': 'owner', 'mcp.query.max_documents': linkedQueryCeiling }),
+          traceMcpStep('firestore.orders_read', () => readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('assignedTo', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }), { 'db.system': 'firestore', 'mcp.query.partition': 'assignee', 'mcp.query.max_documents': linkedQueryCeiling }),
+          traceMcpStep('firestore.orders_read', () => readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('createdBy', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }), { 'db.system': 'firestore', 'mcp.query.partition': 'creator', 'mcp.query.max_documents': linkedQueryCeiling }),
         ]);
 
         const map = new Map();
