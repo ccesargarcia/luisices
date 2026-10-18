@@ -177,7 +177,7 @@ test.describe('Pedidos - CRUD', () => {
     }
   });
 
-  test('deve criar pedido com cliente novo e refletir na tela de clientes', async ({ page }) => {
+  test('deve criar pedido com cliente novo e refletir na tela de clientes', async ({ page }, testInfo) => {
     test.setTimeout(60000);
 
     const customerName = `Cliente Teste ${Date.now()}`;
@@ -218,10 +218,39 @@ test.describe('Pedidos - CRUD', () => {
       await dateInput.fill(futureDate.toISOString().split('T')[0]);
     }
 
+    const browserErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') {
+        browserErrors.push(message.text());
+      }
+    });
+    page.on('pageerror', (error) => browserErrors.push(error.message));
+
     await dialog.locator('button[type="submit"]').click();
 
     // Aguardar o diálogo fechar após salvar
-    await expect(dialog).not.toBeVisible({ timeout: 15000 });
+    try {
+      await expect(dialog).not.toBeVisible({ timeout: 15000 });
+    } catch (error) {
+      const toastMessages = await page
+        .locator('[data-sonner-toast], [role="status"], [role="alert"]')
+        .allTextContents()
+        .catch(() => []);
+      const sanitize = (value: string) => value
+        .replaceAll(customerName, '[cliente de teste]')
+        .replaceAll(customerPhone, '[telefone de teste]');
+      const diagnostics = {
+        dialogStillVisible: await dialog.isVisible().catch(() => false),
+        toastMessages: toastMessages.map(sanitize),
+        browserErrors: browserErrors.map(sanitize),
+      };
+      await testInfo.attach('falha-ao-salvar-pedido-cliente-novo.json', {
+        body: Buffer.from(JSON.stringify(diagnostics, null, 2)),
+        contentType: 'application/json',
+      });
+      const originalMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`${originalMessage}\nDiagnóstico do submit: ${JSON.stringify(diagnostics)}`);
+    }
 
     // Acessar a página de clientes e verificar que o cliente novo está listado
     await page.goto('/clientes');
