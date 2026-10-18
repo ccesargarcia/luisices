@@ -47,6 +47,8 @@ Utilize este arquivo como contexto mestre para o **Stitch (ou outros agentes de 
 | `--secondary` | `#B9B5D4` (Lavanda Suave) | Elementos secundários e ícones |
 | `--card` | `rgba(31, 25, 27, 0.86)` | Cards escuros aveludados com vidro |
 | `--glass-border` | `rgba(235, 205, 205, 0.18)` | Borda translúcida suave |
+| `--destructive` | `#DC2626` (Vermelho Vivo) | Ações de perigo, exclusão e alertas críticos (alto contraste ativo) |
+| `--destructive-foreground` | `#FFFFFF` | Texto e ícones sobre botão destrutivo em temas escuros |
 
 ---
 

@@ -50,6 +50,8 @@ A fonte executável dos tokens e temas é [`src/styles/theme.css`](src/styles/th
 | `--secondary` | `#B9B5D4` (Lavanda Suave) | Elementos secundários e ícones |
 | `--card` | `rgba(31, 25, 27, 0.86)` | Cards escuros aveludados com vidro |
 | `--glass-border` | `rgba(235, 205, 205, 0.18)` | Borda translúcida suave |
+| `--destructive` | `#DC2626` (Vermelho Vivo) | Ações de perigo, exclusão e alertas críticos (alto contraste ativo) |
+| `--destructive-foreground` | `#FFFFFF` | Texto e ícones sobre botão destrutivo em temas escuros |
 
 ---
 
@@ -114,8 +116,9 @@ background-attachment: fixed;
 
 ## 🧱 5. Anatomia de Componentes Padrão
 
-### 1. Botão Principal (CTA)
-- **Implementação:** Reutilizar [`Button`](src/app/components/ui/button.tsx) e suas variantes. A exclusão usa `variant="destructive"`; ações secundárias usam `outline` ou `ghost`. Não recriar estilos e estados de interação em cada tela.
+### 1. Botão Principal (CTA) & Ações Destrutivas
+- **Implementação:** Reutilizar [`Button`](src/app/components/ui/button.tsx) e suas variantes. Ações secundárias usam `outline` ou `ghost`. Não recriar estilos e estados de interação em cada tela.
+- **Ações Destrutivas (`variant="destructive"`):** O token `--destructive` é rigorosamente padronizado em vermelho vivo (`#BA1A1A` no claro e `#DC2626` com texto `#FFFFFF` no escuro), garantindo que botões destrutivos permaneçam visíveis, ativos e de alto contraste, nunca parecendo desbotados ("apagados") ou desabilitados. Em ações em massa como mover para a lixeira, garantir que o botão habilite para quem possui permissão de edição (`canEdit || canDelete`).
 - **Border Radius:** Seguir a variante de `Button` (`rounded-lg` no padrão, `rounded-md` em tamanhos compactos), evitando sobrescrever todos os botões de uma tela.
 - **Estilo:** Fundo `var(--primary)`, texto `var(--primary-foreground)` e sombra definidos pela variante compartilhada.
 - **Animação / Feedback:** Preservar os estados de hover, clique, foco, desabilitado e feedback tátil do componente compartilhado.
@@ -139,10 +142,14 @@ background-attachment: fixed;
 - Reutilizar `Input`, `Textarea`, `Select`, `Checkbox`, `DropdownMenu` e demais componentes compartilhados. Preservar rótulos, foco visível, navegação por teclado e estados de carregamento/desabilitado.
 - Para camadas, usar os tokens definidos em `theme.css`, como `z-modal`, `z-popover` e `z-floating-bar`. Conferir a interação com a navegação móvel e com o botão Voltar do dispositivo.
 
+### 5. Checkbox e Controles de Seleção
+- **Implementação:** Reutilizar [`Checkbox`](src/app/components/ui/checkbox.tsx). Por ser renderizado via Radix UI como um `<button role="checkbox">`, o componente base possui travas geométricas intrínsecas (`size-4 min-h-4 min-w-4 max-h-4 max-w-4 aspect-square shrink-0 rounded-[4px]`) que impedem sua distorção ou expansão involuntária caso seletores de container aumentem o alvo de toque de botões (ex.: `[&_button]:min-h-11`).
+- **Containers de Ações com Toque:** Ao aplicar regras de área de toque de 44px em containers com Tailwind, utilizar `[&_button:not([data-slot=checkbox])]:min-h-11` para assegurar que apenas os botões de ação recebam expansão e o checkbox mantenha seu tamanho padronizado de 16px (`size-4`), estendendo o clique através do `<label>` associado.
+
 ---
 
 ## 📱 6. Regras de Responsividade & Mobile-First
-1. **Áreas de Toque Mínimas:** Botões e ícones clicáveis no celular com no mínimo `44px x 44px`.
+1. **Áreas de Toque Mínimas:** Botões e ícones clicáveis no celular com no mínimo `44px x 44px`. Para controles como `Checkbox` e `Radio`, preservar o tamanho visual em `16px x 16px` (`size-4`) e estender a área de toque através de `<label>` clicável ou padding externo, garantindo que o seletor `[&_button:not([data-slot=checkbox])]` não transforme o checkbox em um botão de 44px.
 2. **Espaçamento Lateral:** `p-4` em mobile e `p-6 sm:p-7` em desktop.
 3. **Barra de Ações Fixa ou Elevada:** Nunca sobrepor elementos de navegação móvel ao rodapé da tela.
 4. **Rolagem Nativa:** Listas com `overflow-y-auto`, `min-h-0` em cadeias flexíveis e barra de rolagem estilizada e discreta. `scroll-behavior: smooth` não corrige travamentos de rolagem por toque ou roda do mouse.
