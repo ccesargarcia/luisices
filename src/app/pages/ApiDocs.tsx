@@ -449,7 +449,10 @@ const SWAGGER_THEME_CSS = `
     fill: var(--primary) !important;
   }
 
-  /* Modal de Autenticação Swagger UI: Centralizado, elegante e harmonizado com o tema */
+  /* Modal de Autenticação Swagger UI: Centralizado no viewport, elegante e integrado */
+  .dialog-ux,
+  body > .dialog-ux,
+  .swagger-ui .dialog-ux,
   .swagger-ui-custom-theme .swagger-ui .dialog-ux {
     position: fixed !important;
     inset: 0 !important;
@@ -460,14 +463,20 @@ const SWAGGER_THEME_CSS = `
     width: 100vw !important;
     height: 100vh !important;
     height: 100dvh !important;
-    z-index: 99999 !important;
+    z-index: 999999 !important;
     pointer-events: auto !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 1rem !important;
     border: none !important;
-    display: block !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
   }
 
+  .dialog-ux .backdrop-ux,
+  body > .dialog-ux .backdrop-ux,
+  .swagger-ui .dialog-ux .backdrop-ux,
   .swagger-ui-custom-theme .swagger-ui .dialog-ux .backdrop-ux {
     position: fixed !important;
     inset: 0 !important;
@@ -481,58 +490,73 @@ const SWAGGER_THEME_CSS = `
     background: rgba(0, 0, 0, 0.75) !important;
     backdrop-filter: blur(4px) !important;
     -webkit-backdrop-filter: blur(4px) !important;
-    z-index: 100000 !important;
+    z-index: 1 !important;
     cursor: pointer !important;
-  }
-
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux {
-    position: fixed !important;
-    top: 50% !important;
-    left: 50% !important;
-    transform: translate(-50%, -50%) !important;
-    -webkit-transform: translate(-50%, -50%) !important;
-    z-index: 100001 !important;
-    width: calc(100vw - 2rem) !important;
-    max-width: 520px !important;
-    max-height: calc(100dvh - 3rem) !important;
-    background: var(--card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius, 0.75rem) !important;
-    color: var(--foreground) !important;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8) !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
     margin: 0 !important;
-    box-sizing: border-box !important;
+    padding: 0 !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-dialog-ux,
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux-inner {
+  .dialog-ux .modal-ux,
+  body > .dialog-ux .modal-ux,
+  .swagger-ui .dialog-ux .modal-ux,
+  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux {
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    transform: none !important;
+    -webkit-transform: none !important;
+    z-index: 2 !important;
+    width: 100% !important;
+    max-width: 500px !important;
+    max-height: calc(100dvh - 3rem) !important;
+    background-color: var(--card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 0.75rem !important;
+    color: var(--foreground) !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.95) !important;
+    overflow: hidden !important;
+    margin: auto !important;
+    box-sizing: border-box !important;
     display: flex !important;
     flex-direction: column !important;
+  }
+
+  .dialog-ux .modal-dialog-ux,
+  .dialog-ux .modal-ux-inner,
+  body > .dialog-ux .modal-dialog-ux,
+  body > .dialog-ux .modal-ux-inner,
+  .swagger-ui .dialog-ux .modal-dialog-ux,
+  .swagger-ui .dialog-ux .modal-ux-inner {
     width: 100% !important;
     height: 100% !important;
     min-height: 0 !important;
-    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
     background: transparent !important;
     border: none !important;
     margin: 0 !important;
     padding: 0 !important;
     box-sizing: border-box !important;
+    overflow: hidden !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux-header {
+  .dialog-ux .modal-ux-header,
+  body > .dialog-ux .modal-ux-header,
+  .swagger-ui .dialog-ux .modal-ux-header {
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
     padding: 0.875rem 1.25rem !important;
     border-bottom: 1px solid var(--border) !important;
     background: var(--muted) !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
     flex-shrink: 0 !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux-header h3 {
+  .dialog-ux .modal-ux-header h3,
+  body > .dialog-ux .modal-ux-header h3,
+  .swagger-ui .dialog-ux .modal-ux-header h3 {
     font-size: 0.9375rem !important;
     font-weight: 700 !important;
     color: var(--foreground) !important;
@@ -540,9 +564,12 @@ const SWAGGER_THEME_CSS = `
     padding: 0 !important;
     letter-spacing: -0.01em !important;
     line-height: 1.25 !important;
+    font-family: inherit !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux-header .close-modal {
+  .dialog-ux .modal-ux-header .close-modal,
+  body > .dialog-ux .modal-ux-header .close-modal,
+  .swagger-ui .dialog-ux .modal-ux-header .close-modal {
     width: 1.75rem !important;
     height: 1.75rem !important;
     padding: 0 !important;
@@ -555,32 +582,44 @@ const SWAGGER_THEME_CSS = `
     align-items: center !important;
     justify-content: center !important;
     transition: all 0.15s ease !important;
+    flex-shrink: 0 !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux-header .close-modal:hover {
-    background: var(--background) !important;
+  .dialog-ux .modal-ux-header .close-modal:hover,
+  body > .dialog-ux .modal-ux-header .close-modal:hover,
+  .swagger-ui .dialog-ux .modal-ux-header .close-modal:hover {
+    background: var(--accent) !important;
     color: var(--foreground) !important;
     border-color: var(--border) !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux-header .close-modal svg,
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux-header .close-modal svg path {
+  .dialog-ux .modal-ux-header .close-modal svg,
+  .dialog-ux .modal-ux-header .close-modal svg path,
+  body > .dialog-ux .modal-ux-header .close-modal svg,
+  body > .dialog-ux .modal-ux-header .close-modal svg path,
+  .swagger-ui .dialog-ux .modal-ux-header .close-modal svg,
+  .swagger-ui .dialog-ux .modal-ux-header .close-modal svg path {
     width: 14px !important;
     height: 14px !important;
     fill: currentColor !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux-content {
+  .dialog-ux .modal-ux-content,
+  body > .dialog-ux .modal-ux-content,
+  .swagger-ui .dialog-ux .modal-ux-content {
     padding: 1.25rem !important;
     overflow-y: auto !important;
     color: var(--foreground) !important;
     background: var(--card) !important;
-    flex: 1 1 auto !important;
-    max-height: calc(100dvh - 8.5rem) !important;
     box-sizing: border-box !important;
+    width: 100% !important;
+    flex: 1 1 auto !important;
+    max-height: calc(100dvh - 9rem) !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-container {
+  .dialog-ux .auth-container,
+  body > .dialog-ux .auth-container,
+  .swagger-ui .dialog-ux .auth-container {
     padding: 0 !important;
     border: none !important;
     border-radius: 0 !important;
@@ -588,7 +627,9 @@ const SWAGGER_THEME_CSS = `
     margin: 0 !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-container h4 {
+  .dialog-ux .auth-container h4,
+  body > .dialog-ux .auth-container h4,
+  .swagger-ui .dialog-ux .auth-container h4 {
     font-size: 0.8125rem !important;
     font-weight: 700 !important;
     color: var(--foreground) !important;
@@ -597,9 +638,12 @@ const SWAGGER_THEME_CSS = `
     align-items: center !important;
     gap: 0.375rem !important;
     flex-wrap: wrap !important;
+    font-family: inherit !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-container h4 code {
+  .dialog-ux .auth-container h4 code,
+  body > .dialog-ux .auth-container h4 code,
+  .swagger-ui .dialog-ux .auth-container h4 code {
     font-size: 0.75rem !important;
     background: var(--muted) !important;
     padding: 0.15rem 0.45rem !important;
@@ -610,7 +654,9 @@ const SWAGGER_THEME_CSS = `
   }
 
   /* Status badge para chave já autorizada */
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-container h6 {
+  .dialog-ux .auth-container h6,
+  body > .dialog-ux .auth-container h6,
+  .swagger-ui .dialog-ux .auth-container h6 {
     display: inline-flex !important;
     align-items: center !important;
     font-size: 0.6875rem !important;
@@ -625,30 +671,42 @@ const SWAGGER_THEME_CSS = `
     letter-spacing: 0.05em !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-container .renderedMarkdown p,
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-container p {
+  .dialog-ux .auth-container .renderedMarkdown p,
+  .dialog-ux .auth-container p,
+  body > .dialog-ux .auth-container .renderedMarkdown p,
+  body > .dialog-ux .auth-container p,
+  .swagger-ui .dialog-ux .auth-container .renderedMarkdown p,
+  .swagger-ui .dialog-ux .auth-container p {
     font-size: 0.75rem !important;
     color: var(--muted-foreground) !important;
     line-height: 1.4 !important;
     margin: 0 0 0.5rem 0 !important;
+    font-family: inherit !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-container label {
+  .dialog-ux .auth-container label,
+  body > .dialog-ux .auth-container label,
+  .swagger-ui .dialog-ux .auth-container label {
     display: block !important;
     font-size: 0.75rem !important;
     font-weight: 600 !important;
     color: var(--foreground) !important;
     margin: 0.5rem 0 0.25rem 0 !important;
+    font-family: inherit !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-container .wrapper {
+  .dialog-ux .auth-container .wrapper,
+  body > .dialog-ux .auth-container .wrapper,
+  .swagger-ui .dialog-ux .auth-container .wrapper {
     padding: 0 !important;
     margin: 0 0 0.75rem 0 !important;
     max-width: 100% !important;
     background: transparent !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-container code {
+  .dialog-ux .auth-container code,
+  body > .dialog-ux .auth-container code,
+  .swagger-ui .dialog-ux .auth-container code {
     font-family: monospace !important;
     font-size: 0.8125rem !important;
     background: var(--muted) !important;
@@ -658,8 +716,12 @@ const SWAGGER_THEME_CSS = `
     color: var(--foreground) !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-container input[type="text"],
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-container input[type="password"] {
+  .dialog-ux .auth-container input[type="text"],
+  .dialog-ux .auth-container input[type="password"],
+  body > .dialog-ux .auth-container input[type="text"],
+  body > .dialog-ux .auth-container input[type="password"],
+  .swagger-ui .dialog-ux .auth-container input[type="text"],
+  .swagger-ui .dialog-ux .auth-container input[type="password"] {
     width: 100% !important;
     height: 2.25rem !important;
     background: var(--background) !important;
@@ -675,12 +737,16 @@ const SWAGGER_THEME_CSS = `
     box-sizing: border-box !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-container input:focus {
+  .dialog-ux .auth-container input:focus,
+  body > .dialog-ux .auth-container input:focus,
+  .swagger-ui .dialog-ux .auth-container input:focus {
     border-color: var(--primary) !important;
     box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2) !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-btn-wrapper {
+  .dialog-ux .auth-btn-wrapper,
+  body > .dialog-ux .auth-btn-wrapper,
+  .swagger-ui .dialog-ux .auth-btn-wrapper {
     display: flex !important;
     gap: 0.5rem !important;
     align-items: center !important;
@@ -689,14 +755,18 @@ const SWAGGER_THEME_CSS = `
     margin: 1.25rem -1.25rem -1.25rem -1.25rem !important;
     border-top: 1px solid var(--border) !important;
     background: var(--muted) !important;
+    flex-shrink: 0 !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-btn-wrapper .btn {
-    height: 2rem !important;
+  .dialog-ux .auth-btn-wrapper .btn,
+  body > .dialog-ux .auth-btn-wrapper .btn,
+  .swagger-ui .dialog-ux .auth-btn-wrapper .btn {
+    height: 2.25rem !important;
+    min-height: 2.25rem !important;
     border-radius: 0.375rem !important;
     font-size: 0.75rem !important;
     font-weight: 600 !important;
-    padding: 0 0.875rem !important;
+    padding: 0 1rem !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -706,38 +776,50 @@ const SWAGGER_THEME_CSS = `
   }
 
   /* Botão primário de Autorização (Verde) */
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-btn-wrapper .btn.modal-btn.authorize {
-    background: var(--primary) !important;
-    color: var(--primary-foreground) !important;
+  .dialog-ux .auth-btn-wrapper .btn.modal-btn.authorize,
+  body > .dialog-ux .auth-btn-wrapper .btn.modal-btn.authorize,
+  .swagger-ui .dialog-ux .auth-btn-wrapper .btn.modal-btn.authorize {
+    background: var(--primary, #10b981) !important;
+    color: var(--primary-foreground, #022c22) !important;
     border: none !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-btn-wrapper .btn.modal-btn.authorize:hover {
+  .dialog-ux .auth-btn-wrapper .btn.modal-btn.authorize:hover,
+  body > .dialog-ux .auth-btn-wrapper .btn.modal-btn.authorize:hover,
+  .swagger-ui .dialog-ux .auth-btn-wrapper .btn.modal-btn.authorize:hover {
     opacity: 0.9 !important;
   }
 
   /* Botão Logout (Destrutivo suave) */
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-btn-wrapper .btn.modal-btn.auth:not(.authorize):not(.btn-done) {
+  .dialog-ux .auth-btn-wrapper .btn.modal-btn.auth:not(.authorize):not(.btn-done),
+  body > .dialog-ux .auth-btn-wrapper .btn.modal-btn.auth:not(.authorize):not(.btn-done),
+  .swagger-ui .dialog-ux .auth-btn-wrapper .btn.modal-btn.auth:not(.authorize):not(.btn-done) {
     background: rgba(239, 68, 68, 0.12) !important;
     color: #ef4444 !important;
     border: 1px solid rgba(239, 68, 68, 0.3) !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-btn-wrapper .btn.modal-btn.auth:not(.authorize):not(.btn-done):hover {
+  .dialog-ux .auth-btn-wrapper .btn.modal-btn.auth:not(.authorize):not(.btn-done):hover,
+  body > .dialog-ux .auth-btn-wrapper .btn.modal-btn.auth:not(.authorize):not(.btn-done):hover,
+  .swagger-ui .dialog-ux .auth-btn-wrapper .btn.modal-btn.auth:not(.authorize):not(.btn-done):hover {
     background: #ef4444 !important;
     color: #ffffff !important;
     border-color: #ef4444 !important;
   }
 
   /* Botão Close / Fechar */
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-btn-wrapper .btn.modal-btn.btn-done {
+  .dialog-ux .auth-btn-wrapper .btn.modal-btn.btn-done,
+  body > .dialog-ux .auth-btn-wrapper .btn.modal-btn.btn-done,
+  .swagger-ui .dialog-ux .auth-btn-wrapper .btn.modal-btn.btn-done {
     background: var(--card) !important;
     color: var(--foreground) !important;
     border: 1px solid var(--border) !important;
   }
 
-  .swagger-ui-custom-theme .swagger-ui .dialog-ux .auth-btn-wrapper .btn.modal-btn.btn-done:hover {
-    background: var(--accent, rgba(255, 255, 255, 0.08)) !important;
+  .dialog-ux .auth-btn-wrapper .btn.modal-btn.btn-done:hover,
+  body > .dialog-ux .auth-btn-wrapper .btn.modal-btn.btn-done:hover,
+  .swagger-ui .dialog-ux .auth-btn-wrapper .btn.modal-btn.btn-done:hover {
+    background: var(--accent) !important;
   }
 
   /* Blindagem universal para tema escuro e claro */
@@ -1258,17 +1340,17 @@ print("Resultado:", response.json())`;
 
         {/* Aba 1: Swagger UI Interativo */}
         <TabsContent value="swagger" forceMount className="space-y-4 data-[state=inactive]:hidden">
-          <Card className="border-border/60 shadow-xs">
-            <CardHeader className="bg-muted/30 border-b border-border/60 p-3 sm:p-4">
+          <div className="border border-border/60 rounded-xl bg-card shadow-xs">
+            <div className="bg-muted/30 border-b border-border/60 p-3 sm:p-4 rounded-t-xl">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div>
-                  <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-semibold flex items-center gap-2">
                     <FileCode className="size-4 text-primary shrink-0" />
                     <span>Explorer Interativo de Endpoints</span>
-                  </CardTitle>
-                  <CardDescription className="text-xs">
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     Execute requisições reais com <strong>Try it out</strong>. Autenticação Bearer injetada automaticamente.
-                  </CardDescription>
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
                   <Button
@@ -1297,9 +1379,9 @@ print("Resultado:", response.json())`;
                   )}
                 </div>
               </div>
-            </CardHeader>
+            </div>
 
-            <CardContent className="p-2 sm:p-4 relative min-h-[450px]">
+            <div className="p-2 sm:p-4 relative min-h-[450px]">
               {/* Spinner de carregamento exibido somente quando não há dados em cache */}
               {loading && !schemaData && (
                 <div className="py-20 flex flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -1327,8 +1409,8 @@ print("Resultado:", response.json())`;
               >
                 <div ref={swaggerContainerRef} />
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         {/* Aba 2: Exemplos de Código */}
