@@ -30,6 +30,7 @@ interface OrderDetailsDialogProps {
   onUpdateStatus: (orderId: string, status: OrderStatus) => void;
   onDeleteOrder?: (orderId: string) => void;
   onToggleArchive?: (orderId: string, archive: boolean) => void;
+  onOrderUpdated?: (order: Order) => void;
 }
 
 const statusColors = {
@@ -46,7 +47,7 @@ const statusLabels = {
   cancelled: 'Cancelado',
 };
 
-export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder, onToggleArchive }: OrderDetailsDialogProps) {
+export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder, onToggleArchive, onOrderUpdated }: OrderDetailsDialogProps) {
   const { user, userProfile, isAdmin, hasPermission } = useAuth();
   const { settings } = useUserSettings();
   const { teamMembers } = useOrders();
@@ -350,9 +351,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         history: existingPayment?.history || null,
       };
 
-      await firebaseOrderService.updateOrder(
-        order.id,
-        {
+      const updates: Partial<Omit<Order, 'id' | 'userId' | 'createdAt' | 'orderNumber'>> = {
           customerName: editData.customerName,
           customerPhone: editData.customerPhone,
           productName,
@@ -378,9 +377,14 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                   } as ExchangeItem;
                 })
             : [],
-        },
-        order.version
-      );
+        };
+      await firebaseOrderService.updateOrder(order.id, updates, order.version);
+      onOrderUpdated?.({
+        ...order,
+        ...updates,
+        version: (order.version || 1) + 1,
+        updatedAt: new Date().toISOString(),
+      });
       setIsEditing(false);
     } catch (error: any) {
       console.error('Erro ao atualizar pedido:', error);

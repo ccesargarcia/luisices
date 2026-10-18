@@ -82,7 +82,10 @@ test.describe('Pedidos - CRUD', () => {
     const detailsDialog = page.getByRole('dialog').first();
     await expect(detailsDialog.getByText('Detalhes do Pedido')).toBeVisible();
     await detailsDialog.getByRole('button', { name: 'Editar' }).click();
-    await detailsDialog.getByPlaceholder('0,00').first().fill('130,50');
+    const priceInput = detailsDialog.getByPlaceholder('0,00').first();
+    await priceInput.fill('130,50');
+    await expect(priceInput).toHaveValue('130,50');
+    await expect(detailsDialog.getByText('Total: R$ 130,50')).toBeVisible();
 
     const tagInput = detailsDialog.getByRole('textbox', { name: 'Adicionar tag' });
     await tagInput.press('Backspace');
@@ -151,9 +154,7 @@ test.describe('Pedidos - CRUD', () => {
 
     // Submeter e aguardar fechar
     await dialog.locator('button[type="submit"]').click();
-    await expect(dialog).not.toBeVisible({ timeout: 15000 }).catch(async () => {
-      await closeAnyOpenDialog(page);
-    });
+    await expect(dialog).not.toBeVisible({ timeout: 15000 });
 
     // CLEANUP: Localizar o pedido recém-criado e excluir
     const orderCard = page.locator('.cursor-pointer').filter({ hasText: productName }).first();
@@ -220,9 +221,7 @@ test.describe('Pedidos - CRUD', () => {
     await dialog.locator('button[type="submit"]').click();
 
     // Aguardar o diálogo fechar após salvar
-    await expect(dialog).not.toBeVisible({ timeout: 15000 }).catch(async () => {
-      await closeAnyOpenDialog(page);
-    });
+    await expect(dialog).not.toBeVisible({ timeout: 15000 });
 
     // Acessar a página de clientes e verificar que o cliente novo está listado
     await page.goto('/clientes');

@@ -796,6 +796,7 @@ export function Exchanges() {
         onOpenChange={open => { setDetailsOpen(open); if (!open) setTimeout(() => setSelectedOrder(null), 300); }}
         onUpdateStatus={handleUpdateStatus}
         onDeleteOrder={handleDeleteOrder}
+        onOrderUpdated={(updatedOrder) => setSelectedOrder((current) => current?.id === updatedOrder.id ? updatedOrder : current)}
       />
     </div>
   );

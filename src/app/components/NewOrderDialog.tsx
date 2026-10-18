@@ -317,7 +317,9 @@ export function NewOrderDialog({
             if (createErr?.message?.startsWith('DUPLICATE_PHONE:')) {
               customerId = createErr.message.split(':')[1];
             } else {
-              console.warn('Erro ao auto-cadastrar cliente, criando pedido mesmo assim:', createErr);
+              // Não criar o pedido sem o vínculo escolhido: isso deixa um pedido
+              // aparentemente válido, mas perde o cadastro do cliente informado.
+              throw createErr;
             }
           }
         }
@@ -455,7 +457,6 @@ export function NewOrderDialog({
     } catch (err) {
       console.error('Erro ao criar pedido:', err);
       toast.error('Não foi possível confirmar o salvamento. Confira a lista de pedidos antes de tentar novamente.');
-      setOpen(false);
     } finally {
       setLoading(false);
     }

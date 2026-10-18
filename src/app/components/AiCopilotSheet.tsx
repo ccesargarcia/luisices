@@ -1152,6 +1152,7 @@ export function AiCopilotSheet({
             }
           }}
           onUpdateStatus={handleUpdateStatusInSheet}
+          onOrderUpdated={(updatedOrder) => setSelectedOrderForDetails((current) => current?.id === updatedOrder.id ? updatedOrder : current)}
         />
       </SheetContent>
     </Sheet>

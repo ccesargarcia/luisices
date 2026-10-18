@@ -1199,6 +1199,7 @@ export function Dashboard() {
         }}
         onUpdateStatus={handleUpdateStatus}
         onDeleteOrder={handleDeleteOrder}
+        onOrderUpdated={(updatedOrder) => setSelectedOrder((current) => current?.id === updatedOrder.id ? updatedOrder : current)}
         onToggleArchive={(orderId, archive) => {
           if (selectedOrder && selectedOrder.id === orderId) {
             setSelectedOrder({ ...selectedOrder, isArchived: archive });
