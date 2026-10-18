@@ -48,7 +48,10 @@ test.describe('Checkout público ponta a ponta', () => {
       const whatsappHref = await page.getByRole('link', { name: 'Reabrir WhatsApp' }).getAttribute('href');
       expect(whatsappHref).toMatch(/^https:\/\/wa\.me\/5511999999999\?text=/);
       const whatsappMessage = new URL(whatsappHref!).searchParams.get('text') || '';
-      const plainWhatsAppMessage = whatsappMessage.replace(/[*_`~]/g, '');
+      const plainWhatsAppMessage = whatsappMessage
+        .normalize('NFKC')
+        .replace(/[*_`~\uFE0E\uFE0F\p{Cf}]/gu, '')
+        .replace(/\s+/g, ' ');
       expect(whatsappMessage).toContain(orderCode);
       expect(plainWhatsAppMessage).toContain(PRODUCT_NAME);
       expect(plainWhatsAppMessage).toContain('Subtotal dos Produtos: R$ 74,50');
