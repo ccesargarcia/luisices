@@ -98,6 +98,7 @@ export function TagInput({ tags, onChange, placeholder = 'Digite e pressione Ent
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             onFocus={() => setShowColorPicker(false)}
+            aria-label="Adicionar tag"
             placeholder={tags.length === 0 ? placeholder : ''}
             className="border-0 shadow-none focus-visible:ring-0 flex-1 h-6 px-1"
           />
