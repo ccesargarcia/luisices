@@ -12,6 +12,7 @@ on:
       - '.github/workflows/deploy-alexa-skill.yml'
       - '.github/workflows/deploy.yml'
       - '.github/workflows/playwright.yml'
+      - '.github/workflows/test-actions.yml'
       - '.github/workflows/screen-audit.yml'
       - '.github/workflows/migrate-user.yml'
       - '.github/workflows/deploy-indexes.yml'
