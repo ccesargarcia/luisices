@@ -17,7 +17,14 @@ afterAll(async()=>{await env?.cleanup()});
 beforeEach(async()=>{
   await env.clearFirestore();
   await env.withSecurityRulesDisabled(async c=>{
-    for(const [uid,extra] of [['owner',{}],['other',{}],['blocked',{active:false}],['restricted',{permissions:{orders:{create:false},customers:{create:false}}}],['employee',{role:'funcionario',permissions:{orders:{create:false},customers:{create:false}}}],['admin',{role:'admin'}]] as [string,any][]) await c.firestore().doc(`userProfiles/${uid}`).set({role:'user',active:true,...extra});
+    for(const [uid,extra] of [
+      ['owner',{permissions:{orders:{create:true,view:true,edit:true,delete:true},customers:{create:true,view:true,edit:true,delete:true}}}],
+      ['other',{}],
+      ['blocked',{active:false}],
+      ['restricted',{permissions:{orders:{create:false},customers:{create:false}}}],
+      ['employee',{role:'funcionario',permissions:{orders:{create:false},customers:{create:false}}}],
+      ['admin',{role:'admin'}],
+    ] as [string,any][]) await c.firestore().doc(`userProfiles/${uid}`).set({role:'user',active:true,...extra});
     await c.firestore().doc('customers/own').set({userId:'owner',name:'Ana'});
     await c.firestore().doc('customers/foreign').set({userId:'other',name:'Outra conta'});
   });

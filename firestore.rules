@@ -104,6 +104,24 @@ service cloud.firestore {
       return isAdmin() || userHasPerm(module, 'create');
     }
 
+    // Avoid reevaluating isOwner(), isAdmin() and userHasPerm() independently
+    // in each create rule. A single profile lookup keeps complex writes below
+    // the Firestore Rules expression evaluation limit.
+    function canCreateOwnedDocument(module, data) {
+      let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
+      let role = profile.get('role', '');
+      return isActiveProfile(profile)
+        && (
+          role == 'admin'
+          || (data.get('userId', '') is string
+            && data.userId == request.auth.uid
+            && hasPerm(
+              profile.get('permissions', {}).get(module, false),
+              'create'
+            ))
+        );
+    }
+
     function isValidCalendarDate(value) {
       let parts = value.split('-');
       let year = int(parts[0]);
@@ -264,7 +282,8 @@ service cloud.firestore {
       allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('orders', 'view'))
         || isAdmin()
         || (resource != null && 'assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo) && userHasPerm('orders', 'view'));
-      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && canCreateOwnedModule('orders')) || isAdmin())
+      allow create: if request.auth != null
+        && canCreateOwnedDocument('orders', request.resource.data)
         && isValidNewOrder(request.resource.data);
       allow update: if (isAdmin()
         || (
@@ -357,7 +376,8 @@ service cloud.firestore {
       allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('customers', 'view'))
         || isAdmin()
         || employeeHasCustomersPerm('view');
-      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && canCreateOwnedModule('customers')) || isAdmin())
+      allow create: if request.auth != null
+        && canCreateOwnedDocument('customers', request.resource.data)
         && ('name' in request.resource.data && request.resource.data.name is string && request.resource.data.name.matches('[\\s\\S]*[^\\s][\\s\\S]*'))
         && (request.resource.data.get('email', null) == null || (request.resource.data.email is string && request.resource.data.email.size() <= 254 && (request.resource.data.email.size() == 0 || request.resource.data.email.matches('^[^\\s@]+@[^\\s@]+[.][^\\s@]+$'))))
         && (request.resource.data.get('notes', null) == null || (request.resource.data.notes is string && request.resource.data.notes.size() <= 1000))
