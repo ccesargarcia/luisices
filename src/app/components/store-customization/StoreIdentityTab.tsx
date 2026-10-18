@@ -428,7 +428,7 @@ export function StoreIdentityTab({
               {/* Card de Personalização Completa da Barra Superior Fixa */}
               <Card className="border-primary/25 shadow-xs">
                 <CardHeader>
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-start justify-between gap-2">
                     <CardTitle className="text-base flex items-center gap-2">
                       <Palette className="size-4 text-primary" />
                       Barra Superior Fixa com Imagem (Full-Width)
