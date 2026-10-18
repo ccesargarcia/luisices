@@ -122,6 +122,31 @@ service cloud.firestore {
         );
     }
 
+    function canUpdateOrder(previous, next) {
+      let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
+      let role = profile.get('role', '');
+      let changed = next.diff(previous).affectedKeys();
+      let ownerEdit = previous.get('userId', '') == request.auth.uid
+        && hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
+        && next.get('userId', '') == previous.get('userId', '')
+        && (!changed.hasAny(['deletedAt'])
+          || hasPerm(profile.get('permissions', {}).get('orders', false), 'delete')
+          || hasPerm(profile.get('permissions', {}).get('archivedOrders', false), 'create'));
+      let assignedEdit = role == 'funcionario'
+        && 'userId' in previous
+        && 'userId' in next
+        && 'assignedTo' in previous
+        && 'assignedTo' in next
+        && previous.get('assignedTo', '') == request.auth.uid
+        && hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
+        && next.get('userId', '') == previous.get('userId', '')
+        && next.get('assignedTo', '') == previous.get('assignedTo', '')
+        && (!changed.hasAny(['deletedAt'])
+          || hasPerm(profile.get('permissions', {}).get('orders', false), 'delete'));
+      return request.auth != null && isActiveProfile(profile)
+        && (role == 'admin' || ownerEdit || assignedEdit);
+    }
+
     function isValidCalendarDate(value) {
       let parts = value.split('-');
       let year = int(parts[0]);
@@ -285,30 +310,9 @@ service cloud.firestore {
       allow create: if request.auth != null
         && canCreateOwnedDocument('orders', request.resource.data)
         && isValidNewOrder(request.resource.data);
-      allow update: if (isAdmin()
-        || (
-          resource != null
-          && 'userId' in resource.data
-          && isOwner(resource.data.userId)
-          && userHasPerm('orders', 'edit')
-          && ('userId' in request.resource.data && request.resource.data.userId == resource.data.userId)
-          && (
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['deletedAt'])
-            || userHasPerm('orders', 'delete')
-            || userHasPerm('archivedOrders', 'create')
-          )
-        )
-        || (
-          resource != null
-          && 'assignedTo' in resource.data
-          && isAssignedEmployeeEditor(resource.data.assignedTo)
-          && ('userId' in request.resource.data && 'userId' in resource.data && request.resource.data.userId == resource.data.userId)
-          && ('assignedTo' in request.resource.data && request.resource.data.assignedTo == resource.data.assignedTo)
-          && (
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['deletedAt'])
-            || isAssignedEmployeeDeleter(resource.data.assignedTo)
-          )
-        )) && isValidOrderChanges(request.resource.data, resource.data);
+      allow update: if request.auth != null
+        && canUpdateOrder(resource.data, request.resource.data)
+        && isValidOrderChanges(request.resource.data, resource.data);
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('orders', 'delete'))
         || isAdmin()
         || (resource != null && 'assignedTo' in resource.data && isAssignedEmployeeDeleter(resource.data.assignedTo));
