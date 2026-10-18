@@ -9,7 +9,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { UserSettings } from '../services/firebaseSettingsService';
-import { toCdnUrl } from '../app/utils/cdnUtils';
+import { toPublicCdnUrl } from '../app/utils/cdnUtils';
 
 function formatUserSettings(data: any): UserSettings {
   const rawDate = data.updatedAt;
@@ -19,15 +19,15 @@ function formatUserSettings(data: any): UserSettings {
 
   return {
     ...data,
-    avatar: data.avatar ? toCdnUrl(data.avatar) : undefined,
-    logo: data.logo ? toCdnUrl(data.logo) : undefined,
-    banner: data.banner ? toCdnUrl(data.banner) : undefined,
-    catalogLogo: data.catalogLogo ? toCdnUrl(data.catalogLogo) : undefined,
-    catalogBanner: data.catalogBanner ? toCdnUrl(data.catalogBanner) : undefined,
-    catalogHeaderBackground: data.catalogHeaderBackground ? toCdnUrl(data.catalogHeaderBackground) : undefined,
-    catalogAboutImageUrl: data.catalogAboutImageUrl ? toCdnUrl(data.catalogAboutImageUrl) : undefined,
+    avatar: data.avatar ? toPublicCdnUrl(data.avatar) : undefined,
+    logo: data.logo ? toPublicCdnUrl(data.logo) : undefined,
+    banner: data.banner ? toPublicCdnUrl(data.banner) : undefined,
+    catalogLogo: data.catalogLogo ? toPublicCdnUrl(data.catalogLogo) : undefined,
+    catalogBanner: data.catalogBanner ? toPublicCdnUrl(data.catalogBanner) : undefined,
+    catalogHeaderBackground: data.catalogHeaderBackground ? toPublicCdnUrl(data.catalogHeaderBackground) : undefined,
+    catalogAboutImageUrl: data.catalogAboutImageUrl ? toPublicCdnUrl(data.catalogAboutImageUrl) : undefined,
     catalogBanners: Array.isArray(data.catalogBanners)
-      ? data.catalogBanners.map((b: any) => ({ ...b, imageUrl: toCdnUrl(b.imageUrl) }))
+      ? data.catalogBanners.map((b: any) => ({ ...b, imageUrl: toPublicCdnUrl(b.imageUrl) }))
       : undefined,
     updatedAt,
   } as UserSettings;

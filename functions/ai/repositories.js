@@ -4,6 +4,7 @@
 
 const { filterOrdersByScope, filterCustomersByScope, filterGalleryByScope } = require('./authorization');
 const { TOOL_LIMITS } = require('./config');
+const { traceMcpStep } = require('../mcp/tracing');
 
 function normalizeTimestamp(val) {
   if (!val) return '';
@@ -17,6 +18,23 @@ function normalizeTimestamp(val) {
     return new Date(val._seconds * 1000).toISOString();
   }
   return String(val);
+}
+
+function sanitizeGalleryImagePath(value) {
+  if (typeof value !== 'string' || !value) return '';
+  try {
+    const url = new URL(value);
+    if (url.hostname === 'firebasestorage.googleapis.com') {
+      const match = url.pathname.match(/\/o\/(.+)$/);
+      return match ? decodeURIComponent(match[1]) : '';
+    }
+    if (url.hostname === 'cdn.luisices.com.br' || url.hostname === 'cdn-dev.luisices.com.br') {
+      return decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+    }
+    return '';
+  } catch {
+    return value.split('?')[0].replace(/^\/+/, '');
+  }
 }
 
 function orderOrdersByCreationDate(query) {
@@ -177,16 +195,20 @@ class AiDataRepositories {
 
     try {
       if (scope.isAdmin) {
-        const docs = await readAllPages(
+        const docs = await traceMcpStep('firestore.orders_read', () => readAllPages(
           () => orderOrdersByCreationDate(this.db.collection('orders').where('deletedAt', '==', null)),
           { maxDocs: maxSafetyCeiling, allowPartial: isPartialAllowed },
-        );
+        ), {
+          'db.system': 'firestore',
+          'mcp.query.partition': 'admin',
+          'mcp.query.max_documents': maxSafetyCeiling,
+        });
         rawDocs = docs.map((d) => sanitizeOrderForAi(d.id, d.data()));
       } else {
         const [userDocs, assignedDocs, createdDocs] = await Promise.all([
-          readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('userId', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
-          readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('assignedTo', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
-          readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('createdBy', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
+          traceMcpStep('firestore.orders_read', () => readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('userId', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }), { 'db.system': 'firestore', 'mcp.query.partition': 'owner', 'mcp.query.max_documents': linkedQueryCeiling }),
+          traceMcpStep('firestore.orders_read', () => readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('assignedTo', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }), { 'db.system': 'firestore', 'mcp.query.partition': 'assignee', 'mcp.query.max_documents': linkedQueryCeiling }),
+          traceMcpStep('firestore.orders_read', () => readAllPages(() => orderOrdersByCreationDate(this.db.collection('orders').where('createdBy', '==', scope.uid).where('deletedAt', '==', null)), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }), { 'db.system': 'firestore', 'mcp.query.partition': 'creator', 'mcp.query.max_documents': linkedQueryCeiling }),
         ]);
 
         const map = new Map();
@@ -225,16 +247,24 @@ class AiDataRepositories {
   async getScopedOrderDocument(scope, identifier) {
     if (!this.db || typeof identifier !== 'string' || !identifier.trim()) return null;
     const value = identifier.trim();
+    const orderNumber = value.replace(/^#\s*/, '').trim();
+    const orderNumberCandidates = [...new Set([value, orderNumber, `#${orderNumber}`].filter(Boolean))];
     const candidates = [];
     if (!value.includes('/')) {
       const direct = await this.db.collection('orders').doc(value).get();
       if (direct.exists) candidates.push(direct);
     }
     if (!candidates.length) {
-      const matches = await this.db.collection('orders').where('orderNumber', '==', value).limit(2).get();
-      candidates.push(...(matches.docs || []));
+      // O ChatGPT pode omitir o # do número apresentado ao usuário. Busque as
+      // formas com e sem prefixo, mantendo a autorização e a checagem de
+      // ambiguidade abaixo como fonte final da decisão.
+      for (const candidate of orderNumberCandidates) {
+        const matches = await this.db.collection('orders').where('orderNumber', '==', candidate).limit(50).get();
+        candidates.push(...(matches.docs || []));
+      }
     }
-    const scoped = candidates.filter((doc) => {
+    const uniqueCandidates = [...new Map(candidates.map((doc) => [doc.id, doc])).values()];
+    const scoped = uniqueCandidates.filter((doc) => {
       const data = doc.data() || {};
       return filterOrdersByScope([{ ...data, id: doc.id }], scope).length > 0;
     });
@@ -426,7 +456,7 @@ class AiDataRepositories {
             category: data.category || '',
             papers: Array.isArray(data.papers) ? data.papers : [],
             tags: Array.isArray(data.tags) ? data.tags.map((t) => typeof t === 'string' ? t : t?.name).filter((tag) => typeof tag === 'string') : [],
-            imageUrl: data.imageUrl || '',
+            imageUrl: sanitizeGalleryImagePath(data.imagePath || data.imageUrl),
             userId: String(data.userId || ''),
             createdBy: String(data.createdBy || ''),
             ownerUid: String(data.ownerUid || ''),
@@ -456,7 +486,7 @@ class AiDataRepositories {
               category: data.category || '',
               papers: Array.isArray(data.papers) ? data.papers : [],
               tags: Array.isArray(data.tags) ? data.tags.map((t) => typeof t === 'string' ? t : t?.name).filter((tag) => typeof tag === 'string') : [],
-              imageUrl: data.imageUrl || '',
+              imageUrl: sanitizeGalleryImagePath(data.imagePath || data.imageUrl),
               userId: String(data.userId || ''),
               createdBy: String(data.createdBy || ''),
               ownerUid: String(data.ownerUid || ''),

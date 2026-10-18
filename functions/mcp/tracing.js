@@ -77,9 +77,9 @@ function traceMcpRequest(req, res, work) {
       if (Sentry.getActiveSpan()) return await run();
       return await Sentry.continueTrace({ sentryTrace: req.headers?.['sentry-trace'], baggage: req.headers?.baggage }, run);
     } finally {
-      // Cloud Functions pode suspender a instância ao terminar a resposta.
-      // Aguarda somente traces amostrados, sem elevar a taxa ou atrasar os demais.
-      if (sampled) await Sentry.flush(1000).catch(() => false);
+      // O envio de telemetria é best-effort. Não mantenha a chamada MCP aberta
+      // depois da resposta só para aguardar o transporte do Sentry.
+      if (sampled) void Sentry.flush(1000).catch(() => false);
     }
   });
 }

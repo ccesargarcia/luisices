@@ -3,6 +3,7 @@ import { Tag } from '../../types';
 import { getTextColor } from '../../utils/tagColors';
 import { Pencil, Trash2, Images, FolderHeart, Sparkles } from 'lucide-react';
 import { cn } from '../ui/utils';
+import { GalleryImage } from './GalleryImage';
 
 export const FOLDER_COLORS = [
   { label: 'Rosewood', value: '#613D3E' },
@@ -68,8 +69,8 @@ export function FolderCard({
       {/* Área da Capa / Banner do Álbum */}
       <div className="relative aspect-[16/10] overflow-hidden bg-muted/40">
         {cover ? (
-          <img
-            src={cover}
+          <GalleryImage
+            storagePath={cover}
             alt={name}
             loading="lazy"
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-106"

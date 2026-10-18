@@ -4,6 +4,7 @@
 
 const { getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
+const { getStorage } = require('firebase-admin/storage');
 const { HttpsError } = require('firebase-functions/v2/https');
 const { onCall } = require('../common/sentryFunctions');
 const { GEMINI_API_KEY } = require('../common/secrets');
@@ -35,7 +36,7 @@ const aiAgentChat = onCall(
   async (request) => {
     const rawKey =
       (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
-    const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth }, rawKey);
+    const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth, storage: getStorage }, rawKey);
     try {
       const { profile } = await assertActiveSession(request);
       request.authProfile = profile;
@@ -54,7 +55,7 @@ const getAiUsage = onCall(
   async (request) => {
     const rawKey =
       (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
-    const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth }, rawKey);
+    const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth, storage: getStorage }, rawKey);
     try {
       const { profile } = await assertActiveSession(request);
       request.authProfile = profile;
@@ -73,7 +74,7 @@ const enrichGalleryItemWithAi = onCall(
   async (request) => {
     const rawKey =
       (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
-    const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth }, rawKey);
+    const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth, storage: getStorage }, rawKey);
     try {
       const { profile } = await assertActiveSession(request);
       request.authProfile = profile;
@@ -92,7 +93,7 @@ const enrichStoreProductWithAi = onCall(
   async (request) => {
     const rawKey =
       (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
-    const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth }, rawKey);
+    const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth, storage: getStorage }, rawKey);
     try {
       const { profile } = await assertActiveSession(request);
       request.authProfile = profile;

@@ -6,7 +6,8 @@ const crypto = require('crypto');
 const { COLLECTIONS, CACHE_TTL_MS, DEFAULT_RATE_LIMIT_PER_HOUR, MCP_SCOPES } = require('./constants');
 const { getCallerScope } = require('../ai/authorization');
 
-const { validateOAuthAccessToken, getEffectiveUserScopes, consumeSharedRateLimit } = require('./oauth');
+const { validateOAuthAccessToken, getEffectiveUserScopes, consumeSharedRateLimits } = require('./oauth');
+const { traceMcpStep } = require('./tracing');
 
 // Cache em memória para validação ultrarrápida de chaves (evita 1 leitura de Firestore por request)
 const KEY_CACHE = new Map();
@@ -58,7 +59,9 @@ async function getMcpGlobalSettings(db) {
     return GLOBAL_SETTINGS_CACHE.data;
   }
 
-  const docSnap = await db.collection(COLLECTIONS.SETTINGS).doc(COLLECTIONS.SETTINGS_DOC_MCP).get();
+  const docSnap = await traceMcpStep('firestore.mcp_settings', () =>
+    db.collection(COLLECTIONS.SETTINGS).doc(COLLECTIONS.SETTINGS_DOC_MCP).get(),
+  );
   const data = docSnap.exists ? docSnap.data() : { enabled: true };
 
   const ttl = data.enabled === false ? 3000 : CACHE_TTL_MS.SETTINGS;
@@ -116,7 +119,9 @@ async function validateMcpRequest(req, db) {
   const keyHash = hashApiKey(rawKey);
 
   // Consulta no Firestore pela Chave
-  const keySnap = await db.collection(COLLECTIONS.KEYS).doc(keyHash).get();
+  const keySnap = await traceMcpStep('firestore.mcp_key', () =>
+    db.collection(COLLECTIONS.KEYS).doc(keyHash).get(),
+  );
   if (!keySnap.exists) {
     return {
       success: false,
@@ -132,7 +137,9 @@ async function validateMcpRequest(req, db) {
   }
 
   // Consulta do perfil do usuário vinculado (sempre atualizado do Firestore para invalidação em tempo real)
-  const userSnap = await db.collection(COLLECTIONS.USERS).doc(keyData.userId).get();
+  const userSnap = await traceMcpStep('firestore.mcp_user', () =>
+    db.collection(COLLECTIONS.USERS).doc(keyData.userId).get(),
+  );
   if (!userSnap.exists) {
     return {
       success: false,
@@ -198,7 +205,16 @@ async function validateMcpRequest(req, db) {
   const rateLimitPerHour = Number.isFinite(configuredRateLimit) && configuredRateLimit > 0
     ? Math.min(300, Math.floor(configuredRateLimit))
     : DEFAULT_RATE_LIMIT_PER_HOUR;
-  if (!await consumeSharedRateLimit(db, `mcp-key:${keyData.keyId}`, rateLimitPerHour)) {
+  const rateLimitResult = await traceMcpStep('rate_limits', async (span) => {
+    const result = await consumeSharedRateLimits(db, [
+      { key: `mcp-key:${keyData.keyId}`, limit: rateLimitPerHour },
+      { key: `mcp-user:${keyData.userId}`, limit: 600 },
+    ]);
+    span.setAttribute('mcp.rate_limit.allowed', result.allowed);
+    span.setAttribute('mcp.rate_limit.exceeded_bucket', result.exceededIndex === 0 ? 'key' : result.exceededIndex === 1 ? 'user' : 'none');
+    return result;
+  }, { 'mcp.rate_limit.bucket_count': 2 });
+  if (!rateLimitResult.allowed && rateLimitResult.exceededIndex === 0) {
     return {
       success: false,
       status: 429,
@@ -206,7 +222,7 @@ async function validateMcpRequest(req, db) {
       message: `Limite de requisições por hora excedido (${rateLimitPerHour} req/h). Aguarde antes de realizar novas chamadas.`,
     };
   }
-  if (!await consumeSharedRateLimit(db, `mcp-user:${keyData.userId}`, 600)) {
+  if (!rateLimitResult.allowed) {
     return {
       success: false,
       status: 429,

@@ -50,6 +50,7 @@ import { formatCurrency } from '../utils/currency';
 import { confirmAiWhatsAppSend, isAiSendFailureConfirmed } from '../utils/aiOperations';
 import { AiPricingDetails } from './AiPricingDetails';
 import { optimizeImageForAi } from '../utils/imageOptimizer';
+import { GalleryImage } from './gallery/GalleryImage';
 
 export type { AiCopilotSheetProps };
 
@@ -905,14 +906,14 @@ export function AiCopilotSheet({
                               className="border border-border/70 rounded-xl overflow-hidden bg-background hover:border-primary/50 transition-all flex flex-col group text-left shadow-xs"
                             >
                               <div className="aspect-[4/3] relative overflow-hidden bg-muted/60">
-                                <img
-                                  src={item.imageUrl}
+                                <GalleryImage
+                                  itemId={item.id}
                                   alt={item.title}
                                   loading="lazy"
                                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                 />
                                 <a
-                                  href={item.imageUrl}
+                                  href={`${window.location.origin}/galeria?image=${encodeURIComponent(item.id)}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="absolute inset-0 bg-black/0 group-hover:bg-black/35 transition-all flex items-center justify-center"

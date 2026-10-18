@@ -20,6 +20,7 @@ const handlers = require('./handlers');
 function createAiServices(adminInstance, apiKey) {
   const db = adminInstance?.firestore ? adminInstance.firestore() : null;
   const auth = adminInstance?.auth ? adminInstance.auth() : null;
+  const storage = adminInstance?.storage ? adminInstance.storage() : null;
 
   const client = new geminiClient.GeminiClient({
     apiKey: apiKey || (typeof process.env.GEMINI_API_KEY === 'string' ? process.env.GEMINI_API_KEY : ''),
@@ -55,6 +56,7 @@ function createAiServices(adminInstance, apiKey) {
       enrichGalleryItemWithAi: handlers.createEnrichGalleryItemHandler({
         geminiClient: client,
         db,
+        storage,
         budgetManager: budgetMgr,
       }),
       enrichStoreProductWithAi: handlers.createEnrichStoreProductHandler({

@@ -24,7 +24,7 @@ import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions } from '../lib/firebase';
 import type { GalleryItem } from '../app/types';
 import { firebaseStorageService } from './firebaseStorageService';
-import { resolveGalleryImageUrl } from './firebaseGalleryImageService';
+import { extractGalleryStoragePath } from './firebaseGalleryImageService';
 
 const storageService = firebaseStorageService;
 
@@ -73,13 +73,9 @@ export class FirebaseGalleryService {
           orderBy('createdAt', 'desc')
         );
     const snapshot = await getDocs(q);
-    return Promise.all(snapshot.docs
+    return snapshot.docs
       .filter(d => !d.data().deletedAt)
-      .map(async d => {
-        const item = this.fromFirestore(d.id, d.data());
-        item.imageUrl = resolveGalleryImageUrl(item.imageUrl);
-        return item;
-      }));
+      .map(d => this.fromFirestore(d.id, d.data()));
   }
 
   /**
@@ -109,13 +105,8 @@ export class FirebaseGalleryService {
       limit(pageSize),
     );
     const snapshot = await getDocs(q);
-    const items = await Promise.all(
-      snapshot.docs.filter((d) => !d.data().deletedAt).map(async (d) => {
-        const item = this.fromFirestore(d.id, d.data());
-        item.imageUrl = resolveGalleryImageUrl(item.imageUrl);
-        return item;
-      }),
-    );
+    const items = snapshot.docs.filter((d) => !d.data().deletedAt)
+      .map((d) => this.fromFirestore(d.id, d.data()));
     return {
       items,
       // Avança também sobre documentos excluídos, evitando páginas repetidas.
@@ -247,7 +238,7 @@ export class FirebaseGalleryService {
       userId: data.userId as string,
       title: data.title as string,
       description: (data.description as string) || undefined,
-      imageUrl: (data.imageUrl as string) || '',
+      imageUrl: extractGalleryStoragePath((data.imagePath as string) || (data.imageUrl as string) || ''),
       customerId: (data.customerId as string) || undefined,
       customerName: (data.customerName as string) || undefined,
       orderId: (data.orderId as string) || undefined,

@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { COLLECTIONS, MCP_SCOPES } = require('./constants');
 const { getCallerScope } = require('../ai/authorization');
 const { moduleAllowsMcpScope } = require('./profilePermissions');
+const { traceMcpStep } = require('./tracing');
 
 const APP_ORIGIN = () => process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard'
   ? 'https://luisices.com.br' : 'https://dev.luisices.com.br';
@@ -111,20 +112,38 @@ function authError(res, status, error, description) {
   return res.status(status).json({ error, error_description: description });
 }
 
-async function consumeSharedRateLimit(db, key, limit, windowSeconds = 3600) {
-  if (!db || typeof db.runTransaction !== 'function') return false;
-  const bucket = crypto.createHash('sha256').update(String(key)).digest('hex');
-  const ref = db.collection('oauthRateLimits').doc(bucket);
+async function consumeSharedRateLimits(db, limits, windowSeconds = 3600) {
+  if (!db || typeof db.runTransaction !== 'function' || !Array.isArray(limits) || limits.length === 0) {
+    return { allowed: false, exceededIndex: 0 };
+  }
+  const buckets = limits.map(({ key, limit }) => ({
+    limit,
+    ref: db.collection('oauthRateLimits').doc(crypto.createHash('sha256').update(String(key)).digest('hex')),
+  }));
   return db.runTransaction(async (tx) => {
     const now = Date.now();
     const windowStart = Math.floor(now / (windowSeconds * 1000)) * windowSeconds * 1000;
-    const snap = await tx.get(ref);
-    const stored = snap.exists ? snap.data() : {};
-    const count = stored.windowStart === windowStart ? Number(stored.count) || 0 : 0;
-    if (count >= limit) return false;
-    tx.set(ref, { count: count + 1, windowStart, updatedAt: now });
-    return true;
+    const snapshots = await Promise.all(buckets.map(({ ref }) => tx.get(ref)));
+    const counts = snapshots.map((snap) => {
+      const stored = snap.exists ? snap.data() : {};
+      return stored.windowStart === windowStart ? Number(stored.count) || 0 : 0;
+    });
+    const exceededIndex = counts.findIndex((count, index) => count >= buckets[index].limit);
+
+    // Mantém a contabilização sequencial anterior: se o limite do usuário
+    // exceder, a chamada ainda consome o bucket da chave; se a chave exceder,
+    // o bucket do usuário não é incrementado.
+    const writes = exceededIndex === -1 ? buckets.length : exceededIndex;
+    for (let index = 0; index < writes; index += 1) {
+      tx.set(buckets[index].ref, { count: counts[index] + 1, windowStart, updatedAt: now });
+    }
+    return { allowed: exceededIndex === -1, exceededIndex };
   });
+}
+
+async function consumeSharedRateLimit(db, key, limit, windowSeconds = 3600) {
+  const result = await consumeSharedRateLimits(db, [{ key, limit }], windowSeconds);
+  return result.allowed;
 }
 
 async function applyEndpointRateLimit(req, res, db, bucket, limit) {
@@ -669,8 +688,11 @@ async function validateOAuthAccessToken(accessToken, db) {
   }
 
   const accessTokenHash = tokenDocumentId(accessToken);
-  let tokenSnap = await db.collection('oauthAccessTokens').doc(accessTokenHash).get();
-  if (!tokenSnap.exists) tokenSnap = await db.collection('oauthAccessTokens').doc(accessToken).get();
+  const tokenSnap = await traceMcpStep('firestore.oauth_token', async () => {
+    let snapshot = await db.collection('oauthAccessTokens').doc(accessTokenHash).get();
+    if (!snapshot.exists) snapshot = await db.collection('oauthAccessTokens').doc(accessToken).get();
+    return snapshot;
+  }, { 'db.system': 'firestore' });
   if (!tokenSnap.exists) {
     return {
       success: false,
@@ -708,7 +730,14 @@ async function validateOAuthAccessToken(accessToken, db) {
   }
 
   if (!tokenData.sessionId) return { success: false, status: 401, code: 'SESSION_REQUIRED', message: 'Token OAuth sem sessão vinculada.' };
-  const sessionSnap = await db.collection('oauthSessions').doc(tokenData.sessionId).get();
+  const [sessionSnap, userSnap] = await Promise.all([
+    traceMcpStep('firestore.oauth_session', () =>
+      db.collection('oauthSessions').doc(tokenData.sessionId).get(),
+    { 'db.system': 'firestore' }),
+    traceMcpStep('firestore.oauth_user', () =>
+      db.collection(COLLECTIONS.USERS).doc(tokenData.userId).get(),
+    { 'db.system': 'firestore' }),
+  ]);
   if (!sessionSnap.exists) return { success: false, status: 401, code: 'SESSION_NOT_FOUND', message: 'Sessão OAuth vinculada não encontrada.' };
   const sessionData = sessionSnap.data();
   if (sessionData.accessTokenHash && sessionData.accessTokenHash !== accessTokenHash) {
@@ -724,7 +753,6 @@ async function validateOAuthAccessToken(accessToken, db) {
   const client = await getOAuthClient(db, tokenData.clientId);
   if (!client || client.enabled === false) return { success: false, status: 401, code: 'INVALID_CLIENT', message: 'Cliente OAuth desativado ou removido.' };
 
-  const userSnap = await db.collection(COLLECTIONS.USERS).doc(tokenData.userId).get();
   if (!userSnap.exists) {
     return {
       success: false,
@@ -777,7 +805,10 @@ async function validateOAuthAccessToken(accessToken, db) {
     };
   }
 
-  if (!await consumeSharedRateLimit(db, `mcp-user:${tokenData.userId}`, 120)) {
+  const allowed = await traceMcpStep('rate_limits', () =>
+    consumeSharedRateLimit(db, `mcp-user:${tokenData.userId}`, 120),
+  { 'mcp.rate_limit.bucket_count': 1 });
+  if (!allowed) {
     return { success: false, status: 429, code: 'RATE_LIMIT_EXCEEDED', message: 'Limite de 120 chamadas MCP por hora excedido para esta conta.' };
   }
 
@@ -799,6 +830,7 @@ module.exports = {
   getOauthProtectedResourceMetadata,
   getOauthAuthorizationServerMetadata,
   consumeSharedRateLimit,
+  consumeSharedRateLimits,
   calculateS256Challenge,
   handleOAuthRegister,
   handleOAuthAuthorize,

@@ -20,6 +20,7 @@ import { generateCustomerGreetingWhatsAppUrl } from '../../utils/whatsapp';
 import { useOrders } from '../../../contexts/OrdersContext';
 import { firebaseGalleryService } from '../../../services/firebaseGalleryService';
 import { CustomerGalleryUploadDialog } from './CustomerGalleryUploadDialog';
+import { GalleryImage } from '../gallery/GalleryImage';
 import { computeCustomerXRay, CustomerTiersSettings, TIER_DEFINITIONS } from '../../utils/customerMetrics';
 import { toast } from 'sonner';
 
@@ -298,8 +299,8 @@ export function CustomerHistoryDialog({
                       onClick={() => setLightboxItem(item)}
                       className="group relative aspect-square rounded-md overflow-hidden border bg-muted"
                     >
-                      <img
-                        src={item.imageUrl}
+                      <GalleryImage
+                        itemId={item.id}
                         alt={item.title}
                         className="w-full h-full object-cover transition-transform group-hover:scale-105"
                       />
@@ -509,8 +510,8 @@ export function CustomerHistoryDialog({
               </div>
             </div>
             <div className="bg-black/95 flex-1 flex items-center justify-center p-2 min-h-56 max-h-[70dvh] overflow-hidden">
-              <img
-                src={lightboxItem.imageUrl}
+              <GalleryImage
+                itemId={lightboxItem.id}
                 alt={lightboxItem.title}
                 className="max-w-full max-h-[70dvh] object-contain select-none"
               />

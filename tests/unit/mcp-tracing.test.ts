@@ -102,6 +102,28 @@ describe('MCP tracing with the real Sentry SDK and local transport', () => {
     }
   });
 
+  it('does not keep a completed MCP response waiting for the Sentry transport', async () => {
+    let release!: (value: boolean) => void;
+    const pendingFlush = new Promise<boolean>((resolve) => { release = resolve; });
+    const flush = vi.spyOn(Sentry, 'flush').mockReturnValue(pendingFlush);
+    try {
+      const res = response();
+      const call = traceMcpRequest({ method: 'POST', path: '/tools/query_customers', headers: {
+        'sentry-trace': '1234567890abcdef1234567890abcdef-1234567890123456-1',
+        baggage: 'sentry-org_id=123456,sentry-public_key=public',
+      } }, res, async () => res.json({ success: true, data: { customers: [] } }));
+      const returned = await Promise.race([
+        call.then(() => 'complete'),
+        new Promise<string>((resolve) => setTimeout(() => resolve('blocked'), 50)),
+      ]);
+      expect(returned).toBe('complete');
+      expect(flush).toHaveBeenCalledWith(1000);
+    } finally {
+      release(true);
+      flush.mockRestore();
+    }
+  });
+
   it('does not execute a tool after authorization or argument failure', async () => {
     const executor = { executeQueryCustomers: vi.fn() };
     await expect(executeScopedToolByName(executor, 'query_customers', {}, {}, [])).rejects.toMatchObject({ code: 'permission-denied' });

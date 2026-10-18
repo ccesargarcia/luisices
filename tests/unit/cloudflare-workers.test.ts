@@ -264,6 +264,23 @@ describe('Cloudflare Workers: Validação e Testes Unitários de Borda', () => {
       expect(headers.get('x-forwarded-proto')).toBe('https');
     });
 
+    it('encaminha mídia privada da galeria ao endpoint correto mantendo bearer e sem cache público', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(new Response('private-image', {
+        status: 200,
+        headers: { 'Content-Type': 'image/webp', 'Cache-Control': 'private, no-store' },
+      }));
+      vi.stubGlobal('fetch', mockFetch);
+      const request = new Request('https://api.dev.luisices.com.br/media/gallery/item_1', {
+        headers: { Authorization: 'Bearer firebase-id-token' },
+      });
+      const env = { ENVIRONMENT: 'dev', BACKEND_ORIGIN: 'https://functions.example', ORIGIN_SECRET: 'origin-secret' };
+      const response = await apiWorker.fetch(request, env, {});
+      const [targetUrl, options] = mockFetch.mock.calls[0];
+      expect(targetUrl).toBe('https://functions.example/galleryMedia?itemId=item_1');
+      expect((options.headers as Headers).get('Authorization')).toBe('Bearer firebase-id-token');
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    });
+
     it('deve retornar status 502 e capturar exceção quando comunicação com backend falhar', async () => {
       const mockFetch = vi.fn().mockRejectedValue(new Error('Backend connection refused'));
       vi.stubGlobal('fetch', mockFetch);

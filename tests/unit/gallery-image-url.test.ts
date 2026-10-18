@@ -1,23 +1,24 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ getDownloadURL: vi.fn(), ref: vi.fn((_storage, path) => path) }));
-vi.mock('firebase/storage', () => mocks);
-vi.mock('../../src/lib/firebase', () => ({ storage: {} }));
-import { resolveGalleryImageUrl } from '../../src/services/firebaseGalleryImageService';
+import { describe, expect, it } from 'vitest';
+vi.mock('../../src/lib/firebase', () => ({ auth: { currentUser: null } }));
+import { extractGalleryStoragePath } from '../../src/services/firebaseGalleryImageService';
 
-beforeEach(() => { vi.clearAllMocks(); });
-describe('Imagens privadas da galeria', () => {
-  it('recupera imagem legada da CDN pelo SDK autenticado', async () => {
-    mocks.getDownloadURL.mockResolvedValue('https://firebasestorage.googleapis.com/image?token=authorized');
-    expect(await resolveGalleryImageUrl('https://cdn.luisices.com.br/users/owner/gallery/art.png'))
-      .toBe('https://firebasestorage.googleapis.com/image?token=authorized');
-    expect(mocks.ref).toHaveBeenCalledWith({}, 'users/owner/gallery/art.png');
+describe('URLs privadas da galeria', () => {
+  it('converte URL antiga do Firebase em caminho, removendo token e query', () => {
+    const source = 'https://firebasestorage.googleapis.com/v0/b/example/o/users%2Fowner%2Fgallery%2Fart.webp?alt=media&token=secret';
+    expect(extractGalleryStoragePath(source)).toBe('users/owner/gallery/art.webp');
   });
-  it.each([
-    'https://firebasestorage.googleapis.com/image?token=keep-this',
-    'https://cdn.luisices.com.br/users/owner/products/art.png',
-    'https://unrelated.example/users/owner/gallery/art.png',
-  ])('preserva URL que não requer migração: %s', async url => {
-    expect(await resolveGalleryImageUrl(url)).toBe(url);
-    expect(mocks.getDownloadURL).not.toHaveBeenCalled();
+
+  it('converte URL antiga da CDN em caminho sem carregar query de token', () => {
+    expect(extractGalleryStoragePath('https://cdn-dev.luisices.com.br/users/owner/gallery/art.webp?token=secret'))
+      .toBe('users/owner/gallery/art.webp');
+  });
+
+  it('aceita caminho canônico e descarta query acidental', () => {
+    expect(extractGalleryStoragePath('users/owner/gallery/art.webp?token=secret'))
+      .toBe('users/owner/gallery/art.webp');
+  });
+
+  it('não interpreta URL de domínio não confiável como caminho do Storage', () => {
+    expect(extractGalleryStoragePath('https://attacker.example/users/owner/gallery/art.webp')).toBe('');
   });
 });

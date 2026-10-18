@@ -15,7 +15,7 @@ import {
 import { auth, storage } from '../lib/firebase';
 import type { OrderAttachment } from '../app/types';
 import { optimizeImageToWebP } from '../app/utils/imageOptimizer';
-import { toCdnUrl } from '../app/utils/cdnUtils';
+import { toCdnUrl, toPublicCdnUrl } from '../app/utils/cdnUtils';
 
 export class FirebaseStorageService {
   /**
@@ -36,7 +36,7 @@ export class FirebaseStorageService {
       contentType: optimizedFile.type,
       customMetadata: { uploadedAt: new Date().toISOString() },
     });
-    return toCdnUrl(await getDownloadURL(storageRef));
+    return toPublicCdnUrl(storageRef.fullPath);
   }
 
   /**
@@ -57,7 +57,7 @@ export class FirebaseStorageService {
       contentType: optimizedFile.type,
       customMetadata: { uploadedAt: new Date().toISOString() },
     });
-    return toCdnUrl(await getDownloadURL(storageRef));
+    return toPublicCdnUrl(storageRef.fullPath);
   }
 
   /**
@@ -82,7 +82,7 @@ export class FirebaseStorageService {
         userId: currentUid,
       },
     });
-    return toCdnUrl(await getDownloadURL(storageRef));
+    return toPublicCdnUrl(storageRef.fullPath);
   }
 
   /**
@@ -144,8 +144,7 @@ export class FirebaseStorageService {
     await uploadBytes(storageRef, optimizedFile, metadata);
 
     // Obter URL pública
-    const downloadURL = await getDownloadURL(storageRef);
-    return toCdnUrl(downloadURL);
+    return toPublicCdnUrl(storageRef.fullPath);
   }
 
   /**
@@ -169,8 +168,8 @@ export class FirebaseStorageService {
       contentType: optimizedFile.type,
       customMetadata: { uploadedAt: new Date().toISOString() },
     });
-    // O token de acesso é preservado ao converter a URL para a CDN.
-    return toCdnUrl(await getDownloadURL(storageRef));
+    // A galeria é privada: persistimos somente o caminho, nunca uma URL/token.
+    return storageRef.fullPath;
   }
 
   /**

@@ -18,6 +18,7 @@ const orderFunctions = require('./orders');
 const aiFunctions = require('./ai/callables');
 const alexaFunctions = require('./alexa');
 const mcpFunctions = require('./mcp');
+const mediaFunctions = require('./media/gallery');
 
 module.exports = {
   // ─── Gestão de Usuários e Convites ─────────────────────────────────────────
@@ -83,5 +84,6 @@ module.exports = {
   revokeMcpSession: mcpFunctions.revokeMcpSession,
   getMcpAuditLogs: mcpFunctions.getMcpAuditLogs,
   chatGptToolsEndpoint: mcpFunctions.chatGptToolsEndpoint,
+  galleryMedia: mediaFunctions.galleryMedia,
 };
 
