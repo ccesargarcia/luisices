@@ -486,14 +486,14 @@ export function StoreIdentityTab({
                     </div>
 
                     {/* Barra de Ações Simulada (Busca e Sacola em área dedicada) */}
-                    <div className="rounded-xl border border-border/70 bg-muted/20 p-2.5 flex items-center justify-between gap-2.5">
-                      <div className="flex-1 relative flex items-center gap-2 bg-background rounded-lg border border-border/70 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+                    <div className="rounded-xl border border-border/70 bg-muted/20 p-2 sm:p-2.5 flex items-center justify-between gap-2 overflow-hidden">
+                      <div className="flex-1 min-w-0 relative flex items-center gap-1.5 sm:gap-2 bg-background rounded-lg border border-border/70 px-2.5 py-1.5 text-[11px] text-muted-foreground overflow-hidden">
                         <Search size={13} className="opacity-60 shrink-0" />
                         <span className="truncate">Buscar produtos, temas, lembranças...</span>
                       </div>
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#613d3e] text-white text-[11px] font-bold shadow-2xs shrink-0">
-                        <ShoppingBag size={12} />
-                        <span>Sacola (R$ 0,00)</span>
+                      <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-[#613d3e] text-white text-[11px] font-bold shadow-2xs shrink-0 whitespace-nowrap">
+                        <ShoppingBag size={12} className="shrink-0" />
+                        <span>Sacola <span className="hidden xs:inline">(R$ 0,00)</span></span>
                       </div>
                     </div>
                   </div>
