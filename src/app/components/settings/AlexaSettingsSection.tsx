@@ -214,7 +214,7 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
     );
   }
 
-  const isDev = status?.environment === 'dev';
+  const isDev = status ? status.environment === 'dev' : window.location.hostname.includes('dev.');
 
   return (
     <Card className="glass-panel border-border/40 overflow-hidden">

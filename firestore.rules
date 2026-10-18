@@ -104,6 +104,49 @@ service cloud.firestore {
       return isAdmin() || userHasPerm(module, 'create');
     }
 
+    // Avoid reevaluating isOwner(), isAdmin() and userHasPerm() independently
+    // in each create rule. A single profile lookup keeps complex writes below
+    // the Firestore Rules expression evaluation limit.
+    function canCreateOwnedDocument(module, data) {
+      let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
+      let role = profile.get('role', '');
+      return isActiveProfile(profile)
+        && (
+          role == 'admin'
+          || (data.get('userId', '') is string
+            && data.userId == request.auth.uid
+            && hasPerm(
+              profile.get('permissions', {}).get(module, false),
+              'create'
+            ))
+        );
+    }
+
+    function canUpdateOrder(previous, next) {
+      let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
+      let role = profile.get('role', '');
+      let changed = next.diff(previous).affectedKeys();
+      let ownerEdit = previous.get('userId', '') == request.auth.uid
+        && hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
+        && next.get('userId', '') == previous.get('userId', '')
+        && (!changed.hasAny(['deletedAt'])
+          || hasPerm(profile.get('permissions', {}).get('orders', false), 'delete')
+          || hasPerm(profile.get('permissions', {}).get('archivedOrders', false), 'create'));
+      let assignedEdit = role == 'funcionario'
+        && 'userId' in previous
+        && 'userId' in next
+        && 'assignedTo' in previous
+        && 'assignedTo' in next
+        && previous.get('assignedTo', '') == request.auth.uid
+        && hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
+        && next.get('userId', '') == previous.get('userId', '')
+        && next.get('assignedTo', '') == previous.get('assignedTo', '')
+        && (!changed.hasAny(['deletedAt'])
+          || hasPerm(profile.get('permissions', {}).get('orders', false), 'delete'));
+      return request.auth != null && isActiveProfile(profile)
+        && (role == 'admin' || ownerEdit || assignedEdit);
+    }
+
     function isValidCalendarDate(value) {
       let parts = value.split('-');
       let year = int(parts[0]);
@@ -182,14 +225,14 @@ service cloud.firestore {
     }
 
     function isValidOrder(data, changed) {
-      return (!('price' in data) || (data.price is number && data.price >= 0 && data.price <= 1000000))
-        && (!('quantity' in data) || (data.quantity is int && data.quantity > 0 && data.quantity <= 10000))
-        && (!('customerName' in data) || (data.customerName is string && data.customerName.matches('[\\s\\S]*[^\\s][\\s\\S]*') && data.customerName.size() <= 200))
-        && (!('productName' in data) || (data.productName is string && data.productName.matches('[\\s\\S]*[^\\s][\\s\\S]*') && data.productName.size() <= 300))
-        && (data.get('customerPhone', null) == null || (data.customerPhone is string && data.customerPhone.size() <= 50))
-        && (data.get('notes', null) == null || (data.notes is string && data.notes.size() <= 1000))
-        && (!('status' in data) || data.status in ['pending', 'in-progress', 'completed', 'cancelled'])
-        && (changed.hasAny(['price', 'payment']) || !('payment' in data) || data.payment == null || (
+      return (!changed.hasAny(['price']) || !('price' in data) || (data.price is number && data.price >= 0 && data.price <= 1000000))
+        && (!changed.hasAny(['quantity']) || !('quantity' in data) || (data.quantity is int && data.quantity > 0 && data.quantity <= 10000))
+        && (!changed.hasAny(['customerName']) || !('customerName' in data) || (data.customerName is string && data.customerName.matches('[\\s\\S]*[^\\s][\\s\\S]*') && data.customerName.size() <= 200))
+        && (!changed.hasAny(['productName']) || !('productName' in data) || (data.productName is string && data.productName.matches('[\\s\\S]*[^\\s][\\s\\S]*') && data.productName.size() <= 300))
+        && (!changed.hasAny(['customerPhone']) || data.get('customerPhone', null) == null || (data.customerPhone is string && data.customerPhone.size() <= 50))
+        && (!changed.hasAny(['notes']) || data.get('notes', null) == null || (data.notes is string && data.notes.size() <= 1000))
+        && (!changed.hasAny(['status']) || !('status' in data) || data.status in ['pending', 'in-progress', 'completed', 'cancelled'])
+        && (!changed.hasAny(['payment']) || !('payment' in data) || data.payment == null || (
           data.payment is map
           && (!('totalAmount' in data.payment) || (data.payment.totalAmount is number && data.payment.totalAmount >= 0))
           && (!('paidAmount' in data.payment) || (data.payment.paidAmount is number && data.payment.paidAmount >= 0))
@@ -264,32 +307,12 @@ service cloud.firestore {
       allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('orders', 'view'))
         || isAdmin()
         || (resource != null && 'assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo) && userHasPerm('orders', 'view'));
-      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && canCreateOwnedModule('orders')) || isAdmin())
+      allow create: if request.auth != null
+        && canCreateOwnedDocument('orders', request.resource.data)
         && isValidNewOrder(request.resource.data);
-      allow update: if (isAdmin()
-        || (
-          resource != null
-          && 'userId' in resource.data
-          && isOwner(resource.data.userId)
-          && userHasPerm('orders', 'edit')
-          && ('userId' in request.resource.data && request.resource.data.userId == resource.data.userId)
-          && (
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['deletedAt'])
-            || userHasPerm('orders', 'delete')
-            || userHasPerm('archivedOrders', 'create')
-          )
-        )
-        || (
-          resource != null
-          && 'assignedTo' in resource.data
-          && isAssignedEmployeeEditor(resource.data.assignedTo)
-          && ('userId' in request.resource.data && 'userId' in resource.data && request.resource.data.userId == resource.data.userId)
-          && ('assignedTo' in request.resource.data && request.resource.data.assignedTo == resource.data.assignedTo)
-          && (
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['deletedAt'])
-            || isAssignedEmployeeDeleter(resource.data.assignedTo)
-          )
-        )) && isValidOrderChanges(request.resource.data, resource.data);
+      allow update: if request.auth != null
+        && canUpdateOrder(resource.data, request.resource.data)
+        && isValidOrderChanges(request.resource.data, resource.data);
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('orders', 'delete'))
         || isAdmin()
         || (resource != null && 'assignedTo' in resource.data && isAssignedEmployeeDeleter(resource.data.assignedTo));
@@ -357,7 +380,8 @@ service cloud.firestore {
       allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('customers', 'view'))
         || isAdmin()
         || employeeHasCustomersPerm('view');
-      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && canCreateOwnedModule('customers')) || isAdmin())
+      allow create: if request.auth != null
+        && canCreateOwnedDocument('customers', request.resource.data)
         && ('name' in request.resource.data && request.resource.data.name is string && request.resource.data.name.matches('[\\s\\S]*[^\\s][\\s\\S]*'))
         && (request.resource.data.get('email', null) == null || (request.resource.data.email is string && request.resource.data.email.size() <= 254 && (request.resource.data.email.size() == 0 || request.resource.data.email.matches('^[^\\s@]+@[^\\s@]+[.][^\\s@]+$'))))
         && (request.resource.data.get('notes', null) == null || (request.resource.data.notes is string && request.resource.data.notes.size() <= 1000))
