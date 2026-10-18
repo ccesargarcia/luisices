@@ -2598,7 +2598,7 @@ export function PublicCatalog() {
         />
 
         {/* 8. Botão Flutuante do WhatsApp */}
-        <CatalogFloatingWhatsApp businessInfo={businessInfo} />
+        {!isCartOpen && <CatalogFloatingWhatsApp businessInfo={businessInfo} />}
       </div>
     </div>
   );

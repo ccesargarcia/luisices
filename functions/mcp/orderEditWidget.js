@@ -71,11 +71,11 @@ const ORDER_EDIT_WIDGET_HTML = `<!doctype html>
       if (node) node.textContent = error?.message || 'Não foi possível completar a operação.';
     }
     function parsePrice(val) {
-      if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
-      if (!val) return 0;
-      const clean = String(val).trim().replace(/\s+/g, '').replace(',', '.');
-      const num = parseFloat(clean);
-      return Number.isFinite(num) ? num : 0;
+      if (typeof val === 'number') return Number.isFinite(val) && val >= 0 ? val : null;
+      const clean = String(val ?? '').trim();
+      if (!/^\d+(?:[,.]\d{1,2})?$/.test(clean)) return null;
+      const num = Number(clean.replace(',', '.'));
+      return Number.isFinite(num) ? num : null;
     }
     function formatPrice(val) {
       return Number(val || 0).toFixed(2).replace('.', ',');
@@ -121,8 +121,11 @@ const ORDER_EDIT_WIDGET_HTML = `<!doctype html>
         const mode = form.elements.priceMode.value;
         document.getElementById('price-label').firstChild.textContent = mode === 'unit' ? 'Novo valor por unidade (R$)' : 'Novo valor total (R$)';
         const parsed = parsePrice(priceInput.value);
-        const amount = Math.round(parsed * (mode === 'unit' ? Number(quantityInput.value) || 0 : 1) * 100) / 100;
-        document.getElementById('calculated').textContent = 'Valor total: ' + money(amount) + (mode === 'unit' ? ' (' + money(parsed) + ' × ' + (Number(quantityInput.value) || 0) + ')' : '');
+        const safeParsed = parsed ?? 0;
+        const amount = Math.round(safeParsed * (mode === 'unit' ? Number(quantityInput.value) || 0 : 1) * 100) / 100;
+        document.getElementById('calculated').textContent = parsed === null
+          ? 'Informe um valor válido com até duas casas decimais.'
+          : 'Valor total: ' + money(amount) + (mode === 'unit' ? ' (' + money(safeParsed) + ' × ' + (Number(quantityInput.value) || 0) + ')' : '');
       };
       form.addEventListener('input', updateCalculated);
       form.elements.priceMode.forEach((radio) => radio.addEventListener('change', () => {
@@ -142,7 +145,7 @@ const ORDER_EDIT_WIDGET_HTML = `<!doctype html>
         const mode = String(data.get('priceMode'));
         const rawPrice = String(data.get('price') || '').trim();
         const amount = parsePrice(rawPrice);
-        if (!rawPrice || !Number.isFinite(amount) || amount < 0) return showError(new Error('Informe um valor válido (ex: 25,50).'));
+        if (!rawPrice || amount === null || !Number.isFinite(amount) || amount < 0) return showError(new Error('Informe um valor válido, com até duas casas decimais (ex: 25,50).'));
         const args = { orderNumber: order.orderNumber, expectedVersion: order.version, idempotencyKey: 'mcp-order-edit-' + crypto.randomUUID(), confirmed: false };
         const value = (name) => String(data.get(name) || '').trim();
         const productName = value('productName');

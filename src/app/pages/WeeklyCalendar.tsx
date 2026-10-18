@@ -610,6 +610,7 @@ export function WeeklyCalendar() {
         }}
         onUpdateStatus={handleUpdateStatus}
         onDeleteOrder={handleDeleteOrder}
+        onOrderUpdated={(updatedOrder) => setSelectedOrder((current) => current?.id === updatedOrder.id ? updatedOrder : current)}
       />
     </div>
   );

@@ -21,9 +21,12 @@ const syncAllOrdersToAiView = onCall(async () => {
 
 /**
  * Checkout Público Confiável (Lojinha Online / Vitrine).
- * Valida produtos, preços oficiais, disponibilidade e estoque no servidor de forma atômica e idempotente.
+ * Valida produtos, preços oficiais e disponibilidade no servidor e grava de forma atômica e idempotente.
  */
-const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async (request) => {
+async function handleSubmitPublicCatalogOrder(request, dependencies = {}) {
+  const limiter = dependencies.publicCatalogOrderLimiter || publicCatalogOrderLimiter;
+  const firestore = dependencies.getFirestore || getFirestore;
+  const timestamp = dependencies.Timestamp || Timestamp;
   // 1. Rate Limiting por IP para conter abusos e automações não autorizadas
   const clientIp =
     request.rawRequest?.ip ||
@@ -31,7 +34,7 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
     'public_visitor';
 
   try {
-    await publicCatalogOrderLimiter.consume(clientIp);
+    await limiter.consume(clientIp);
   } catch (_limiterErr) {
     throw new HttpsError(
       'resource-exhausted',
@@ -42,6 +45,13 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
   const data = request.data || {};
   const { items, customerNotes, submittedSubtotal, idempotencyKey } = data;
 
+  if (
+    submittedSubtotal !== undefined &&
+    (typeof submittedSubtotal !== 'number' || !Number.isFinite(submittedSubtotal) || submittedSubtotal < 0)
+  ) {
+    throw new HttpsError('invalid-argument', 'O subtotal enviado deve ser um número finito e não negativo.');
+  }
+
   // 2. Validação estrutural de entrada
   if (!Array.isArray(items) || items.length === 0) {
     throw new HttpsError('invalid-argument', 'O carrinho de pedidos não pode estar vazio.');
@@ -51,12 +61,18 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
   }
 
   // Chave de idempotência segura (se informada)
-  const safeIdempotencyKey =
-    idempotencyKey && typeof idempotencyKey === 'string' && idempotencyKey.trim().length >= 8
-      ? idempotencyKey.trim().slice(0, 100)
-      : null;
+  if (idempotencyKey !== undefined && idempotencyKey !== null) {
+    if (
+      typeof idempotencyKey !== 'string' ||
+      idempotencyKey.trim().length < 8 ||
+      idempotencyKey.trim().length > 100
+    ) {
+      throw new HttpsError('invalid-argument', 'A chave de idempotência deve ter entre 8 e 100 caracteres.');
+    }
+  }
+  const safeIdempotencyKey = idempotencyKey?.trim() || null;
 
-  const db = getFirestore();
+  const db = firestore();
 
   // 3. Validação do status da Lojinha no servidor (storeSettings/public)
   const settingsSnap = await db.doc('storeSettings/public').get();
@@ -182,7 +198,7 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
 
   // 6. Geração do código do pedido e gravação com verifiedByServer: true de forma atômica e idempotente
   const orderCode = `LJ-${crypto.randomInt(1000, 10000)}`;
-  const now = Timestamp.now();
+  const now = timestamp.now();
 
   const payloadForHash = JSON.stringify({
     items: verifiedItems.map((i) => ({
@@ -258,9 +274,12 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
   });
 
   return result;
-});
+}
+
+const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, handleSubmitPublicCatalogOrder);
 
 module.exports = {
   syncAllOrdersToAiView,
   submitPublicCatalogOrder,
+  handleSubmitPublicCatalogOrder,
 };

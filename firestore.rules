@@ -122,10 +122,9 @@ service cloud.firestore {
         );
     }
 
-    function canUpdateOrder(previous, next) {
+    function canUpdateOrder(previous, next, changed) {
       let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
       let role = profile.get('role', '');
-      let changed = next.diff(previous).affectedKeys();
       let ownerEdit = previous.get('userId', '') == request.auth.uid
         && hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
         && next.get('userId', '') == previous.get('userId', '')
@@ -231,17 +230,10 @@ service cloud.firestore {
         && (!changed.hasAny(['productName']) || !('productName' in data) || (data.productName is string && data.productName.matches('[\\s\\S]*[^\\s][\\s\\S]*') && data.productName.size() <= 300))
         && (!changed.hasAny(['customerPhone']) || data.get('customerPhone', null) == null || (data.customerPhone is string && data.customerPhone.size() <= 50))
         && (!changed.hasAny(['notes']) || data.get('notes', null) == null || (data.notes is string && data.notes.size() <= 1000))
-        && (!changed.hasAny(['status']) || !('status' in data) || data.status in ['pending', 'in-progress', 'completed', 'cancelled'])
-        && (!changed.hasAny(['payment']) || !('payment' in data) || data.payment == null || (
-          data.payment is map
-          && (!('totalAmount' in data.payment) || (data.payment.totalAmount is number && data.payment.totalAmount >= 0))
-          && (!('paidAmount' in data.payment) || (data.payment.paidAmount is number && data.payment.paidAmount >= 0))
-          && (!('remainingAmount' in data.payment) || (data.payment.remainingAmount is number && data.payment.remainingAmount >= 0))
-        ));
+        && (!changed.hasAny(['status']) || !('status' in data) || data.status in ['pending', 'in-progress', 'completed', 'cancelled']);
     }
 
-    function isValidOrderChanges(data, previous) {
-      let changed = data.diff(previous).affectedKeys();
+    function isValidOrderChanges(data, changed) {
       return isValidOrder(data, changed)
         && (!changed.hasAny(['tags']) || data.get('tags', null) == null || isValidOrderTags(data.tags))
         && (!changed.hasAny(['deliveryDate']) || (
@@ -250,6 +242,12 @@ service cloud.firestore {
           data.customerId is string && data.customerId.size() > 0 && data.customerId.size() <= 128
           && get(/databases/$(database)/documents/customers/$(data.customerId)).data.userId == data.userId))
         && (!changed.hasAny(['price', 'payment']) || data.get('payment', null) == null || isConsistentOrderPayment(data.payment, data.price));
+    }
+
+    function isAllowedOrderUpdate(previous, next) {
+      let changed = next.diff(previous).affectedKeys();
+      return canUpdateOrder(previous, next, changed)
+        && isValidOrderChanges(next, changed);
     }
 
     function isValidCustomer(data) {
@@ -311,8 +309,7 @@ service cloud.firestore {
         && canCreateOwnedDocument('orders', request.resource.data)
         && isValidNewOrder(request.resource.data);
       allow update: if request.auth != null
-        && canUpdateOrder(resource.data, request.resource.data)
-        && isValidOrderChanges(request.resource.data, resource.data);
+        && isAllowedOrderUpdate(resource.data, request.resource.data);
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('orders', 'delete'))
         || isAdmin()
         || (resource != null && 'assignedTo' in resource.data && isAssignedEmployeeDeleter(resource.data.assignedTo));

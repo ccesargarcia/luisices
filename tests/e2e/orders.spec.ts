@@ -43,6 +43,72 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('Pedidos - CRUD', () => {
+  test('importa pedido com 20 etiquetas, atualiza preço e etiqueta e mantém os dados após recarga', async ({ page }) => {
+    test.setTimeout(90000);
+    const timestamp = Date.now();
+    const customerName = `Cliente Import E2E ${timestamp}`;
+    const productName = `Produto Import E2E ${timestamp}`;
+    const revisedTag = `Etiqueta Atualizada E2E ${timestamp}`;
+    const tagNames = Array.from({ length: 20 }, (_, index) => `Etiqueta E2E ${String(index + 1).padStart(2, '0')}`);
+    const deliveryDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const csv = [
+      'Cliente,Telefone,Produto,Quantidade,Preço,Entrega,Status,Status Pagamento,Valor Pago,Forma de pagamento,Tags',
+      `"${customerName}","11999999999","${productName}",1,"100,00",${deliveryDate},"Em Produção","Parcial","30,50","Pix","${tagNames.join(';')}"`,
+    ].join('\n');
+
+    await page.getByRole('button', { name: /Importar Excel/i }).click();
+    const importDialog = page.getByRole('dialog').filter({ hasText: 'Importar Pedidos via Excel' });
+    await expect(importDialog).toBeVisible();
+    await importDialog.locator('input[type="file"]').setInputFiles({
+      name: `import-orders-${timestamp}.csv`,
+      mimeType: 'text/csv',
+      buffer: Buffer.from(csv, 'utf8'),
+    });
+
+    await expect(importDialog.getByText('Total: 1')).toBeVisible({ timeout: 15000 });
+    await expect(importDialog.getByText('Válidos: 1')).toBeVisible();
+    await importDialog.getByRole('button', { name: 'Importar 1 pedido' }).click();
+    await expect(importDialog.getByText('Importação Concluída!')).toBeVisible({ timeout: 30000 });
+    await expect(importDialog.getByText(/1 de 1 pedido\(s\) foram cadastrados com sucesso/)).toBeVisible();
+    await importDialog.getByRole('button', { name: 'Concluir' }).click();
+
+    const search = page.getByPlaceholder('Buscar por cliente, produto ou telefone...');
+    await expect(search).toBeVisible({ timeout: 15000 });
+    await search.fill(customerName);
+    const orderCard = page.locator('.cursor-pointer').filter({ hasText: customerName }).first();
+    await expect(orderCard).toBeVisible({ timeout: 20000 });
+    await orderCard.click();
+
+    const detailsDialog = page.getByRole('dialog').first();
+    await expect(detailsDialog.getByText('Detalhes do Pedido')).toBeVisible();
+    await detailsDialog.getByRole('button', { name: 'Editar' }).click();
+    const priceInput = detailsDialog.getByPlaceholder('0,00').first();
+    await priceInput.fill('130,50');
+    await expect(priceInput).toHaveValue('130,50');
+    await expect(detailsDialog.getByText('Total: R$ 130,50')).toBeVisible();
+
+    const tagInput = detailsDialog.getByRole('textbox', { name: 'Adicionar tag' });
+    await tagInput.press('Backspace');
+    await tagInput.fill(revisedTag);
+    await tagInput.press('Enter');
+    await detailsDialog.getByRole('button', { name: 'Salvar Alterações' }).click();
+
+    await expect(detailsDialog.getByText(revisedTag)).toBeVisible({ timeout: 15000 });
+    await expect(detailsDialog.getByText('Valor Total').locator('..')).toContainText(/130,50/);
+
+    // A recarga comprova que preço e tag foram persistidos no Firestore.
+    await page.reload();
+    await expect(page.getByPlaceholder('Buscar por cliente, produto ou telefone...')).toBeVisible({ timeout: 20000 });
+    await page.getByPlaceholder('Buscar por cliente, produto ou telefone...').fill(revisedTag);
+    const persistedOrder = page.locator('.cursor-pointer').filter({ hasText: customerName }).first();
+    await expect(persistedOrder).toBeVisible({ timeout: 20000 });
+    await persistedOrder.click();
+
+    const persistedDetails = page.getByRole('dialog').first();
+    await expect(persistedDetails.getByText(revisedTag)).toBeVisible();
+    await expect(persistedDetails.getByText('Valor Total').locator('..')).toContainText(/130,50/);
+  });
+
   test('deve criar novo pedido pelo dashboard', async ({ page }) => {
     test.setTimeout(60000);
     const timestamp = Date.now();
@@ -88,9 +154,7 @@ test.describe('Pedidos - CRUD', () => {
 
     // Submeter e aguardar fechar
     await dialog.locator('button[type="submit"]').click();
-    await expect(dialog).not.toBeVisible({ timeout: 15000 }).catch(async () => {
-      await closeAnyOpenDialog(page);
-    });
+    await expect(dialog).not.toBeVisible({ timeout: 15000 });
 
     // CLEANUP: Localizar o pedido recém-criado e excluir
     const orderCard = page.locator('.cursor-pointer').filter({ hasText: productName }).first();
@@ -113,7 +177,7 @@ test.describe('Pedidos - CRUD', () => {
     }
   });
 
-  test('deve criar pedido com cliente novo e refletir na tela de clientes', async ({ page }) => {
+  test('deve criar pedido com cliente novo e refletir na tela de clientes', async ({ page }, testInfo) => {
     test.setTimeout(60000);
 
     const customerName = `Cliente Teste ${Date.now()}`;
@@ -154,12 +218,39 @@ test.describe('Pedidos - CRUD', () => {
       await dateInput.fill(futureDate.toISOString().split('T')[0]);
     }
 
+    const browserErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') {
+        browserErrors.push(message.text());
+      }
+    });
+    page.on('pageerror', (error) => browserErrors.push(error.message));
+
     await dialog.locator('button[type="submit"]').click();
 
     // Aguardar o diálogo fechar após salvar
-    await expect(dialog).not.toBeVisible({ timeout: 15000 }).catch(async () => {
-      await closeAnyOpenDialog(page);
-    });
+    try {
+      await expect(dialog).not.toBeVisible({ timeout: 15000 });
+    } catch (error) {
+      const toastMessages = await page
+        .locator('[data-sonner-toast], [role="status"], [role="alert"]')
+        .allTextContents()
+        .catch(() => []);
+      const sanitize = (value: string) => value
+        .replaceAll(customerName, '[cliente de teste]')
+        .replaceAll(customerPhone, '[telefone de teste]');
+      const diagnostics = {
+        dialogStillVisible: await dialog.isVisible().catch(() => false),
+        toastMessages: toastMessages.map(sanitize),
+        browserErrors: browserErrors.map(sanitize),
+      };
+      await testInfo.attach('falha-ao-salvar-pedido-cliente-novo.json', {
+        body: Buffer.from(JSON.stringify(diagnostics, null, 2)),
+        contentType: 'application/json',
+      });
+      const originalMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`${originalMessage}\nDiagnóstico do submit: ${JSON.stringify(diagnostics)}`);
+    }
 
     // Acessar a página de clientes e verificar que o cliente novo está listado
     await page.goto('/clientes');

@@ -17,6 +17,7 @@ import { firebaseGalleryService } from '../../services/firebaseGalleryService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
 import { toast } from 'sonner';
+import { parseDecimalMoneyInput } from '../utils/parseDecimalMoneyInput';
 import { OrderInfoView } from './orders/OrderInfoView';
 import { OrderEditForm, ProductItem, OrderEditState } from './orders/OrderEditForm';
 import { OrderAttachmentsSection } from './orders/OrderAttachmentsSection';
@@ -29,6 +30,7 @@ interface OrderDetailsDialogProps {
   onUpdateStatus: (orderId: string, status: OrderStatus) => void;
   onDeleteOrder?: (orderId: string) => void;
   onToggleArchive?: (orderId: string, archive: boolean) => void;
+  onOrderUpdated?: (order: Order) => void;
 }
 
 const statusColors = {
@@ -45,7 +47,7 @@ const statusLabels = {
   cancelled: 'Cancelado',
 };
 
-export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder, onToggleArchive }: OrderDetailsDialogProps) {
+export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder, onToggleArchive, onOrderUpdated }: OrderDetailsDialogProps) {
   const { user, userProfile, isAdmin, hasPermission } = useAuth();
   const { settings } = useUserSettings();
   const { teamMembers } = useOrders();
@@ -85,7 +87,8 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   const totalPrice = useMemo(() => {
     return editProducts.reduce((sum, p) => {
       const qty = parseFloat(p.quantity) || 0;
-      const unit = parseFloat(String(p.unitPrice || '').replace(',', '.')) || 0;
+      const unit = parseDecimalMoneyInput(String(p.unitPrice || ''));
+      if (unit === null) return Number.NaN;
       return sum + qty * unit;
     }, 0);
   }, [editProducts]);
@@ -312,8 +315,21 @@ Equipe ${settings?.businessName || 'Luisices'}`;
   const handleSaveEdit = async () => {
     setIsSaving(true);
     try {
-      const paidAmt = parseFloat(String(editData.paidAmount || '').replace(',', '.')) || 0;
+      const parsedPaidAmount = parseDecimalMoneyInput(String(editData.paidAmount || '0'));
+      if (parsedPaidAmount === null) {
+        toast.error('Informe um valor pago válido, com até duas casas decimais.');
+        return;
+      }
+      if (!Number.isFinite(totalPrice)) {
+        toast.error('Revise os preços dos produtos. Use vírgula ou ponto e até duas casas decimais.');
+        return;
+      }
+      const paidAmt = parsedPaidAmount;
       const price = totalPrice > 0 ? totalPrice : order.price;
+      if (paidAmt > price) {
+        toast.error('O valor pago não pode ser maior que o total do pedido.');
+        return;
+      }
       const remainingAmount = price - paidAmt;
 
       const productName = editProducts
@@ -335,9 +351,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         history: existingPayment?.history || null,
       };
 
-      await firebaseOrderService.updateOrder(
-        order.id,
-        {
+      const updates: Partial<Omit<Order, 'id' | 'userId' | 'createdAt' | 'orderNumber'>> = {
           customerName: editData.customerName,
           customerPhone: editData.customerPhone,
           productName,
@@ -354,15 +368,23 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           exchangeItems: editData.isExchange
             ? editExchangeItems
                 .filter(i => i.name.trim())
-                .map(i => ({
-                  name: i.name.trim(),
-                  quantity: parseInt(i.quantity) || 1,
-                  value: i.unitPrice ? parseFloat(i.unitPrice) : undefined,
-                } as ExchangeItem))
+                .map(i => {
+                  const value = i.unitPrice ? parseDecimalMoneyInput(i.unitPrice) : null;
+                  return {
+                    name: i.name.trim(),
+                    quantity: parseInt(i.quantity) || 1,
+                    value: value ?? undefined,
+                  } as ExchangeItem;
+                })
             : [],
-        },
-        order.version
-      );
+        };
+      await firebaseOrderService.updateOrder(order.id, updates, order.version);
+      onOrderUpdated?.({
+        ...order,
+        ...updates,
+        version: (order.version || 1) + 1,
+        updatedAt: new Date().toISOString(),
+      });
       setIsEditing(false);
     } catch (error: any) {
       console.error('Erro ao atualizar pedido:', error);

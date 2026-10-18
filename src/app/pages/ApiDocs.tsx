@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { firebaseMcpService } from '../../services/firebaseMcpService';
-import { McpApiKey, McpSettingsStatus } from '../types';
+import { McpSettingsStatus } from '../types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -35,6 +35,7 @@ import {
   FileCode,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { normalizeMcpRawKey } from '../utils/mcpRawKeySessionStorage';
 
 /**
  * Estilos customizados mobile-1st para o Swagger UI integrados ao Design System do Luisices
@@ -899,7 +900,6 @@ export function ApiDocs() {
   const [error, setError] = useState<string | null>(null);
   const [schemaData, setSchemaData] = useState<any>(memorySchemaCache);
   const [mcpStatus, setMcpStatus] = useState<McpSettingsStatus | null>(memoryStatusCache);
-  const [selectedKeyId, setSelectedKeyId] = useState<string>('');
   const [customToken, setCustomToken] = useState<string>('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState<'curl' | 'javascript' | 'python'>('curl');
@@ -924,10 +924,6 @@ export function ApiDocs() {
       if (statusRes) {
         memoryStatusCache = statusRes;
         setMcpStatus(statusRes);
-        const activeKeys = (statusRes.keys || []).filter((k) => k.enabled);
-        if (activeKeys.length > 0 && !selectedKeyId) {
-          setSelectedKeyId(activeKeys[0].keyId);
-        }
       }
 
       if (schemaRes) {
@@ -955,17 +951,10 @@ export function ApiDocs() {
     loadData();
   }, []);
 
-  // Determina o token ativo para testes e exemplos
-  const activeKeyObject = mcpStatus?.keys?.find((k) => k.keyId === selectedKeyId);
-  const savedRawKey = selectedKeyId
-    ? localStorage.getItem(`mcp_raw_key_${selectedKeyId}`)
-    : (localStorage.getItem('mcp_latest_key_id') === mcpStatus?.keys?.[0]?.keyId
-        ? localStorage.getItem('mcp_latest_raw_key')
-        : null);
-
-  const candidateToken = customToken.trim() || savedRawKey || '';
-  const isFullToken = Boolean(candidateToken && candidateToken.length >= 25 && !candidateToken.includes('...'));
-  const effectiveToken = candidateToken || activeKeyObject?.keyPrefix || '';
+  // O Swagger aceita somente o segredo completo informado manualmente.
+  const normalizedToken = normalizeMcpRawKey(customToken);
+  const tokenReady = Boolean(normalizedToken);
+  const effectiveToken = tokenReady ? normalizedToken! : '';
 
   const effectiveTokenRef = useRef(effectiveToken);
   useEffect(() => {
@@ -1036,6 +1025,9 @@ export function ApiDocs() {
           requestInterceptor: (req: any) => {
             req.headers = req.headers || {};
             const activeToken = effectiveTokenRef.current;
+            for (const headerName of Object.keys(req.headers)) {
+              if (headerName.toLowerCase() === 'authorization') delete req.headers[headerName];
+            }
             if (activeToken) {
               req.headers.Authorization = `Bearer ${activeToken}`;
             }
@@ -1270,97 +1262,60 @@ print("Resultado:", response.json())`;
             </Link>
           </div>
           <CardDescription className="text-[11px] sm:text-xs leading-relaxed">
-            Todas as chamadas exigem <code>Authorization: Bearer &lt;chave&gt;</code>. Selecione uma chave cadastrada ou informe um token para testar diretamente.
+            Informe a chave secreta completa para autorizar as chamadas com <code>Authorization: Bearer &lt;chave&gt;</code>.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-3 sm:p-5 pt-0 sm:pt-0 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-            {/* Seleção de Chave Cadastrada */}
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">Usar Chave Cadastrada</Label>
-              {mcpStatus?.keys && mcpStatus.keys.length > 0 ? (
-                <Select
-                  value={selectedKeyId}
-                  onValueChange={(val) => {
-                    setSelectedKeyId(val);
-                    const stored = localStorage.getItem(`mcp_raw_key_${val}`);
-                    setCustomToken(stored || '');
-                  }}
-                >
-                  <SelectTrigger className="text-xs h-8 sm:h-9 font-mono">
-                    <SelectValue placeholder="Selecione uma chave de API" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mcpStatus.keys.map((k) => (
-                      <SelectItem key={k.keyId} value={k.keyId} className="text-xs font-mono">
-                        {k.keyName} ({k.keyPrefix}) {k.enabled ? '' : '[Desativada]'}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <div className="p-2 rounded-lg border border-border/60 bg-muted/30 text-xs text-muted-foreground flex items-center justify-between">
-                  <span>Nenhuma chave de API gerada.</span>
-                  <Button size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => navigate('/configuracoes')}>
-                    Criar Chave
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            {/* Inserção de Token Manual */}
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">Ou Informar Token Manualmente</Label>
-              <div className="flex items-center gap-1.5">
-                <Input
-                  type="password"
-                  placeholder="lui_live_... ou Bearer token de 64 caracteres"
-                  value={customToken}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                    const val = e.target.value;
-                    setCustomToken(val);
-                    if (val.trim().length >= 25 && selectedKeyId) {
-                      localStorage.setItem(`mcp_raw_key_${selectedKeyId}`, val.trim());
-                    }
-                  }}
-                  className="text-xs h-8 sm:h-9 font-mono"
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleCopyText(effectiveToken, 'token')}
-                  className="h-8 sm:h-9 px-2.5 shrink-0 gap-1 text-xs"
-                  title="Copiar token"
-                >
-                  {copiedField === 'token' ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-                  <span className="hidden sm:inline">Copiar</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleOpenSwaggerAuth}
-                  className="h-8 sm:h-9 px-2.5 shrink-0 gap-1.5 text-xs border-primary/40 text-primary hover:bg-primary/10"
-                  title="Abrir modal de autorização no Swagger UI"
-                >
-                  <Lock className="size-3.5" />
-                  <span className="hidden sm:inline">Autorizar no Swagger</span>
-                  <span className="sm:hidden">Autorizar</span>
-                </Button>
-              </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Chave de API</Label>
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="password"
+                placeholder="lui_dev_… ou lui_live_… (chave completa)"
+                value={customToken}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomToken(e.target.value)}
+                className="text-xs h-8 sm:h-9 font-mono"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleCopyText(effectiveToken, 'token')}
+                disabled={!tokenReady}
+                className="h-8 sm:h-9 px-2.5 shrink-0 gap-1 text-xs"
+                title="Copiar token"
+              >
+                {copiedField === 'token' ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                <span className="hidden sm:inline">Copiar</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleOpenSwaggerAuth}
+                disabled={!tokenReady}
+                className="h-8 sm:h-9 px-2.5 shrink-0 gap-1.5 text-xs border-primary/40 text-primary hover:bg-primary/10"
+                title="Abrir modal de autorização no Swagger UI"
+              >
+                <Lock className="size-3.5" />
+                <span className="hidden sm:inline">Autorizar no Swagger</span>
+                <span className="sm:hidden">Autorizar</span>
+              </Button>
             </div>
           </div>
 
           {/* Banner de Validação de Chave Completa */}
-          {!isFullToken ? (
+          {!tokenReady ? (
             <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-400">
               <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-500" />
               <div className="space-y-0.5">
                 <p className="font-semibold text-[11px] sm:text-xs">
-                  Atenção: A chave selecionada exibe apenas o prefixo de identificação (<code>{activeKeyObject?.keyPrefix || 'lui_...'}</code>)
+                  Chave secreta completa necessária.
                 </p>
                 <p className="text-[10px] sm:text-[11px] opacity-90 leading-relaxed">
-                  Por motivos de segurança, o banco armazena apenas o hash da chave. Cole sua <strong>chave secreta de 64 caracteres</strong> no campo <em>"Ou Informar Token Manualmente"</em> acima para autorizar as chamadas no Swagger UI. Ela será salva no seu navegador para os próximos acessos.
+                  O Swagger não recupera chaves cadastradas. Cole aqui a chave completa exibida quando ela foi criada. Se não a tiver mais, gere uma nova em Gerenciar Chaves.
                 </p>
+                <Button size="sm" variant="outline" className="mt-2 h-7 text-[11px]" onClick={() => navigate('/configuracoes')}>
+                  Gerenciar ou criar chave
+                </Button>
               </div>
             </div>
           ) : (

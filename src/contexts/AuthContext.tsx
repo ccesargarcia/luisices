@@ -10,6 +10,7 @@ import { setUserAnalytics } from '../services/analyticsService';
 import { toast } from 'sonner';
 import { usePresence } from '../hooks/usePresence';
 import { repairClaimsIfNeeded } from '../services/claimsRepairService';
+import { clearMcpRawKeys } from '../app/utils/mcpRawKeySessionStorage';
 
 interface AuthContextType {
   user: User | null;
@@ -86,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       });
       sessionStorage.removeItem('luisices_admin_selected_users');
+      clearMcpRawKeys();
     } catch (_) {}
     await firebaseAuthService.logout().catch(() => {});
     setUser(null);

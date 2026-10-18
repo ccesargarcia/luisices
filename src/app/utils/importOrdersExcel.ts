@@ -398,14 +398,19 @@ export async function parseOrdersExcelFile(file: File | ArrayBuffer): Promise<Ex
   const extension = file instanceof File ? file.name.toLowerCase().split('.').pop() : null;
   if (extension && !['xlsx', 'xls', 'csv'].includes(extension)) throw new Error('Formato inválido. Use um arquivo .xlsx, .xls ou .csv.');
   if ((extension === 'xlsx' && !isZip) || (extension === 'xls' && !isOle)) throw new Error('O conteúdo do arquivo não corresponde ao formato Excel informado.');
+  let csvText: string | null = null;
   if (extension === 'csv' || (!isZip && !isOle)) {
     const encoding = bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le' : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : 'utf-8';
-    const preview = new TextDecoder(encoding).decode(bytes.slice(0, 512)).replace(/^\uFEFF/, '').trimStart();
+    csvText = new TextDecoder(encoding).decode(bytes).replace(/^\uFEFF/, '');
+    const preview = csvText.slice(0, 512).trimStart();
     if (isZip || isOle || preview.includes('\0') || preview.startsWith('<')) throw new Error('Arquivo CSV inválido. Conteúdo HTML, XML ou binário não é aceito.');
   }
 
-  const workbook = XLSX.read(arrayBuffer, {
-    type: 'array',
+  const workbook = XLSX.read(csvText ?? arrayBuffer, {
+    type: csvText === null ? 'array' : 'string',
+    // CSVs brasileiros commonly contain quoted decimal commas and UTF-8 headers.
+    // Keep cells as strings so parseImportedMoney applies the locale-aware rules.
+    ...(csvText === null ? {} : { raw: true }),
     cellDates: true,
     sheetRows: MAX_ORDER_IMPORT_ROWS + 2,
     cellFormula: false,

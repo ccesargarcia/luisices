@@ -59,6 +59,7 @@ import {
 } from '../../types';
 
 import { useAuth } from '../../../contexts/AuthContext';
+import { migrateLegacyMcpRawKeys, removeMcpRawKey, saveMcpRawKey } from '../../utils/mcpRawKeySessionStorage';
 
 interface McpSettingsSectionProps {
   isAdmin: boolean;
@@ -136,6 +137,10 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
       setRefreshing(false);
     }
   }, [hasMcpPermission]);
+
+  useEffect(() => {
+    migrateLegacyMcpRawKeys();
+  }, []);
 
   useEffect(() => {
     if (hasMcpPermission) {
@@ -236,9 +241,7 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
       setModalOpen(false);
       setCreatedResult(res);
       if (res?.keyId && res?.rawKey) {
-        localStorage.setItem(`mcp_raw_key_${res.keyId}`, res.rawKey);
-        localStorage.setItem('mcp_latest_raw_key', res.rawKey);
-        localStorage.setItem('mcp_latest_key_id', res.keyId);
+        saveMcpRawKey(res.keyId, res.rawKey);
       }
       toast.success('Chave de acesso gerada com sucesso!');
       await fetchStatus(true);
@@ -297,6 +300,7 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
     setRevokingKeyId(key.keyId);
     try {
       await firebaseMcpService.revokeApiKey(key.keyId);
+      removeMcpRawKey(key.keyId);
       setStatus((prev) =>
         prev
           ? {

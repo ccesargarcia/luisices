@@ -76,6 +76,13 @@ describe('Importação: gravação direta não contorna validação do servidor'
     const customers=await getDocs(query(collection(appClient.db,'customers'),where('userId','==','owner')));
     expect(customers.docs.some(document=>document.data().name==='Cliente não selecionado')).toBe(false);
   });
+  it('permite ao proprietário editar as 20 etiquetas sem alterar campos financeiros', async () => {
+    const tags = Array.from({ length: 20 }, (_, index) => ({ name: `Etiqueta ${index}`, color: '#123456' }));
+    const ref = doc(dbFor('owner'), 'orders/update-20-tags');
+    await assertSucceeds(setDoc(ref, { ...valid, tags }));
+    await assertSucceeds(updateDoc(ref, { tags: tags.map((tag) => ({ ...tag, name: `${tag.name} editada` })) }));
+    expect((await getDoc(ref)).data()?.tags).toEqual(tags.map((tag) => ({ ...tag, name: `${tag.name} editada` })));
+  });
   it.each([['owner',0],['owner',1],['owner',5],['owner',20],['admin',20]])('aceita importação real de 11 pedidos para %s com %i etiquetas e centavos', async (uid,tagCount) => {
     appClient.db=dbFor(String(uid));appClient.auth.currentUser={uid:String(uid),displayName:'Owner'};
     const rows=Array.from({length:11},(_,i)=>updateReviewedImportRow({rowIndex:i+2,customerName:`Cliente ${i}`,customerPhone:String(1138+i),productName:'30 Vinil Hotwheels + 1 Folha Vinil Impresso 2cm',quantity:31,price:28.35,deliveryDate:'2026-10-11',status:'completed',paymentStatus:i%2?'partial':'paid',paidAmount:i%2?10.1:28.35,remainingAmount:0,paymentMethod:'pix',tags:Array.from({length:Number(tagCount)},(_,j)=>({name:`Etiqueta ${j}`,color:'#123456'})),isValid:true,errors:[],warnings:[],rawData:{}},{}));

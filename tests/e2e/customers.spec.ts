@@ -66,6 +66,49 @@ test.describe('Clientes - CRUD', () => {
     await expect(alertDialog).not.toBeVisible({ timeout: 10000 });
   });
 
+  test('deve editar um cliente e manter os dados após recarga', async ({ page }) => {
+    test.setTimeout(60000);
+    const timestamp = Date.now();
+    const originalName = `Cliente Edição ${timestamp}`;
+    const updatedName = `Cliente Editado ${timestamp}`;
+    const phone = `11986${String(Math.floor(100000 + Math.random() * 900000))}`;
+
+    await page.getByRole('button', { name: /Novo Cliente/i }).click();
+    const form = page.locator('[role="dialog"]').first();
+    await expect(form).toBeVisible();
+    await form.getByPlaceholder(/Nome completo/i).fill(originalName);
+    await form.getByPlaceholder(/00000-0000/i).fill(phone);
+    await form.getByRole('button', { name: /Criar Cliente/i }).click();
+    await expect(form).toBeHidden({ timeout: 10000 });
+
+    const search = page.getByPlaceholder(/Buscar por nome, telefone ou email/i);
+    await search.fill(originalName);
+    const card = page.locator('[data-slot="card"]').filter({ hasText: originalName }).first();
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.getByRole('button', { name: new RegExp(`Editar ${originalName}`) }).click();
+
+    const editDialog = page.getByRole('dialog').filter({ hasText: 'Editar Cliente' });
+    await expect(editDialog).toBeVisible();
+    await editDialog.getByPlaceholder(/Nome completo/i).fill(updatedName);
+    await editDialog.getByRole('button', { name: /Salvar/i }).click();
+    await expect(editDialog).toBeHidden({ timeout: 10000 });
+
+    await search.fill(updatedName);
+    await expect(page.getByText(updatedName, { exact: true })).toBeVisible({ timeout: 10000 });
+    await page.reload();
+    const reloadedSearch = page.getByPlaceholder(/Buscar por nome, telefone ou email/i);
+    await expect(reloadedSearch).toBeVisible({ timeout: 10000 });
+    await reloadedSearch.fill(updatedName);
+    const persistedCard = page.locator('[data-slot="card"]').filter({ hasText: updatedName }).first();
+    await expect(persistedCard).toBeVisible({ timeout: 10000 });
+
+    await persistedCard.getByRole('button', { name: new RegExp(`Remover ${updatedName}`) }).click();
+    const confirm = page.locator('[role="alertdialog"]');
+    await expect(confirm).toBeVisible();
+    await confirm.getByRole('button', { name: /Excluir/i }).click();
+    await expect(confirm).toBeHidden({ timeout: 10000 });
+  });
+
   test('deve buscar clientes', async ({ page }) => {
     // Usar o input de busca pelo placeholder
     const searchInput = page.getByPlaceholder(/Buscar por nome, telefone ou email/i);

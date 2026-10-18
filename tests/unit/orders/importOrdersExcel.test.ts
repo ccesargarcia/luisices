@@ -105,6 +105,28 @@ describe('Importação de Pedidos via Excel (importOrdersExcel)', () => {
   });
 
   describe('2. Parsing de Planilha em Memória e Sinônimos de Cabeçalho', () => {
+    it('preserva cabeçalhos UTF-8 e valores monetários com vírgula em CSV brasileiro', async () => {
+      const csv = [
+        'Cliente,Telefone,Produto,Quantidade,Preço,Entrega,Status,Status Pagamento,Valor Pago,Forma de pagamento,Tags',
+        '"Ana Silva","11999999999","Convite personalizado",1,"100,00",2030-11-01,"Em Produção","Parcial","30,50","Pix","Casamento; Floral"',
+      ].join('\n');
+
+      const parsed = await parseOrdersExcelFile(new File([csv], 'pedidos.csv', { type: 'text/csv;charset=utf-8' }));
+
+      expect(parsed.validRows).toHaveLength(1);
+      expect(parsed.invalidRows).toHaveLength(0);
+      expect(parsed.validRows[0]).toMatchObject({
+        customerName: 'Ana Silva',
+        productName: 'Convite personalizado',
+        price: 100,
+        paidAmount: 30.5,
+        status: 'in-progress',
+        paymentStatus: 'partial',
+        paymentMethod: 'pix',
+        tags: [{ name: 'Casamento' }, { name: 'Floral' }],
+      });
+    });
+
     it('deve ler e validar linhas com sinônimos de cabeçalho e sinalizar erros', async () => {
       const XLSX = await import('xlsx');
 

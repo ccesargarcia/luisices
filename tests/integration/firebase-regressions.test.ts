@@ -282,6 +282,29 @@ describe('Pedidos e ledger atômicos', () => {
     expect(sale.data()).toMatchObject({ userId: 'owner', paidAmount: 20, amount: 100 });
   });
 
+  it('soft delete operacional do pedido preserva venda histórica e marca o ledger', async () => {
+    await seed('orders/delete-with-ledger', { ...order, deletedAt: null });
+    await seed('salesLedger/delete-with-ledger', {
+      userId: 'owner', orderId: 'delete-with-ledger', customerId: 'customer-1',
+      amount: 100, paidAmount: 25, status: 'pending', isDeletedFromOrders: false,
+    });
+
+    asUser('owner');
+    await firebaseOrderService.deleteOrder('delete-with-ledger');
+
+    const deletedOrder = await getDoc(doc(client.db, 'orders', 'delete-with-ledger'));
+    expect(deletedOrder.data()?.deletedAt).toBeTruthy();
+
+    // O serviço atualiza o ledger em seguida; aguarda o efeito observável no Firestore.
+    await expect.poll(async () => {
+      const ledger = await getDoc(doc(client.db, 'salesLedger', 'delete-with-ledger'));
+      return ledger.data()?.isDeletedFromOrders;
+    }, { timeout: 5000 }).toBe(true);
+
+    const preservedSale = (await getDoc(doc(client.db, 'salesLedger', 'delete-with-ledger'))).data();
+    expect(preservedSale).toMatchObject({ amount: 100, paidAmount: 25, userId: 'owner' });
+  });
+
   it.each([false, true])('reatribui pedido e ledger juntos (coletivo=%s), criando ledger legado ausente', async (bulk) => {
     await seed('orders/one', order);
     await seed('orders/two', order);
