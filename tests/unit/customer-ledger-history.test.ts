@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Customer, SaleRecord } from '../../src/app/types';
-import { groupCustomerLedgerHistory } from '../../src/app/utils/customerLedgerHistory';
+import { countOpenOrdersByCustomer, groupCustomerLedgerHistory } from '../../src/app/utils/customerLedgerHistory';
 import { computeCustomerXRay } from '../../src/app/utils/customerMetrics';
 const customer = { id: 'client', userId: 'a', name: 'Maria', totalSpent: 9000, totalOrders: 99 } as Customer;
 const sale = (changes: Partial<SaleRecord> = {}) => ({
@@ -9,6 +9,20 @@ const sale = (changes: Partial<SaleRecord> = {}) => ({
   quantity: 1, productName: 'Caderno', paymentStatus: 'partial', paymentMethod: 'pix', ...changes,
 }) as SaleRecord;
 describe('Métricas de cliente a partir do ledger', () => {
+  it('conta somente pedidos operacionais que ainda bloqueiam excluir o cliente', () => {
+    const counts = countOpenOrdersByCustomer([
+      sale({ id: 'active-pending', status: 'pending' }),
+      sale({ id: 'active-production', status: 'in_production' }),
+      sale({ id: 'completed', status: 'completed' }),
+      sale({ id: 'cancelled', status: 'cancelled' }),
+      sale({ id: 'soft-deleted', status: 'pending', isDeletedFromOrders: true }),
+      sale({ id: 'unlinked', customerId: null, status: 'pending' }),
+      sale({ id: 'other-customer', customerId: 'other', status: 'pending' }),
+    ]);
+
+    expect(counts).toEqual({ client: 2, other: 1 });
+  });
+
   it('inclui mais de 200 vendas e pedidos antigos fora da lista operacional', () => {
     const sales = Array.from({ length: 250 }, (_, i) => sale({ id: `s${i}`, orderId: `o${i}` }));
     const history = groupCustomerLedgerHistory([customer], sales).get(customer.id)!;

@@ -43,7 +43,7 @@ import {
   BulkCustomerDeleteDialog,
 } from '../components/customers/CustomerDeleteDialogs';
 import { CustomerStatsCards } from '../components/customers/CustomerStatsCards';
-import { groupCustomerLedgerHistory, ledgerSaleToOrder } from '../utils/customerLedgerHistory';
+import { countOpenOrdersByCustomer, groupCustomerLedgerHistory, ledgerSaleToOrder } from '../utils/customerLedgerHistory';
 import { useSalesLedger } from '../../hooks/useSalesLedger';
 import { PaginationControls } from '../components/common/PaginationControls';
 import { toast } from 'sonner';
@@ -159,15 +159,7 @@ export function Customers() {
   const relevantOrders = useMemo(() => ledgerSales.map(ledgerSaleToOrder), [ledgerSales]);
 
   // Mapa de pedidos em aberto e total de pedidos por cliente a partir de OrdersContext
-  const openOrdersMap = useMemo(() => {
-    const map: Record<string, number> = {};
-    ledgerSales.forEach((sale) => {
-      if (!sale.isDeletedFromOrders && sale.customerId && sale.status !== 'completed' && sale.status !== 'cancelled') {
-        map[sale.customerId] = (map[sale.customerId] || 0) + 1;
-      }
-    });
-    return map;
-  }, [ledgerSales]);
+  const openOrdersMap = useMemo(() => countOpenOrdersByCustomer(ledgerSales), [ledgerSales]);
 
   const totalOrdersMap = useMemo(() => {
     const map: Record<string, number> = {};

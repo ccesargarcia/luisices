@@ -28,3 +28,19 @@ export function groupCustomerLedgerHistory(customers: Customer[], sales: SaleRec
   }
   return grouped;
 }
+
+/** Conta apenas pedidos que ainda bloqueiam a exclusão do cliente. */
+export function countOpenOrdersByCustomer(sales: SaleRecord[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const sale of sales) {
+    if (
+      sale.isDeletedFromOrders
+      || !sale.customerId
+      || sale.status === 'completed'
+      || sale.status === 'cancelled'
+    ) continue;
+
+    counts[sale.customerId] = (counts[sale.customerId] || 0) + 1;
+  }
+  return counts;
+}
