@@ -431,27 +431,132 @@ const SWAGGER_THEME_CSS = `
     color: var(--foreground) !important;
     border-bottom: 1px solid var(--border) !important;
   }
+
+  /* Botão Authorize do Swagger UI */
+  .swagger-ui-custom-theme .swagger-ui .btn.authorize {
+    background: transparent !important;
+    color: var(--primary) !important;
+    border-color: var(--primary) !important;
+    border-radius: 0.5rem !important;
+    font-size: 0.7rem !important;
+    padding: 0.25rem 0.625rem !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.25rem !important;
+  }
+
+  .swagger-ui-custom-theme .swagger-ui .btn.authorize svg {
+    fill: var(--primary) !important;
+  }
+
+  /* Modal de Autenticação Bearer do Swagger UI */
+  .swagger-ui-custom-theme .swagger-ui .dialog-ux .backdrop-ux {
+    background: rgba(0, 0, 0, 0.7) !important;
+    backdrop-filter: blur(2px) !important;
+  }
+
+  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux {
+    background: var(--card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius, 0.75rem) !important;
+    color: var(--foreground) !important;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5) !important;
+  }
+
+  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux-header {
+    border-bottom: 1px solid var(--border) !important;
+    padding: 0.75rem 1rem !important;
+  }
+
+  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux-header h3 {
+    font-size: 0.875rem !important;
+    color: var(--foreground) !important;
+    font-weight: 700 !important;
+  }
+
+  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux-content {
+    padding: 1rem !important;
+    color: var(--foreground) !important;
+  }
+
+  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux-content h4 {
+    font-size: 0.75rem !important;
+    color: var(--foreground) !important;
+  }
+
+  .swagger-ui-custom-theme .swagger-ui .dialog-ux .modal-ux-content p {
+    font-size: 0.7rem !important;
+    color: var(--muted-foreground) !important;
+  }
+
+  /* Blindagem universal para tema escuro e claro */
+  .dark .swagger-ui-custom-theme .swagger-ui,
+  .dark .swagger-ui-custom-theme .swagger-ui .scheme-container,
+  .dark .swagger-ui-custom-theme .swagger-ui .wrapper,
+  .dark .swagger-ui-custom-theme .swagger-ui section {
+    background-color: transparent !important;
+  }
+
+  .dark .swagger-ui-custom-theme .swagger-ui .opblock {
+    background-color: var(--card) !important;
+  }
+
+  .dark .swagger-ui-custom-theme .swagger-ui .opblock-body {
+    background-color: var(--card) !important;
+  }
 `;
+
+// Cache em memória para transições instantâneas entre menus/rotas sem recarregamento ou tela branca
+let memorySchemaCache: any = null;
+let memoryStatusCache: McpSettingsStatus | null = null;
+
+// Carregador confiável de scripts externos CDN
+function loadExternalScript(src: string, isAvailable: () => boolean): Promise<void> {
+  if (isAvailable()) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`) as HTMLScriptElement;
+    if (existing) {
+      if (isAvailable()) {
+        resolve();
+        return;
+      }
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error(`Falha ao carregar ${src}`)), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Falha ao carregar ${src}`));
+    document.body.appendChild(script);
+  });
+}
 
 export function ApiDocs() {
   const navigate = useNavigate();
   const { user, userProfile, isAdmin } = useAuth();
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(!memorySchemaCache);
   const [error, setError] = useState<string | null>(null);
-  const [schemaData, setSchemaData] = useState<any>(null);
-  const [mcpStatus, setMcpStatus] = useState<McpSettingsStatus | null>(null);
+  const [schemaData, setSchemaData] = useState<any>(memorySchemaCache);
+  const [mcpStatus, setMcpStatus] = useState<McpSettingsStatus | null>(memoryStatusCache);
   const [selectedKeyId, setSelectedKeyId] = useState<string>('');
   const [customToken, setCustomToken] = useState<string>('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState<'curl' | 'javascript' | 'python'>('curl');
+  const [swaggerReady, setSwaggerReady] = useState(false);
 
   const swaggerContainerRef = useRef<HTMLDivElement>(null);
   const swaggerInstanceRef = useRef<any>(null);
 
   // Carrega status e OpenAPI Schema autenticado
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (forceRefresh = false) => {
+    if (!memorySchemaCache || forceRefresh) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const [statusRes, schemaRes] = await Promise.all([
@@ -460,17 +565,23 @@ export function ApiDocs() {
       ]);
 
       if (statusRes) {
+        memoryStatusCache = statusRes;
         setMcpStatus(statusRes);
         const activeKeys = (statusRes.keys || []).filter((k) => k.enabled);
-        if (activeKeys.length > 0) {
+        if (activeKeys.length > 0 && !selectedKeyId) {
           setSelectedKeyId(activeKeys[0].keyId);
         }
       }
 
-      setSchemaData(schemaRes);
+      if (schemaRes) {
+        memorySchemaCache = schemaRes;
+        setSchemaData(schemaRes);
+      }
     } catch (err: any) {
       console.error('[ApiDocs] Erro ao carregar schema OpenAPI:', err);
-      setError(err?.message || 'Falha ao autenticar acesso à documentação.');
+      if (!memorySchemaCache) {
+        setError(err?.message || 'Falha ao autenticar acesso à documentação.');
+      }
     } finally {
       setLoading(false);
     }
@@ -484,7 +595,7 @@ export function ApiDocs() {
   const activeKeyObject = mcpStatus?.keys?.find((k) => k.keyId === selectedKeyId);
   const effectiveToken = customToken.trim() || activeKeyObject?.keyPrefix || 'lui_live_SEU_TOKEN_AQUI';
 
-  // Inicializa o Swagger UI dinamicamente
+  // Inicializa o Swagger UI dinamicamente garantindo que ambos scripts e preset estejam carregados
   useEffect(() => {
     if (loading || error || !schemaData?.schema) return;
 
@@ -492,7 +603,7 @@ export function ApiDocs() {
 
     const initSwagger = async () => {
       try {
-        // Carrega CSS se ainda não estiver presente
+        // Carrega CSS se ainda não estiver presente no <head>
         if (!document.getElementById('swagger-ui-css')) {
           const link = document.createElement('link');
           link.id = 'swagger-ui-css';
@@ -501,36 +612,49 @@ export function ApiDocs() {
           document.head.appendChild(link);
         }
 
-        // Carrega Script se ainda não carregado
-        if (!(window as any).SwaggerUIBundle) {
-          await new Promise<void>((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui-bundle.js';
-            script.onload = () => resolve();
-            script.onerror = () => reject(new Error('Não foi possível carregar o Swagger UI.'));
-            document.body.appendChild(script);
-          });
-        }
+        // Carrega SwaggerUIBundle e SwaggerUIStandalonePreset em paralelo
+        await Promise.all([
+          loadExternalScript(
+            'https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui-bundle.js',
+            () => typeof (window as any).SwaggerUIBundle !== 'undefined'
+          ),
+          loadExternalScript(
+            'https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui-standalone-preset.js',
+            () => typeof (window as any).SwaggerUIStandalonePreset !== 'undefined'
+          ).catch((e) => {
+            console.warn('[ApiDocs] Standalone preset não disponível (opcional):', e);
+          }),
+        ]);
 
         if (!isMounted || !swaggerContainerRef.current) return;
 
         const SwaggerUIBundle = (window as any).SwaggerUIBundle;
         const SwaggerUIStandalonePreset = (window as any).SwaggerUIStandalonePreset;
 
-        // Limpa instância anterior
+        if (!SwaggerUIBundle) {
+          throw new Error('SwaggerUIBundle não pôde ser inicializado.');
+        }
+
+        // Limpa instância anterior do nó DOM
         swaggerContainerRef.current.innerHTML = '';
 
+        // Clona profundamente o schema para evitar que mutações internas do SwaggerUI corrompam chamadas subsequentes
+        const cleanSpec = JSON.parse(JSON.stringify(schemaData.schema));
+
+        const presets = [
+          SwaggerUIBundle.presets.apis,
+          ...(SwaggerUIStandalonePreset ? [SwaggerUIStandalonePreset] : []),
+        ];
+
         const ui = SwaggerUIBundle({
-          spec: schemaData.schema,
+          spec: cleanSpec,
           domNode: swaggerContainerRef.current,
           deepLinking: true,
-          presets: [
-            SwaggerUIBundle.presets.apis,
-            SwaggerUIStandalonePreset,
-          ],
+          presets,
           layout: 'BaseLayout',
           requestInterceptor: (req: any) => {
-            if (effectiveToken && !req.headers.Authorization) {
+            if (effectiveToken && !req.headers?.Authorization) {
+              req.headers = req.headers || {};
               req.headers.Authorization = `Bearer ${effectiveToken}`;
             }
             return req;
@@ -538,12 +662,16 @@ export function ApiDocs() {
         });
 
         swaggerInstanceRef.current = ui;
+        setSwaggerReady(true);
 
-        if (effectiveToken && ui.preauthorizeApiKey) {
+        if (effectiveToken && typeof ui.preauthorizeApiKey === 'function') {
           ui.preauthorizeApiKey('bearerAuth', effectiveToken);
         }
       } catch (swaggerErr: any) {
         console.error('[ApiDocs] Erro ao renderizar Swagger UI:', swaggerErr);
+        if (isMounted) {
+          setError(swaggerErr?.message || 'Erro ao carregar a interface interativa do Swagger UI.');
+        }
       }
     };
 
@@ -559,7 +687,7 @@ export function ApiDocs() {
     if (swaggerInstanceRef.current?.preauthorizeApiKey && effectiveToken) {
       swaggerInstanceRef.current.preauthorizeApiKey('bearerAuth', effectiveToken);
     }
-  }, [effectiveToken]);
+  }, [effectiveToken, swaggerReady]);
 
   const handleCopyText = (text: string, fieldId: string) => {
     navigator.clipboard.writeText(text);
@@ -683,7 +811,7 @@ print("Resultado:", response.json())`;
           <Button
             variant="outline"
             size="sm"
-            onClick={loadData}
+            onClick={() => loadData(true)}
             disabled={loading}
             className="h-7 sm:h-8 px-2 sm:px-3 gap-1 text-[11px] sm:text-xs ml-auto sm:ml-0"
           >
@@ -816,7 +944,7 @@ print("Resultado:", response.json())`;
         </div>
 
         {/* Aba 1: Swagger UI Interativo */}
-        <TabsContent value="swagger" className="space-y-4">
+        <TabsContent value="swagger" forceMount className="space-y-4 data-[state=inactive]:hidden">
           <Card className="border-border/60 overflow-hidden shadow-xs">
             <CardHeader className="bg-muted/30 border-b border-border/60 p-3 sm:p-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -829,47 +957,69 @@ print("Resultado:", response.json())`;
                     Execute requisições reais com <strong>Try it out</strong>. Autenticação Bearer injetada automaticamente.
                   </CardDescription>
                 </div>
-                {schemaData?.openapiUrl && (
+                <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
                   <Button
                     variant="outline"
                     size="sm"
-                    asChild
-                    className="h-7 sm:h-8 gap-1.5 text-xs shrink-0 self-start sm:self-auto"
+                    onClick={() => loadData(true)}
+                    disabled={loading}
+                    className="h-7 sm:h-8 gap-1.5 text-xs"
+                    title="Recarregar especificação OpenAPI"
                   >
-                    <a href={schemaData.openapiUrl} target="_blank" rel="noreferrer">
-                      <span>Ver openapi.json</span>
-                      <ExternalLink className="size-3" />
-                    </a>
+                    <RefreshCw className={`size-3 ${loading ? 'animate-spin' : ''}`} />
+                    <span>Recarregar</span>
                   </Button>
-                )}
+                  {schemaData?.openapiUrl && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      asChild
+                      className="h-7 sm:h-8 gap-1.5 text-xs"
+                    >
+                      <a href={schemaData.openapiUrl} target="_blank" rel="noreferrer">
+                        <span>openapi.json</span>
+                        <ExternalLink className="size-3" />
+                      </a>
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardHeader>
 
-            <CardContent className="p-2 sm:p-4">
-              {loading ? (
-                <div className="py-16 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-                  <RefreshCw className="size-7 animate-spin text-primary" />
-                  <p className="text-xs sm:text-sm">Carregando documentação OpenAPI autenticada...</p>
+            <CardContent className="p-2 sm:p-4 relative min-h-[450px]">
+              {/* Spinner de carregamento exibido somente quando não há dados em cache */}
+              {loading && !schemaData && (
+                <div className="py-20 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                  <RefreshCw className="size-8 animate-spin text-primary" />
+                  <p className="text-xs sm:text-sm font-medium">Carregando documentação OpenAPI autenticada...</p>
                 </div>
-              ) : error ? (
-                <div className="p-6 text-center space-y-3">
+              )}
+
+              {/* Mensagem de erro */}
+              {error && !schemaData && (
+                <div className="py-16 text-center space-y-3">
                   <AlertCircle className="size-8 text-destructive mx-auto" />
                   <p className="text-xs sm:text-sm font-semibold text-destructive">{error}</p>
-                  <Button size="sm" variant="outline" onClick={loadData}>
+                  <Button size="sm" variant="outline" onClick={() => loadData(true)}>
                     Tentar Novamente
                   </Button>
                 </div>
-              ) : (
-                <div className="swagger-ui-custom-theme min-h-[500px]">
-                  <div ref={swaggerContainerRef} />
-                </div>
               )}
+
+              {/* Container persistente do Swagger UI: NUNCA destruído pelo ciclo de vida das abas */}
+              <div
+                className={`swagger-ui-custom-theme min-h-[450px] ${
+                  (!schemaData && (loading || error)) ? 'hidden' : 'block'
+                }`}
+              >
+                <div ref={swaggerContainerRef} />
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
         {/* Aba 2: Exemplos de Código */}
-        <TabsContent value="snippets" className="space-y-4">
+        <TabsContent value="snippets" forceMount className="space-y-4 data-[state=inactive]:hidden">
           <Card className="border-border/60">
             <CardHeader className="p-3 sm:p-4 pb-2 sm:pb-3">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -960,7 +1110,7 @@ print("Resultado:", response.json())`;
         </TabsContent>
 
         {/* Aba 3: Escopos & Permissões */}
-        <TabsContent value="scopes" className="space-y-4">
+        <TabsContent value="scopes" forceMount className="space-y-4 data-[state=inactive]:hidden">
           <Card className="border-border/60">
             <CardHeader className="p-3 sm:p-4 pb-2 sm:pb-3">
               <CardTitle className="text-sm sm:text-base flex items-center gap-2">
