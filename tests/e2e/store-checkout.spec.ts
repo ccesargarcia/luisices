@@ -34,7 +34,7 @@ test.describe('Checkout público ponta a ponta', () => {
       await expect(page.getByText('Sacola de Encomendas', { exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Aumentar quantidade' }).click();
       await page.getByPlaceholder(/Preciso receber até dia/i).fill(CUSTOMER_NOTES);
-      await expect(page.getByText('R$ 74,50', { exact: true })).toBeVisible();
+      await expect(page.getByText('Subtotal Estimado:').locator('..')).toContainText('R$ 74,50');
 
       await page.getByRole('button', { name: /Confirmar & Enviar Pedido no WhatsApp/i }).click();
 
