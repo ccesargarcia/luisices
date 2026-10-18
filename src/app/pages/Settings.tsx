@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useSearchParams, useNavigate } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import {
@@ -13,6 +13,7 @@ import {
   ExternalLink,
   ShieldCheck,
   Users,
+  Code2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTheme } from 'next-themes';
@@ -39,6 +40,7 @@ import { McpSettingsSection } from '../components/settings/McpSettingsSection';
 import { DangerZoneSection } from '../components/settings/DangerZoneSection';
 
 export function Settings() {
+  const navigate = useNavigate();
   const { user, userProfile, isAdmin } = useAuth();
   const { theme, setTheme } = useTheme();
   const {
@@ -437,6 +439,20 @@ export function Settings() {
           <p className="text-muted-foreground mt-1 text-sm sm:text-base">
             Gerencie identidade visual, operação, integrações e dados do ateliê
           </p>
+        </div>
+
+        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/api-docs')}
+            className="gap-1.5 text-xs h-8 sm:h-9 shadow-2xs hover:bg-muted/80"
+            title="Abrir documentação interativa da API (Swagger UI)"
+          >
+            <Code2 className="size-3.5 sm:size-4 text-primary" />
+            <span>Documentação da API (Swagger)</span>
+            <ExternalLink className="size-3 text-muted-foreground ml-0.5" />
+          </Button>
         </div>
       </div>
 

@@ -20,6 +20,7 @@ import {
   ClipboardList,
   Archive,
   Calculator,
+  Code2,
 } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
@@ -230,6 +231,7 @@ export function Layout() {
         { name: 'Central de E-mails', href: '/emails', icon: Mail, check: (p) => canAccessEmails(p, 'view') },
         { name: 'Equipe & Usuários', href: '/usuarios', icon: UserCog, check: (p) => p.users?.view },
         { name: 'Configurações', href: '/configuracoes', icon: SettingsIcon, check: (p) => Boolean(p?.settings) || userProfile?.role === 'admin' },
+        { name: 'API (Swagger)', href: '/api-docs', icon: Code2, check: (p) => Boolean(p?.settings) || userProfile?.role === 'admin' },
       ],
     },
   ], [todayDeliveriesCount, unreadWhatsAppCount, userProfile?.role]);
