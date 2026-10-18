@@ -26,6 +26,13 @@ on:
           - audit
           - screen-audit
         default: 'all'
+  push:
+    branches:
+      - develop
+    paths:
+      - '.github/workflows/deploy-dev.yml'
+      - '.github/workflows/playwright.yml'
+      - '.github/workflows/test-actions.yml'
   pull_request:
     branches:
       - develop
