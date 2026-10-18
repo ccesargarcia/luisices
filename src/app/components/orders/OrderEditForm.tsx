@@ -29,7 +29,7 @@ export interface OrderEditState {
   status: OrderStatus;
   paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethod | undefined;
-  paidAmount: number | '';
+  paidAmount: number | string;
   isExchange: boolean;
   exchangeNotes: string;
   cardColor: string;
@@ -151,16 +151,16 @@ export function OrderEditForm({
                         className="text-center px-1"
                       />
                       <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
+                        type="text"
+                        inputMode="decimal"
                         placeholder="0,00"
                         value={item.unitPrice}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9.,]/g, '');
                           onEditProductsChange((prev) =>
-                            prev.map((p, i) => (i === idx ? { ...p, unitPrice: e.target.value } : p))
-                          )
-                        }
+                            prev.map((p, i) => (i === idx ? { ...p, unitPrice: val } : p))
+                          );
+                        }}
                         className="text-right px-2"
                       />
                       <Button
@@ -314,18 +314,18 @@ export function OrderEditForm({
                             className="text-center px-1"
                           />
                           <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
+                            type="text"
+                            inputMode="decimal"
                             placeholder="0,00"
                             value={item.unitPrice}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/[^0-9.,]/g, '');
                               onEditExchangeItemsChange((prev) =>
                                 prev.map((p, i) =>
-                                  i === idx ? { ...p, unitPrice: e.target.value } : p
+                                  i === idx ? { ...p, unitPrice: val } : p
                                 )
-                              )
-                            }
+                              );
+                            }}
                             className="text-right px-2"
                           />
                           <Button
@@ -501,16 +501,16 @@ export function OrderEditForm({
             <Label htmlFor="paidAmount">Valor Pago (R$)</Label>
             <Input
               id="paidAmount"
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
               value={editData.paidAmount}
-              onChange={(e) =>
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9.,]/g, '');
                 onEditDataChange({
                   ...editData,
-                  paidAmount: e.target.value === '' ? '' : parseFloat(e.target.value),
-                })
-              }
+                  paidAmount: val,
+                });
+              }}
               placeholder="0,00"
             />
           </div>
