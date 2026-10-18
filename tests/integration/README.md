@@ -4,7 +4,9 @@ Para presença e autorização de `/status`, execute `npm run test:presence` com
 A suíte dedicada usa somente RTDB local (porta 9000), projeto `demo-luisices-presence`
 e as regras reais de `database.rules.json`. Não utiliza credenciais de DEV/produção.
 Os testes RTDB são ignorados no comando legado `test:integration`, que inicia apenas
-Firestore/Storage; execute os dois comandos para cobrir ambos os conjuntos.
+Firestore/Storage; execute os dois comandos localmente para cobrir ambos os conjuntos.
+No CI, o workflow executa `test:presence` uma vez no shard 1, logo após as demais
+integrações de regras.
 
 Execute com Node 24 e Java 21 ou superior:
 

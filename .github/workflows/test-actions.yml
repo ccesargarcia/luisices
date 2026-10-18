@@ -127,6 +127,10 @@ jobs:
         if: matrix.shard == 1
         run: npm run test:integration
 
+      - name: Run RTDB Presence Integration Tests
+        if: matrix.shard == 1
+        run: npm run test:presence
+
       - name: Build
         run: npm run build
 
