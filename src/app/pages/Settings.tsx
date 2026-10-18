@@ -24,6 +24,13 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 
 import { AvatarLogoSection } from '../components/settings/AvatarLogoSection';
 import { BusinessInfoSection, type BusinessInfo } from '../components/settings/BusinessInfoSection';
@@ -456,13 +463,55 @@ export function Settings() {
         </div>
       </div>
 
-      {/* Navegação por Abas */}
+      {/* Navegação por Menu Suspenso (Mobile) e Abas (Desktop) */}
       <Tabs
         value={activeTab}
         onValueChange={handleTabChange}
         className="space-y-6"
       >
-        <div className="overflow-x-auto pb-1 -mx-2 px-2 sm:mx-0 sm:px-0">
+        {/* Menu Suspenso Mobile */}
+        <div className="sm:hidden w-full">
+          <Select value={activeTab} onValueChange={handleTabChange}>
+            <SelectTrigger className="w-full text-xs font-semibold h-10 bg-card border-border/80 shadow-2xs">
+              <SelectValue placeholder="Selecione a seção de configurações" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="empresa" className="text-xs font-medium cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Building2 className="size-3.5 text-primary shrink-0" />
+                  <span>Empresa & Perfil</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="operacao" className="text-xs font-medium cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="size-3.5 text-primary shrink-0" />
+                  <span>Operação & Prazos</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="aparencia" className="text-xs font-medium cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Palette className="size-3.5 text-primary shrink-0" />
+                  <span>Aparência & Interface</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="integracoes" className="text-xs font-medium cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-3.5 text-primary shrink-0" />
+                  <span>Integrações & IA</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="avancado" className="text-xs font-medium cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="size-3.5 text-primary shrink-0" />
+                  <span>Avançado</span>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Abas no Desktop */}
+        <div className="hidden sm:block overflow-x-auto pb-1 -mx-2 px-2 sm:mx-0 sm:px-0">
           <TabsList className="h-auto p-1 gap-1 flex-wrap sm:flex-nowrap w-full sm:w-auto">
             <TabsTrigger value="empresa" className="gap-2 px-3.5 py-2 text-xs sm:text-sm">
               <Building2 className="size-4 shrink-0" />

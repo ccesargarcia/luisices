@@ -1309,28 +1309,57 @@ print("Resultado:", response.json())`;
         </CardContent>
       </Card>
 
-      {/* Conteúdo Principal com Abas Mobile-First Sem Sobreposição */}
+      {/* Conteúdo Principal com Menu Suspenso (Mobile) e Abas (Desktop) */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-3 sm:space-y-4">
-        {/* Container horizontal com scroll suave que nunca corta ou sobrepõe o menu */}
-        <div className="overflow-x-auto pb-1 -mx-2 px-2 sm:mx-0 sm:px-0 scrollbar-none">
+        {/* Menu Suspenso Mobile */}
+        <div className="sm:hidden w-full">
+          <Select value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+            <SelectTrigger className="w-full text-xs font-semibold h-10 bg-card border-border/80 shadow-2xs">
+              <SelectValue placeholder="Selecione a visualização" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="swagger" className="text-xs font-medium cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Layers className="size-3.5 text-primary" />
+                  <span>Swagger UI (Explorer Interativo)</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="snippets" className="text-xs font-medium cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Code2 className="size-3.5 text-primary" />
+                  <span>Exemplos de Código (cURL, JS, Python)</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="scopes" className="text-xs font-medium cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Key className="size-3.5 text-primary" />
+                  <span>Escopos & Permissões da API</span>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Abas no Desktop */}
+        <div className="hidden sm:block overflow-x-auto pb-1 scrollbar-none">
           <TabsList className="inline-flex h-9 sm:h-10 items-center justify-start p-1 gap-1 rounded-xl bg-muted/60 border border-border/60 w-max sm:w-auto">
             <TabsTrigger
               value="swagger"
-              className="gap-1.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap rounded-lg data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-xs"
+              className="gap-1.5 px-3.5 py-1.5 text-xs font-medium whitespace-nowrap rounded-lg data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-xs"
             >
               <Layers className="size-3.5" />
               <span>Swagger UI</span>
             </TabsTrigger>
             <TabsTrigger
               value="snippets"
-              className="gap-1.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap rounded-lg data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-xs"
+              className="gap-1.5 px-3.5 py-1.5 text-xs font-medium whitespace-nowrap rounded-lg data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-xs"
             >
               <Code2 className="size-3.5" />
               <span>Exemplos de Código</span>
             </TabsTrigger>
             <TabsTrigger
               value="scopes"
-              className="gap-1.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap rounded-lg data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-xs"
+              className="gap-1.5 px-3.5 py-1.5 text-xs font-medium whitespace-nowrap rounded-lg data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-xs"
             >
               <Key className="size-3.5" />
               <span>Escopos & Permissões</span>
