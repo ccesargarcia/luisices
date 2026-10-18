@@ -48,10 +48,11 @@ test.describe('Checkout público ponta a ponta', () => {
       const whatsappHref = await page.getByRole('link', { name: 'Reabrir WhatsApp' }).getAttribute('href');
       expect(whatsappHref).toMatch(/^https:\/\/wa\.me\/5511999999999\?text=/);
       const whatsappMessage = new URL(whatsappHref!).searchParams.get('text') || '';
+      const plainWhatsAppMessage = whatsappMessage.replace(/[*_`~]/g, '');
       expect(whatsappMessage).toContain(orderCode);
-      expect(whatsappMessage).toContain(PRODUCT_NAME);
-      expect(whatsappMessage).toContain('R$ 74,50');
-      expect(whatsappMessage).toContain(CUSTOMER_NOTES);
+      expect(plainWhatsAppMessage).toContain(PRODUCT_NAME);
+      expect(plainWhatsAppMessage).toContain('Subtotal dos Produtos: R$ 74,50');
+      expect(plainWhatsAppMessage).toContain(CUSTOMER_NOTES);
 
       const savedOrders = await adminDb.collection('catalogOrders').where('orderCode', '==', orderCode).get();
       expect(savedOrders.size).toBe(1);
