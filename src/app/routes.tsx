@@ -139,6 +139,7 @@ const StoreOrders        = lazyWithRetry(() => import('./pages/StoreOrders'), 'S
 const WhatsAppChat       = lazyWithRetry(() => import('./pages/WhatsAppChat'), 'WhatsAppChat');
 const ArchivedOrders     = lazyWithRetry(() => import('./pages/ArchivedOrders'), 'ArchivedOrders');
 const ArtisanPricingPage = lazyWithRetry(() => import('./pages/ArtisanPricingPage'), 'ArtisanPricingPage');
+const ApiDocs            = lazyWithRetry(() => import('./pages/ApiDocs'), 'ApiDocs');
 
 function PageLoader() {
   return (
@@ -375,6 +376,18 @@ export const router = isCatalogSubdomain
       {
         path: 'corrigir-valores',
         element: <Lazy><ProtectedRoute adminOnly><FixNegativeValues /></ProtectedRoute></Lazy>,
+      },
+      {
+        path: 'api-docs',
+        element: <Lazy><ProtectedRoute><ApiDocs /></ProtectedRoute></Lazy>,
+      },
+      {
+        path: 'docs',
+        element: <Navigate to="/api-docs" replace />,
+      },
+      {
+        path: 'swagger',
+        element: <Navigate to="/api-docs" replace />,
       },
     ],
   },

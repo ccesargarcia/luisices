@@ -2,7 +2,7 @@ const { Sentry } = require('../common/sentry');
 const { TOOL_SCOPE_MAP } = require('./constants');
 
 const RPC_METHODS = new Set(['initialize', 'notifications/initialized', 'ping', 'tools/list', 'tools/call', 'resources/list', 'resources/read']);
-const ROUTES = new Set(['', 'health', 'schema', 'openapi.json', 'openapi.yaml', 'oauth/token', 'oauth/register', 'oauth/authorize', 'oauth/revoke', 'oauth/consent', 'token', 'register', 'authorize', 'revoke']);
+const ROUTES = new Set(['', 'health', 'schema', 'openapi.json', 'openapi.yaml', 'docs', 'swagger', 'api-docs', 'oauth/token', 'oauth/register', 'oauth/authorize', 'oauth/revoke', 'oauth/consent', 'token', 'register', 'authorize', 'revoke']);
 
 function getRequestTraceAttributes(req) {
   const path = String(req.path || req.url || '').split(/[?#]/)[0].replace(/^\/+/, '').replace(/^chatGptToolsEndpoint\/?/, '').replace(/\/+$/, '');

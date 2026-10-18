@@ -130,6 +130,24 @@ export class FirebaseMcpService {
     const result = await callable({ limit: limitCount });
     return result.data;
   }
+
+  /**
+   * Obtém a especificação OpenAPI 3.0.3 autenticada para a documentação Swagger.
+   */
+  async getOpenApiSchema(): Promise<{
+    success: boolean;
+    environment: 'dev' | 'prod';
+    endpointBaseUrl: string;
+    openapiUrl: string;
+    schema: any;
+  }> {
+    const callable = httpsCallable<
+      undefined,
+      { success: boolean; environment: 'dev' | 'prod'; endpointBaseUrl: string; openapiUrl: string; schema: any }
+    >(functions, 'getMcpOpenApiSchema');
+    const result = await callable();
+    return result.data;
+  }
 }
 
 export const firebaseMcpService = new FirebaseMcpService();
