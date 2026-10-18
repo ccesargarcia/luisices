@@ -800,8 +800,11 @@ function buildOpenApiSchema(baseUrl, allowedScopes = null) {
         requestBody: {
           required: Boolean(tool.requestBody && Array.isArray(tool.requestBody.required) && tool.requestBody.required.length > 0),
           content: {
+            'application/x-www-form-urlencoded': {
+              schema: toOpenApi30Schema({ ...tool.requestBody, additionalProperties: false }),
+            },
             'application/json': {
-                  schema: toOpenApi30Schema({ ...tool.requestBody, additionalProperties: false }),
+              schema: toOpenApi30Schema({ ...tool.requestBody, additionalProperties: false }),
             },
           },
         },
