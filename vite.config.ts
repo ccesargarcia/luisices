@@ -36,7 +36,8 @@ export default defineConfig(() => {
       target: 'es2022',
       cssCodeSplit: true,
       minify: 'esbuild',
-      chunkSizeWarningLimit: 1500,
+      // Limite consciente para chunks especializados (ex: Firebase SDK e PDF renderer sob demanda)
+      chunkSizeWarningLimit: 1000,
       rollupOptions: {
         input: {
           main: path.resolve(__dirname, 'index.html'),
@@ -108,8 +109,6 @@ export default defineConfig(() => {
           },
         },
       },
-      // Limite consciente para chunks especializados (ex: Firebase SDK e PDF renderer sob demanda)
-      chunkSizeWarningLimit: 1000,
     },
   };
 });

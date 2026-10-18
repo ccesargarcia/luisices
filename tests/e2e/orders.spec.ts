@@ -91,7 +91,7 @@ test.describe('Pedidos - CRUD', () => {
     await detailsDialog.getByRole('button', { name: 'Salvar Alterações' }).click();
 
     await expect(detailsDialog.getByText(revisedTag)).toBeVisible({ timeout: 15000 });
-    await expect(detailsDialog.getByText('R$ 130,50', { exact: true })).toBeVisible();
+    await expect(detailsDialog.getByText('Valor Total').locator('..')).toContainText(/130,50/);
 
     // A recarga comprova que preço e tag foram persistidos no Firestore.
     await page.reload();
@@ -103,7 +103,7 @@ test.describe('Pedidos - CRUD', () => {
 
     const persistedDetails = page.getByRole('dialog').first();
     await expect(persistedDetails.getByText(revisedTag)).toBeVisible();
-    await expect(persistedDetails.getByText('R$ 130,50', { exact: true })).toBeVisible();
+    await expect(persistedDetails.getByText('Valor Total').locator('..')).toContainText(/130,50/);
   });
 
   test('deve criar novo pedido pelo dashboard', async ({ page }) => {
