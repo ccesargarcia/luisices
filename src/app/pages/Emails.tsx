@@ -1614,13 +1614,13 @@ export function Emails() {
 
           {/* Barra de Seleção em Massa e Select All */}
           {displayedEmails.length > 0 && (
-            <div className="px-3 py-2 bg-muted/40 dark:bg-zinc-900/70 border-b border-border/80 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2 text-xs min-w-0 shrink-0 max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11">
+            <div className="px-3 py-2 bg-muted/40 dark:bg-zinc-900/70 border-b border-border/80 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2 text-xs min-w-0 shrink-0 max-md:[&_button:not([data-slot=checkbox])]:min-h-11 max-md:[&_button:not([data-slot=checkbox])]:min-w-11 pointer-coarse:[&_button:not([data-slot=checkbox])]:min-h-11 pointer-coarse:[&_button:not([data-slot=checkbox])]:min-w-11">
               <div className="flex items-center gap-2 min-w-0">
                 <Checkbox
                   id="select-all-emails"
                   checked={isAllDisplayedSelected ? true : isSomeDisplayedSelected ? 'indeterminate' : false}
                   onCheckedChange={handleToggleSelectAll}
-                  className="size-4 rounded"
+                  className="size-4 shrink-0 rounded max-md:size-4 max-md:min-h-4 max-md:min-w-4 pointer-coarse:size-4 pointer-coarse:min-h-4 pointer-coarse:min-w-4"
                   title={isAllDisplayedSelected ? "Desmarcar todos" : "Selecionar todos os e-mails desta lista"}
                 />
                 <label
@@ -1668,12 +1668,11 @@ export function Emails() {
                       <Button
                         disabled={!canDelete || isBulkDeleting}
                         size="sm"
-                        variant="destructive"
-                        className="h-auto min-h-7 max-w-full whitespace-normal px-2.5 text-[11px] gap-1 shadow-xs font-medium [&>span]:min-w-0 [&>span]:[overflow-wrap:anywhere]"
+                        className="h-auto min-h-7 max-w-full whitespace-normal px-2.5 text-[11px] gap-1 shadow-sm font-semibold bg-red-600 hover:bg-red-700 text-white dark:bg-red-600 dark:hover:bg-red-700 dark:text-white border-0 [&>span]:min-w-0 [&>span]:[overflow-wrap:anywhere]"
                         onClick={() => setIsBulkDeleteDialogOpen(true)}
                         title="Excluir e-mails selecionados definitivamente"
                       >
-                        <Trash2 className="size-3.5" />
+                        <Trash2 className="size-3.5 text-white" />
                         <span>Excluir definitivamente ({selectedEmailIds.size})</span>
                       </Button>
                     </>
@@ -1720,14 +1719,13 @@ export function Emails() {
                         </>
                       )}
                       <Button
-                        disabled={!canDelete || isBulkDeleting}
+                        disabled={(!canEdit && !canDelete) || isBulkDeleting}
                         size="sm"
-                        variant="destructive"
-                        className="h-auto min-h-7 max-w-full whitespace-normal px-2.5 text-[11px] gap-1 shadow-xs font-medium [&>span]:min-w-0 [&>span]:[overflow-wrap:anywhere]"
+                        className="h-auto min-h-7 max-w-full whitespace-normal px-2.5 text-[11px] gap-1 shadow-sm font-semibold bg-red-600 hover:bg-red-700 text-white dark:bg-red-600 dark:hover:bg-red-700 dark:text-white border-0 [&>span]:min-w-0 [&>span]:[overflow-wrap:anywhere]"
                         onClick={() => setIsBulkDeleteDialogOpen(true)}
                         title="Mover e-mails selecionados para a lixeira"
                       >
-                        <Trash2 className="size-3.5" />
+                        <Trash2 className="size-3.5 text-white" />
                         <span>Excluir ({selectedEmailIds.size})</span>
                       </Button>
                     </>
