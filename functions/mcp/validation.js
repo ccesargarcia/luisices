@@ -50,6 +50,12 @@ function validateObject(value, schema, path = 'arguments') {
   for (const [key, entry] of Object.entries(value)) {
     if (!Object.prototype.hasOwnProperty.call(properties, key)) invalid(`Campo não permitido: ${path}.${key}.`);
     const propSchema = properties[key];
+    // MCP clients in the legacy create_order flow send confirmation flags as strings.
+    // Keep this narrow compatibility while numeric fields remain strictly typed.
+    if (propSchema?.type === 'boolean' && typeof entry === 'string') {
+      if (entry.toLowerCase() === 'true') value[key] = true;
+      else if (entry.toLowerCase() === 'false') value[key] = false;
+    }
     validateValue(value[key], propSchema, `${path}.${key}`);
   }
 }
