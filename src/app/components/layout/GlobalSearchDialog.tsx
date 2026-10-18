@@ -32,6 +32,7 @@ import {
   HelpCircle,
   Globe,
   Search,
+  Code2,
 } from 'lucide-react';
 import { useOrders } from '../../../contexts/OrdersContext';
 import { Order } from '../../types';
@@ -276,6 +277,13 @@ export function GlobalSearchDialog({
           >
             <Settings className="size-4 mr-2" />
             <span>Configurações do Sistema</span>
+          </CommandItem>
+          <CommandItem
+            onSelect={() => handleSelect(() => navigate('/api-docs'))}
+            className="cursor-pointer"
+          >
+            <Code2 className="size-4 mr-2 text-primary" />
+            <span>Documentação da API (Swagger UI & MCP)</span>
           </CommandItem>
           <CommandItem
             onSelect={() => handleSelect(() => navigate('/ajuda'))}

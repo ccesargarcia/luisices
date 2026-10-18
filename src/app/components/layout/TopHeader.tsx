@@ -32,6 +32,7 @@ import {
   Package2,
   Search,
   MoreHorizontal,
+  Code2,
 } from 'lucide-react';
 import { cn } from '../ui/utils';
 
@@ -395,6 +396,12 @@ export function TopHeader({
                 <DropdownMenuItem onClick={() => navigate('/configuracoes')} className="cursor-pointer">
                   <SettingsIcon className="size-4 mr-2" />
                   Configurações
+                </DropdownMenuItem>
+              )}
+              {canAccessSettings && (
+                <DropdownMenuItem onClick={() => navigate('/api-docs')} className="cursor-pointer">
+                  <Code2 className="size-4 mr-2 text-primary" />
+                  Documentação da API (Swagger)
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={() => navigate('/ajuda')} className="cursor-pointer">
