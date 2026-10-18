@@ -161,13 +161,13 @@ export function Customers() {
   // Mapa de pedidos em aberto e total de pedidos por cliente a partir de OrdersContext
   const openOrdersMap = useMemo(() => {
     const map: Record<string, number> = {};
-    relevantOrders.forEach((o) => {
-      if (o.customerId && o.status !== 'completed' && o.status !== 'cancelled') {
-        map[o.customerId] = (map[o.customerId] || 0) + 1;
+    ledgerSales.forEach((sale) => {
+      if (!sale.isDeletedFromOrders && sale.customerId && sale.status !== 'completed' && sale.status !== 'cancelled') {
+        map[sale.customerId] = (map[sale.customerId] || 0) + 1;
       }
     });
     return map;
-  }, [relevantOrders]);
+  }, [ledgerSales]);
 
   const totalOrdersMap = useMemo(() => {
     const map: Record<string, number> = {};
