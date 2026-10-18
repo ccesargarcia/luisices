@@ -31,6 +31,7 @@ import {
   Terminal,
   RefreshCw,
   AlertCircle,
+  AlertTriangle,
   FileCode,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -956,7 +957,20 @@ export function ApiDocs() {
 
   // Determina o token ativo para testes e exemplos
   const activeKeyObject = mcpStatus?.keys?.find((k) => k.keyId === selectedKeyId);
-  const effectiveToken = customToken.trim() || activeKeyObject?.keyPrefix || 'lui_live_SEU_TOKEN_AQUI';
+  const savedRawKey = selectedKeyId
+    ? localStorage.getItem(`mcp_raw_key_${selectedKeyId}`)
+    : (localStorage.getItem('mcp_latest_key_id') === mcpStatus?.keys?.[0]?.keyId
+        ? localStorage.getItem('mcp_latest_raw_key')
+        : null);
+
+  const candidateToken = customToken.trim() || savedRawKey || '';
+  const isFullToken = Boolean(candidateToken && candidateToken.length >= 25 && !candidateToken.includes('...'));
+  const effectiveToken = candidateToken || activeKeyObject?.keyPrefix || '';
+
+  const effectiveTokenRef = useRef(effectiveToken);
+  useEffect(() => {
+    effectiveTokenRef.current = effectiveToken;
+  }, [effectiveToken]);
 
   // Inicializa o Swagger UI dinamicamente garantindo que ambos scripts e preset estejam carregados
   useEffect(() => {
@@ -1020,9 +1034,10 @@ export function ApiDocs() {
           presets,
           layout: 'BaseLayout',
           requestInterceptor: (req: any) => {
-            if (effectiveToken && !req.headers?.Authorization) {
-              req.headers = req.headers || {};
-              req.headers.Authorization = `Bearer ${effectiveToken}`;
+            req.headers = req.headers || {};
+            const activeToken = effectiveTokenRef.current;
+            if (activeToken) {
+              req.headers.Authorization = `Bearer ${activeToken}`;
             }
             return req;
           },
@@ -1264,7 +1279,14 @@ print("Resultado:", response.json())`;
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Usar Chave Cadastrada</Label>
               {mcpStatus?.keys && mcpStatus.keys.length > 0 ? (
-                <Select value={selectedKeyId} onValueChange={(val) => { setSelectedKeyId(val); setCustomToken(''); }}>
+                <Select
+                  value={selectedKeyId}
+                  onValueChange={(val) => {
+                    setSelectedKeyId(val);
+                    const stored = localStorage.getItem(`mcp_raw_key_${val}`);
+                    setCustomToken(stored || '');
+                  }}
+                >
                   <SelectTrigger className="text-xs h-8 sm:h-9 font-mono">
                     <SelectValue placeholder="Selecione uma chave de API" />
                   </SelectTrigger>
@@ -1292,9 +1314,15 @@ print("Resultado:", response.json())`;
               <div className="flex items-center gap-1.5">
                 <Input
                   type="password"
-                  placeholder="lui_live_... ou Bearer token"
+                  placeholder="lui_live_... ou Bearer token de 64 caracteres"
                   value={customToken}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomToken(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    const val = e.target.value;
+                    setCustomToken(val);
+                    if (val.trim().length >= 25 && selectedKeyId) {
+                      localStorage.setItem(`mcp_raw_key_${selectedKeyId}`, val.trim());
+                    }
+                  }}
                   className="text-xs h-8 sm:h-9 font-mono"
                 />
                 <Button
@@ -1321,6 +1349,26 @@ print("Resultado:", response.json())`;
               </div>
             </div>
           </div>
+
+          {/* Banner de Validação de Chave Completa */}
+          {!isFullToken ? (
+            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-500" />
+              <div className="space-y-0.5">
+                <p className="font-semibold text-[11px] sm:text-xs">
+                  Atenção: A chave selecionada exibe apenas o prefixo de identificação (<code>{activeKeyObject?.keyPrefix || 'lui_...'}</code>)
+                </p>
+                <p className="text-[10px] sm:text-[11px] opacity-90 leading-relaxed">
+                  Por motivos de segurança, o banco armazena apenas o hash da chave. Cole sua <strong>chave secreta de 64 caracteres</strong> no campo <em>"Ou Informar Token Manualmente"</em> acima para autorizar as chamadas no Swagger UI. Ela será salva no seu navegador para os próximos acessos.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-700 dark:text-emerald-400">
+              <Check className="size-3.5 shrink-0 text-emerald-500" />
+              <span className="text-[11px] font-medium">Chave secreta completa ativa (<code>{effectiveToken.slice(0, 14)}...</code>) e pronta para execução no Swagger UI.</span>
+            </div>
+          )}
 
           <div className="pt-2 border-t border-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5 overflow-hidden">

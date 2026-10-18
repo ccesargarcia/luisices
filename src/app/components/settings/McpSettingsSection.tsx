@@ -235,6 +235,11 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
       createKeyRequest.current = null;
       setModalOpen(false);
       setCreatedResult(res);
+      if (res?.keyId && res?.rawKey) {
+        localStorage.setItem(`mcp_raw_key_${res.keyId}`, res.rawKey);
+        localStorage.setItem('mcp_latest_raw_key', res.rawKey);
+        localStorage.setItem('mcp_latest_key_id', res.keyId);
+      }
       toast.success('Chave de acesso gerada com sucesso!');
       await fetchStatus(true);
     } catch (err: any) {
