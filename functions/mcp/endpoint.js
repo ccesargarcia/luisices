@@ -443,12 +443,28 @@ const chatGptToolsEndpoint = onRequest(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui.css">
   <style>
-    body { margin: 0; background: #09090b; color: #f4f4f5; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; background: #09090b; color: #f4f4f5; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
     .topbar { display: none !important; }
-    .swagger-ui { filter: invert(88%) hue-rotate(180deg); }
-    .swagger-ui .wrapper { padding: 0 16px; max-width: 1200px; margin: 0 auto; }
-    .swagger-ui .info { margin: 24px 0 16px; }
-    .swagger-ui .info .title { font-size: 26px; }
+    .swagger-ui { color: #f4f4f5; }
+    .swagger-ui .wrapper { padding: 12px 16px; max-width: 1100px; margin: 0 auto; }
+    .swagger-ui .info { margin: 12px 0 16px; padding: 16px; background: #18181b; border: 1px solid #27272a; border-radius: 12px; }
+    .swagger-ui .info .title { font-size: 1.25rem !important; color: #f4f4f5 !important; margin: 0 0 6px !important; }
+    .swagger-ui .info .description { color: #a1a1aa !important; font-size: 0.8125rem !important; line-height: 1.5 !important; }
+    .swagger-ui .scheme-container { background: transparent !important; box-shadow: none !important; padding: 0 0 12px !important; }
+    .swagger-ui .servers label select { background: #18181b !important; color: #f4f4f5 !important; border: 1px solid #27272a !important; border-radius: 8px !important; padding: 6px 10px !important; }
+    .swagger-ui .opblock { border-radius: 12px !important; margin: 0 0 10px 0 !important; background: #18181b !important; border: 1px solid #27272a !important; }
+    .swagger-ui .opblock-summary { padding: 10px 14px !important; }
+    .swagger-ui .opblock-summary-method { border-radius: 6px !important; font-size: 0.75rem !important; font-weight: 700 !important; }
+    .swagger-ui .opblock-summary-path { color: #f4f4f5 !important; font-size: 0.8125rem !important; }
+    .swagger-ui .opblock-summary-description { color: #a1a1aa !important; font-size: 0.75rem !important; }
+    .swagger-ui .opblock-body { background: #18181b !important; color: #f4f4f5 !important; border-top: 1px solid #27272a !important; }
+    .swagger-ui input[type="text"], .swagger-ui textarea, .swagger-ui select { background: #09090b !important; color: #f4f4f5 !important; border: 1px solid #3f3f46 !important; border-radius: 8px !important; }
+    .swagger-ui .btn { border-radius: 8px !important; }
+    .swagger-ui .btn.execute { background: #f4b7b9 !important; color: #18181b !important; font-weight: 700 !important; border: none !important; }
+    .swagger-ui .highlight-code, .swagger-ui pre { background: #09090b !important; color: #f4f4f5 !important; border: 1px solid #27272a !important; border-radius: 8px !important; }
+    .swagger-ui table thead tr th { color: #a1a1aa !important; border-bottom: 1px solid #27272a !important; }
+    .swagger-ui table tbody tr td { border-bottom: 1px solid #27272a !important; color: #f4f4f5 !important; }
+    .swagger-ui svg.arrow { fill: #f4f4f5 !important; }
   </style>
 </head>
 <body>
