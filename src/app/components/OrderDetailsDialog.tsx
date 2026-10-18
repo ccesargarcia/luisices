@@ -85,7 +85,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   const totalPrice = useMemo(() => {
     return editProducts.reduce((sum, p) => {
       const qty = parseFloat(p.quantity) || 0;
-      const unit = parseFloat(p.unitPrice) || 0;
+      const unit = parseFloat(String(p.unitPrice || '').replace(',', '.')) || 0;
       return sum + qty * unit;
     }, 0);
   }, [editProducts]);
@@ -312,7 +312,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
   const handleSaveEdit = async () => {
     setIsSaving(true);
     try {
-      const paidAmt = Number(editData.paidAmount) || 0;
+      const paidAmt = parseFloat(String(editData.paidAmount || '').replace(',', '.')) || 0;
       const price = totalPrice > 0 ? totalPrice : order.price;
       const remainingAmount = price - paidAmt;
 
