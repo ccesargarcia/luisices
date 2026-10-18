@@ -914,7 +914,14 @@ export function ApiDocs() {
     } catch (err: any) {
       console.error('[ApiDocs] Erro ao carregar schema OpenAPI:', err);
       if (!memorySchemaCache) {
-        setError(err?.message || 'Falha ao autenticar acesso à documentação.');
+        const rawMsg = err?.message || err?.code || '';
+        if (rawMsg.includes('not-found') || rawMsg.includes('404')) {
+          setError('Acesso à documentação da API não localizado ou permissão pendente.');
+        } else if (rawMsg.includes('permission-denied')) {
+          setError('Você não possui permissão para acessar a documentação da API. Solicite liberação ao administrador.');
+        } else {
+          setError(rawMsg || 'Falha ao autenticar acesso à documentação.');
+        }
       }
     } finally {
       setLoading(false);
