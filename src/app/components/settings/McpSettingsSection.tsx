@@ -59,7 +59,7 @@ import {
 } from '../../types';
 
 import { useAuth } from '../../../contexts/AuthContext';
-import { clearLegacyMcpRawKeys, removeMcpRawKey, saveMcpRawKey } from '../../utils/mcpRawKeySessionStorage';
+import { migrateLegacyMcpRawKeys, removeMcpRawKey, saveMcpRawKey } from '../../utils/mcpRawKeySessionStorage';
 
 interface McpSettingsSectionProps {
   isAdmin: boolean;
@@ -139,7 +139,7 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
   }, [hasMcpPermission]);
 
   useEffect(() => {
-    clearLegacyMcpRawKeys();
+    migrateLegacyMcpRawKeys();
   }, []);
 
   useEffect(() => {

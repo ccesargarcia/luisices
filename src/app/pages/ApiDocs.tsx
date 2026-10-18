@@ -35,7 +35,7 @@ import {
   FileCode,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { clearLegacyMcpRawKeys, getMcpRawKey, saveMcpRawKey } from '../utils/mcpRawKeySessionStorage';
+import { getMcpRawKey, migrateLegacyMcpRawKeys, normalizeMcpRawKey, saveMcpRawKey } from '../utils/mcpRawKeySessionStorage';
 
 /**
  * Estilos customizados mobile-1st para o Swagger UI integrados ao Design System do Luisices
@@ -902,6 +902,7 @@ export function ApiDocs() {
   const [mcpStatus, setMcpStatus] = useState<McpSettingsStatus | null>(memoryStatusCache);
   const [selectedKeyId, setSelectedKeyId] = useState<string>('');
   const [customToken, setCustomToken] = useState<string>('');
+  const [manualTokenOverride, setManualTokenOverride] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState<'curl' | 'javascript' | 'python'>('curl');
   const [swaggerReady, setSwaggerReady] = useState(false);
@@ -953,7 +954,7 @@ export function ApiDocs() {
   };
 
   useEffect(() => {
-    clearLegacyMcpRawKeys();
+    migrateLegacyMcpRawKeys();
     loadData();
   }, []);
 
@@ -966,8 +967,14 @@ export function ApiDocs() {
         : null);
 
   const candidateToken = customToken.trim() || savedRawKey || '';
-  const isFullToken = Boolean(candidateToken && candidateToken.length >= 25 && !candidateToken.includes('...'));
-  const effectiveToken = candidateToken || activeKeyObject?.keyPrefix || '';
+  const hasManualToken = manualTokenOverride && Boolean(customToken.trim());
+  const normalizedToken = candidateToken ? normalizeMcpRawKey(candidateToken) : null;
+  const isFullToken = Boolean(normalizedToken);
+  const keyPrefix = activeKeyObject?.keyPrefix?.replace(/\.\.\.$/, '');
+  const tokenMatchesSelectedKey = hasManualToken || !activeKeyObject || !normalizedToken || !keyPrefix || normalizedToken.startsWith(keyPrefix);
+  const selectedKeyEnabled = hasManualToken || activeKeyObject?.enabled !== false;
+  const tokenReady = isFullToken && tokenMatchesSelectedKey && selectedKeyEnabled;
+  const effectiveToken = tokenReady ? normalizedToken! : '';
 
   const effectiveTokenRef = useRef(effectiveToken);
   useEffect(() => {
@@ -1038,6 +1045,9 @@ export function ApiDocs() {
           requestInterceptor: (req: any) => {
             req.headers = req.headers || {};
             const activeToken = effectiveTokenRef.current;
+            for (const headerName of Object.keys(req.headers)) {
+              if (headerName.toLowerCase() === 'authorization') delete req.headers[headerName];
+            }
             if (activeToken) {
               req.headers.Authorization = `Bearer ${activeToken}`;
             }
@@ -1285,6 +1295,7 @@ print("Resultado:", response.json())`;
                   value={selectedKeyId}
                   onValueChange={(val) => {
                     setSelectedKeyId(val);
+                    setManualTokenOverride(false);
                     const stored = getMcpRawKey(val);
                     setCustomToken(stored || '');
                   }}
@@ -1294,7 +1305,7 @@ print("Resultado:", response.json())`;
                   </SelectTrigger>
                   <SelectContent>
                     {mcpStatus.keys.map((k) => (
-                      <SelectItem key={k.keyId} value={k.keyId} className="text-xs font-mono">
+                      <SelectItem key={k.keyId} value={k.keyId} disabled={!k.enabled} className="text-xs font-mono">
                         {k.keyName} ({k.keyPrefix}) {k.enabled ? '' : '[Desativada]'}
                       </SelectItem>
                     ))}
@@ -1316,13 +1327,19 @@ print("Resultado:", response.json())`;
               <div className="flex items-center gap-1.5">
                 <Input
                   type="password"
-                  placeholder="lui_live_... ou Bearer token de 64 caracteres"
+                  placeholder="lui_dev_… ou lui_live_… (chave completa)"
                   value={customToken}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                     const val = e.target.value;
                     setCustomToken(val);
-                    if (val.trim().length >= 25 && selectedKeyId) {
-                      saveMcpRawKey(selectedKeyId, val.trim());
+                    setManualTokenOverride(true);
+                    const normalizedKey = normalizeMcpRawKey(val);
+                    const selectedPrefix = activeKeyObject?.keyPrefix?.replace(/\.\.\.$/, '');
+                    if (selectedKeyId) {
+                      if (normalizedKey && (!selectedPrefix || normalizedKey.startsWith(selectedPrefix))) {
+                        saveMcpRawKey(selectedKeyId, normalizedKey);
+                      }
+                      else sessionStorage.removeItem(`mcp_raw_key_${selectedKeyId}`);
                     }
                   }}
                   className="text-xs h-8 sm:h-9 font-mono"
@@ -1331,6 +1348,7 @@ print("Resultado:", response.json())`;
                   size="sm"
                   variant="outline"
                   onClick={() => handleCopyText(effectiveToken, 'token')}
+                  disabled={!tokenReady}
                   className="h-8 sm:h-9 px-2.5 shrink-0 gap-1 text-xs"
                   title="Copiar token"
                 >
@@ -1341,6 +1359,7 @@ print("Resultado:", response.json())`;
                   size="sm"
                   variant="outline"
                   onClick={handleOpenSwaggerAuth}
+                  disabled={!tokenReady}
                   className="h-8 sm:h-9 px-2.5 shrink-0 gap-1.5 text-xs border-primary/40 text-primary hover:bg-primary/10"
                   title="Abrir modal de autorização no Swagger UI"
                 >
@@ -1353,16 +1372,27 @@ print("Resultado:", response.json())`;
           </div>
 
           {/* Banner de Validação de Chave Completa */}
-          {!isFullToken ? (
+          {!tokenReady ? (
             <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-400">
               <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-500" />
               <div className="space-y-0.5">
                 <p className="font-semibold text-[11px] sm:text-xs">
-                  Atenção: A chave selecionada exibe apenas o prefixo de identificação (<code>{activeKeyObject?.keyPrefix || 'lui_...'}</code>)
+                  {!selectedKeyEnabled
+                    ? 'A chave selecionada está desativada.'
+                    : isFullToken && !tokenMatchesSelectedKey
+                      ? 'O token informado não corresponde à chave selecionada.'
+                      : <>Chave secreta completa indisponível{activeKeyObject?.keyPrefix ? <> para <code>{activeKeyObject.keyPrefix}</code></> : null}</>}
                 </p>
                 <p className="text-[10px] sm:text-[11px] opacity-90 leading-relaxed">
-                  Por motivos de segurança, o banco armazena apenas o hash da chave. Cole sua <strong>chave secreta de 64 caracteres</strong> no campo <em>"Ou Informar Token Manualmente"</em> acima para autorizar as chamadas no Swagger UI. Ela será salva no seu navegador para os próximos acessos.
+                  {!selectedKeyEnabled
+                    ? 'Ative a chave antes de executá-la. O Swagger não enviará uma chave desativada.'
+                    : isFullToken && !tokenMatchesSelectedKey
+                      ? 'Selecione a chave correspondente ao token ou limpe a seleção antes de executar.'
+                      : 'O Luisices armazena apenas o hash, então não consegue recuperar a chave completa. Cole a chave secreta correspondente à chave selecionada. Se você não a tem mais, crie uma nova chave e selecione-a; ela será mantida somente nesta aba e removida ao sair da conta.'}
                 </p>
+                <Button size="sm" variant="outline" className="mt-2 h-7 text-[11px]" onClick={() => navigate('/configuracoes')}>
+                  Gerenciar ou criar chave
+                </Button>
               </div>
             </div>
           ) : (
