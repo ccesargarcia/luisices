@@ -32,6 +32,7 @@ test.describe('Checkout público ponta a ponta', () => {
       await addToCart.click();
 
       await expect(page.getByText('Sacola de Encomendas', { exact: true })).toBeVisible();
+      await expect(page.getByRole('complementary', { name: 'Atendimento WhatsApp' })).toHaveCount(0);
       await page.getByRole('button', { name: 'Aumentar quantidade' }).click();
       await page.getByPlaceholder(/Preciso receber até dia/i).fill(CUSTOMER_NOTES);
       await expect(page.getByText('Subtotal Estimado:').locator('..')).toContainText('R$ 74,50');
