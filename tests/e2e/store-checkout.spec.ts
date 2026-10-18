@@ -7,13 +7,13 @@ const PRODUCT_NAME = 'Produto E2E Checkout';
 const CUSTOMER_NOTES = 'Evento de teste: entregar após as 14h';
 
 test.describe('Checkout público ponta a ponta', () => {
-  test('envia o carrinho pela Cloud Function e persiste os dados oficiais no Firestore Emulator', async ({ browser }) => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test('envia o carrinho pela Cloud Function e persiste os dados oficiais no Firestore Emulator', async ({ page }) => {
     expect(process.env.FIRESTORE_EMULATOR_HOST, 'Firestore Emulator deve estar ativo').toBeTruthy();
 
     const adminApp = initializeApp({ projectId: PROJECT_ID }, `checkout-e2e-${Date.now()}`);
     const adminDb = getFirestore(adminApp);
-    const context = await browser.newContext({ storageState: undefined });
-    const page = await context.newPage();
 
     // O checkout abre o WhatsApp fora do sistema; neutralizar apenas essa navegação externa.
     await page.addInitScript(() => {
@@ -77,7 +77,6 @@ test.describe('Checkout público ponta a ponta', () => {
       expect(savedOrder.idempotencyKey).toEqual(expect.any(String));
       expect(savedOrder.payloadHash).toMatch(/^[a-f0-9]{64}$/);
     } finally {
-      await context.close();
       await deleteApp(adminApp);
     }
   });
