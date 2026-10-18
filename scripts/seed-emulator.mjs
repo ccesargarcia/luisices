@@ -98,6 +98,8 @@ async function seed() {
       catalogStoreName: 'Luisices Papelaria',
       catalogStoreTagline: 'Papelaria Personalizada',
       storePublished: true,
+      catalogStoreMode: 'cart',
+      featureFlags: { enableOnlineOrders: true },
       whatsappPhone: '5511999999999',
     });
     console.log('✅ Configurações storeSettings/public criadas no Firestore Emulator');
@@ -114,6 +116,21 @@ async function seed() {
       createdAt: new Date().toISOString(),
     });
     console.log('✅ Produto de teste criado no Firestore Emulator');
+
+    // Fixture determinístico exclusivo do E2E de checkout público ponta a ponta.
+    await db.doc('storeProducts/e2e-public-checkout').set({
+      name: 'Produto E2E Checkout',
+      category: 'Testes',
+      price: 37.25,
+      status: 'active',
+      active: true,
+      isPublic: true,
+      isCustomizable: false,
+      leadTimeDays: 3,
+      userId: uid,
+      createdAt: new Date().toISOString(),
+    });
+    console.log('✅ Produto determinístico para checkout E2E criado no Firestore Emulator');
 
     console.log('🎉 Emulator populado com sucesso e pronto para testes!');
     process.exit(0);
