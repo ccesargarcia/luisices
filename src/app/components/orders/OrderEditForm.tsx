@@ -14,6 +14,7 @@ import { Switch } from '../ui/switch';
 import { TagInput } from '../TagInput';
 import { OrderStatus, PaymentStatus, PaymentMethod, Tag } from '../../types';
 import { Plus, Trash2, Repeat2, X, Save } from 'lucide-react';
+import { parseDecimalMoneyInput } from '../../utils/parseDecimalMoneyInput';
 
 export interface ProductItem {
   name: string;
@@ -73,7 +74,8 @@ export function OrderEditForm({
   isSaving,
 }: OrderEditFormProps) {
   const currentPrice = totalPrice > 0 ? totalPrice : originalPrice;
-  const remainingPrice = currentPrice - (Number(editData.paidAmount) || 0);
+  const paidAmount = parseDecimalMoneyInput(String(editData.paidAmount ?? '')) ?? 0;
+  const remainingPrice = currentPrice - paidAmount;
 
   return (
     <div className="space-y-4">

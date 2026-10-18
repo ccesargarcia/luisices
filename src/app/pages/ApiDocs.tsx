@@ -35,6 +35,7 @@ import {
   FileCode,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { clearLegacyMcpRawKeys, getMcpRawKey, saveMcpRawKey } from '../utils/mcpRawKeySessionStorage';
 
 /**
  * Estilos customizados mobile-1st para o Swagger UI integrados ao Design System do Luisices
@@ -952,15 +953,16 @@ export function ApiDocs() {
   };
 
   useEffect(() => {
+    clearLegacyMcpRawKeys();
     loadData();
   }, []);
 
   // Determina o token ativo para testes e exemplos
   const activeKeyObject = mcpStatus?.keys?.find((k) => k.keyId === selectedKeyId);
   const savedRawKey = selectedKeyId
-    ? localStorage.getItem(`mcp_raw_key_${selectedKeyId}`)
-    : (localStorage.getItem('mcp_latest_key_id') === mcpStatus?.keys?.[0]?.keyId
-        ? localStorage.getItem('mcp_latest_raw_key')
+    ? getMcpRawKey(selectedKeyId)
+    : (sessionStorage.getItem('mcp_latest_key_id') === mcpStatus?.keys?.[0]?.keyId
+        ? sessionStorage.getItem('mcp_latest_raw_key')
         : null);
 
   const candidateToken = customToken.trim() || savedRawKey || '';
@@ -1283,7 +1285,7 @@ print("Resultado:", response.json())`;
                   value={selectedKeyId}
                   onValueChange={(val) => {
                     setSelectedKeyId(val);
-                    const stored = localStorage.getItem(`mcp_raw_key_${val}`);
+                    const stored = getMcpRawKey(val);
                     setCustomToken(stored || '');
                   }}
                 >
@@ -1320,7 +1322,7 @@ print("Resultado:", response.json())`;
                     const val = e.target.value;
                     setCustomToken(val);
                     if (val.trim().length >= 25 && selectedKeyId) {
-                      localStorage.setItem(`mcp_raw_key_${selectedKeyId}`, val.trim());
+                      saveMcpRawKey(selectedKeyId, val.trim());
                     }
                   }}
                   className="text-xs h-8 sm:h-9 font-mono"

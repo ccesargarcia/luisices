@@ -17,6 +17,7 @@ import { firebaseGalleryService } from '../../services/firebaseGalleryService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
 import { toast } from 'sonner';
+import { parseDecimalMoneyInput } from '../utils/parseDecimalMoneyInput';
 import { OrderInfoView } from './orders/OrderInfoView';
 import { OrderEditForm, ProductItem, OrderEditState } from './orders/OrderEditForm';
 import { OrderAttachmentsSection } from './orders/OrderAttachmentsSection';
@@ -85,7 +86,8 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   const totalPrice = useMemo(() => {
     return editProducts.reduce((sum, p) => {
       const qty = parseFloat(p.quantity) || 0;
-      const unit = parseFloat(String(p.unitPrice || '').replace(',', '.')) || 0;
+      const unit = parseDecimalMoneyInput(String(p.unitPrice || ''));
+      if (unit === null) return Number.NaN;
       return sum + qty * unit;
     }, 0);
   }, [editProducts]);
@@ -312,8 +314,21 @@ Equipe ${settings?.businessName || 'Luisices'}`;
   const handleSaveEdit = async () => {
     setIsSaving(true);
     try {
-      const paidAmt = parseFloat(String(editData.paidAmount || '').replace(',', '.')) || 0;
+      const parsedPaidAmount = parseDecimalMoneyInput(String(editData.paidAmount || '0'));
+      if (parsedPaidAmount === null) {
+        toast.error('Informe um valor pago válido, com até duas casas decimais.');
+        return;
+      }
+      if (!Number.isFinite(totalPrice)) {
+        toast.error('Revise os preços dos produtos. Use vírgula ou ponto e até duas casas decimais.');
+        return;
+      }
+      const paidAmt = parsedPaidAmount;
       const price = totalPrice > 0 ? totalPrice : order.price;
+      if (paidAmt > price) {
+        toast.error('O valor pago não pode ser maior que o total do pedido.');
+        return;
+      }
       const remainingAmount = price - paidAmt;
 
       const productName = editProducts
@@ -354,11 +369,14 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           exchangeItems: editData.isExchange
             ? editExchangeItems
                 .filter(i => i.name.trim())
-                .map(i => ({
-                  name: i.name.trim(),
-                  quantity: parseInt(i.quantity) || 1,
-                  value: i.unitPrice ? parseFloat(i.unitPrice) : undefined,
-                } as ExchangeItem))
+                .map(i => {
+                  const value = i.unitPrice ? parseDecimalMoneyInput(i.unitPrice) : null;
+                  return {
+                    name: i.name.trim(),
+                    quantity: parseInt(i.quantity) || 1,
+                    value: value ?? undefined,
+                  } as ExchangeItem;
+                })
             : [],
         },
         order.version
