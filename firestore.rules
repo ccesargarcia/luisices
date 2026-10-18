@@ -225,14 +225,14 @@ service cloud.firestore {
     }
 
     function isValidOrder(data, changed) {
-      return (!('price' in data) || (data.price is number && data.price >= 0 && data.price <= 1000000))
-        && (!('quantity' in data) || (data.quantity is int && data.quantity > 0 && data.quantity <= 10000))
-        && (!('customerName' in data) || (data.customerName is string && data.customerName.matches('[\\s\\S]*[^\\s][\\s\\S]*') && data.customerName.size() <= 200))
-        && (!('productName' in data) || (data.productName is string && data.productName.matches('[\\s\\S]*[^\\s][\\s\\S]*') && data.productName.size() <= 300))
-        && (data.get('customerPhone', null) == null || (data.customerPhone is string && data.customerPhone.size() <= 50))
-        && (data.get('notes', null) == null || (data.notes is string && data.notes.size() <= 1000))
-        && (!('status' in data) || data.status in ['pending', 'in-progress', 'completed', 'cancelled'])
-        && (changed.hasAny(['price', 'payment']) || !('payment' in data) || data.payment == null || (
+      return (!changed.hasAny(['price']) || !('price' in data) || (data.price is number && data.price >= 0 && data.price <= 1000000))
+        && (!changed.hasAny(['quantity']) || !('quantity' in data) || (data.quantity is int && data.quantity > 0 && data.quantity <= 10000))
+        && (!changed.hasAny(['customerName']) || !('customerName' in data) || (data.customerName is string && data.customerName.matches('[\\s\\S]*[^\\s][\\s\\S]*') && data.customerName.size() <= 200))
+        && (!changed.hasAny(['productName']) || !('productName' in data) || (data.productName is string && data.productName.matches('[\\s\\S]*[^\\s][\\s\\S]*') && data.productName.size() <= 300))
+        && (!changed.hasAny(['customerPhone']) || data.get('customerPhone', null) == null || (data.customerPhone is string && data.customerPhone.size() <= 50))
+        && (!changed.hasAny(['notes']) || data.get('notes', null) == null || (data.notes is string && data.notes.size() <= 1000))
+        && (!changed.hasAny(['status']) || !('status' in data) || data.status in ['pending', 'in-progress', 'completed', 'cancelled'])
+        && (!changed.hasAny(['payment']) || !('payment' in data) || data.payment == null || (
           data.payment is map
           && (!('totalAmount' in data.payment) || (data.payment.totalAmount is number && data.payment.totalAmount >= 0))
           && (!('paidAmount' in data.payment) || (data.payment.paidAmount is number && data.payment.paidAmount >= 0))
