@@ -798,19 +798,7 @@ const getMcpAuditLogs = onCall({ cors: true, maxInstances: 5 }, async (request) 
  * Retorna a especificação OpenAPI 3.0.3 autenticada para a documentação Swagger do painel.
  */
 const getMcpOpenApiSchema = onCall({ cors: true, maxInstances: 5 }, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Autenticação necessária para consultar a documentação da API.');
-  }
-
-  const callerUid = request.auth.uid;
-  const db = getFirestore();
-  const userSnap = await db.collection('users').doc(callerUid).get();
-  const userData = userSnap.exists ? userSnap.data() : {};
-  const isAdmin = userData.role === 'admin' || request.auth.token?.admin === true;
-
-  if (!isAdmin && userData.permissions?.mcpAccess === false) {
-    throw new HttpsError('permission-denied', 'Você não possui permissão para acessar a documentação da API.');
-  }
+  const { profile: userData, isAdmin } = await assertActiveUserWithMcp(request);
 
   const environment = getCurrentEnvironment();
   const apiDomain = environment === 'prod' ? 'api.luisices.com.br' : 'api.dev.luisices.com.br';
@@ -818,7 +806,8 @@ const getMcpOpenApiSchema = onCall({ cors: true, maxInstances: 5 }, async (reque
 
   let allowedScopes = null;
   if (!isAdmin) {
-    allowedScopes = await getEffectiveUserScopes(db, callerUid);
+    const allSupportedScopeIds = Object.values(MCP_SCOPES).map((s) => s.id);
+    allowedScopes = getEffectiveUserScopes(allSupportedScopeIds, userData);
   }
 
   const schema = buildOpenApiSchema(endpointBaseUrl, allowedScopes);
