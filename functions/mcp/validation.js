@@ -50,24 +50,6 @@ function validateObject(value, schema, path = 'arguments') {
   for (const [key, entry] of Object.entries(value)) {
     if (!Object.prototype.hasOwnProperty.call(properties, key)) invalid(`Campo não permitido: ${path}.${key}.`);
     const propSchema = properties[key];
-    if (propSchema) {
-      if (propSchema.type === 'boolean' && typeof entry === 'string') {
-        if (entry.toLowerCase() === 'true') value[key] = true;
-        else if (entry.toLowerCase() === 'false') value[key] = false;
-      } else if (propSchema.type === 'integer' && typeof entry === 'string' && entry.trim() !== '') {
-        const parsed = Number(entry);
-        if (Number.isInteger(parsed)) value[key] = parsed;
-      } else if (propSchema.type === 'number' && typeof entry === 'string' && entry.trim() !== '') {
-        const parsed = Number(entry);
-        if (!isNaN(parsed)) value[key] = parsed;
-      } else if ((propSchema.type === 'array' || propSchema.type === 'object') && typeof entry === 'string' && entry.trim() !== '') {
-        try {
-          value[key] = JSON.parse(entry);
-        } catch (_e) {
-          // Mantém string caso não seja JSON válido
-        }
-      }
-    }
     validateValue(value[key], propSchema, `${path}.${key}`);
   }
 }
