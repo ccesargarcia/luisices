@@ -331,10 +331,15 @@ const SWAGGER_THEME_CSS = `
     font-family: monospace !important;
   }
 
-  /* Inputs, Textareas e Selects */
+  /* Inputs, Textareas e Selects para formulários de parâmetros e body */
   .swagger-ui-custom-theme .swagger-ui input[type="text"],
+  .swagger-ui-custom-theme .swagger-ui input[type="number"],
+  .swagger-ui-custom-theme .swagger-ui input[type="password"],
+  .swagger-ui-custom-theme .swagger-ui input[type="email"],
+  .swagger-ui-custom-theme .swagger-ui input[type="date"],
   .swagger-ui-custom-theme .swagger-ui textarea,
-  .swagger-ui-custom-theme .swagger-ui select {
+  .swagger-ui-custom-theme .swagger-ui select,
+  .swagger-ui-custom-theme .swagger-ui .body-param-content-type select {
     background: var(--background) !important;
     color: var(--foreground) !important;
     border: 1px solid var(--border) !important;
@@ -344,13 +349,30 @@ const SWAGGER_THEME_CSS = `
     width: 100% !important;
     max-width: 100% !important;
     box-shadow: none !important;
+    margin-top: 0.25rem !important;
+    margin-bottom: 0.25rem !important;
   }
 
   .swagger-ui-custom-theme .swagger-ui input[type="text"]:focus,
+  .swagger-ui-custom-theme .swagger-ui input[type="number"]:focus,
+  .swagger-ui-custom-theme .swagger-ui input[type="password"]:focus,
+  .swagger-ui-custom-theme .swagger-ui input[type="email"]:focus,
+  .swagger-ui-custom-theme .swagger-ui input[type="date"]:focus,
   .swagger-ui-custom-theme .swagger-ui textarea:focus,
   .swagger-ui-custom-theme .swagger-ui select:focus {
     border-color: var(--ring) !important;
     outline: none !important;
+    ring: 2px solid var(--ring) !important;
+  }
+
+  .swagger-ui-custom-theme .swagger-ui .body-param-content-type {
+    margin-bottom: 0.5rem !important;
+  }
+
+  .swagger-ui-custom-theme .swagger-ui .body-param-content-type label {
+    font-size: 0.7rem !important;
+    font-weight: 600 !important;
+    color: var(--muted-foreground) !important;
   }
 
   /* Botões Swagger */
@@ -991,6 +1013,10 @@ export function ApiDocs() {
           spec: cleanSpec,
           domNode: swaggerContainerRef.current,
           deepLinking: true,
+          tryItOutEnabled: true,
+          defaultModelExpandDepth: 3,
+          displayRequestDuration: true,
+          filter: true,
           presets,
           layout: 'BaseLayout',
           requestInterceptor: (req: any) => {
