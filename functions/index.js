@@ -83,6 +83,7 @@ module.exports = {
   setUserMcpEligibility: mcpFunctions.setUserMcpEligibility,
   revokeMcpSession: mcpFunctions.revokeMcpSession,
   getMcpAuditLogs: mcpFunctions.getMcpAuditLogs,
+  getMcpOpenApiSchema: mcpFunctions.getMcpOpenApiSchema,
   chatGptToolsEndpoint: mcpFunctions.chatGptToolsEndpoint,
   galleryMedia: mediaFunctions.galleryMedia,
 };

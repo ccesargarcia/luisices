@@ -292,6 +292,9 @@ const chatGptToolsEndpoint = onRequest(
         rawPath === 'authorize' ||
         rawPath === 'favicon.ico' ||
         rawPath === 'health' ||
+        rawPath === 'docs' ||
+        rawPath === 'swagger' ||
+        rawPath === 'api-docs' ||
         rawPath === ''
       )) ||
       (req.method === 'POST' && (
@@ -389,6 +392,96 @@ const chatGptToolsEndpoint = onRequest(
       res.setHeader('Cache-Control', 'private, no-store, max-age=0');
       res.setHeader('Vary', 'Authorization');
       return res.status(200).json(schema);
+    }
+
+    // ─── ROTA 1.05: Documentação Swagger UI Autenticada (/docs, /swagger, /api-docs) ───
+    if (req.method === 'GET' && (rawPath === 'docs' || rawPath === 'swagger' || rawPath === 'api-docs')) {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        res.setHeader('WWW-Authenticate', 'Bearer realm="Luisices API Docs"');
+        return res.status(401).send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>401 - Autenticação Necessária | Luisices API</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; background: #09090b; color: #f4f4f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+    .card { background: #18181b; border: 1px solid #27272a; border-radius: 16px; padding: 32px; max-width: 520px; text-align: center; box-shadow: 0 10px 30px -5px rgba(0,0,0,0.6); }
+    h1 { color: #f87171; font-size: 20px; margin-top: 0; }
+    p { color: #a1a1aa; font-size: 14px; line-height: 1.6; }
+    code { background: #09090b; color: #38bdf8; padding: 4px 8px; border-radius: 6px; font-family: monospace; font-size: 13px; border: 1px solid #27272a; }
+    a { color: #38bdf8; text-decoration: none; font-weight: 600; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🔒 Documentação Privada da API</h1>
+    <p>A documentação Swagger da API do Luisices é restrita e exige autenticação prévia.</p>
+    <p>Envie o cabeçalho <code>Authorization: Bearer &lt;sua-chave-api&gt;</code> ou acesse a versão interativa no painel administrativo:</p>
+    <p><a href="https://${isProd ? 'luisices.com.br' : 'dev.luisices.com.br'}/api-docs">👉 Acessar Swagger UI no Painel Luisices</a></p>
+  </div>
+</body>
+</html>`);
+      }
+
+      const authResult = await validateMcpRequest(req, db);
+      if (!authResult.success) {
+        return res.status(authResult.status || 401).send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><title>401 - Chave Inválida</title><style>body{font-family:sans-serif;background:#09090b;color:#f4f4f5;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}.card{background:#18181b;border:1px solid #ef4444;border-radius:12px;padding:24px;text-align:center;}</style></head>
+<body><div class="card"><h2 style="color:#ef4444;">Chave Não Autorizada</h2><p>${escapeHtml(authResult.message || 'Chave de API inválida ou revogada.')}</p></div></body></html>`);
+      }
+
+      const cleanToken = authHeader.replace(/^Bearer\s+/i, '');
+      const swaggerHtml = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Documentação Swagger - Luisices API</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui.css">
+  <style>
+    body { margin: 0; background: #09090b; color: #f4f4f5; font-family: system-ui, -apple-system, sans-serif; }
+    .topbar { display: none !important; }
+    .swagger-ui { filter: invert(88%) hue-rotate(180deg); }
+    .swagger-ui .wrapper { padding: 0 16px; max-width: 1200px; margin: 0 auto; }
+    .swagger-ui .info { margin: 24px 0 16px; }
+    .swagger-ui .info .title { font-size: 26px; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui-bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.onload = function() {
+      const ui = SwaggerUIBundle({
+        url: "${baseUrl}/openapi.json",
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        layout: "BaseLayout",
+        requestInterceptor: (req) => {
+          if (!req.headers.Authorization) {
+            req.headers.Authorization = "Bearer ${cleanToken}";
+          }
+          return req;
+        }
+      });
+      window.ui = ui;
+      ui.preauthorizeApiKey('bearerAuth', '${cleanToken}');
+    };
+  </script>
+</body>
+</html>`;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.status(200).send(swaggerHtml);
     }
 
     // ─── ROTA 1.1: Manifesto de Plugin OpenAI (/.well-known/ai-plugin.json, /ai-plugin.json, plugin.json) ──

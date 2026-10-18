@@ -133,6 +133,9 @@ const handler = {
       targetPath === '/openapi.json' ||
       targetPath === '/openapi.yaml' ||
       targetPath === '/schema' ||
+      targetPath === '/docs' ||
+      targetPath === '/swagger' ||
+      targetPath === '/api-docs' ||
       targetPath.startsWith('/tools/') ||
       targetPath === '/health' ||
       targetPath === '/mcp' ||

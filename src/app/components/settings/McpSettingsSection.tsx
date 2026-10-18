@@ -45,6 +45,7 @@ import {
   CheckCircle2,
   History,
   XCircle,
+  BookOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { firebaseMcpService } from '../../../services/firebaseMcpService';
@@ -551,6 +552,32 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
               >
                 {copiedPluginUrl ? <Check className="size-4 text-emerald-500" /> : <Copy className="size-4" />}
                 <span>{copiedPluginUrl ? 'Copiado' : 'Copiar'}</span>
+              </Button>
+            </div>
+
+            {/* Box 4: Documentação Interativa da API (Swagger UI) */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-primary/30 bg-primary/5 backdrop-blur-xs gap-3">
+              <div className="space-y-0.5 min-w-0 pr-3">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-foreground">Documentação Swagger UI da API</p>
+                  <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30 font-medium">
+                    Autenticada
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Explore e teste todas as rotas e ferramentas da API em tempo real com sua chave Bearer.
+                </p>
+              </div>
+              <Button
+                variant="default"
+                size="sm"
+                asChild
+                className="shrink-0 gap-1.5 text-xs font-semibold shadow-xs"
+              >
+                <Link to="/api-docs">
+                  <BookOpen className="size-3.5" />
+                  <span>Abrir Swagger UI</span>
+                </Link>
               </Button>
             </div>
           </div>

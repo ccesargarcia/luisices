@@ -10,6 +10,7 @@ const { assertActiveSession } = require('../common/helpers');
 const { COLLECTIONS, MCP_SCOPES, DEFAULT_RATE_LIMIT_PER_HOUR } = require('./constants');
 const { generateApiKey, invalidateKeyCache, clearMcpAuthCache } = require('./auth');
 const { consumeSharedRateLimit, getEffectiveUserScopes } = require('./oauth');
+const { buildOpenApiSchema } = require('./openapi');
 const crypto = require('crypto');
 
 function getPayload(request, allowedFields) {
@@ -793,6 +794,44 @@ const getMcpAuditLogs = onCall({ cors: true, maxInstances: 5 }, async (request) 
   };
 });
 
+/**
+ * Retorna a especificação OpenAPI 3.0.3 autenticada para a documentação Swagger do painel.
+ */
+const getMcpOpenApiSchema = onCall({ cors: true, maxInstances: 5 }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Autenticação necessária para consultar a documentação da API.');
+  }
+
+  const callerUid = request.auth.uid;
+  const db = getFirestore();
+  const userSnap = await db.collection('users').doc(callerUid).get();
+  const userData = userSnap.exists ? userSnap.data() : {};
+  const isAdmin = userData.role === 'admin' || request.auth.token?.admin === true;
+
+  if (!isAdmin && userData.permissions?.mcpAccess === false) {
+    throw new HttpsError('permission-denied', 'Você não possui permissão para acessar a documentação da API.');
+  }
+
+  const environment = getCurrentEnvironment();
+  const apiDomain = environment === 'prod' ? 'api.luisices.com.br' : 'api.dev.luisices.com.br';
+  const endpointBaseUrl = `https://${apiDomain}/chatGptToolsEndpoint`;
+
+  let allowedScopes = null;
+  if (!isAdmin) {
+    allowedScopes = await getEffectiveUserScopes(db, callerUid);
+  }
+
+  const schema = buildOpenApiSchema(endpointBaseUrl, allowedScopes);
+
+  return {
+    success: true,
+    environment,
+    endpointBaseUrl,
+    openapiUrl: `${endpointBaseUrl}/openapi.json`,
+    schema,
+  };
+});
+
 module.exports = {
   getMcpSettingsStatus,
   createMcpApiKey,
@@ -803,4 +842,5 @@ module.exports = {
   setUserMcpEligibility,
   revokeMcpSession,
   getMcpAuditLogs,
+  getMcpOpenApiSchema,
 };
