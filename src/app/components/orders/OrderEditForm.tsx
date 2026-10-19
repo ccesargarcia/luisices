@@ -457,9 +457,15 @@ export function OrderEditForm({
             <Label htmlFor="paymentStatus">Status do Pagamento *</Label>
             <Select
               value={editData.paymentStatus}
-              onValueChange={(value: any) =>
-                onEditDataChange({ ...editData, paymentStatus: value })
-              }
+              onValueChange={(value: PaymentStatus) => {
+                const total = totalPrice > 0 ? totalPrice : originalPrice;
+                onEditDataChange({
+                  ...editData,
+                  paymentStatus: value,
+                  ...(value === 'paid' ? { paidAmount: total } : {}),
+                  ...(value === 'pending' ? { paidAmount: 0 } : {}),
+                });
+              }}
             >
               <SelectTrigger id="paymentStatus">
                 <SelectValue />
