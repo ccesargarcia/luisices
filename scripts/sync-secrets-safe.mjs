@@ -30,6 +30,7 @@ const SECRETS_TO_SYNC = [
   { name: 'RESEND_WEBHOOK_SECRET', value: process.env.RESEND_WEBHOOK_SECRET },
   { name: 'EVOLUTION_API_KEY', value: process.env.EVOLUTION_API_KEY },
   { name: 'GEMINI_API_KEY', value: process.env.GEMINI_API_KEY },
+  { name: 'SUPERFRETE_SANDBOX_TOKEN', value: process.env.SUPERFRETE_SANDBOX_TOKEN },
 ];
 
 async function main() {
