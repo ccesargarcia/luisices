@@ -56,6 +56,8 @@ module.exports = {
   // ─── Pedidos e Vitrine Pública ─────────────────────────────────────────────
   syncAllOrdersToAiView: orderFunctions.syncAllOrdersToAiView,
   submitPublicCatalogOrder: orderFunctions.submitPublicCatalogOrder,
+  calculateSuperfreteShipping: orderFunctions.calculateSuperfreteShipping,
+  createSuperfreteLabel: orderFunctions.createSuperfreteLabel,
 
   // ─── Inteligência Artificial (Google Gemini) ────────────────────────────────
   aiAgentChat: aiFunctions.aiAgentChat,

@@ -43,6 +43,9 @@ import {
 } from 'lucide-react';
 import { EMPTY_ITEM, defaultDelivery, calcTotal } from './quoteHelpers';
 import { toast } from 'sonner';
+import { useUserSettings } from '../../../hooks/useUserSettings';
+import { SuperfreteCalculatorDialog } from '../shipping/SuperfreteCalculatorDialog';
+import { isSuperfreteDevEnvironment } from '../../../lib/firebase';
 
 interface FormState {
   customerName: string;
@@ -117,8 +120,10 @@ export function QuoteFormDialog({
 }: QuoteFormDialogProps) {
   const { user } = useAuth();
   const { activePartnerId } = useOrders();
+  const { settings } = useUserSettings();
   const [form, setForm] = useState<FormState>(editing ? formFromQuote(editing) : emptyForm());
   const [saving, setSaving] = useState(false);
+  const [superfreteCalcOpen, setSuperfreteCalcOpen] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
@@ -620,11 +625,27 @@ export function QuoteFormDialog({
               </Button>
             </div>
             {form.deliveryType === 'delivery' && (
-              <Input
-                placeholder="Endereço de entrega"
-                value={form.deliveryAddress}
-                onChange={(e) => setForm({ ...form, deliveryAddress: e.target.value })}
-              />
+              <div className="space-y-2">
+                <Input
+                  placeholder="Endereço de entrega (ou CEP)"
+                  value={form.deliveryAddress}
+                  onChange={(e) => setForm({ ...form, deliveryAddress: e.target.value })}
+                />
+                {isSuperfreteDevEnvironment && settings?.superfreteEnabled && (
+                  <div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSuperfreteCalcOpen(true)}
+                      className="gap-1.5 text-xs text-primary border-primary/30 hover:bg-primary/5"
+                    >
+                      <Truck className="size-3.5" />
+                      Calcular Frete (SuperFrete)
+                    </Button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -703,6 +724,37 @@ export function QuoteFormDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {isSuperfreteDevEnvironment && settings?.superfreteEnabled && (
+        <SuperfreteCalculatorDialog
+          isOpen={superfreteCalcOpen}
+          onClose={() => setSuperfreteCalcOpen(false)}
+          destinationZipCode={
+            customers.find((c) => c.id === form.customerId)?.zipCode || form.deliveryAddress
+          }
+          customerName={form.customerName}
+          onSelectService={(svc) => {
+            const freightName = `Frete (${svc.name})`;
+            const existingIdx = form.items.findIndex((it) =>
+              it.name.toLowerCase().startsWith('frete (')
+            );
+            if (existingIdx >= 0) {
+              const updated = [...form.items];
+              updated[existingIdx] = { name: freightName, quantity: 1, unitPrice: svc.price };
+              setForm((f) => ({ ...f, items: updated }));
+            } else {
+              setForm((f) => ({
+                ...f,
+                items: [
+                  ...f.items.filter((it) => it.name.trim() !== ''),
+                  { name: freightName, quantity: 1, unitPrice: svc.price },
+                ],
+              }));
+            }
+            toast.success(`${svc.name} (${formatCurrency(svc.price)}) adicionado ao orçamento!`);
+          }}
+        />
+      )}
     </Dialog>
   );
 }

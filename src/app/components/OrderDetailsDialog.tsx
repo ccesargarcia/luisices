@@ -93,15 +93,16 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
     }, 0);
   }, [editProducts]);
 
-  const customerEmail = useMemo(() => {
-    if (!order) return '';
-    const match = customers.find(
+  const matchedCustomer = useMemo(() => {
+    if (!order) return null;
+    return customers.find(
       (c) =>
         (order.customerId && c.id === order.customerId) ||
         (c.name && order.customerName && c.name.toLowerCase() === order.customerName.toLowerCase())
-    );
-    return match?.email || '';
+    ) || null;
   }, [order, customers]);
+
+  const customerEmail = matchedCustomer?.email || '';
 
   const orderEmailBody = useMemo(() => {
     if (!order) return '';
@@ -601,7 +602,11 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           /* Modo de Visualização */
           <>
             <DialogBody className="p-4 sm:p-6 space-y-6">
-              <OrderInfoView order={effectiveOrder || order} />
+              <OrderInfoView
+                order={effectiveOrder || order}
+                customer={matchedCustomer}
+                onOrderUpdated={onOrderUpdated}
+              />
 
               <div className="rounded-lg border p-4 space-y-2">
                 <label className="text-sm font-medium">Responsável pela execução</label>

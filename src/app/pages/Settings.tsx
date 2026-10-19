@@ -44,7 +44,10 @@ import { WhatsAppTemplateSection } from '../components/settings/WhatsAppTemplate
 import { AiSettingsSection } from '../components/settings/AiSettingsSection';
 import { AlexaSettingsSection } from '../components/settings/AlexaSettingsSection';
 import { McpSettingsSection } from '../components/settings/McpSettingsSection';
+import { SuperfreteSettingsSection } from '../components/settings/SuperfreteSettingsSection';
 import { DangerZoneSection } from '../components/settings/DangerZoneSection';
+import type { UserSettings } from '../../services/firebaseSettingsService';
+import { isSuperfreteDevEnvironment } from '../../lib/firebase';
 
 export function Settings() {
   const navigate = useNavigate();
@@ -131,6 +134,7 @@ export function Settings() {
   const [whatsappGreeting, setWhatsappGreeting] = useState('');
   const [whatsappSignature, setWhatsappSignature] = useState('');
   const [savingWhatsappTemplate, setSavingWhatsappTemplate] = useState(false);
+  const [savingSuperfrete, setSavingSuperfrete] = useState(false);
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo>({
     businessName: settings?.businessName || '',
     businessPhone: settings?.businessPhone || '',
@@ -382,6 +386,19 @@ export function Settings() {
       toast.error('Erro ao salvar preferências de cabeçalho e rodapé');
     } finally {
       setSavingHeaderFooter(false);
+    }
+  };
+
+  const handleSuperfreteSave = async (superfreteData: Partial<UserSettings>) => {
+    setSavingSuperfrete(true);
+    try {
+      await updateSettings(superfreteData);
+      toast.success('Configurações da SuperFrete salvas com sucesso!');
+    } catch (error) {
+      console.error('Erro ao salvar SuperFrete:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar configurações da SuperFrete');
+    } finally {
+      setSavingSuperfrete(false);
     }
   };
 
@@ -691,6 +708,16 @@ export function Settings() {
 
           {/* Assistentes Externos & ChatGPT (MCP) */}
           <McpSettingsSection isAdmin={isAdmin} />
+
+          {/* Integração SuperFrete (Uso interno do ateliê) */}
+          {isSuperfreteDevEnvironment && (
+            <SuperfreteSettingsSection
+              isAdmin={isAdmin}
+              settings={settings}
+              onSave={handleSuperfreteSave}
+              saving={savingSuperfrete}
+            />
+          )}
         </TabsContent>
 
         {/* ─── ABA 5: AVANÇADO & SEGURANÇA ───────────────────────── */}
