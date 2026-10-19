@@ -86,7 +86,7 @@ test.describe('Pedidos - CRUD', () => {
     await expect(detailsDialog.getByText('Detalhes do Pedido')).toBeVisible();
     await detailsDialog.getByRole('button', { name: 'Editar' }).click();
 
-    const unitPriceInputs = detailsDialog.getByPlaceholder('0,00');
+    const unitPriceInputs = detailsDialog.locator('input[placeholder="0,00"]:not(#paidAmount)');
     await expect(unitPriceInputs).toHaveCount(2);
     await expect(unitPriceInputs.nth(0)).toHaveValue('100');
     await expect(unitPriceInputs.nth(1)).toHaveValue('100');
