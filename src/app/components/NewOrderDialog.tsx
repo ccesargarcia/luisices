@@ -454,9 +454,19 @@ export function NewOrderDialog({
       setLocalAttachments([]);
       setSelectedGalleryIds([]);
       setGalleryBrowserSearch('');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao criar pedido:', err);
-      toast.error('Não foi possível confirmar o salvamento. Confira a lista de pedidos antes de tentar novamente.');
+      const rawMsg = String(err?.message || err?.code || '').toLowerCase();
+
+      if (rawMsg.includes('offline') || rawMsg.includes('network') || rawMsg.includes('unavailable') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+        toast.error('Sem conexão com a internet. Verifique sua rede antes de tentar salvar o pedido.');
+      } else if (rawMsg.includes('permission') || rawMsg.includes('unauthorized')) {
+        toast.error('Você não possui permissão para criar novos pedidos. Solicite liberação ao administrador.');
+      } else if (rawMsg.includes('storage') || rawMsg.includes('upload') || rawMsg.includes('file')) {
+        toast.error('Não foi possível enviar os arquivos anexados. Verifique o tamanho do arquivo e tente novamente.');
+      } else {
+        toast.error('Não foi possível confirmar o salvamento. Confira a lista de pedidos antes de tentar novamente.');
+      }
     } finally {
       setLoading(false);
     }
