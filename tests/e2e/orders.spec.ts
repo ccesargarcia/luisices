@@ -102,7 +102,7 @@ test.describe('Pedidos - CRUD', () => {
 
     await expect(detailsDialog.getByText('Valor Total').locator('..')).toContainText('300,00');
     await expect(detailsDialog.getByText('Valor Pago:').locator('..')).toContainText('300,00');
-    await expect(detailsDialog.getByText('Concluído', { exact: true })).toBeVisible();
+    await expect(detailsDialog.locator('[data-slot="badge"]').filter({ hasText: 'Concluído' })).toBeVisible();
 
     const deleteButton = detailsDialog.getByRole('button', { name: /Excluir Pedido/i });
     if (await deleteButton.isVisible().catch(() => false)) {
