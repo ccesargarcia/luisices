@@ -69,6 +69,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   const [assigning, setAssigning] = useState(false);
 
   const [editProducts, setEditProducts] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
+  const [editProductsBaseline, setEditProductsBaseline] = useState<ProductItem[]>([]);
   const [editTags, setEditTags] = useState<Tag[]>([]);
   const [editExchangeItems, setEditExchangeItems] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
   const [editData, setEditData] = useState<OrderEditState>({
@@ -86,13 +87,23 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   });
 
   const totalPrice = useMemo(() => {
+    // Pedidos antigos guardam somente o total. Os preços unitários reconstruídos
+    // são arredondados para centavos; enquanto o usuário não altera preço ou
+    // quantidade, mantenha o total histórico exato.
+    const pricingUnchanged = editProducts.length === editProductsBaseline.length &&
+      editProducts.every((product, index) =>
+        product.quantity === editProductsBaseline[index]?.quantity &&
+        product.unitPrice === editProductsBaseline[index]?.unitPrice
+      );
+    if (pricingUnchanged && order) return order.price;
+
     return editProducts.reduce((sum, p) => {
       const qty = parseFloat(p.quantity) || 0;
       const unit = parseDecimalMoneyInput(String(p.unitPrice || ''));
       if (unit === null) return Number.NaN;
       return sum + qty * unit;
     }, 0);
-  }, [editProducts]);
+  }, [editProducts, editProductsBaseline, order?.id, order?.price]);
 
   const matchedCustomer = useMemo(() => {
     if (!order) return null;
@@ -260,6 +271,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       order.price,
     );
     setEditProducts(parsedProducts.length > 0 ? parsedProducts : [{ name: '', quantity: '1', unitPrice: '' }]);
+    setEditProductsBaseline(parsedProducts);
     setEditTags(order.tags ? [...order.tags] : []);
     setEditExchangeItems(
       order.exchangeItems && order.exchangeItems.length > 0

@@ -43,6 +43,57 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('Pedidos - CRUD', () => {
+  test('formata preço unitário em reais e preserva total histórico com 120 itens', async ({ page }) => {
+    test.setTimeout(90000);
+    const timestamp = Date.now();
+    const customerName = `Cliente BRL E2E ${timestamp}`;
+    const productName = `Etiquetas BRL E2E ${timestamp}`;
+    const deliveryDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const csv = [
+      'Cliente,Telefone,Produto,Quantidade,Preço,Entrega,Status,Status Pagamento,Valor Pago,Forma de pagamento',
+      `"${customerName}","11999999999","${productName}",120,"92,19",${deliveryDate},"Em Produção","Parcial","30,00","Pix"`,
+    ].join('\n');
+
+    await page.getByRole('button', { name: /Importar Excel/i }).click();
+    const importDialog = page.getByRole('dialog').filter({ hasText: 'Importar Pedidos via Excel' });
+    await expect(importDialog).toBeVisible();
+    await importDialog.locator('input[type="file"]').setInputFiles({
+      name: `order-unit-price-${timestamp}.csv`,
+      mimeType: 'text/csv',
+      buffer: Buffer.from(csv, 'utf8'),
+    });
+    await expect(importDialog.getByText('Válidos: 1')).toBeVisible({ timeout: 15000 });
+    await importDialog.getByRole('button', { name: 'Importar 1 pedido' }).click();
+    await expect(importDialog.getByText('Importação Concluída!')).toBeVisible({ timeout: 30000 });
+    await importDialog.getByRole('button', { name: 'Concluir' }).click();
+
+    const search = page.getByPlaceholder(/Buscar por cliente, produto ou telefone/i);
+    await search.fill(customerName);
+    const orderCard = page.locator('.cursor-pointer').filter({ hasText: customerName }).first();
+    await expect(orderCard).toBeVisible({ timeout: 20000 });
+    await orderCard.click();
+
+    const detailsDialog = page.getByRole('dialog').first();
+    await expect(detailsDialog.getByText('Detalhes do Pedido')).toBeVisible();
+    await detailsDialog.getByRole('button', { name: 'Editar' }).click();
+    await expect(detailsDialog.locator('input[placeholder="0,00"]:not(#paidAmount)')).toHaveValue('0,77');
+    await expect(detailsDialog.getByText('Total: R$ 92,19')).toBeVisible();
+    await expect(detailsDialog.locator('#paidAmount')).toHaveValue('30');
+    await detailsDialog.getByRole('button', { name: 'Salvar Alterações' }).click();
+
+    await expect(detailsDialog.getByText('Valor Total').locator('..')).toContainText('92,19');
+    await expect(detailsDialog.getByText('Valor Pago:').locator('..')).toContainText('30,00');
+
+    const deleteButton = detailsDialog.getByRole('button', { name: /Excluir Pedido/i });
+    if (await deleteButton.isVisible().catch(() => false)) {
+      await deleteButton.click();
+      const alertDialog = page.getByRole('alertdialog');
+      await expect(alertDialog).toBeVisible();
+      await alertDialog.getByRole('button', { name: /Excluir/i }).click();
+      await expect(alertDialog).not.toBeVisible();
+    }
+  });
+
   test('preserva total e pagamento ao editar pedido com vários itens e concluir', async ({ page }) => {
     test.setTimeout(90000);
     const timestamp = Date.now();
@@ -88,8 +139,8 @@ test.describe('Pedidos - CRUD', () => {
 
     const unitPriceInputs = detailsDialog.locator('input[placeholder="0,00"]:not(#paidAmount)');
     await expect(unitPriceInputs).toHaveCount(2);
-    await expect(unitPriceInputs.nth(0)).toHaveValue('100');
-    await expect(unitPriceInputs.nth(1)).toHaveValue('100');
+    await expect(unitPriceInputs.nth(0)).toHaveValue('100,00');
+    await expect(unitPriceInputs.nth(1)).toHaveValue('100,00');
     await expect(detailsDialog.getByText('Total: R$ 300,00')).toBeVisible();
     await expect(detailsDialog.locator('#paidAmount')).toHaveValue('50');
 
