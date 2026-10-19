@@ -20,10 +20,14 @@ export function reconstructOrderProducts(
   });
   const quantity = rows.reduce((sum, row) => sum + row.quantity, 0) || orderQuantity || 1;
   const unitPrice = orderPrice / quantity;
+  const displayUnitPrice = unitPrice.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
   return rows.map(row => ({
     name: row.name,
     quantity: String(row.quantity),
-    unitPrice: String(unitPrice),
+    unitPrice: displayUnitPrice,
   }));
 }

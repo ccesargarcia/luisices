@@ -126,8 +126,8 @@ export function OrderEditForm({
             </div>
             <div className="space-y-2">
               {editProducts.map((item, idx) => {
-                const sub =
-                  (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
+                const sub = (parseFloat(item.quantity) || 0) *
+                  (parseDecimalMoneyInput(item.unitPrice) ?? 0);
                 return (
                   <div key={idx} className="space-y-0.5">
                     <div className="grid grid-cols-[1fr_48px_84px_32px] gap-2 items-center">
@@ -288,8 +288,8 @@ export function OrderEditForm({
                 </div>
                 <div className="space-y-2">
                   {editExchangeItems.map((item, idx) => {
-                    const sub =
-                      (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
+                    const sub = (parseFloat(item.quantity) || 0) *
+                      (parseDecimalMoneyInput(item.unitPrice) ?? 0);
                     return (
                       <div key={idx} className="space-y-0.5">
                         <div className="grid grid-cols-[1fr_48px_84px_32px] gap-2 items-center">
@@ -357,7 +357,8 @@ export function OrderEditForm({
                 {(() => {
                   const total = editExchangeItems.reduce(
                     (s, p) =>
-                      s + (parseFloat(p.quantity) || 0) * (parseFloat(p.unitPrice) || 0),
+                      s + (parseFloat(p.quantity) || 0) *
+                        (parseDecimalMoneyInput(p.unitPrice) ?? 0),
                     0
                   );
                   return total > 0 ? (
