@@ -67,13 +67,54 @@ async function run() {
   const records = await cfRequest(`/zones/${zone.id}/dns_records?per_page=100`);
   console.log(`Total de registros: ${records.length}\n`);
 
-  // 3. Ajustar DKIM do Firebase (Remover Proxy / Nuvem Cinza)
-  console.log('--- 1. Ajustando Registros DKIM (Email Deliverability) ---');
+  // 3. Configurar Apontamento DNS para WireGuard VPN (vpn.luisices.com.br)
+  console.log('--- 1. Configurando Registro DNS da VPN WireGuard (vpn.luisices.com.br) ---');
+  const VPN_IP = process.env.VPN_SERVER_IP || '35.209.209.91';
+  const vpnRecordName = 'vpn.luisices.com.br';
+  const vpnRecord = records.find(
+    (r) => r.name === vpnRecordName && (r.type === 'A' || r.type === 'CNAME')
+  );
+
+  if (!vpnRecord) {
+    process.stdout.write(`• Criando registro A: ${vpnRecordName} -> ${VPN_IP} (⚪ DNS Only)... `);
+    await cfRequest(`/zones/${zone.id}/dns_records`, {
+      method: 'POST',
+      body: JSON.stringify({
+        type: 'A',
+        name: 'vpn',
+        content: VPN_IP,
+        ttl: 1, // Auto
+        proxied: false, // DNS Only obrigatorio para trafego WireGuard UDP 51820
+        comment: 'WireGuard VPN Server GCP Always Free',
+      }),
+    });
+    console.log('✅ Criado com sucesso!');
+  } else if (vpnRecord.content !== VPN_IP || vpnRecord.proxied !== false) {
+    process.stdout.write(`• Atualizando ${vpnRecordName} para ${VPN_IP} (⚪ DNS Only)... `);
+    await cfRequest(`/zones/${zone.id}/dns_records/${vpnRecord.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        type: 'A',
+        name: 'vpn',
+        content: VPN_IP,
+        ttl: 1,
+        proxied: false,
+        comment: 'WireGuard VPN Server GCP Always Free',
+      }),
+    });
+    console.log('✅ Atualizado com sucesso!');
+  } else {
+    console.log(`• ${vpnRecordName} já está configurado para ${VPN_IP} (⚪ DNS Only).`);
+  }
+
+  // 4. Ajustar DKIM do Firebase (Remover Proxy / Nuvem Cinza)
+  console.log('\n--- 2. Ajustando Registros DKIM (Email Deliverability) ---');
   const dkimRecords = records.filter(
     (r) =>
       r.name.startsWith('firebase1._domainkey') ||
       r.name.startsWith('firebase2._domainkey')
   );
+
 
   for (const dkim of dkimRecords) {
     if (dkim.proxied) {

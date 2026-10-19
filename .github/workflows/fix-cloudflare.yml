@@ -1,7 +1,12 @@
-name: Cloudflare - Aplicar Ajustes de Conformidade
+name: Cloudflare - Aplicar Ajustes de Conformidade (Incluindo VPN DNS)
 
 on:
   workflow_dispatch:
+    inputs:
+      vpn_ip:
+        description: 'IP público do Servidor WireGuard VPN (padrão: 35.209.209.91)'
+        required: false
+        default: '35.209.209.91'
 
 permissions:
   contents: read
@@ -28,9 +33,11 @@ jobs:
       - name: Executar Ajustes Automáticos
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VPN_SERVER_IP: ${{ inputs.vpn_ip || '35.209.209.91' }}
         run: npm run cloudflare:fix
 
       - name: Auditar Novo Status
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npm run cloudflare:status
+
