@@ -18,6 +18,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
 import { toast } from 'sonner';
 import { parseDecimalMoneyInput } from '../utils/parseDecimalMoneyInput';
+import { reconstructOrderProducts } from '../utils/reconstructOrderProducts';
 import { OrderInfoView } from './orders/OrderInfoView';
 import { OrderEditForm, ProductItem, OrderEditState } from './orders/OrderEditForm';
 import { OrderAttachmentsSection } from './orders/OrderAttachmentsSection';
@@ -253,19 +254,11 @@ Equipe ${settings?.businessName || 'Luisices'}`;
   if (!order) return null;
 
   const resetEditData = () => {
-    const parsedProducts: ProductItem[] = order.productName
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean)
-      .map((s, _i, arr) => {
-        const match = s.match(/^(.+?)\s*\((\d+)x\)$/);
-        const qty = match ? parseInt(match[2]) : order.quantity;
-        const name = match ? match[1].trim() : s;
-        const unitPrice = arr.length === 1
-          ? String(order.price / (order.quantity || 1))
-          : '';
-        return { name, quantity: String(qty), unitPrice };
-      });
+    const parsedProducts: ProductItem[] = reconstructOrderProducts(
+      order.productName,
+      order.quantity,
+      order.price,
+    );
     setEditProducts(parsedProducts.length > 0 ? parsedProducts : [{ name: '', quantity: '1', unitPrice: '' }]);
     setEditTags(order.tags ? [...order.tags] : []);
     setEditExchangeItems(
