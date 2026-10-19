@@ -10,7 +10,6 @@ import { setUserAnalytics } from '../services/analyticsService';
 import { toast } from 'sonner';
 import { usePresence } from '../hooks/usePresence';
 import { repairClaimsIfNeeded } from '../services/claimsRepairService';
-import { clearMcpRawKeys } from '../app/utils/mcpRawKeySessionStorage';
 
 interface AuthContextType {
   user: User | null;
@@ -87,7 +86,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       });
       sessionStorage.removeItem('luisices_admin_selected_users');
-      clearMcpRawKeys();
     } catch (_) {}
     await firebaseAuthService.logout().catch(() => {});
     setUser(null);
@@ -180,7 +178,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Heartbeat periódico a cada 5 minutos para manter IP e lastActiveAt atualizados
           heartbeatTimer = setInterval(syncDeviceSession, 5 * 60 * 1000);
           
-          let deviceWasRegistered = false;
+          let initialCheckCompleted = false;
+          let deviceWasConfirmedInDb = false;
+
           const snapUnsub = onSnapshot(doc(db, 'userProfiles', u.uid, 'devices', deviceId), (snap) => {
             if (snap.exists()) {
               const data = snap.data();
@@ -193,16 +193,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 }
                 return;
               }
-              deviceWasRegistered = true;
+              deviceWasConfirmedInDb = true;
+              initialCheckCompleted = true;
             } else {
-              // Se já estava registrado nesta sessão ativa e sumiu do Firestore, a sessão foi revogada remotamente.
-              if (deviceWasRegistered && !isLoggingInRef.current) {
+              // Só encerra a sessão se o dispositivo já estava previamente confirmado no Firestore e foi deletado ativamente por revogação
+              if (deviceWasConfirmedInDb && !isLoggingInRef.current) {
                 toast.error('Esta sessão foi revogada remotamente.');
                 localStorage.removeItem('luisices_device_id');
                 localStorage.removeItem('luisices_device_last_reg');
                 handleLogout(true, u.uid);
-              } else {
-                deviceWasRegistered = true;
+              } else if (!initialCheckCompleted) {
+                initialCheckCompleted = true;
                 syncDeviceSession();
               }
             }
