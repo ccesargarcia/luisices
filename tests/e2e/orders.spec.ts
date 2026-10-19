@@ -43,6 +43,77 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('Pedidos - CRUD', () => {
+  test('preserva total e pagamento ao editar pedido com vários itens e concluir', async ({ page }) => {
+    test.setTimeout(90000);
+    const timestamp = Date.now();
+    const customerName = `Cliente Edição Multi E2E ${timestamp}`;
+    const customerPhone = `11988${String(Math.floor(100000 + Math.random() * 900000))}`;
+    const itemOne = `Caderno E2E ${timestamp}`;
+    const itemTwo = `Adesivo E2E ${timestamp}`;
+
+    await page.getByRole('button', { name: /Novo Pedido/i }).click();
+    const createDialog = page.getByRole('dialog').first();
+    await expect(createDialog).toBeVisible();
+
+    await createDialog.locator('button[role="combobox"]').first().click();
+    await page.getByRole('option').filter({ hasText: /Novo Cliente/i }).click();
+    await createDialog.locator('#customerName').fill(customerName);
+    await createDialog.locator('#customerPhone').fill(customerPhone);
+    await createDialog.getByPlaceholder('Produto 1').fill(itemOne);
+    await createDialog.locator('input[type="number"]').nth(0).fill('2');
+    await createDialog.getByPlaceholder('0,00').first().fill('100');
+    await createDialog.getByRole('button', { name: /Adicionar item/i }).click();
+    await createDialog.getByPlaceholder('Produto 2').fill(itemTwo);
+    await createDialog.locator('input[type="number"]').nth(2).fill('1');
+    await createDialog.getByPlaceholder('0,00').nth(1).fill('100');
+
+    const deliveryDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    await createDialog.locator('#deliveryDate').fill(deliveryDate);
+    await createDialog.locator('#paymentStatus').click();
+    await page.getByRole('option', { name: 'Parcial' }).click();
+    await createDialog.locator('#paidAmount').fill('50');
+    await createDialog.locator('button[type="submit"]').click();
+    await expect(createDialog).not.toBeVisible({ timeout: 20000 });
+
+    const search = page.getByPlaceholder(/Buscar por cliente, produto ou telefone/i);
+    await search.fill(customerName);
+    const orderCard = page.getByTestId('order-card').filter({ hasText: customerName }).first()
+      .or(page.locator('.cursor-pointer').filter({ hasText: customerName }).first());
+    await expect(orderCard).toBeVisible({ timeout: 20000 });
+    await orderCard.click();
+
+    const detailsDialog = page.getByRole('dialog').first();
+    await expect(detailsDialog.getByText('Detalhes do Pedido')).toBeVisible();
+    await detailsDialog.getByRole('button', { name: 'Editar' }).click();
+
+    const unitPriceInputs = detailsDialog.getByPlaceholder('0,00');
+    await expect(unitPriceInputs).toHaveCount(2);
+    await expect(unitPriceInputs.nth(0)).toHaveValue('100');
+    await expect(unitPriceInputs.nth(1)).toHaveValue('100');
+    await expect(detailsDialog.getByText('Total: R$ 300,00')).toBeVisible();
+    await expect(detailsDialog.locator('#paidAmount')).toHaveValue('50');
+
+    await detailsDialog.locator('#editStatus').click();
+    await page.getByRole('option', { name: 'Concluído' }).click();
+    await detailsDialog.locator('#paymentStatus').click();
+    await page.getByRole('option', { name: 'Pago' }).click();
+    await expect(detailsDialog.locator('#paidAmount')).toHaveValue('300');
+    await detailsDialog.getByRole('button', { name: 'Salvar Alterações' }).click();
+
+    await expect(detailsDialog.getByText('Valor Total').locator('..')).toContainText('300,00');
+    await expect(detailsDialog.getByText('Valor Pago:').locator('..')).toContainText('300,00');
+    await expect(detailsDialog.getByText('Concluído', { exact: true })).toBeVisible();
+
+    const deleteButton = detailsDialog.getByRole('button', { name: /Excluir Pedido/i });
+    if (await deleteButton.isVisible().catch(() => false)) {
+      await deleteButton.click();
+      const alertDialog = page.getByRole('alertdialog');
+      await expect(alertDialog).toBeVisible();
+      await alertDialog.getByRole('button', { name: /Excluir/i }).click();
+      await expect(alertDialog).not.toBeVisible();
+    }
+  });
+
   test('importa pedido com 20 etiquetas, atualiza preço e etiqueta e mantém os dados após recarga', async ({ page }) => {
     test.setTimeout(90000);
     const timestamp = Date.now();
