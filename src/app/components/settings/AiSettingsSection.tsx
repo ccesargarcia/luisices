@@ -95,8 +95,6 @@ const FALLBACK_MODELS: AiModelQuotaItem[] = [
 ];
 
 export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
-  if (!isAdmin) return null;
-
   const [usage, setUsage] = useState<AiUsageData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -235,6 +233,8 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
   };
 
   const modelsList = usage?.models && usage.models.length > 0 ? usage.models : FALLBACK_MODELS;
+
+  if (!isAdmin) return null;
 
   return (
     <Card className="border-amber-500/20 bg-linear-to-b from-card to-amber-500/5 shadow-xs">

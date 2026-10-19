@@ -8,6 +8,7 @@ const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
 const EVOLUTION_API_KEY = defineSecret('EVOLUTION_API_KEY');
 const RESEND_WEBHOOK_SECRET = defineSecret('RESEND_WEBHOOK_SECRET');
 const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
+const SUPERFRETE_SANDBOX_TOKEN = defineSecret('SUPERFRETE_SANDBOX_TOKEN');
 const { ORIGIN_SECRET } = require('../originProtection');
 
 module.exports = {
@@ -15,5 +16,6 @@ module.exports = {
   EVOLUTION_API_KEY,
   RESEND_WEBHOOK_SECRET,
   GEMINI_API_KEY,
+  SUPERFRETE_SANDBOX_TOKEN,
   ORIGIN_SECRET,
 };

@@ -35,6 +35,11 @@ const firebaseConfig = {
   databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || `https://${import.meta.env.VITE_FIREBASE_PROJECT_ID || 'demo-luisices'}-default-rtdb.firebaseio.com`,
 };
 
+// A SuperFrete integration uses the sandbox credential and is available only
+// in the development Firebase project (or a local emulator).
+export const isSuperfreteDevEnvironment =
+  firebaseConfig.projectId === 'luisices-dev' || import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true';
+
 // Inicializar Firebase
 const app = initializeApp(firebaseConfig);
 

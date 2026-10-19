@@ -277,9 +277,12 @@ async function handleSubmitPublicCatalogOrder(request, dependencies = {}) {
 }
 
 const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, handleSubmitPublicCatalogOrder);
+const { calculateSuperfreteShipping, createSuperfreteLabel } = require('./superfrete');
 
 module.exports = {
   syncAllOrdersToAiView,
   submitPublicCatalogOrder,
   handleSubmitPublicCatalogOrder,
+  calculateSuperfreteShipping,
+  createSuperfreteLabel,
 };

@@ -260,6 +260,16 @@ export interface UserSettings {
   storeUnpublishMessage?: string;            // Mensagem personalizada exibida quando a loja está despublicada
   featureFlags?: Record<string, boolean>;    // Feature toggles genéricos (ex: enableOnlineOrders, enableDarkMode, enableCoupons)
 
+  // Integração SuperFrete (Uso interno do ateliê)
+  superfreteEnabled?: boolean;
+  superfreteSenderDocument?: string;
+  superfreteDefaultPackage?: {
+    weight: number;
+    height: number;
+    width: number;
+    length: number;
+  };
+
   // Metadata
   updatedAt: Date;
 }

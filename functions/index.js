@@ -88,3 +88,10 @@ module.exports = {
   galleryMedia: mediaFunctions.galleryMedia,
 };
 
+// Keep sandbox-only SuperFrete endpoints out of production deployments.
+// Firebase CLI sets GCLOUD_PROJECT during function discovery/deployment.
+if (process.env.GCLOUD_PROJECT === 'luisices-dev' || process.env.FUNCTIONS_EMULATOR === 'true') {
+  module.exports.calculateSuperfreteShipping = orderFunctions.calculateSuperfreteShipping;
+  module.exports.createSuperfreteLabel = orderFunctions.createSuperfreteLabel;
+}
+

@@ -18,6 +18,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
 import { toast } from 'sonner';
 import { parseDecimalMoneyInput } from '../utils/parseDecimalMoneyInput';
+import { reconstructOrderProducts } from '../utils/reconstructOrderProducts';
 import { OrderInfoView } from './orders/OrderInfoView';
 import { OrderEditForm, ProductItem, OrderEditState } from './orders/OrderEditForm';
 import { OrderAttachmentsSection } from './orders/OrderAttachmentsSection';
@@ -93,15 +94,16 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
     }, 0);
   }, [editProducts]);
 
-  const customerEmail = useMemo(() => {
-    if (!order) return '';
-    const match = customers.find(
+  const matchedCustomer = useMemo(() => {
+    if (!order) return null;
+    return customers.find(
       (c) =>
         (order.customerId && c.id === order.customerId) ||
         (c.name && order.customerName && c.name.toLowerCase() === order.customerName.toLowerCase())
-    );
-    return match?.email || '';
+    ) || null;
   }, [order, customers]);
+
+  const customerEmail = matchedCustomer?.email || '';
 
   const orderEmailBody = useMemo(() => {
     if (!order) return '';
@@ -252,19 +254,11 @@ Equipe ${settings?.businessName || 'Luisices'}`;
   if (!order) return null;
 
   const resetEditData = () => {
-    const parsedProducts: ProductItem[] = order.productName
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean)
-      .map((s, _i, arr) => {
-        const match = s.match(/^(.+?)\s*\((\d+)x\)$/);
-        const qty = match ? parseInt(match[2]) : order.quantity;
-        const name = match ? match[1].trim() : s;
-        const unitPrice = arr.length === 1
-          ? String(order.price / (order.quantity || 1))
-          : '';
-        return { name, quantity: String(qty), unitPrice };
-      });
+    const parsedProducts: ProductItem[] = reconstructOrderProducts(
+      order.productName,
+      order.quantity,
+      order.price,
+    );
     setEditProducts(parsedProducts.length > 0 ? parsedProducts : [{ name: '', quantity: '1', unitPrice: '' }]);
     setEditTags(order.tags ? [...order.tags] : []);
     setEditExchangeItems(
@@ -601,7 +595,11 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           /* Modo de Visualização */
           <>
             <DialogBody className="p-4 sm:p-6 space-y-6">
-              <OrderInfoView order={effectiveOrder || order} />
+              <OrderInfoView
+                order={effectiveOrder || order}
+                customer={matchedCustomer}
+                onOrderUpdated={onOrderUpdated}
+              />
 
               <div className="rounded-lg border p-4 space-y-2">
                 <label className="text-sm font-medium">Responsável pela execução</label>

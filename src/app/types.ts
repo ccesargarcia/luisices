@@ -114,6 +114,15 @@ export interface Order {
   idempotencyKey?: string;
   requiresFinancialApproval?: boolean;
   financialWarning?: string | null;
+  // Integração Logística / SuperFrete (opcional)
+  shippingTagId?: string | null;
+  shippingStatus?: 'pending' | 'released' | 'posted' | 'delivered' | 'canceled' | string | null;
+  shippingTrackingNumber?: string | null;
+  shippingLabelUrl?: string | null;
+  shippingServiceId?: number | string | null;
+  shippingServiceName?: string | null;
+  shippingCost?: number | null;
+  shippingUpdatedAt?: string | null;
 }
 
 

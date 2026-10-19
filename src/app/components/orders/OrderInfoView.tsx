@@ -1,5 +1,4 @@
-import React from 'react';
-import { Order } from '../../types';
+import { Order, Customer } from '../../types';
 import { Badge } from '../ui/badge';
 import {
   Calendar,
@@ -19,12 +18,15 @@ import { formatDate } from '../../utils/date';
 import { formatCurrency } from '../../utils/currency';
 import { getTextColor } from '../../utils/tagColors';
 import { useOrders } from '../../../contexts/OrdersContext';
+import { OrderShippingSection } from './OrderShippingSection';
 
 interface OrderInfoViewProps {
   order: Order;
+  customer?: Customer | null;
+  onOrderUpdated?: (order: Order) => void;
 }
 
-export function OrderInfoView({ order }: OrderInfoViewProps) {
+export function OrderInfoView({ order, customer, onOrderUpdated }: OrderInfoViewProps) {
   const { teamMembers } = useOrders();
   const createdByDisplay = (order.createdByName && order.createdByName !== 'Usuário proprietário')
     ? order.createdByName
@@ -278,6 +280,9 @@ export function OrderInfoView({ order }: OrderInfoViewProps) {
           </div>
         </div>
       )}
+
+      {/* Seção Logística / SuperFrete (Ativada opcionalmente pelo Admin) */}
+      <OrderShippingSection order={order} customer={customer} onOrderUpdated={onOrderUpdated} />
     </>
   );
 }

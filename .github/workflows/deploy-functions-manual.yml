@@ -20,7 +20,7 @@ on:
           - 'all'
           - 'alexaWebhook,approveAlexaPairing,setAlexaPermission,revokeAlexaBinding,toggleGlobalAlexaIntegration,getAlexaIntegrationStatus,approveAlexaDraft,cancelAlexaDraft'
           - 'sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,markWhatsAppChatRead,ensureWhatsAppConversation'
-          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,syncAllOrdersToAiView,submitPublicCatalogOrder,galleryMedia'
+          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,syncAllOrdersToAiView,submitPublicCatalogOrder,calculateSuperfreteShipping,createSuperfreteLabel,galleryMedia'
           - 'cleanupEmailDrafts,resendReceivingWebhook,sendCustomEmail,getEmailUsage'
           - 'updateUser,recordUserPasswordChange,completeUserInvitation,createUserInvitation,createUser,getUserAccountMetadata,deleteUser,revokeAllSessions,repairUserClaims,registerDeviceSession,revokeDeviceSession,sendAdminPasswordReset,sendPasswordResetEmail,sendVerificationEmail,validateUserInvitation'
           - 'getMcpSettingsStatus,createMcpApiKey,toggleMcpApiKey,revokeMcpApiKey,toggleGlobalMcp,setUserMcpEligibility,chatGptToolsEndpoint'
@@ -31,6 +31,8 @@ on:
           - 'evolutionWhatsAppWebhook'
           - 'cleanupEmailDrafts'
           - 'submitPublicCatalogOrder'
+          - 'calculateSuperfreteShipping'
+          - 'createSuperfreteLabel'
           - 'galleryMedia'
       deploy_rules_and_indexes:
         description: 'Publicar Firestore Rules e Indexes? (Já publicado no deploy de Hosting)'
@@ -89,6 +91,8 @@ jobs:
           RESEND_WEBHOOK_SECRET: ${{ secrets.DEV_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.DEV_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.dev_gemini || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
+          SUPERFRETE_SANDBOX_TOKEN: ${{ secrets.SUPERFRETE_SANDBOX_TOKEN }}
+          GCLOUD_PROJECT: luisices-dev
         run: |
           trap 'rm -f functions/.env.luisices-dev' EXIT
           if [ -n "$SENTRY_DSN" ]; then
@@ -113,6 +117,12 @@ jobs:
             if [ -n "$GEMINI_API_KEY" ]; then
               firebase functions:secrets:set GEMINI_API_KEY --project luisices-dev --data-file "$HOME/gemini_api_key.txt" --non-interactive --force || true
             fi
+            if [ -z "$SUPERFRETE_SANDBOX_TOKEN" ]; then
+              echo "❌ SUPERFRETE_SANDBOX_TOKEN não configurada nos GitHub Actions Secrets."
+              exit 1
+            fi
+            printf '%s' "$SUPERFRETE_SANDBOX_TOKEN" > "$HOME/superfrete_sandbox_token.txt"
+            firebase functions:secrets:set SUPERFRETE_SANDBOX_TOKEN --project luisices-dev --data-file "$HOME/superfrete_sandbox_token.txt" --non-interactive --force
             if [ -n "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" ]; then
               echo "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" > "$HOME/alexa_hmac.txt"
               firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
@@ -173,7 +183,7 @@ jobs:
               echo "📦 1/5: WhatsApp..."
               firebase deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project luisices-dev --non-interactive --force
               echo "📦 2/5: IA e Pedidos..."
-              firebase deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder,functions:galleryMedia" --project luisices-dev --non-interactive --force
+              firebase deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia" --project luisices-dev --non-interactive --force
               echo "📦 3/5: E-mails..."
               firebase deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project luisices-dev --non-interactive --force
               echo "📦 4/5: Alexa..."
@@ -194,6 +204,7 @@ jobs:
         if: steps.env.outputs.target == 'prod'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.PROD_FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GCLOUD_PROJECT: papelaria-dashboard
           SENTRY_DSN: ${{ secrets.PROD_FUNCTIONS_SENTRY_DSN || secrets.PROD_SENTRY_DSN || secrets.PROD_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}
           RESEND_API_KEY: ${{ secrets.PROD_RESEND_API_KEY || secrets.RESEND_API_KEY }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.PROD_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
@@ -335,6 +346,12 @@ jobs:
 
           # Determina quais funções publicar via seleção
           INPUT_FN="${{ inputs.functions_target }}"
+          case "$INPUT_FN" in
+            *calculateSuperfreteShipping*|*createSuperfreteLabel*)
+              echo "❌ A integração SuperFrete Sandbox só pode ser publicada no ambiente dev."
+              exit 1
+              ;;
+          esac
           if [ "${{ inputs.update_secrets }}" = "true" ] && [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ]; then
             echo "🔐 Secrets serão atualizados; publicando todas as funções para que nenhuma continue usando uma versão antiga."
             INPUT_FN="all"

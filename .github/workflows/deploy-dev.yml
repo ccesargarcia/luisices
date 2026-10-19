@@ -465,9 +465,15 @@ jobs:
           RESEND_WEBHOOK_SECRET: ${{ secrets.DEV_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.DEV_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.dev_gemini || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
+          SUPERFRETE_SANDBOX_TOKEN: ${{ secrets.SUPERFRETE_SANDBOX_TOKEN }}
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
+
+          if [ -z "$SUPERFRETE_SANDBOX_TOKEN" ]; then
+            echo "❌ SUPERFRETE_SANDBOX_TOKEN não configurada nos GitHub Actions Secrets."
+            exit 1
+          fi
 
           echo "🔒 Sincronizando segredos no Google Secret Manager de forma idempotente..."
           node scripts/sync-secrets-safe.mjs --project=luisices-dev
@@ -477,6 +483,7 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
           SENTRY_DSN: ${{ secrets.DEV_FUNCTIONS_SENTRY_DSN || secrets.DEV_SENTRY_DSN || secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN || secrets.SENTRY_DSN }}
+          GCLOUD_PROJECT: luisices-dev
         run: |
           trap 'rm -f functions/.env.luisices-dev' EXIT
           if [ -n "$SENTRY_DSN" ]; then
@@ -488,7 +495,7 @@ jobs:
           if ! npx --yes firebase-tools@15.32.1 deploy --only functions --project luisices-dev --non-interactive; then
             echo "⚠️ Deploy em lote geral atingiu limite de concorrência. Executando deploy particionado por módulos..."
             npx --yes firebase-tools@15.32.1 deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project luisices-dev --non-interactive
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder,functions:galleryMedia" --project luisices-dev --non-interactive
+            npx --yes firebase-tools@15.32.1 deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia" --project luisices-dev --non-interactive
             npx --yes firebase-tools@15.32.1 deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project luisices-dev --non-interactive
             npx --yes firebase-tools@15.32.1 deploy --only "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook" --project luisices-dev --non-interactive
             npx --yes firebase-tools@15.32.1 deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession" --project luisices-dev --non-interactive
