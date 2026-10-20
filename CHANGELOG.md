@@ -9,13 +9,22 @@ O registro começou em 12/10/2026 com as entregas recentes verificadas em produ�
 ### Adicionado
 
 - Suíte de compatibilidade do backend com o Admin SDK real em emuladores locais, incluindo operações entre serviços, contratos das Functions e respostas HTTP; execução manual disponível no GitHub Actions.
+- Suporte a arquivo de segredos locais do emulador (`functions/.secret.local.example`) para inicialização limpa do Functions Emulator sem dependência externa do Google Cloud Secret Manager.
 
 ### Segurança
 
+- Otimização das regras de validação do Firestore (`firestore.rules`) para suportar pedidos com até 20 etiquetas sem ultrapassar o limite estrito de 1.000 nós CEL da Google Cloud, com verificação de itens estruturados, imutabilidade de campos críticos e concorrência estrita via `version`.
+- Isolamento do secret `SUPERFRETE_SANDBOX_TOKEN` exclusivamente ao ambiente de desenvolvimento (`luisices-dev`) e emuladores, blindando o pipeline de deploy de produção contra erros de chaves ausentes.
 - Migração do backend para Firebase Admin 14.5.0 e Firebase Functions 7.4.0, mantendo Node 22 e os contratos de dados, autorização e triggers, com validação nos emuladores.
-
 - Atualizações das dependências de processamento de requisições, transporte de dados e imagens, com testes de compatibilidade em Node 22.
 - Atualização de `proxy-addr` de 2.0.7 para 2.0.8 no backend, com testes de compatibilidade do processamento de endereços de rede.
+
+### Corrigido
+
+- Fallback resiliente nos workflows de publicação de regras (`deploy-dev.yml` e `deploy.yml`) para publicação de Firestore e Storage mesmo caso as regras de Realtime Database encontrem indisponibilidade de instância.
+- Correção de conformidade RFC 8259 em `database.rules.json`, eliminando comentários incompatíveis com o verificador de sintaxe da CLI do Firebase.
+- Detecção e fallback seguro para ambientes sem DOM/Canvas no otimizador de imagens client-side (`src/app/utils/imageOptimizer.ts`), prevenindo falhas de `Image is not defined` durante a execução de testes em Node.js/Vitest.
+- Mock de paridade para `getDocsFromServer` e `getDocFromServer` em testes unitários (`tests/unit/users-and-invites.test.ts`).
 
 ### Removido
 
