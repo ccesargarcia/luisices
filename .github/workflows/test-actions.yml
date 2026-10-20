@@ -154,8 +154,8 @@ jobs:
             echo '⚡ Executando testes críticos e de segurança...'
             npx playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts tests/e2e/security.spec.ts --project=chromium --reporter=github,list,html
           elif [ \"\$INPUT_TARGET\" = 'order-integrity' ]; then
-            echo '🧾 Executando E2E de preço, pagamento e conclusão de pedidos...'
-            npx playwright test tests/e2e/orders.spec.ts --grep 'formata preço unitário|preserva total e pagamento' --project=chromium --reporter=github,list,html
+            echo '🧾 Executando E2E de preço, etiquetas, pagamento e conclusão de pedidos...'
+            npx playwright test tests/e2e/orders.spec.ts --grep 'formata preço unitário|preserva total e pagamento|importa pedido com 20 etiquetas' --project=chromium --reporter=github,list,html
           elif [ -n \"\$INPUT_TARGET\" ] && [ \"\$INPUT_TARGET\" != 'all' ]; then
             echo \"🎯 Executando target específico: \$INPUT_TARGET...\"
             npx playwright test tests/e2e/\${INPUT_TARGET}.spec.ts --project=chromium --reporter=github,list,html

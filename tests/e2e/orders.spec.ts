@@ -170,7 +170,7 @@ test.describe('Pedidos - CRUD', () => {
     }
   });
 
-  test('importa pedido com 20 etiquetas, atualiza preço e etiqueta e mantém os dados após recarga', async ({ page }) => {
+  test('importa pedido com 20 etiquetas, atualiza preço e etiqueta e mantém os dados após recarga', async ({ page }, testInfo) => {
     test.setTimeout(90000);
     const timestamp = Date.now();
     const customerName = `Cliente Import E2E ${timestamp}`;
@@ -215,14 +215,53 @@ test.describe('Pedidos - CRUD', () => {
     await expect(detailsDialog.getByText('Total: R$ 130,50', { exact: true })).toBeVisible();
 
     const tagInput = detailsDialog.getByRole('textbox', { name: 'Adicionar tag' });
-    await tagInput.press('Backspace');
+    const removeTagButtons = detailsDialog.getByRole('button', { name: /^Remover etiqueta / });
+    await expect(removeTagButtons).toHaveCount(20);
+    await tagInput.fill(`Etiqueta extra E2E ${timestamp}`);
+    await tagInput.press('Enter');
+    await expect(removeTagButtons).toHaveCount(20);
+    await expect(detailsDialog.getByText('Limite de 20 etiquetas atingido. Remova uma para adicionar outra.')).toBeVisible();
+
+    const lastOriginalTag = tagNames[tagNames.length - 1];
+    await detailsDialog.getByRole('button', { name: `Remover etiqueta ${lastOriginalTag}` }).click();
+    await expect(removeTagButtons).toHaveCount(19);
     await tagInput.fill(revisedTag);
     await tagInput.press('Enter');
-    await detailsDialog.getByRole('button', { name: 'Salvar Alterações' }).click();
+    await expect(removeTagButtons).toHaveCount(20);
+    await expect(detailsDialog.getByRole('button', { name: `Remover etiqueta ${revisedTag.toLowerCase()}` })).toBeVisible();
+    const saveButton = detailsDialog.getByRole('button', { name: 'Salvar Alterações' });
+    const browserErrors: string[] = [];
+    page.on('console', message => {
+      if (message.type() === 'error') browserErrors.push(message.text());
+    });
+    page.on('pageerror', error => browserErrors.push(error.message));
+    await saveButton.click();
 
     // A etiqueta também fica visível no formulário. Aguarde o retorno ao modo
     // de leitura para garantir que a gravação terminou antes de validar os dados.
-    await expect(detailsDialog.getByRole('button', { name: 'Editar' })).toBeVisible({ timeout: 15000 });
+    const editButton = detailsDialog.getByRole('button', { name: 'Editar' });
+    try {
+      await expect(editButton).toBeVisible({ timeout: 15000 });
+    } catch (error) {
+      const diagnostics = {
+        editButtonCount: await editButton.count().catch(() => -1),
+        saveButtonText: await saveButton.textContent().catch(() => null),
+        tagCount: await removeTagButtons.count().catch(() => -1),
+        tagNames: await removeTagButtons
+          .evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label')))
+          .catch(() => []),
+        toastMessages: await page
+          .locator('[data-sonner-toast], [role="status"], [role="alert"]')
+          .allTextContents()
+          .catch(() => []),
+        browserErrors,
+      };
+      await testInfo.attach('falha-ao-salvar-pedido-com-20-etiquetas.json', {
+        body: Buffer.from(JSON.stringify(diagnostics, null, 2)),
+        contentType: 'application/json',
+      });
+      throw error;
+    }
     await expect(detailsDialog.getByRole('button', { name: 'Salvar Alterações' })).toHaveCount(0);
     await expect(detailsDialog.getByText(revisedTag)).toBeVisible({ timeout: 15000 });
     await expect(detailsDialog.getByText('Valor Total', { exact: true })).toBeVisible();

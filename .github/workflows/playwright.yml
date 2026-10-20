@@ -161,7 +161,7 @@ jobs:
           TEST_TARGET: ${{ github.event.inputs.test_target || 'e2e' }}
         run: |
           if [ "$TEST_TARGET" = 'order-integrity' ]; then
-            TEST_COMMAND="npx playwright test tests/e2e/orders.spec.ts --grep 'formata preço unitário|preserva total e pagamento' --project=chromium"
+            TEST_COMMAND="npx playwright test tests/e2e/orders.spec.ts --grep 'formata preço unitário|preserva total e pagamento|importa pedido com 20 etiquetas' --project=chromium"
           else
             TEST_COMMAND="npm run test:$TEST_TARGET"
           fi

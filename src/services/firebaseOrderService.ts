@@ -19,6 +19,7 @@ import {
 import { db, auth } from '../lib/firebase';
 import { Order, OrderItem, OrderStatus, ProductionStep, ProductionWorkflow } from '../app/types';
 import { parseDecimalMoneyInput } from '../app/utils/parseDecimalMoneyInput';
+import { MAX_ORDER_TAGS } from '../app/utils/orderLimits';
 import { firebaseLedgerService } from './firebaseLedgerService';
 import { firebaseCustomerService } from './firebaseCustomerService';
 
@@ -175,6 +176,9 @@ export class FirebaseOrderService {
    * Validar campos e tipos com paridade estrita em relação ao backend (firestore.rules)
    */
   private validateOrderPayload(data: Partial<Order>): void {
+    if (data.tags != null && (!Array.isArray(data.tags) || data.tags.length > MAX_ORDER_TAGS)) {
+      throw new Error(`Um pedido pode ter no máximo ${MAX_ORDER_TAGS} etiquetas.`);
+    }
     if (data.customerName !== undefined) {
       if (!data.customerName || typeof data.customerName !== 'string' || !data.customerName.trim()) {
         throw new Error('Nome do cliente é obrigatório.');

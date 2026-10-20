@@ -30,6 +30,7 @@ import { AiOrderDraft, OrderItem } from '../types';
 import { secureRandomId } from '../utils/random';
 import { parseDecimalMoneyInput } from '../utils/parseDecimalMoneyInput';
 import { formatDecimalMoneyInput } from '../utils/formatDecimalMoneyInput';
+import { MAX_ORDER_TAGS } from '../utils/orderLimits';
 
 interface NewOrderDialogProps {
   open?: boolean;
@@ -641,6 +642,7 @@ export function NewOrderDialog({
             <TagInput
               tags={tags}
               onChange={setTags}
+              maxTags={MAX_ORDER_TAGS}
               placeholder="Adicione tags para categorizar o pedido..."
             />
           </div>

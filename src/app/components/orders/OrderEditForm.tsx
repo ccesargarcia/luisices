@@ -16,6 +16,7 @@ import { OrderStatus, PaymentStatus, PaymentMethod, Tag } from '../../types';
 import { Plus, Trash2, Repeat2, X, Save } from 'lucide-react';
 import { parseDecimalMoneyInput } from '../../utils/parseDecimalMoneyInput';
 import { formatDecimalMoneyInput } from '../../utils/formatDecimalMoneyInput';
+import { MAX_ORDER_TAGS } from '../../utils/orderLimits';
 
 export interface ProductItem {
   name: string;
@@ -410,6 +411,7 @@ export function OrderEditForm({
         <TagInput
           tags={editTags}
           onChange={onEditTagsChange}
+          maxTags={MAX_ORDER_TAGS}
           placeholder="Adicione tags para categorizar o pedido..."
         />
       </div>

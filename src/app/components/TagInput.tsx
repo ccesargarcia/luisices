@@ -11,20 +11,31 @@ interface TagInputProps {
   tags: Tag[];
   onChange: (tags: Tag[]) => void;
   placeholder?: string;
+  maxTags?: number;
 }
 
-export function TagInput({ tags, onChange, placeholder = 'Digite e pressione Enter...' }: TagInputProps) {
+export function TagInput({
+  tags,
+  onChange,
+  placeholder = 'Digite e pressione Enter...',
+  maxTags,
+}: TagInputProps) {
   const [inputValue, setInputValue] = useState('');
   const [selectedColor, setSelectedColor] = useState(TAG_COLORS[0].value);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const isAtLimit = maxTags !== undefined && tags.length >= maxTags;
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && inputValue.trim()) {
       e.preventDefault();
       const newTagName = inputValue.trim().toLowerCase();
-      if (!tags.some(tag => tag.name === newTagName)) {
-        onChange([...tags, { name: newTagName, color: selectedColor }]);
+      if (tags.some(tag => tag.name === newTagName)) {
+        setInputValue('');
+        setShowColorPicker(false);
+        return;
       }
+      if (isAtLimit) return;
+      onChange([...tags, { name: newTagName, color: selectedColor }]);
       setInputValue('');
       setShowColorPicker(false);
     } else if (e.key === 'Backspace' && !inputValue && tags.length > 0) {
@@ -52,6 +63,7 @@ export function TagInput({ tags, onChange, placeholder = 'Digite e pressione Ent
             <button
               type="button"
               onClick={() => removeTag(index)}
+              aria-label={`Remover etiqueta ${tag.name}`}
               className="ml-1 rounded-sm hover:opacity-70"
             >
               <X className="size-3" />
@@ -104,8 +116,10 @@ export function TagInput({ tags, onChange, placeholder = 'Digite e pressione Ent
           />
         </div>
       </div>
-      <p className="break-words text-xs leading-relaxed text-muted-foreground">
-        Clique no círculo colorido para escolher a cor, digite a tag e pressione Enter
+      <p className="break-words text-xs leading-relaxed text-muted-foreground" role={isAtLimit ? 'status' : undefined}>
+        {isAtLimit
+          ? `Limite de ${maxTags} etiquetas atingido. Remova uma para adicionar outra.`
+          : 'Clique no círculo colorido para escolher a cor, digite a tag e pressione Enter'}
       </p>
     </div>
   );
