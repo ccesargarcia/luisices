@@ -99,6 +99,18 @@ describe('Paridade de Validação Backend & Frontend (Zero Trust)', () => {
   });
 
   describe('Services Frontend Enforcement', () => {
+    it('rejeita pedidos com mais etiquetas que o limite antes de chamar o Firestore', async () => {
+      const tags = Array.from({ length: 21 }, (_, index) => ({
+        name: `Etiqueta ${index + 1}`,
+        color: '#123456',
+      }));
+
+      await expect(firebaseOrderService.createOrder({ tags }))
+        .rejects.toThrow('Um pedido pode ter no máximo 20 etiquetas.');
+      await expect(firebaseOrderService.updateOrder('pedido-1', { tags }))
+        .rejects.toThrow('Um pedido pode ter no máximo 20 etiquetas.');
+    });
+
     it('firebaseOrderService rejeita inputs inválidos antes de submeter ao Firestore', async () => {
       await expect(
         firebaseOrderService.createOrder({ customerName: '   ', price: 100 })

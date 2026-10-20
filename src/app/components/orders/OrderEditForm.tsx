@@ -16,6 +16,7 @@ import { OrderStatus, PaymentStatus, PaymentMethod, Tag } from '../../types';
 import { Plus, Trash2, Repeat2, X, Save } from 'lucide-react';
 import { parseDecimalMoneyInput } from '../../utils/parseDecimalMoneyInput';
 import { formatDecimalMoneyInput } from '../../utils/formatDecimalMoneyInput';
+import { MAX_ORDER_TAGS } from '../../utils/orderLimits';
 
 export interface ProductItem {
   name: string;
@@ -104,12 +105,21 @@ export function OrderEditForm({
       {/* Produtos */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label>Produtos *</Label>
+          <div className="flex items-center gap-2">
+            <Label>Produtos *</Label>
+            {editProducts.length >= 10 && (
+              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                (Máximo de 10 itens)
+              </span>
+            )}
+          </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="gap-1 h-7 text-xs"
+            disabled={editProducts.length >= 10}
+            title={editProducts.length >= 10 ? 'Limite máximo de 10 itens atingido' : undefined}
             onClick={() =>
               onEditProductsChange((prev) => [...prev, { name: '', quantity: '1', unitPrice: '' }])
             }
@@ -269,6 +279,8 @@ export function OrderEditForm({
                 variant="outline"
                 size="sm"
                 className="gap-1 h-7 text-xs"
+                disabled={editExchangeItems.length >= 10}
+                title={editExchangeItems.length >= 10 ? 'Limite máximo de 10 itens atingido' : undefined}
                 onClick={() =>
                   onEditExchangeItemsChange((prev) => [
                     ...prev,
@@ -399,6 +411,7 @@ export function OrderEditForm({
         <TagInput
           tags={editTags}
           onChange={onEditTagsChange}
+          maxTags={MAX_ORDER_TAGS}
           placeholder="Adicione tags para categorizar o pedido..."
         />
       </div>

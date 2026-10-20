@@ -154,6 +154,7 @@ describe('Permissões granulares de pedidos e soft delete (Achado 3)', () => {
     await assertSucceeds(updateDoc(doc(empDb as any, 'orders/assigned-order'), {
       customerName: 'Cliente Atualizado',
       productName: 'Produto Atualizado',
+      version: 2,
     }));
 
     // Tentativa de alterar deletedAt (soft-delete) SEM permissão de exclusão DEVE FALHAR
@@ -188,6 +189,7 @@ describe('Permissões granulares de pedidos e soft delete (Achado 3)', () => {
     const empDb = dbFor('emp-with-delete');
     await assertSucceeds(updateDoc(doc(empDb as any, 'orders/assigned-order-del'), {
       deletedAt: Timestamp.now(),
+      version: 2,
     }));
   });
 });

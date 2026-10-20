@@ -2,11 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { firebaseOrderService } from '../../src/services/firebaseOrderService';
 import { Order, canAccessArchivedOrders, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS, EMPLOYEE_PERMISSIONS, Permission } from '../../src/app/types';
 
-const mockUpdateDoc = vi.fn();
 const mockGetDoc = vi.fn();
-const mockBatchUpdate = vi.fn();
-const mockBatchCommit = vi.fn();
+const mockAddDoc = vi.fn();
 const mockRunTransaction = vi.fn();
+const mockTransactionUpdate = vi.fn();
+const mockTransactionSet = vi.fn();
+const mockRecordOrderSale = vi.fn();
 
 vi.mock('../../src/lib/firebase', () => ({
   db: { id: 'mock-db' },
@@ -16,6 +17,7 @@ vi.mock('../../src/lib/firebase', () => ({
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn((_db, name) => ({ name })),
   doc: vi.fn((_db, coll, id) => ({ coll, id })),
+  addDoc: (...args: any[]) => mockAddDoc(...args),
   query: vi.fn((coll, ...clauses) => ({ coll, clauses })),
   where: vi.fn((field, op, val) => ({ field, op, val })),
   orderBy: vi.fn((field, dir) => ({ field, dir })),
@@ -23,12 +25,15 @@ vi.mock('firebase/firestore', () => ({
     now: () => ({ toDate: () => new Date(), toISOString: () => '2026-10-06T02:00:00.000Z' }),
   },
   getDoc: (...args: any[]) => mockGetDoc(...args),
-  updateDoc: (...args: any[]) => mockUpdateDoc(...args),
-  writeBatch: () => ({
-    update: mockBatchUpdate,
-    commit: mockBatchCommit,
-  }),
   runTransaction: (db: any, fn: any) => mockRunTransaction(db, fn),
+}));
+
+vi.mock('../../src/services/firebaseLedgerService', () => ({
+  firebaseLedgerService: {
+    mapOrderToSaleRecord: vi.fn(() => ({})),
+    recordOrderSale: (...args: any[]) => mockRecordOrderSale(...args),
+    markOrderDeletedFromOrders: vi.fn(),
+  },
 }));
 
 describe('Área de Arquivamento e Ciclo de Vida de Pedidos Concluídos', () => {
@@ -42,8 +47,13 @@ describe('Área de Arquivamento e Ciclo de Vida de Pedidos Concluídos', () => {
         version: 1,
       }),
     });
-    mockUpdateDoc.mockResolvedValue(undefined);
-    mockBatchCommit.mockResolvedValue(undefined);
+    mockRunTransaction.mockImplementation(async (_db: any, callback: any) => callback({
+      get: (...args: any[]) => mockGetDoc(...args),
+      update: (...args: any[]) => mockTransactionUpdate(...args),
+      set: (...args: any[]) => mockTransactionSet(...args),
+    }));
+    mockAddDoc.mockResolvedValue({ id: 'order-duplicated' });
+    mockRecordOrderSale.mockResolvedValue(undefined);
   });
 
   describe('Métodos de Serviço para Arquivamento', () => {
@@ -51,11 +61,12 @@ describe('Área de Arquivamento e Ciclo de Vida de Pedidos Concluídos', () => {
       await firebaseOrderService.archiveOrder('order-456');
 
       expect(mockGetDoc).toHaveBeenCalled();
-      expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ coll: 'orders', id: 'order-456' }),
         expect.objectContaining({
           isArchived: true,
           archivedBy: 'user-archive-123',
+          version: 2,
         })
       );
     });
@@ -64,37 +75,95 @@ describe('Área de Arquivamento e Ciclo de Vida de Pedidos Concluídos', () => {
       await firebaseOrderService.unarchiveOrder('order-456');
 
       expect(mockGetDoc).toHaveBeenCalled();
-      expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ coll: 'orders', id: 'order-456' }),
         expect.objectContaining({
           isArchived: false,
           archivedAt: null,
           archivedBy: null,
+          version: 2,
         })
       );
     });
 
-    it('archiveOrdersBulk deve atualizar múltiplos pedidos em lote via writeBatch', async () => {
+    it('archiveOrdersBulk deve incrementar a versão de cada pedido em transação', async () => {
       const ids = ['order-1', 'order-2', 'order-3'];
       await firebaseOrderService.archiveOrdersBulk(ids);
 
-      expect(mockBatchUpdate).toHaveBeenCalledTimes(3);
-      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
-      expect(mockBatchUpdate).toHaveBeenCalledWith(
+      expect(mockTransactionUpdate).toHaveBeenCalledTimes(3);
+      expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'order-1' }),
-        expect.objectContaining({ isArchived: true, archivedBy: 'user-archive-123' })
+        expect.objectContaining({ isArchived: true, archivedBy: 'user-archive-123', version: 2 })
       );
     });
 
-    it('unarchiveOrdersBulk deve restaurar múltiplos pedidos em lote via writeBatch', async () => {
+    it('unarchiveOrdersBulk deve incrementar a versão ao restaurar pedidos em transação', async () => {
       const ids = ['order-1', 'order-2'];
       await firebaseOrderService.unarchiveOrdersBulk(ids);
 
-      expect(mockBatchUpdate).toHaveBeenCalledTimes(2);
-      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
-      expect(mockBatchUpdate).toHaveBeenCalledWith(
+      expect(mockTransactionUpdate).toHaveBeenCalledTimes(2);
+      expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'order-1' }),
-        expect.objectContaining({ isArchived: false, archivedAt: null, archivedBy: null })
+        expect.objectContaining({ isArchived: false, archivedAt: null, archivedBy: null, version: 2 })
+      );
+    });
+
+    it('normaliza pedido legado sem versão para a próxima versão 2', async () => {
+      mockGetDoc.mockResolvedValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-archive-123', status: 'completed' }),
+      });
+
+      await firebaseOrderService.archiveOrder('legacy-order');
+
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ coll: 'orders', id: 'legacy-order' }),
+        expect.objectContaining({ version: 2, isArchived: true })
+      );
+    });
+
+    it('recusa editar um pedido com versão fracionária inválida', async () => {
+      mockGetDoc.mockResolvedValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-archive-123', status: 'completed', version: 1.5 }),
+      });
+
+      await expect(firebaseOrderService.archiveOrder('invalid-version-order'))
+        .rejects.toThrow('versão inválida');
+      expect(mockTransactionUpdate).not.toHaveBeenCalled();
+    });
+
+    it('cria pedidos duplicados começando na versão 1', async () => {
+      const sourceOrder = {
+        userId: 'user-archive-123',
+        orderNumber: '#2026-0001',
+        customerName: 'Cliente origem',
+        customerPhone: '11999999999',
+        productName: 'Produto origem',
+        quantity: 1,
+        price: 100,
+        status: 'completed',
+        deliveryDate: '2026-11-20',
+      };
+      const sourceSnapshot = { id: 'source-order', exists: () => true, data: () => sourceOrder };
+      const counterSnapshot = { exists: () => false, data: () => undefined };
+      const duplicateSnapshot = {
+        id: 'order-duplicated',
+        exists: () => true,
+        data: () => ({ ...sourceOrder, version: 1, status: 'pending' }),
+      };
+      mockGetDoc
+        .mockResolvedValueOnce(sourceSnapshot)
+        .mockResolvedValueOnce(counterSnapshot)
+        .mockResolvedValueOnce(duplicateSnapshot);
+
+      await firebaseOrderService.duplicateOrder('source-order');
+
+      expect(mockAddDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'orders' }),
+        expect.objectContaining({ version: 1, status: 'pending' })
       );
     });
   });

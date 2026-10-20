@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
+import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Alert, AlertDescription } from '../components/ui/alert';
@@ -106,8 +107,27 @@ export default function FixNegativeValues() {
           addLog(`  ❌ Pedido ${data.orderNumber}: payment.remainingAmount ${data.payment.remainingAmount} → 0`);
         }
 
-        if (hasPaymentFix) {
-          updates.payment = { ...data.payment, ...paymentUpdates };
+        const nextPrice = updates.price !== undefined ? updates.price : data.price;
+        if (hasPaymentFix || updates.price !== undefined) {
+          const paidAmount = Math.max(0, Number(data.payment.paidAmount) || 0);
+          if (typeof nextPrice !== 'number' || paidAmount > nextPrice) {
+            addLog(`  ⚠️ Pedido ${data.orderNumber}: valor recebido incompatível com o total; exige conciliação manual`);
+            continue;
+          }
+
+          const remainingAmount = Math.round((nextPrice - paidAmount) * 100) / 100;
+          const status = paidAmount === nextPrice && nextPrice > 0
+            ? 'paid'
+            : paidAmount > 0
+              ? 'partial'
+              : 'pending';
+          updates.payment = {
+            ...data.payment,
+            status,
+            totalAmount: nextPrice,
+            paidAmount,
+            remainingAmount,
+          };
         }
       }
 
@@ -125,7 +145,8 @@ export default function FixNegativeValues() {
       }
 
       if (Object.keys(updates).length > 0) {
-        await updateDoc(doc(db, 'orders', docSnap.id), updates);
+        const expectedVersion = Number.isSafeInteger(data.version) && data.version > 0 ? data.version : 1;
+        await firebaseOrderService.updateOrder(docSnap.id, updates, expectedVersion);
         fixed++;
       }
     }

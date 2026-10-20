@@ -10,17 +10,16 @@ import {
   addDoc,
   getDoc,
   getDocs,
-  updateDoc,
   query,
   where,
   orderBy,
   Timestamp,
   runTransaction,
-  writeBatch,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Order, OrderItem, OrderStatus, ProductionStep, ProductionWorkflow } from '../app/types';
 import { parseDecimalMoneyInput } from '../app/utils/parseDecimalMoneyInput';
+import { MAX_ORDER_TAGS } from '../app/utils/orderLimits';
 import { firebaseLedgerService } from './firebaseLedgerService';
 import { firebaseCustomerService } from './firebaseCustomerService';
 
@@ -47,6 +46,59 @@ export class FirebaseOrderService {
       return profileSnap.exists() && profileSnap.data().role === 'admin';
     } catch {
       return false;
+    }
+  }
+
+  private currentOrderVersion(data: Record<string, any>): number {
+    if (data.version === undefined) return 1;
+    if (!Number.isSafeInteger(data.version) || data.version < 1) {
+      throw new Error('Este pedido tem uma versão inválida e precisa ser corrigido antes de uma nova edição.');
+    }
+    return data.version;
+  }
+
+  private nextOrderVersion(data: Record<string, any>): number {
+    return this.currentOrderVersion(data) + 1;
+  }
+
+  private async updateOrderWithVersion(
+    orderRef: any,
+    buildUpdates: (orderData: Record<string, any>) => Record<string, any>
+  ): Promise<void> {
+    await runTransaction(db, async (transaction) => {
+      const orderSnap = await transaction.get(orderRef);
+      if (!orderSnap.exists()) throw new Error('Pedido não encontrado');
+      const orderData = orderSnap.data() as Record<string, any>;
+      transaction.update(orderRef, {
+        ...buildUpdates(orderData),
+        version: this.nextOrderVersion(orderData),
+      });
+    });
+  }
+
+  private async updateOrdersWithVersion(
+    orderIds: string[],
+    buildUpdates: (orderData: Record<string, any>) => Record<string, any>
+  ): Promise<void> {
+    const ids = [...new Set(orderIds)];
+    const chunkSize = 200;
+    for (let index = 0; index < ids.length; index += chunkSize) {
+      const chunk = ids.slice(index, index + chunkSize);
+      await runTransaction(db, async (transaction) => {
+        const orders = await Promise.all(chunk.map(async (id) => {
+          const orderRef = doc(db, ORDERS_COLLECTION, id);
+          const orderSnap = await transaction.get(orderRef);
+          if (!orderSnap.exists()) throw new Error(`Pedido ${id} não encontrado`);
+          return { orderRef, orderData: orderSnap.data() as Record<string, any> };
+        }));
+
+        for (const { orderRef, orderData } of orders) {
+          transaction.update(orderRef, {
+            ...buildUpdates(orderData),
+            version: this.nextOrderVersion(orderData),
+          });
+        }
+      });
     }
   }
 
@@ -124,6 +176,9 @@ export class FirebaseOrderService {
    * Validar campos e tipos com paridade estrita em relação ao backend (firestore.rules)
    */
   private validateOrderPayload(data: Partial<Order>): void {
+    if (data.tags != null && (!Array.isArray(data.tags) || data.tags.length > MAX_ORDER_TAGS)) {
+      throw new Error(`Um pedido pode ter no máximo ${MAX_ORDER_TAGS} etiquetas.`);
+    }
     if (data.customerName !== undefined) {
       if (!data.customerName || typeof data.customerName !== 'string' || !data.customerName.trim()) {
         throw new Error('Nome do cliente é obrigatório.');
@@ -384,7 +439,7 @@ export class FirebaseOrderService {
       cardColor: data.cardColor,
       userId: data.userId,
       updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt,
-      version: typeof data.version === 'number' ? data.version : 1,
+      version: Number.isSafeInteger(data.version) && data.version > 0 ? data.version : 1,
       isArchived: Boolean(data.isArchived),
       archivedAt: data.archivedAt?.toDate ? data.archivedAt.toDate().toISOString() : data.archivedAt,
       archivedBy: data.archivedBy,
@@ -529,7 +584,10 @@ export class FirebaseOrderService {
           return { orderRef, saleRef, order, sale };
         }));
         for (const { orderRef, saleRef, order, sale } of records) {
-          transaction.update(orderRef, payload);
+          transaction.update(orderRef, {
+            ...payload,
+            version: this.nextOrderVersion(order.data()),
+          });
           if (sale.exists()) {
             transaction.update(saleRef, {
               assignedTo: payload.assignedTo,
@@ -571,17 +629,17 @@ export class FirebaseOrderService {
       }
       const saleSnap = await transaction.get(saleRef);
       const orderData = orderSnap.data();
+      const currentVersion = this.currentOrderVersion(orderData);
 
-      const currentVersion = typeof orderData.version === 'number' ? orderData.version : 1;
-      if (expectedVersion !== undefined && typeof orderData.version === 'number' && orderData.version !== expectedVersion) {
-        throw new Error(`Conflito de concorrência: o pedido foi alterado por outro usuário (versão ${orderData.version} != esperada ${expectedVersion}).`);
+      if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
+        throw new Error(`Conflito de concorrência: o pedido foi alterado por outro usuário (versão ${currentVersion} != esperada ${expectedVersion}).`);
       }
 
       const now = new Date().toISOString();
 
       const orderUpdates: Record<string, any> = {
         status,
-        version: currentVersion + 1,
+        version: this.nextOrderVersion(orderData),
         updatedAt: now,
       };
 
@@ -641,10 +699,10 @@ export class FirebaseOrderService {
       }
       const saleSnap = await transaction.get(saleRef);
       const orderData = orderSnap.data();
+      const currentVersion = this.currentOrderVersion(orderData);
 
-      const currentVersion = typeof orderData.version === 'number' ? orderData.version : 1;
-      if (expectedVersion !== undefined && typeof orderData.version === 'number' && orderData.version !== expectedVersion) {
-        throw new Error(`Conflito de concorrência: o pedido foi alterado por outro usuário (versão ${orderData.version} != esperada ${expectedVersion}).`);
+      if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
+        throw new Error(`Conflito de concorrência: o pedido foi alterado por outro usuário (versão ${currentVersion} != esperada ${expectedVersion}).`);
       }
 
       // Remover campos undefined e garantir preservação de histórico e integridade do saldo restante
@@ -704,7 +762,7 @@ export class FirebaseOrderService {
       // 2. TODAS as escritas após as leituras
       transaction.update(orderRef, {
         ...cleanUpdates,
-        version: currentVersion + 1,
+        version: this.nextOrderVersion(orderData),
         updatedAt: now,
       });
 
@@ -780,6 +838,7 @@ export class FirebaseOrderService {
         paymentDate: null,
         notes: null,
       },
+      version: 1,
       createdAt: Timestamp.now(),
       deletedAt: null,
     });
@@ -804,8 +863,10 @@ export class FirebaseOrderService {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
-    const current: import('../app/types').OrderAttachment[] = orderSnap.data().attachments || [];
-    await updateDoc(orderRef, { attachments: [...current, attachment] });
+    await this.updateOrderWithVersion(orderRef, (orderData) => {
+      const current: import('../app/types').OrderAttachment[] = orderData.attachments || [];
+      return { attachments: [...current, attachment], updatedAt: new Date().toISOString() };
+    });
   }
 
   /**
@@ -820,8 +881,13 @@ export class FirebaseOrderService {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
-    const current: import('../app/types').OrderAttachment[] = orderSnap.data().attachments || [];
-    await updateDoc(orderRef, { attachments: current.filter(a => a.url !== url) });
+    await this.updateOrderWithVersion(orderRef, (orderData) => {
+      const current: import('../app/types').OrderAttachment[] = orderData.attachments || [];
+      return {
+        attachments: current.filter(a => a.url !== url),
+        updatedAt: new Date().toISOString(),
+      };
+    });
   }
 
   /**
@@ -839,22 +905,33 @@ export class FirebaseOrderService {
     const data = orderSnap.data();
     const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
     const profile = profileSnap.exists() ? profileSnap.data() : null;
+    const hasDeletePermission = (permission: unknown): boolean => {
+      if (permission === true) return true;
+      if (!permission || typeof permission !== 'object') return false;
+      return (permission as Record<string, unknown>).delete === true;
+    };
+    const archivedOrderPermission = profile?.permissions?.archivedOrders
+      ?? profile?.permissions?.orders;
+    const employeeCanDelete = data.isArchived === true
+      ? hasDeletePermission(archivedOrderPermission)
+      : hasDeletePermission(profile?.permissions?.orders);
     const canDelete = data.userId === userId
       || profile?.role === 'admin'
       || (
         profile?.role === 'funcionario'
         && profile.active === true
         && data.assignedTo === userId
-        && profile.permissions?.orders?.delete === true
+        && employeeCanDelete
       );
 
     if (!canDelete) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
-    await updateDoc(orderRef, {
+    await this.updateOrderWithVersion(orderRef, () => ({
       deletedAt: Timestamp.now(),
-    });
+      updatedAt: new Date().toISOString(),
+    }));
 
     firebaseLedgerService.markOrderDeletedFromOrders(orderId).catch(err => {
       console.warn('firebaseLedgerService: erro ao marcar pedido como removido de orders:', err);
@@ -889,9 +966,10 @@ export class FirebaseOrderService {
       startedAt: new Date().toISOString(),
     };
 
-    await updateDoc(orderRef, {
+    await this.updateOrderWithVersion(orderRef, () => ({
       productionWorkflow: workflow,
-    });
+      updatedAt: new Date().toISOString(),
+    }));
   }
 
   /**
@@ -975,10 +1053,10 @@ export class FirebaseOrderService {
       // Se todas as etapas estiverem completas, atualizar status do pedido
       const allCompleted = stepOrder.every(s => workflow.steps[s].completed);
       const now = new Date().toISOString();
-      const currentVersion = Number(data.version) || 1;
+      const nextVersion = this.nextOrderVersion(data);
       const updates: any = {
         productionWorkflow: workflow,
-        version: currentVersion + 1,
+        version: nextVersion,
         updatedAt: now,
       };
 
@@ -1052,12 +1130,12 @@ export class FirebaseOrderService {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
     const now = new Date().toISOString();
-    await updateDoc(orderRef, {
+    await this.updateOrderWithVersion(orderRef, () => ({
       isArchived: true,
       archivedAt: now,
       archivedBy: userId,
       updatedAt: now,
-    });
+    }));
   }
 
   /**
@@ -1071,12 +1149,12 @@ export class FirebaseOrderService {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
     const now = new Date().toISOString();
-    await updateDoc(orderRef, {
+    await this.updateOrderWithVersion(orderRef, () => ({
       isArchived: false,
       archivedAt: null,
       archivedBy: null,
       updatedAt: now,
-    });
+    }));
   }
 
   /**
@@ -1085,17 +1163,12 @@ export class FirebaseOrderService {
   async archiveOrdersBulk(orderIds: string[]): Promise<void> {
     const userId = this.getCurrentUserId();
     const now = new Date().toISOString();
-    const batch = writeBatch(db);
-    for (const id of orderIds) {
-      const orderRef = doc(db, ORDERS_COLLECTION, id);
-      batch.update(orderRef, {
+    await this.updateOrdersWithVersion(orderIds, () => ({
         isArchived: true,
         archivedAt: now,
         archivedBy: userId,
         updatedAt: now,
-      });
-    }
-    await batch.commit();
+    }));
   }
 
   /**
@@ -1103,17 +1176,12 @@ export class FirebaseOrderService {
    */
   async unarchiveOrdersBulk(orderIds: string[]): Promise<void> {
     const now = new Date().toISOString();
-    const batch = writeBatch(db);
-    for (const id of orderIds) {
-      const orderRef = doc(db, ORDERS_COLLECTION, id);
-      batch.update(orderRef, {
+    await this.updateOrdersWithVersion(orderIds, () => ({
         isArchived: false,
         archivedAt: null,
         archivedBy: null,
         updatedAt: now,
-      });
-    }
-    await batch.commit();
+    }));
   }
 
   /**

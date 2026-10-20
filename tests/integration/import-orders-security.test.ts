@@ -80,7 +80,7 @@ describe('Importação: gravação direta não contorna validação do servidor'
     const tags = Array.from({ length: 20 }, (_, index) => ({ name: `Etiqueta ${index}`, color: '#123456' }));
     const ref = doc(dbFor('owner'), 'orders/update-20-tags');
     await assertSucceeds(setDoc(ref, { ...valid, tags }));
-    await assertSucceeds(updateDoc(ref, { tags: tags.map((tag) => ({ ...tag, name: `${tag.name} editada` })) }));
+    await assertSucceeds(updateDoc(ref, { tags: tags.map((tag) => ({ ...tag, name: `${tag.name} editada` })), version: 2 }));
     expect((await getDoc(ref)).data()?.tags).toEqual(tags.map((tag) => ({ ...tag, name: `${tag.name} editada` })));
   });
   it.each([['owner',0],['owner',1],['owner',5],['owner',20],['admin',20]])('aceita importação real de 11 pedidos para %s com %i etiquetas e centavos', async (uid,tagCount) => {
@@ -89,7 +89,7 @@ describe('Importação: gravação direta não contorna validação do servidor'
     const result=await executeOrdersImport(rows as any,String(uid));
     expect(result.errors).toEqual([]);expect(result.successCount).toBe(11);
     const orderRef=doc(appClient.db,'orders',result.createdOrderIds[0]);
-    await assertSucceeds(updateDoc(orderRef,{status:'pending',price:30.5,payment:{status:'partial',totalAmount:30.5,paidAmount:10,remainingAmount:20.5,method:'pix'},tags:rows[0].tags?.map(tag=>({...tag,name:'Etiqueta alterada'}))}));
+    await assertSucceeds(updateDoc(orderRef,{status:'pending',price:30.5,payment:{status:'partial',totalAmount:30.5,paidAmount:10,remainingAmount:20.5,method:'pix'},tags:rows[0].tags?.map(tag=>({...tag,name:'Etiqueta alterada'})),version:2}));
   });
   it.each([
     { name: '', color: '#123456' }, { name: 'a'.repeat(81), color: '#123456' },

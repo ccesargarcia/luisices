@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Perfis legados sem active continuam válidos; desativação explícita ou revogação de tokens bloqueia acesso.
     function isActiveProfile(profile) {
-      return profile.get('active', true) == true
+      return profile.get('active', true)
         && (!('tokensValidAfterTime' in profile)
           || request.auth.token.auth_time > profile.tokensValidAfterTime);
     }
@@ -40,8 +40,8 @@ service cloud.firestore {
     }
 
     function hasPerm(permField, action) {
-      return (permField is map && permField.get(action, false) == true)
-        || (permField is bool && permField == true);
+      return (permField is bool && permField)
+        || (permField is map && permField.get(action, false));
     }
 
     function userHasPerm(module, action) {
@@ -113,8 +113,7 @@ service cloud.firestore {
       return isActiveProfile(profile)
         && (
           role == 'admin'
-          || (data.get('userId', '') is string
-            && data.userId == request.auth.uid
+          || (data.userId == request.auth.uid
             && hasPerm(
               profile.get('permissions', {}).get(module, false),
               'create'
@@ -122,43 +121,41 @@ service cloud.firestore {
         );
     }
 
-    function canUpdateOrder(previous, next, changed) {
+    function canUpdateOrder(previous, changed) {
       let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
       let role = profile.get('role', '');
-      let ownerEdit = previous.get('userId', '') == request.auth.uid
-        && hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
-        && next.get('userId', '') == previous.get('userId', '')
-        && (!changed.hasAny(['deletedAt'])
-          || hasPerm(profile.get('permissions', {}).get('orders', false), 'delete')
-          || hasPerm(profile.get('permissions', {}).get('archivedOrders', false), 'create'));
-      let assignedEdit = role == 'funcionario'
-        && 'userId' in previous
-        && 'userId' in next
-        && 'assignedTo' in previous
-        && 'assignedTo' in next
-        && previous.get('assignedTo', '') == request.auth.uid
-        && hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
-        && next.get('userId', '') == previous.get('userId', '')
-        && next.get('assignedTo', '') == previous.get('assignedTo', '')
-        && (!changed.hasAny(['deletedAt'])
-          || hasPerm(profile.get('permissions', {}).get('orders', false), 'delete'));
-      return request.auth != null && isActiveProfile(profile)
-        && (role == 'admin' || ownerEdit || assignedEdit);
+      return isActiveProfile(profile)
+        && (
+          role == 'admin'
+          || (
+            previous.userId == request.auth.uid
+            && hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
+            && (!changed.hasAny(['deletedAt'])
+              || hasPerm(profile.get('permissions', {}).get('orders', false), 'delete')
+              || hasPerm(profile.get('permissions', {}).get('archivedOrders', false), 'create'))
+          )
+          || (
+            role == 'funcionario'
+            && previous.get('assignedTo', '') == request.auth.uid
+            && hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
+            && !changed.hasAny(['assignedTo'])
+            && (!changed.hasAny(['deletedAt'])
+              || hasPerm(profile.get('permissions', {}).get('orders', false), 'delete'))
+          )
+        );
     }
 
     function isValidCalendarDate(value) {
       let parts = value.split('-');
-      let year = int(parts[0]);
-      let month = int(parts[1]);
-      let day = int(parts[2]);
-      let date = timestamp.date(year, month, day);
-      return date.year() == year && date.month() == month && date.day() == day;
+      let m = int(parts[1]);
+      let d = int(parts[2]);
+      let dt = timestamp.date(int(parts[0]), m, d);
+      return dt.month() == m && dt.day() == d;
     }
 
     // Direct required-field access and string methods fail closed for missing/wrong types.
     function isValidNewOrder(data) {
-      return data.userId is string && data.userId.size() > 0
-        && data.customerName.size() <= 200 && data.customerName.matches('[\\s\\S]*[^\\s][\\s\\S]*')
+      return data.customerName.size() <= 200 && data.customerName.matches('[\\s\\S]*[^\\s][\\s\\S]*')
         && data.productName.size() <= 300 && data.productName.matches('[\\s\\S]*[^\\s][\\s\\S]*')
         && data.quantity is int && data.quantity > 0 && data.quantity <= 10000
         && data.price is number && data.price >= 0 && data.price <= 1000000
@@ -171,6 +168,7 @@ service cloud.firestore {
           data.customerId is string && data.customerId.size() > 0 && data.customerId.size() <= 128
           && get(/databases/$(database)/documents/customers/$(data.customerId)).data.userId == data.userId
         ))
+        && isValidOrderItemsField(data)
         && (data.get('payment', null) == null || isConsistentOrderPayment(data.payment, data.price));
     }
 
@@ -178,34 +176,169 @@ service cloud.firestore {
     function isValidOrderTag(tag) {
       // The separator cannot occur inside either field, so the regex validates
       // the name and color independently without ambiguous concatenation.
-      return tag.keys().size() == 2
+      return tag.size() == 2
         && (tag.name + '\u0000' + tag.color).matches('^[^\\s\u0000]([^\u0000]{0,78}[^\\s\u0000])?\u0000#[a-fA-F0-9]{6}([a-fA-F0-9]{2})?$');
+    }
+
+    function are5TagsValid(t0, t1, t2, t3, t4) {
+      return (t0.size() + t1.size() + t2.size() + t3.size() + t4.size()) == 10
+        && (t0.name + '\u0000' + t0.color + '\n'
+          + t1.name + '\u0000' + t1.color + '\n'
+          + t2.name + '\u0000' + t2.color + '\n'
+          + t3.name + '\u0000' + t3.color + '\n'
+          + t4.name + '\u0000' + t4.color)
+          .matches('^([^\\s\u0000\n]([^\u0000\n]{0,78}[^\\s\u0000\n])?\u0000#[a-fA-F0-9]{6}([a-fA-F0-9]{2})?\n){4}[^\\s\u0000\n]([^\u0000\n]{0,78}[^\\s\u0000\n])?\u0000#[a-fA-F0-9]{6}([a-fA-F0-9]{2})?$');
+    }
+
+    function are20TagsValid(tags) {
+      return are5TagsValid(tags[0], tags[1], tags[2], tags[3], tags[4])
+        && are5TagsValid(tags[5], tags[6], tags[7], tags[8], tags[9])
+        && are5TagsValid(tags[10], tags[11], tags[12], tags[13], tags[14])
+        && are5TagsValid(tags[15], tags[16], tags[17], tags[18], tags[19]);
     }
 
     function isValidOrderTags(tags) {
       let count = tags.size();
       return tags is list && count <= 20
-        && (count <= 0 || isValidOrderTag(tags[0]))
-        && (count <= 1 || isValidOrderTag(tags[1]))
-        && (count <= 2 || isValidOrderTag(tags[2]))
-        && (count <= 3 || isValidOrderTag(tags[3]))
-        && (count <= 4 || isValidOrderTag(tags[4]))
-        && (count <= 5 || isValidOrderTag(tags[5]))
-        && (count <= 6 || isValidOrderTag(tags[6]))
-        && (count <= 7 || isValidOrderTag(tags[7]))
-        && (count <= 8 || isValidOrderTag(tags[8]))
-        && (count <= 9 || isValidOrderTag(tags[9]))
-        && (count <= 10 || isValidOrderTag(tags[10]))
-        && (count <= 11 || isValidOrderTag(tags[11]))
-        && (count <= 12 || isValidOrderTag(tags[12]))
-        && (count <= 13 || isValidOrderTag(tags[13]))
-        && (count <= 14 || isValidOrderTag(tags[14]))
-        && (count <= 15 || isValidOrderTag(tags[15]))
-        && (count <= 16 || isValidOrderTag(tags[16]))
-        && (count <= 17 || isValidOrderTag(tags[17]))
-        && (count <= 18 || isValidOrderTag(tags[18]))
-        && (count <= 19 || isValidOrderTag(tags[19]))
-        ;
+        && (count == 20 ? are20TagsValid(tags) : (
+          (count <= 0 || isValidOrderTag(tags[0]))
+          && (count <= 1 || isValidOrderTag(tags[1]))
+          && (count <= 2 || isValidOrderTag(tags[2]))
+          && (count <= 3 || isValidOrderTag(tags[3]))
+          && (count <= 4 || isValidOrderTag(tags[4]))
+          && (count <= 5 || isValidOrderTag(tags[5]))
+          && (count <= 6 || isValidOrderTag(tags[6]))
+          && (count <= 7 || isValidOrderTag(tags[7]))
+          && (count <= 8 || isValidOrderTag(tags[8]))
+          && (count <= 9 || isValidOrderTag(tags[9]))
+          && (count <= 10 || isValidOrderTag(tags[10]))
+          && (count <= 11 || isValidOrderTag(tags[11]))
+          && (count <= 12 || isValidOrderTag(tags[12]))
+          && (count <= 13 || isValidOrderTag(tags[13]))
+          && (count <= 14 || isValidOrderTag(tags[14]))
+          && (count <= 15 || isValidOrderTag(tags[15]))
+          && (count <= 16 || isValidOrderTag(tags[16]))
+          && (count <= 17 || isValidOrderTag(tags[17]))
+          && (count <= 18 || isValidOrderTag(tags[18]))
+          && (count <= 19 || isValidOrderTag(tags[19]))
+        ));
+    }
+
+    function are20TagsValidUpdate(tags, prevTags) {
+      return (tags[0] == prevTags[0] || isValidOrderTag(tags[0]))
+        && (tags[1] == prevTags[1] || isValidOrderTag(tags[1]))
+        && (tags[2] == prevTags[2] || isValidOrderTag(tags[2]))
+        && (tags[3] == prevTags[3] || isValidOrderTag(tags[3]))
+        && (tags[4] == prevTags[4] || isValidOrderTag(tags[4]))
+        && (tags[5] == prevTags[5] || isValidOrderTag(tags[5]))
+        && (tags[6] == prevTags[6] || isValidOrderTag(tags[6]))
+        && (tags[7] == prevTags[7] || isValidOrderTag(tags[7]))
+        && (tags[8] == prevTags[8] || isValidOrderTag(tags[8]))
+        && (tags[9] == prevTags[9] || isValidOrderTag(tags[9]))
+        && (tags[10] == prevTags[10] || isValidOrderTag(tags[10]))
+        && (tags[11] == prevTags[11] || isValidOrderTag(tags[11]))
+        && (tags[12] == prevTags[12] || isValidOrderTag(tags[12]))
+        && (tags[13] == prevTags[13] || isValidOrderTag(tags[13]))
+        && (tags[14] == prevTags[14] || isValidOrderTag(tags[14]))
+        && (tags[15] == prevTags[15] || isValidOrderTag(tags[15]))
+        && (tags[16] == prevTags[16] || isValidOrderTag(tags[16]))
+        && (tags[17] == prevTags[17] || isValidOrderTag(tags[17]))
+        && (tags[18] == prevTags[18] || isValidOrderTag(tags[18]))
+        && (tags[19] == prevTags[19] || isValidOrderTag(tags[19]));
+    }
+
+    function isValidOrderTagsUpdate(tags, previous) {
+      let prevTags = previous.get('tags', []);
+      let count = tags.size();
+      let prevCount = prevTags is list ? prevTags.size() : 0;
+      return tags is list && count <= 20
+        && (tags == prevTags
+          || (count == 20 && prevCount == 20
+            ? (tags[0] == prevTags[0] || tags[19] == prevTags[19]
+              ? are20TagsValidUpdate(tags, prevTags)
+              : are20TagsValid(tags))
+            : isValidOrderTags(tags)));
+    }
+
+    function isValidOrderItem(item) {
+      return item is map
+        && 'name' in item && 'quantity' in item && 'unitPrice' in item
+        && item.size() == ('price' in item ? 4 : 3)
+        && item.name.size() <= 300 && item.name.matches('[\\s\\S]*[^\\s][\\s\\S]*')
+        && item.quantity is int && item.quantity > 0 && item.quantity <= 10000
+        && item.unitPrice >= 0 && item.unitPrice <= 1000000
+        && (!('price' in item) || math.abs(item.price - (item.quantity * item.unitPrice)) < 0.05);
+    }
+
+    function isValidOrderItems(items) {
+      let count = items.size();
+      return items is list && count > 0 && count <= 10
+        && (count == 1 ? isValidOrderItem(items[0]) : (
+          isValidOrderItem(items[0])
+          && (count <= 1 || isValidOrderItem(items[1]))
+          && (count <= 2 || isValidOrderItem(items[2]))
+          && (count <= 3 || isValidOrderItem(items[3]))
+          && (count <= 4 || isValidOrderItem(items[4]))
+          && (count <= 5 || isValidOrderItem(items[5]))
+          && (count <= 6 || isValidOrderItem(items[6]))
+          && (count <= 7 || isValidOrderItem(items[7]))
+          && (count <= 8 || isValidOrderItem(items[8]))
+          && (count <= 9 || isValidOrderItem(items[9]))
+        ));
+    }
+
+    function getItemSubtotal(item) {
+      return 'price' in item ? item.price : (item.quantity * item.unitPrice);
+    }
+
+    function isConsistentOrderItemsSum(items, quantity, price) {
+      let count = items.size();
+      return (count == 1 && quantity == items[0].quantity && math.abs(price - getItemSubtotal(items[0])) < 0.05)
+        || (count == 2 && quantity == (items[0].quantity + items[1].quantity)
+            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]))) < 0.05)
+        || (count == 3 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity)
+            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]))) < 0.05)
+        || (count == 4 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity)
+            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]))) < 0.05)
+        || (count == 5 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity)
+            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]))) < 0.05)
+        || (count == 6 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity)
+            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]))) < 0.05)
+        || (count == 7 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity)
+            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]))) < 0.05)
+        || (count == 8 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity)
+            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]) + getItemSubtotal(items[7]))) < 0.05)
+        || (count == 9 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity + items[8].quantity)
+            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]) + getItemSubtotal(items[7]) + getItemSubtotal(items[8]))) < 0.05)
+        || (count == 10 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity + items[8].quantity + items[9].quantity)
+            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]) + getItemSubtotal(items[7]) + getItemSubtotal(items[8]) + getItemSubtotal(items[9]))) < 0.05);
+    }
+
+    function isConsistentOrderItemsMetadata(items, data) {
+      let count = items.size();
+      let up = data.get('unitPrice', null);
+      return (count > 1 ? up == null : (
+        up == null || math.abs(up - items[0].unitPrice) < 0.01
+      ));
+    }
+
+    function isValidOrderItemsField(data) {
+      let items = data.get('items', null);
+      let mode = data.get('pricingMode', null);
+      let unitPrice = data.get('unitPrice', null);
+      return (mode == null || mode == 'unit' || mode == 'total' || mode == 'items')
+        && (unitPrice == null || (unitPrice is number && unitPrice >= 0 && unitPrice <= 1000000))
+        && (items == null || (
+          isValidOrderItems(items)
+          && isConsistentOrderItemsSum(items, data.quantity, data.price)
+          && isConsistentOrderItemsMetadata(items, data)
+        ));
+    }
+
+    function isValidOrderConcurrency(previous, next, changed) {
+      // Legacy orders without a version start at 1; every real update must advance it once.
+      return changed.size() == 0
+        || next.version == previous.get('version', 1) + 1;
     }
 
     function isConsistentOrderPayment(payment, price) {
@@ -215,39 +348,55 @@ service cloud.firestore {
       let method = payment.get('method', null);
       return payment.totalAmount == price
         && paid is number && paid >= 0 && paid <= price
-        && remaining is number && remaining >= 0
+        && remaining >= 0
         && math.abs(remaining - (price - paid)) < 0.005
-        && (method == null || method in ['pix', 'cash', 'credit', 'debit', 'transfer'])
-        && (status == 'pending' ? paid == 0
-          : status == 'paid' ? paid == price
-          : status == 'partial' && paid > 0 && paid < price);
+        && (method == null || method == 'pix' || method == 'cash' || method == 'credit' || method == 'debit' || method == 'transfer')
+        && (status == 'paid' ? paid == price
+          : status == 'partial' ? (paid > 0 && paid < price)
+          : status == 'pending' && paid == 0);
     }
 
     function isValidOrder(data, changed) {
-      return (!changed.hasAny(['price']) || !('price' in data) || (data.price is number && data.price >= 0 && data.price <= 1000000))
-        && (!changed.hasAny(['quantity']) || !('quantity' in data) || (data.quantity is int && data.quantity > 0 && data.quantity <= 10000))
-        && (!changed.hasAny(['customerName']) || !('customerName' in data) || (data.customerName is string && data.customerName.matches('[\\s\\S]*[^\\s][\\s\\S]*') && data.customerName.size() <= 200))
-        && (!changed.hasAny(['productName']) || !('productName' in data) || (data.productName is string && data.productName.matches('[\\s\\S]*[^\\s][\\s\\S]*') && data.productName.size() <= 300))
+      return (!changed.hasAny(['price']) || (data.price is number && data.price >= 0 && data.price <= 1000000))
+        && (!changed.hasAny(['quantity']) || (data.quantity is int && data.quantity > 0 && data.quantity <= 10000))
+        && (!changed.hasAny(['customerName']) || (data.customerName.size() <= 200 && data.customerName.matches('[\\s\\S]*[^\\s][\\s\\S]*')))
+        && (!changed.hasAny(['productName']) || (data.productName.size() <= 300 && data.productName.matches('[\\s\\S]*[^\\s][\\s\\S]*')))
         && (!changed.hasAny(['customerPhone']) || data.get('customerPhone', null) == null || (data.customerPhone is string && data.customerPhone.size() <= 50))
         && (!changed.hasAny(['notes']) || data.get('notes', null) == null || (data.notes is string && data.notes.size() <= 1000))
-        && (!changed.hasAny(['status']) || !('status' in data) || data.status in ['pending', 'in-progress', 'completed', 'cancelled']);
+        && (!changed.hasAny(['status']) || data.status in ['pending', 'in-progress', 'completed', 'cancelled']);
     }
 
-    function isValidOrderChanges(data, changed) {
+    function isValidOrderChanges(previous, data, changed) {
       return isValidOrder(data, changed)
-        && (!changed.hasAny(['tags']) || data.get('tags', null) == null || isValidOrderTags(data.tags))
+        && (!changed.hasAny(['tags']) || data.get('tags', null) == null || isValidOrderTagsUpdate(data.tags, previous))
         && (!changed.hasAny(['deliveryDate']) || (
           data.deliveryDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && isValidCalendarDate(data.deliveryDate)))
         && (!changed.hasAny(['customerId']) || data.get('customerId', null) == null || (
           data.customerId is string && data.customerId.size() > 0 && data.customerId.size() <= 128
           && get(/databases/$(database)/documents/customers/$(data.customerId)).data.userId == data.userId))
+        && ((!changed.hasAny(['items', 'pricingMode', 'unitPrice']) && (data.get('items', null) == null || !changed.hasAny(['price', 'quantity'])))
+          || isValidOrderItemsField(data))
         && (!changed.hasAny(['price', 'payment']) || data.get('payment', null) == null || isConsistentOrderPayment(data.payment, data.price));
     }
 
     function isAllowedOrderUpdate(previous, next) {
       let changed = next.diff(previous).affectedKeys();
-      return canUpdateOrder(previous, next, changed)
-        && isValidOrderChanges(next, changed);
+      return canUpdateOrder(previous, changed)
+        && changed.hasOnly([
+          'customerName', 'customerPhone', 'customerId', 'productName',
+          'quantity', 'price', 'pricingMode', 'unitPrice', 'items', 'status',
+          'deliveryDate', 'notes', 'tags', 'payment',
+          'assignedTo', 'assignedToName', 'assignedAt', 'assignedBy', 'createdByName',
+          'productionWorkflow', 'attachments',
+          'isExchange', 'exchangeNotes', 'exchangeItems', 'cardColor',
+          'realCost', 'version', 'isArchived', 'archivedAt', 'archivedBy',
+          'deletedAt', 'updatedAt', 'requiresFinancialApproval', 'financialWarning',
+          'shippingTagId', 'shippingStatus', 'shippingTrackingNumber',
+          'shippingLabelUrl', 'shippingServiceId', 'shippingServiceName',
+          'shippingCost', 'shippingUpdatedAt'
+        ])
+        && isValidOrderConcurrency(previous, next, changed)
+        && isValidOrderChanges(previous, next, changed);
     }
 
     function isValidCustomer(data) {

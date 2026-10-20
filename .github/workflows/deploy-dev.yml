@@ -57,9 +57,11 @@ jobs:
     outputs:
       frontend: ${{ steps.targets.outputs.frontend }}
       functions: ${{ steps.targets.outputs.functions }}
+      functions_scope: ${{ steps.targets.outputs.functions_scope }}
       rules: ${{ steps.targets.outputs.rules }}
       need_e2e: ${{ steps.targets.outputs.need_e2e }}
       need_functions_validation: ${{ steps.targets.outputs.need_functions_validation }}
+      need_frontend_validation: ${{ steps.targets.outputs.need_frontend_validation }}
       has_changes: ${{ steps.targets.outputs.has_changes }}
       mcp_metadata: ${{ steps.targets.outputs.mcp_metadata }}
     steps:
@@ -108,6 +110,10 @@ jobs:
             ci:
               - '.github/workflows/deploy-dev.yml'
               - '.github/workflows/test-actions.yml'
+            maintenance:
+              - 'scripts/fix-negative-values.mjs'
+              - 'scripts/audit-order-integrity.mjs'
+              - 'scripts/order-integrity-audit-core.mjs'
 
       - name: Resolver Alvos e Estratégia de Testes
         id: targets
@@ -117,6 +123,7 @@ jobs:
           INPUT_SKIP_TESTS: ${{ inputs.skip_tests }}
           INPUT_RUN_E2E: ${{ inputs.run_e2e || false }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
+          BASE_SHA: ${{ github.event.before }}
           FILTER_FRONTEND: ${{ steps.filter.outputs.frontend }}
           FILTER_FUNCTIONS: ${{ steps.filter.outputs.functions }}
           FILTER_RULES: ${{ steps.filter.outputs.rules }}
@@ -124,6 +131,7 @@ jobs:
           FILTER_UNIT_TESTS: ${{ steps.filter.outputs.unit_tests }}
           FILTER_INTEGRATION_TESTS: ${{ steps.filter.outputs.integration_tests }}
           FILTER_CI: ${{ steps.filter.outputs.ci }}
+          FILTER_MAINTENANCE: ${{ steps.filter.outputs.maintenance }}
           FILTER_MCP_METADATA: ${{ steps.filter.outputs.mcp_metadata }}
         run: |
           # 1. Identificar flags na mensagem do commit e inputs
@@ -182,6 +190,18 @@ jobs:
             fi
           fi
 
+          # Implanta só os exports da SuperFrete quando esse for o único arquivo de Functions alterado.
+          FUNCTIONS_SCOPE=none
+          if [ "$DEPLOY_FUNCTIONS" = "true" ]; then
+            FUNCTIONS_SCOPE=all
+            if [ "$EVENT_NAME" = "push" ] && [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
+              CHANGED_FUNCTION_FILES=$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA" -- functions/)
+              if [ "$CHANGED_FUNCTION_FILES" = "functions/orders/superfrete.js" ]; then
+                FUNCTIONS_SCOPE=superfrete
+              fi
+            fi
+          fi
+
           # 3. Determinar se testes E2E do Playwright são necessários
           NEED_E2E=false
           if [ "$SKIP_TESTS" != "true" ] && [ "$SKIP_E2E" != "true" ] && [ "$ONLY_FUNCTIONS" != "true" ]; then
@@ -199,9 +219,15 @@ jobs:
           # 4. Determinar se validação rápida de functions/unitária é necessária
           NEED_FUNCTIONS_VALIDATION=false
           if [ "$SKIP_TESTS" != "true" ] && [ "$NEED_E2E" != "true" ]; then
-            if [ "$DEPLOY_FUNCTIONS" = "true" ] || [ "$FILTER_UNIT_TESTS" = "true" ] || [ "$FILTER_CI" = "true" ]; then
+            if [ "$DEPLOY_FUNCTIONS" = "true" ] || [ "$FILTER_UNIT_TESTS" = "true" ] || [ "$FILTER_CI" = "true" ] || [ "$FILTER_MAINTENANCE" = "true" ]; then
               NEED_FUNCTIONS_VALIDATION=true
             fi
+          fi
+
+          # Mudanças de pipeline validam o build sem publicar o Hosting.
+          NEED_FRONTEND_VALIDATION=false
+          if [ "$FILTER_CI" = "true" ] && [ "$FILTER_FRONTEND" != "true" ]; then
+            NEED_FRONTEND_VALIDATION=true
           fi
 
           # 5. Determinar se há algo para deployar
@@ -212,9 +238,11 @@ jobs:
 
           echo "frontend=$DEPLOY_FRONTEND" >> "$GITHUB_OUTPUT"
           echo "functions=$DEPLOY_FUNCTIONS" >> "$GITHUB_OUTPUT"
+          echo "functions_scope=$FUNCTIONS_SCOPE" >> "$GITHUB_OUTPUT"
           echo "rules=$DEPLOY_RULES" >> "$GITHUB_OUTPUT"
           echo "need_e2e=$NEED_E2E" >> "$GITHUB_OUTPUT"
           echo "need_functions_validation=$NEED_FUNCTIONS_VALIDATION" >> "$GITHUB_OUTPUT"
+          echo "need_frontend_validation=$NEED_FRONTEND_VALIDATION" >> "$GITHUB_OUTPUT"
           echo "has_changes=$HAS_CHANGES" >> "$GITHUB_OUTPUT"
           echo "mcp_metadata=$FILTER_MCP_METADATA" >> "$GITHUB_OUTPUT"
 
@@ -222,9 +250,11 @@ jobs:
           echo "🎯 Estratégia de Execução da Pipeline:"
           echo " - Deploy Frontend: $DEPLOY_FRONTEND"
           echo " - Deploy Functions: $DEPLOY_FUNCTIONS"
+          echo " - Escopo Functions: $FUNCTIONS_SCOPE"
           echo " - Deploy Rules: $DEPLOY_RULES"
           echo " - Executar E2E (Playwright): $NEED_E2E"
           echo " - Executar Validação Rápida: $NEED_FUNCTIONS_VALIDATION"
+          echo " - Validar build sem deploy: $NEED_FRONTEND_VALIDATION"
           echo " - Mudanças para Deploy: $HAS_CHANGES"
           echo "============================================="
 
@@ -233,7 +263,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.need_functions_validation == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -243,10 +273,13 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
 
       - name: Instalar dependências
         run: |
-          npm install --legacy-peer-deps
+          npm ci --legacy-peer-deps
           npm --prefix functions ci
 
       - name: Configurar Firebase para testes unitários
@@ -274,6 +307,10 @@ jobs:
       - name: Executar Testes Unitários (Vitest)
         run: npm run test:unit
 
+      - name: Validar build do Frontend sem publicar
+        if: needs.detect-changes.outputs.need_frontend_validation == 'true'
+        run: npm run build
+
   e2e-tests:
     name: 🧪 Testes E2E Completos (Playwright)
     needs: detect-changes
@@ -281,17 +318,105 @@ jobs:
     uses: ./.github/workflows/test-actions.yml
     secrets: inherit
 
+  deploy-frontend:
+    name: 🎨 Build e Deploy Frontend (Dev)
+    needs: [detect-changes, e2e-tests]
+    if: |
+      always() &&
+      needs.detect-changes.result == 'success' &&
+      (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
+      needs.detect-changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Instalar dependências do Frontend
+        run: npm ci --legacy-peer-deps
+
+      - name: Criar .env.local com secrets de DEV
+        env:
+          API_KEY: ${{ secrets.DEV_VITE_FIREBASE_API_KEY }}
+          AUTH_DOMAIN: ${{ secrets.DEV_VITE_FIREBASE_AUTH_DOMAIN }}
+          PROJECT_ID: ${{ secrets.DEV_VITE_FIREBASE_PROJECT_ID }}
+          STORAGE_BUCKET: ${{ secrets.DEV_VITE_FIREBASE_STORAGE_BUCKET }}
+          MESSAGING_SENDER_ID: ${{ secrets.DEV_VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          APP_ID: ${{ secrets.DEV_VITE_FIREBASE_APP_ID }}
+          MEASUREMENT_ID: ${{ secrets.DEV_VITE_FIREBASE_MEASUREMENT_ID }}
+          DATABASE_URL: ${{ secrets.DEV_VITE_FIREBASE_DATABASE_URL }}
+          STORAGE_CDN_URL: ${{ secrets.DEV_VITE_STORAGE_CDN_URL || 'https://cdn-dev.luisices.com.br' }}
+          FUNCTIONS_CUSTOM_DOMAIN: ${{ secrets.DEV_VITE_FUNCTIONS_CUSTOM_DOMAIN || 'https://api.dev.luisices.com.br' }}
+          SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN || secrets.SENTRY_DSN }}
+        run: |
+          printf 'VITE_FIREBASE_API_KEY=%s\n' "$API_KEY" >> .env.local
+          printf 'VITE_FIREBASE_AUTH_DOMAIN=%s\n' "$AUTH_DOMAIN" >> .env.local
+          printf 'VITE_FIREBASE_PROJECT_ID=%s\n' "$PROJECT_ID" >> .env.local
+          printf 'VITE_FIREBASE_STORAGE_BUCKET=%s\n' "$STORAGE_BUCKET" >> .env.local
+          printf 'VITE_FIREBASE_MESSAGING_SENDER_ID=%s\n' "$MESSAGING_SENDER_ID" >> .env.local
+          printf 'VITE_FIREBASE_APP_ID=%s\n' "$APP_ID" >> .env.local
+          printf 'VITE_FIREBASE_MEASUREMENT_ID=%s\n' "$MEASUREMENT_ID" >> .env.local
+          if [ -n "$DATABASE_URL" ]; then
+            printf 'VITE_FIREBASE_DATABASE_URL=%s\n' "$DATABASE_URL" >> .env.local
+          fi
+          printf 'VITE_STORAGE_CDN_URL=%s\n' "$STORAGE_CDN_URL" >> .env.local
+          printf 'VITE_FUNCTIONS_CUSTOM_DOMAIN=%s\n' "$FUNCTIONS_CUSTOM_DOMAIN" >> .env.local
+          if [ -n "$SENTRY_DSN" ]; then
+            printf 'VITE_SENTRY_DSN=%s\n' "$SENTRY_DSN" >> .env.local
+          fi
+
+      - name: Build Frontend (dev)
+        run: npm run build
+
+      - name: Validar conta de deploy do Hosting
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+        run: |
+          node <<'NODE'
+          let credentials;
+          try {
+            credentials = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '');
+          } catch {
+            console.error('FIREBASE_SERVICE_ACCOUNT_DEV ausente ou com JSON inválido.');
+            process.exit(1);
+          }
+          const serviceAccountEmail = credentials?.client_email;
+          if (typeof serviceAccountEmail !== 'string' || !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.gserviceaccount\.com$/.test(serviceAccountEmail)) {
+            console.error('O secret não contém um client_email válido de conta de serviço.');
+            process.exit(1);
+          }
+          console.log('Conta de serviço validada.');
+          NODE
+
+      - name: Deploy Firebase Hosting (dev.luisices.com.br)
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+        run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
+          npx --yes firebase-tools@15.32.1 deploy --only hosting --project luisices-dev --non-interactive
+
   deploy:
-    name: 🚀 Deploy Firebase (Dev)
+    name: 🚀 Deploy Rules e Functions (Dev)
     needs: [detect-changes, e2e-tests, functions-validation]
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
       (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
       (needs.functions-validation.result == 'success' || needs.functions-validation.result == 'skipped') &&
-      needs.detect-changes.outputs.has_changes == 'true'
+      (needs.detect-changes.outputs.functions == 'true' || needs.detect-changes.outputs.rules == 'true' || needs.detect-changes.outputs.mcp_metadata == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -305,7 +430,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      # --- ETAPAS DO FRONTEND (HOSTING) ---
+      # --- AUTENTICAÇÃO DO BACKEND ---
       - name: Identificar conta de deploy
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
@@ -391,54 +516,6 @@ jobs:
           }
           NODE
 
-      - name: Instalar dependências do Frontend
-        if: needs.detect-changes.outputs.frontend == 'true'
-        run: npm install --legacy-peer-deps
-
-      - name: Criar .env.local com secrets de DEV
-        if: needs.detect-changes.outputs.frontend == 'true'
-        env:
-          API_KEY: ${{ secrets.DEV_VITE_FIREBASE_API_KEY }}
-          AUTH_DOMAIN: ${{ secrets.DEV_VITE_FIREBASE_AUTH_DOMAIN }}
-          PROJECT_ID: ${{ secrets.DEV_VITE_FIREBASE_PROJECT_ID }}
-          STORAGE_BUCKET: ${{ secrets.DEV_VITE_FIREBASE_STORAGE_BUCKET }}
-          MESSAGING_SENDER_ID: ${{ secrets.DEV_VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          APP_ID: ${{ secrets.DEV_VITE_FIREBASE_APP_ID }}
-          MEASUREMENT_ID: ${{ secrets.DEV_VITE_FIREBASE_MEASUREMENT_ID }}
-          DATABASE_URL: ${{ secrets.DEV_VITE_FIREBASE_DATABASE_URL }}
-          STORAGE_CDN_URL: ${{ secrets.DEV_VITE_STORAGE_CDN_URL || 'https://cdn-dev.luisices.com.br' }}
-          FUNCTIONS_CUSTOM_DOMAIN: ${{ secrets.DEV_VITE_FUNCTIONS_CUSTOM_DOMAIN || 'https://api.dev.luisices.com.br' }}
-          SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN || secrets.SENTRY_DSN }}
-        run: |
-          printf 'VITE_FIREBASE_API_KEY=%s\n' "$API_KEY" >> .env.local
-          printf 'VITE_FIREBASE_AUTH_DOMAIN=%s\n' "$AUTH_DOMAIN" >> .env.local
-          printf 'VITE_FIREBASE_PROJECT_ID=%s\n' "$PROJECT_ID" >> .env.local
-          printf 'VITE_FIREBASE_STORAGE_BUCKET=%s\n' "$STORAGE_BUCKET" >> .env.local
-          printf 'VITE_FIREBASE_MESSAGING_SENDER_ID=%s\n' "$MESSAGING_SENDER_ID" >> .env.local
-          printf 'VITE_FIREBASE_APP_ID=%s\n' "$APP_ID" >> .env.local
-          printf 'VITE_FIREBASE_MEASUREMENT_ID=%s\n' "$MEASUREMENT_ID" >> .env.local
-          if [ -n "$DATABASE_URL" ]; then
-            printf 'VITE_FIREBASE_DATABASE_URL=%s\n' "$DATABASE_URL" >> .env.local
-          fi
-          printf 'VITE_STORAGE_CDN_URL=%s\n' "$STORAGE_CDN_URL" >> .env.local
-          printf 'VITE_FUNCTIONS_CUSTOM_DOMAIN=%s\n' "$FUNCTIONS_CUSTOM_DOMAIN" >> .env.local
-          if [ -n "$SENTRY_DSN" ]; then
-            printf 'VITE_SENTRY_DSN=%s\n' "$SENTRY_DSN" >> .env.local
-          fi
-
-      - name: Build Frontend (dev)
-        if: needs.detect-changes.outputs.frontend == 'true'
-        run: npm run build
-
-      - name: Deploy Firebase Hosting (dev.luisices.com.br)
-        if: needs.detect-changes.outputs.frontend == 'true'
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
-        run: |
-          echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
-          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
-          npx --yes firebase-tools@15.32.1 deploy --only hosting --project luisices-dev --non-interactive
-
       # --- ETAPAS DE REGRAS (FIRESTORE & STORAGE) ---
       - name: Deploy Firestore & Storage Rules (Dev)
         if: needs.detect-changes.outputs.rules == 'true'
@@ -447,7 +524,10 @@ jobs:
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
-          npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,firestore:indexes,database,storage --project luisices-dev --non-interactive
+          if ! npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,firestore:indexes,database,storage --project luisices-dev --non-interactive; then
+            echo "⚠️ Deploy com database falhou (possível ausência da instância RTDB em dev). Tentando deploy de Firestore e Storage..."
+            npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,firestore:indexes,storage --project luisices-dev --non-interactive
+          fi
 
       # --- ETAPAS DAS CLOUD FUNCTIONS ---
       - name: Instalar dependências de Functions
@@ -483,6 +563,7 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
           SENTRY_DSN: ${{ secrets.DEV_FUNCTIONS_SENTRY_DSN || secrets.DEV_SENTRY_DSN || secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN || secrets.SENTRY_DSN }}
+          FUNCTIONS_DEPLOY_SCOPE: ${{ needs.detect-changes.outputs.functions_scope }}
           GCLOUD_PROJECT: luisices-dev
         run: |
           trap 'rm -f functions/.env.luisices-dev' EXIT
@@ -492,7 +573,10 @@ jobs:
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
 
-          if ! npx --yes firebase-tools@15.32.1 deploy --only functions --project luisices-dev --non-interactive; then
+          if [ "$FUNCTIONS_DEPLOY_SCOPE" = "superfrete" ]; then
+            echo "🚚 Deploy seletivo das Functions da SuperFrete..."
+            npx --yes firebase-tools@15.32.1 deploy --only "functions:calculateSuperfreteShipping,functions:createSuperfreteLabel" --project luisices-dev --non-interactive
+          elif ! npx --yes firebase-tools@15.32.1 deploy --only functions --project luisices-dev --non-interactive; then
             echo "⚠️ Deploy em lote geral atingiu limite de concorrência. Executando deploy particionado por módulos..."
             npx --yes firebase-tools@15.32.1 deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project luisices-dev --non-interactive
             npx --yes firebase-tools@15.32.1 deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia" --project luisices-dev --non-interactive
@@ -506,7 +590,7 @@ jobs:
           npx --yes firebase-tools@15.32.1 functions:secrets:prune --project luisices-dev --force --non-interactive
 
       - name: Purgar Cache da Borda Cloudflare (OpenAPI & Manifestos MCP)
-        if: needs.detect-changes.outputs.has_changes == 'true' || needs.detect-changes.outputs.mcp_metadata == 'true' || inputs.deploy_target == 'all'
+        if: needs.detect-changes.outputs.mcp_metadata == 'true' || inputs.deploy_target == 'all'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |

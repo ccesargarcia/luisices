@@ -18,6 +18,7 @@ on:
           - all
           - security
           - critical
+          - order-integrity
           - orders
           - customers
           - products
@@ -49,7 +50,7 @@ concurrency:
 jobs:
   e2e-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -66,11 +67,14 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
 
       - name: Install dependencies
         run: |
-          npm install --legacy-peer-deps
-          npm --prefix functions install
+          npm ci --legacy-peer-deps
+          npm --prefix functions ci
 
       - name: Create .env files with Firebase and test config
         env:
@@ -104,6 +108,15 @@ jobs:
           printf 'TEST_USER_EMAIL=%s\n' "$TEST_EMAIL" >> .env.test
           printf 'TEST_USER_PASSWORD=%s\n' "$TEST_PASS" >> .env.test
           printf 'PLAYWRIGHT_BASE_URL=http://localhost:4173\n' >> .env.test
+          cat << 'EOF' > functions/.secret.local
+          RESEND_API_KEY=mock-resend-key
+          EVOLUTION_API_KEY=mock-evolution-key
+          RESEND_WEBHOOK_SECRET=mock-webhook-secret
+          GEMINI_API_KEY=mock-gemini-key
+          SUPERFRETE_SANDBOX_TOKEN=mock-superfrete-token
+          ORIGIN_SECRET=mock-origin-secret
+          ALEXA_IDENTITY_HMAC_KEY=mock-alexa-hmac-key
+          EOF
 
       - name: Run Unit Tests (Vitest)
         run: npm run test:unit
@@ -120,8 +133,8 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Install Firebase CLI
-        run: npm install -g firebase-tools@13.31.0
+      - name: Verify Firebase CLI from the project lockfile
+        run: npx firebase --version
 
       - name: Run Rules Integration Tests
         if: matrix.shard == 1
@@ -135,6 +148,7 @@ jobs:
         run: npm run build
 
       - name: Run E2E tests with Firebase Emulator Suite (0 Cloud Reads)
+        if: inputs.test_target != 'order-integrity' || matrix.shard == 1
         env:
           CI: true
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL || 'test-user@example.invalid' }}
@@ -148,6 +162,9 @@ jobs:
           elif [ \"\$INPUT_TARGET\" = 'critical' ] || echo \"\$COMMIT_MSG\" | grep -qiE '\\[test:critical\\]|\\[fast\\]|\\[test:fast\\]'; then
             echo '⚡ Executando testes críticos e de segurança...'
             npx playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts tests/e2e/security.spec.ts --project=chromium --reporter=github,list,html
+          elif [ \"\$INPUT_TARGET\" = 'order-integrity' ]; then
+            echo '🧾 Executando E2E de preço, etiquetas, pagamento e conclusão de pedidos...'
+            npx playwright test tests/e2e/orders.spec.ts --grep 'formata preço unitário|preserva total e pagamento|importa pedido com 20 etiquetas' --project=chromium --reporter=github,list,html
           elif [ -n \"\$INPUT_TARGET\" ] && [ \"\$INPUT_TARGET\" != 'all' ]; then
             echo \"🎯 Executando target específico: \$INPUT_TARGET...\"
             npx playwright test tests/e2e/\${INPUT_TARGET}.spec.ts --project=chromium --reporter=github,list,html

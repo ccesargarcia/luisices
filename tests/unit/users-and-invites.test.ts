@@ -15,8 +15,10 @@ vi.mock('../../src/lib/firebase', () => ({
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
   doc: vi.fn((_db, coll, id) => ({ coll, id })),
-  getDocs: vi.fn(),
+  getDocs: vi.fn(() => Promise.resolve({ empty: true, docs: [] })),
+  getDocsFromServer: vi.fn(() => Promise.resolve({ empty: true, docs: [] })),
   getDoc: (...args: any[]) => mockGetDoc(...args),
+  getDocFromServer: (...args: any[]) => mockGetDoc(...args),
   setDoc: (...args: any[]) => mockSetDoc(...args),
   deleteDoc: (...args: any[]) => mockDeleteDoc(...args),
   updateDoc: vi.fn(),

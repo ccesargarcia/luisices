@@ -14,6 +14,7 @@
     "emulators": "firebase emulators:start --only auth,firestore,storage,functions",
     "test:e2e:emulator": "VITE_USE_FIREBASE_EMULATOR=true playwright test",
     "fix-negative-values": "node scripts/fix-negative-values.mjs",
+    "audit:orders": "node scripts/audit-order-integrity.mjs",
     "sync:ledger": "node scripts/sync-sales-ledger.mjs",
     "clean:disk": "bash scripts/clean-disk.sh",
     "cloudflare:deploy:cdn:dev": "wrangler deploy -c cloudflare/cdn-worker/wrangler.toml -e dev",

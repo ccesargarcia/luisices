@@ -30,6 +30,7 @@ import { AiOrderDraft, OrderItem } from '../types';
 import { secureRandomId } from '../utils/random';
 import { parseDecimalMoneyInput } from '../utils/parseDecimalMoneyInput';
 import { formatDecimalMoneyInput } from '../utils/formatDecimalMoneyInput';
+import { MAX_ORDER_TAGS } from '../utils/orderLimits';
 
 interface NewOrderDialogProps {
   open?: boolean;
@@ -343,6 +344,10 @@ export function NewOrderDialog({
       }
 
       const validProducts = products.filter(p => p.name.trim());
+      if (validProducts.length > 10) {
+        toast.error('O pedido não pode ter mais de 10 produtos.');
+        return;
+      }
       const productName = validProducts
         .map(p => parseInt(p.quantity) > 1 ? `${p.name.trim()} (${p.quantity}x)` : p.name.trim())
         .join(', ');
@@ -637,6 +642,7 @@ export function NewOrderDialog({
             <TagInput
               tags={tags}
               onChange={setTags}
+              maxTags={MAX_ORDER_TAGS}
               placeholder="Adicione tags para categorizar o pedido..."
             />
           </div>
