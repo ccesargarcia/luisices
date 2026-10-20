@@ -18,7 +18,7 @@ Quando surgir a primeira mudança futura, substitua o texto “Ainda sem mudanç
 4. Crie uma tag anotada no commit efetivamente entregue, usando o mesmo nome da versão, e publique-a no GitHub.
 5. Crie uma Release associada à tag e use os itens daquela versão como notas da entrega.
 
-O projeto já declara a versão `1.0.4` em `package.json`. O changelog começa nessa versão, com o estado recente entregue em produção, sem reconstruir as versões anteriores. Uma primeira tag pode ser `v1.0.4`, apontando para o commit correspondente à entrega validada. Nas entregas seguintes, mantenha `package.json`, o changelog e a tag alinhados; não reinicie a numeração em `v1.0.0`.
+O projeto declara atualmente a versão `1.0.5` em `package.json`, e o changelog registra as entregas a partir de `v1.0.4`, sem reconstruir todo o histórico anterior. Antes de criar uma tag, confirme a versão no `package.json`, a seção correspondente no changelog e o commit efetivamente publicado. Nas entregas seguintes, mantenha os três alinhados e preserve as tags já publicadas.
 
 ## Convenção de versões
 

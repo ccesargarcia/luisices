@@ -6,7 +6,14 @@ O registro começou em 12/10/2026 com as entregas recentes verificadas em produ�
 
 ## Não lançado
 
-Ainda sem mudanças registradas para a próxima entrega.
+### Alterado
+
+- Atualizados os guias de CI e testes para refletir a execução atual com emuladores e a seleção de fluxos no GitHub Actions.
+- O deploy de produção ignora alterações isoladas em arquivos Markdown e texto na raiz do repositório.
+
+### Removido
+
+- Guias operacionais obsoletos, uma cópia redundante do guia de design e um arquivo temporário de avaliação fora da documentação do produto.
 
 ## v1.0.5 — 2026-10-20
 
