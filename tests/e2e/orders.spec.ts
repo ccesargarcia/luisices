@@ -139,13 +139,10 @@ test.describe('Pedidos - CRUD', () => {
 
     const unitPriceInputs = detailsDialog.locator('input[placeholder="0,00"]:not(#paidAmount)');
     await expect(unitPriceInputs).toHaveCount(2);
-    await expect(unitPriceInputs.nth(0)).toHaveValue('');
-    await expect(unitPriceInputs.nth(1)).toHaveValue('');
+    await expect(unitPriceInputs.nth(0)).toHaveValue('100,00');
+    await expect(unitPriceInputs.nth(1)).toHaveValue('100,00');
     await expect(detailsDialog.getByText('Total: R$ 300,00')).toBeVisible();
     await expect(detailsDialog.locator('#paidAmount')).toHaveValue('50,00');
-
-    await unitPriceInputs.nth(0).fill('100,00');
-    await unitPriceInputs.nth(1).fill('100,00');
     await detailsDialog.locator('#editStatus').click();
     await page.getByRole('option', { name: 'Concluído' }).click();
     await detailsDialog.locator('#paymentStatus').click();

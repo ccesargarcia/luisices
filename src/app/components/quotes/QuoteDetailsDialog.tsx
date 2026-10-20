@@ -181,6 +181,14 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           productName,
           quantity: totalQty,
           price: quote.totalPrice,
+          items: quote.items.map((i) => ({
+            name: i.name,
+            quantity: i.quantity,
+            unitPrice: i.unitPrice,
+            price: Number((i.quantity * i.unitPrice).toFixed(2)),
+          })),
+          pricingMode: quote.items.length === 1 ? 'unit' : 'items',
+          unitPrice: quote.items.length === 1 ? quote.items[0].unitPrice : null,
           status: 'pending' as OrderStatus,
           deliveryDate: quote.deliveryDate,
           notes: [

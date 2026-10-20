@@ -56,12 +56,32 @@ export function OrderInfoView({ order, customer, onOrderUpdated }: OrderInfoView
 
           <div className="flex items-start gap-3">
             <Package className="size-5 text-muted-foreground mt-0.5" />
-            <div>
-              <div className="text-sm text-muted-foreground">Produto</div>
-              <div className="font-medium">{order.productName}</div>
-              <div className="text-sm text-muted-foreground mt-1">
-                Quantidade: {order.quantity} unidades
-              </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm text-muted-foreground">Produto(s)</div>
+              {order.items && order.items.length > 0 ? (
+                <div className="space-y-1.5 mt-1">
+                  {order.items.map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-baseline text-sm gap-2">
+                      <span className="font-medium truncate">
+                        {item.name} {item.quantity > 1 ? `(${item.quantity}x)` : ''}
+                      </span>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        {formatCurrency(item.unitPrice)} / un
+                      </span>
+                    </div>
+                  ))}
+                  <div className="text-xs text-muted-foreground pt-1 border-t border-border/40">
+                    Total: {order.quantity} {order.quantity === 1 ? 'unidade' : 'unidades'}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="font-medium">{order.productName}</div>
+                  <div className="text-sm text-muted-foreground mt-1">
+                    Quantidade: {order.quantity} unidades
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -80,9 +100,15 @@ export function OrderInfoView({ order, customer, onOrderUpdated }: OrderInfoView
             <div>
               <div className="text-sm text-muted-foreground">Valor Total</div>
               <div className="font-medium text-lg">{formatCurrency(order.price)}</div>
-              <div className="text-sm text-muted-foreground mt-1">
-                {formatCurrency(order.price / (order.quantity || 1))} por unidade
-              </div>
+              {order.items && order.items.length > 1 ? (
+                <div className="text-sm text-muted-foreground mt-1">
+                  {order.items.length} itens no pedido
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground mt-1">
+                  {formatCurrency(typeof order.unitPrice === 'number' ? order.unitPrice : order.price / (order.quantity || 1))} por unidade
+                </div>
+              )}
             </div>
           </div>
 

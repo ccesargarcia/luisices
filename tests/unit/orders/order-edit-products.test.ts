@@ -43,4 +43,37 @@ describe('reconstructOrderProducts', () => {
       { name: 'Caderno', quantity: '3', unitPrice: '100,00' },
     ]);
   });
+
+  it('preserves exact unit prices from storedItems for multi-item orders with different prices', () => {
+    const storedItems = [
+      { name: 'Caderno Personalizado', quantity: 2, unitPrice: 125.5 },
+      { name: 'Adesivo Vinil', quantity: 5, unitPrice: 9.9 },
+    ];
+
+    const products = reconstructOrderProducts(
+      'Caderno Personalizado (2x), Adesivo Vinil (5x)',
+      7,
+      300.5,
+      null,
+      storedItems,
+    );
+
+    expect(products).toEqual([
+      { name: 'Caderno Personalizado', quantity: '2', unitPrice: '125,50' },
+      { name: 'Adesivo Vinil', quantity: '5', unitPrice: '9,90' },
+    ]);
+  });
+
+  it('recovers unit prices embedded in legacy productName text', () => {
+    const products = reconstructOrderProducts(
+      'Caneca Cerâmica (2x) - R$ 35,50, Caneta Metal (1x) - R$ 12,00',
+      3,
+      83,
+    );
+
+    expect(products).toEqual([
+      { name: 'Caneca Cerâmica', quantity: '2', unitPrice: '35,50' },
+      { name: 'Caneta Metal', quantity: '1', unitPrice: '12,00' },
+    ]);
+  });
 });

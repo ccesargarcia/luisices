@@ -3,7 +3,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Order, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile, canAccessArchivedOrders, canAccessEmails } from '../types';
+import { Order, OrderItem, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile, canAccessArchivedOrders, canAccessEmails } from '../types';
 import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore, Mail } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -276,7 +276,8 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       order.productName,
       order.quantity,
       order.price,
-      order.pricingMode === 'unit' ? order.unitPrice : null,
+      order.unitPrice,
+      order.items,
     );
     setEditProducts(parsedProducts.length > 0 ? parsedProducts : [{ name: '', quantity: '1', unitPrice: '' }]);
     setEditProductsBaseline(parsedProducts);
@@ -348,11 +349,26 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       }
       const remainingAmount = price - paidAmt;
 
-      const productName = editProducts
-        .filter(p => p.name.trim())
+      const validProducts = editProducts.filter(p => p.name.trim());
+      const productName = validProducts
         .map(p => parseInt(p.quantity) > 1 ? `${p.name.trim()} (${p.quantity}x)` : p.name.trim())
         .join(', ');
-      const totalQuantity = editProducts.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
+      const totalQuantity = validProducts.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
+
+      const orderItems: OrderItem[] = validProducts.map(p => {
+        const qty = Math.max(1, parseInt(p.quantity, 10) || 1);
+        const parsedUnit = p.unitPrice.trim() ? parseDecimalMoneyInput(p.unitPrice) : null;
+        const unitPrice = parsedUnit !== null ? parsedUnit : (price / (totalQuantity || 1));
+        return {
+          name: p.name.trim(),
+          quantity: qty,
+          unitPrice,
+          price: Number((qty * unitPrice).toFixed(2)),
+        };
+      });
+
+      const singleUnitPrice = orderItems.length === 1 ? orderItems[0].unitPrice : null;
+      const pricingMode = orderItems.length === 1 ? 'unit' : 'items';
 
       // Preservar histórico e metadados de pagamentos anteriores
       const existingPayment = order.payment;
@@ -373,7 +389,9 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           productName,
           quantity: totalQuantity,
           price,
-          ...(editPricingChanged ? { pricingMode: 'total', unitPrice: null } : {}),
+          items: orderItems,
+          unitPrice: singleUnitPrice,
+          pricingMode,
           deliveryDate: editData.deliveryDate,
           notes: editData.notes?.trim() ? editData.notes.trim() : null,
           status: editData.status,

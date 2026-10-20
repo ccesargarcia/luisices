@@ -85,6 +85,7 @@ export interface Order {
   /** Optional voice-order pricing metadata when an exact unit price was recorded. */
   pricingMode?: 'unit' | 'total' | string;
   unitPrice?: number | null;
+  items?: OrderItem[];
   status: OrderStatus;
   deliveryDate: string;
   notes?: string | null;
@@ -128,6 +129,12 @@ export interface Order {
   shippingUpdatedAt?: string | null;
 }
 
+export interface OrderItem {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  price?: number;
+}
 
 export interface ExchangeItem {
   name: string;

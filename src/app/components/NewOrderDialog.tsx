@@ -26,7 +26,7 @@ import { NewOrderItemsSelect } from './orders/NewOrderItemsSelect';
 import { NewOrderPaymentSection } from './orders/NewOrderPaymentSection';
 import { NewOrderGallerySelect } from './orders/NewOrderGallerySelect';
 import { ProductItem } from './orders/OrderEditForm';
-import { AiOrderDraft } from '../types';
+import { AiOrderDraft, OrderItem } from '../types';
 import { secureRandomId } from '../utils/random';
 import { parseDecimalMoneyInput } from '../utils/parseDecimalMoneyInput';
 import { formatDecimalMoneyInput } from '../utils/formatDecimalMoneyInput';
@@ -342,11 +342,26 @@ export function NewOrderDialog({
         }
       }
 
-      const productName = products
-        .filter(p => p.name.trim())
+      const validProducts = products.filter(p => p.name.trim());
+      const productName = validProducts
         .map(p => parseInt(p.quantity) > 1 ? `${p.name.trim()} (${p.quantity}x)` : p.name.trim())
         .join(', ');
-      const totalQuantity = products.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
+      const totalQuantity = validProducts.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
+
+      const orderItems: OrderItem[] = validProducts.map(p => {
+        const qty = Math.max(1, parseInt(p.quantity, 10) || 1);
+        const parsedUnit = p.unitPrice.trim() ? parseDecimalMoneyInput(p.unitPrice) : null;
+        const unitPrice = parsedUnit !== null ? parsedUnit : (totalAmount / (totalQuantity || 1));
+        return {
+          name: p.name.trim(),
+          quantity: qty,
+          unitPrice,
+          price: Number((qty * unitPrice).toFixed(2)),
+        };
+      });
+
+      const singleUnitPrice = orderItems.length === 1 ? orderItems[0].unitPrice : null;
+      const pricingMode = orderItems.length === 1 ? 'unit' : 'items';
 
       const selectedMember = userProfile?.role === 'admin' && assignedTo !== '__none__'
         ? teamMembers.find(m => m.uid === assignedTo)
@@ -359,6 +374,9 @@ export function NewOrderDialog({
         productName,
         quantity: totalQuantity,
         price: totalAmount,
+        pricingMode,
+        unitPrice: singleUnitPrice,
+        items: orderItems,
         status: formData.status,
         deliveryDate: formData.deliveryDate,
         notes: formData.notes || undefined,
