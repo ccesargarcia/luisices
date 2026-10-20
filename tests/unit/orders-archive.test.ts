@@ -3,8 +3,11 @@ import { firebaseOrderService } from '../../src/services/firebaseOrderService';
 import { Order, canAccessArchivedOrders, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS, EMPLOYEE_PERMISSIONS, Permission } from '../../src/app/types';
 
 const mockGetDoc = vi.fn();
+const mockAddDoc = vi.fn();
 const mockRunTransaction = vi.fn();
 const mockTransactionUpdate = vi.fn();
+const mockTransactionSet = vi.fn();
+const mockRecordOrderSale = vi.fn();
 
 vi.mock('../../src/lib/firebase', () => ({
   db: { id: 'mock-db' },
@@ -14,6 +17,7 @@ vi.mock('../../src/lib/firebase', () => ({
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn((_db, name) => ({ name })),
   doc: vi.fn((_db, coll, id) => ({ coll, id })),
+  addDoc: (...args: any[]) => mockAddDoc(...args),
   query: vi.fn((coll, ...clauses) => ({ coll, clauses })),
   where: vi.fn((field, op, val) => ({ field, op, val })),
   orderBy: vi.fn((field, dir) => ({ field, dir })),
@@ -22,6 +26,14 @@ vi.mock('firebase/firestore', () => ({
   },
   getDoc: (...args: any[]) => mockGetDoc(...args),
   runTransaction: (db: any, fn: any) => mockRunTransaction(db, fn),
+}));
+
+vi.mock('../../src/services/firebaseLedgerService', () => ({
+  firebaseLedgerService: {
+    mapOrderToSaleRecord: vi.fn(() => ({})),
+    recordOrderSale: (...args: any[]) => mockRecordOrderSale(...args),
+    markOrderDeletedFromOrders: vi.fn(),
+  },
 }));
 
 describe('Área de Arquivamento e Ciclo de Vida de Pedidos Concluídos', () => {
@@ -38,7 +50,10 @@ describe('Área de Arquivamento e Ciclo de Vida de Pedidos Concluídos', () => {
     mockRunTransaction.mockImplementation(async (_db: any, callback: any) => callback({
       get: (...args: any[]) => mockGetDoc(...args),
       update: (...args: any[]) => mockTransactionUpdate(...args),
+      set: (...args: any[]) => mockTransactionSet(...args),
     }));
+    mockAddDoc.mockResolvedValue({ id: 'order-duplicated' });
+    mockRecordOrderSale.mockResolvedValue(undefined);
   });
 
   describe('Métodos de Serviço para Arquivamento', () => {
@@ -92,6 +107,63 @@ describe('Área de Arquivamento e Ciclo de Vida de Pedidos Concluídos', () => {
       expect(mockTransactionUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'order-1' }),
         expect.objectContaining({ isArchived: false, archivedAt: null, archivedBy: null, version: 2 })
+      );
+    });
+
+    it('normaliza pedido legado sem versão para a próxima versão 2', async () => {
+      mockGetDoc.mockResolvedValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-archive-123', status: 'completed' }),
+      });
+
+      await firebaseOrderService.archiveOrder('legacy-order');
+
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ coll: 'orders', id: 'legacy-order' }),
+        expect.objectContaining({ version: 2, isArchived: true })
+      );
+    });
+
+    it('recusa editar um pedido com versão fracionária inválida', async () => {
+      mockGetDoc.mockResolvedValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-archive-123', status: 'completed', version: 1.5 }),
+      });
+
+      await expect(firebaseOrderService.archiveOrder('invalid-version-order'))
+        .rejects.toThrow('versão inválida');
+      expect(mockTransactionUpdate).not.toHaveBeenCalled();
+    });
+
+    it('cria pedidos duplicados começando na versão 1', async () => {
+      const sourceOrder = {
+        userId: 'user-archive-123',
+        orderNumber: '#2026-0001',
+        customerName: 'Cliente origem',
+        customerPhone: '11999999999',
+        productName: 'Produto origem',
+        quantity: 1,
+        price: 100,
+        status: 'completed',
+        deliveryDate: '2026-11-20',
+      };
+      const sourceSnapshot = { id: 'source-order', exists: () => true, data: () => sourceOrder };
+      const counterSnapshot = { exists: () => false, data: () => undefined };
+      const duplicateSnapshot = {
+        id: 'order-duplicated',
+        exists: () => true,
+        data: () => ({ ...sourceOrder, version: 1, status: 'pending' }),
+      };
+      mockGetDoc
+        .mockResolvedValueOnce(sourceSnapshot)
+        .mockResolvedValueOnce(counterSnapshot)
+        .mockResolvedValueOnce(duplicateSnapshot);
+
+      await firebaseOrderService.duplicateOrder('source-order');
+
+      expect(mockAddDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'orders' }),
+        expect.objectContaining({ version: 1, status: 'pending' })
       );
     });
   });

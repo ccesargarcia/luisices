@@ -79,10 +79,16 @@ test.describe('Pedidos - CRUD', () => {
     await expect(detailsDialog.locator('input[placeholder="0,00"]:not(#paidAmount)')).toHaveValue('');
     await expect(detailsDialog.getByText('Total: R$ 92,19', { exact: true })).toBeVisible();
     await expect(detailsDialog.locator('#paidAmount')).toHaveValue('30,00');
+    await detailsDialog.locator('#editStatus').click();
+    await page.getByRole('option', { name: 'Concluído' }).click();
+    await detailsDialog.locator('#paymentStatus').click();
+    await page.getByRole('option', { name: 'Pago' }).click();
+    await expect(detailsDialog.locator('#paidAmount')).toHaveValue('92,19');
     await detailsDialog.getByRole('button', { name: 'Salvar Alterações' }).click();
 
     await expect(detailsDialog.getByText('Valor Total').locator('..')).toContainText('92,19');
-    await expect(detailsDialog.getByText('Valor Pago:').locator('..')).toContainText('30,00');
+    await expect(detailsDialog.getByText('Valor Pago:').locator('..')).toContainText('92,19');
+    await expect(detailsDialog.locator('[data-slot="badge"]').filter({ hasText: 'Concluído' })).toBeVisible();
 
     const deleteButton = detailsDialog.getByRole('button', { name: /Excluir Pedido/i });
     if (await deleteButton.isVisible().catch(() => false)) {

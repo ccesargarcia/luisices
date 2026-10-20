@@ -61,6 +61,7 @@ jobs:
       rules: ${{ steps.targets.outputs.rules }}
       need_e2e: ${{ steps.targets.outputs.need_e2e }}
       need_functions_validation: ${{ steps.targets.outputs.need_functions_validation }}
+      need_frontend_validation: ${{ steps.targets.outputs.need_frontend_validation }}
       has_changes: ${{ steps.targets.outputs.has_changes }}
       mcp_metadata: ${{ steps.targets.outputs.mcp_metadata }}
     steps:
@@ -109,6 +110,10 @@ jobs:
             ci:
               - '.github/workflows/deploy-dev.yml'
               - '.github/workflows/test-actions.yml'
+            maintenance:
+              - 'scripts/fix-negative-values.mjs'
+              - 'scripts/audit-order-integrity.mjs'
+              - 'scripts/order-integrity-audit-core.mjs'
 
       - name: Resolver Alvos e Estratégia de Testes
         id: targets
@@ -126,6 +131,7 @@ jobs:
           FILTER_UNIT_TESTS: ${{ steps.filter.outputs.unit_tests }}
           FILTER_INTEGRATION_TESTS: ${{ steps.filter.outputs.integration_tests }}
           FILTER_CI: ${{ steps.filter.outputs.ci }}
+          FILTER_MAINTENANCE: ${{ steps.filter.outputs.maintenance }}
           FILTER_MCP_METADATA: ${{ steps.filter.outputs.mcp_metadata }}
         run: |
           # 1. Identificar flags na mensagem do commit e inputs
@@ -184,11 +190,6 @@ jobs:
             fi
           fi
 
-          # Alterações no workflow validam o build do frontend em um job separado.
-          if [ "$FILTER_CI" = "true" ] && [ "$ONLY_FUNCTIONS" != "true" ] && [ "$INPUT_TARGET" = "auto" ]; then
-            DEPLOY_FRONTEND=true
-          fi
-
           # Implanta só os exports da SuperFrete quando esse for o único arquivo de Functions alterado.
           FUNCTIONS_SCOPE=none
           if [ "$DEPLOY_FUNCTIONS" = "true" ]; then
@@ -218,9 +219,15 @@ jobs:
           # 4. Determinar se validação rápida de functions/unitária é necessária
           NEED_FUNCTIONS_VALIDATION=false
           if [ "$SKIP_TESTS" != "true" ] && [ "$NEED_E2E" != "true" ]; then
-            if [ "$DEPLOY_FUNCTIONS" = "true" ] || [ "$FILTER_UNIT_TESTS" = "true" ] || [ "$FILTER_CI" = "true" ]; then
+            if [ "$DEPLOY_FUNCTIONS" = "true" ] || [ "$FILTER_UNIT_TESTS" = "true" ] || [ "$FILTER_CI" = "true" ] || [ "$FILTER_MAINTENANCE" = "true" ]; then
               NEED_FUNCTIONS_VALIDATION=true
             fi
+          fi
+
+          # Mudanças de pipeline validam o build sem publicar o Hosting.
+          NEED_FRONTEND_VALIDATION=false
+          if [ "$FILTER_CI" = "true" ] && [ "$FILTER_FRONTEND" != "true" ]; then
+            NEED_FRONTEND_VALIDATION=true
           fi
 
           # 5. Determinar se há algo para deployar
@@ -235,6 +242,7 @@ jobs:
           echo "rules=$DEPLOY_RULES" >> "$GITHUB_OUTPUT"
           echo "need_e2e=$NEED_E2E" >> "$GITHUB_OUTPUT"
           echo "need_functions_validation=$NEED_FUNCTIONS_VALIDATION" >> "$GITHUB_OUTPUT"
+          echo "need_frontend_validation=$NEED_FRONTEND_VALIDATION" >> "$GITHUB_OUTPUT"
           echo "has_changes=$HAS_CHANGES" >> "$GITHUB_OUTPUT"
           echo "mcp_metadata=$FILTER_MCP_METADATA" >> "$GITHUB_OUTPUT"
 
@@ -246,6 +254,7 @@ jobs:
           echo " - Deploy Rules: $DEPLOY_RULES"
           echo " - Executar E2E (Playwright): $NEED_E2E"
           echo " - Executar Validação Rápida: $NEED_FUNCTIONS_VALIDATION"
+          echo " - Validar build sem deploy: $NEED_FRONTEND_VALIDATION"
           echo " - Mudanças para Deploy: $HAS_CHANGES"
           echo "============================================="
 
@@ -254,7 +263,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.need_functions_validation == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -264,10 +273,13 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
 
       - name: Instalar dependências
         run: |
-          npm install --legacy-peer-deps
+          npm ci --legacy-peer-deps
           npm --prefix functions ci
 
       - name: Configurar Firebase para testes unitários
@@ -294,6 +306,10 @@ jobs:
 
       - name: Executar Testes Unitários (Vitest)
         run: npm run test:unit
+
+      - name: Validar build do Frontend sem publicar
+        if: needs.detect-changes.outputs.need_frontend_validation == 'true'
+        run: npm run build
 
   e2e-tests:
     name: 🧪 Testes E2E Completos (Playwright)
@@ -324,9 +340,10 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: package-lock.json
 
       - name: Instalar dependências do Frontend
-        run: npm install --legacy-peer-deps
+        run: npm ci --legacy-peer-deps
 
       - name: Criar .env.local com secrets de DEV
         env:

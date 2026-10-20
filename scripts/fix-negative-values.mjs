@@ -2,15 +2,29 @@
 /**
  * Script para corrigir valores negativos no Firestore
  * 
- * Uso: node scripts/fix-negative-values.mjs
+ * Uso: configurar Firebase em .env.local e informar FIREBASE_ADMIN_EMAIL e
+ * FIREBASE_ADMIN_PASSWORD. A execução padrão apenas simula; use --apply para gravar.
  */
 
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword, connectAuthEmulator } from 'firebase/auth';
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  doc,
+  getDoc,
+  updateDoc,
+  query,
+  where,
+  connectFirestoreEmulator,
+  runTransaction,
+} from 'firebase/firestore';
 import { config } from 'dotenv';
 
 // Carregar variáveis de ambiente
-config({ path: '.env.local' });
+config({ path: '.env.local', quiet: true });
+const APPLY_CHANGES = process.argv.includes('--apply');
 
 const firebaseConfig = {
   apiKey: process.env.VITE_FIREBASE_API_KEY,
@@ -23,6 +37,27 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
+
+if (process.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
+  const emulatorHost = process.env.VITE_FIREBASE_EMULATOR_HOST || '127.0.0.1';
+  connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true });
+  connectFirestoreEmulator(db, emulatorHost, 8080);
+}
+
+async function authenticateAdmin() {
+  const email = process.env.FIREBASE_ADMIN_EMAIL;
+  const password = process.env.FIREBASE_ADMIN_PASSWORD;
+  if (!email || !password) {
+    throw new Error('Configure FIREBASE_ADMIN_EMAIL e FIREBASE_ADMIN_PASSWORD em .env.local para executar a manutenção.');
+  }
+
+  const credential = await signInWithEmailAndPassword(auth, email, password);
+  const profile = await getDoc(doc(db, 'userProfiles', credential.user.uid));
+  if (!profile.exists() || profile.data().role !== 'admin' || profile.data().active === false) {
+    throw new Error('A conta autenticada precisa ter um perfil de administrador ativo.');
+  }
+}
 
 /**
  * Corrigir valores negativos em clientes
@@ -50,12 +85,12 @@ async function fixCustomers() {
     }
     
     if (Object.keys(updates).length > 0) {
-      await updateDoc(doc(db, 'customers', docSnap.id), updates);
+      if (APPLY_CHANGES) await updateDoc(doc(db, 'customers', docSnap.id), updates);
       fixed++;
     }
   }
   
-  console.log(`✅ ${fixed} clientes corrigidos\n`);
+  console.log(`✅ ${fixed} clientes ${APPLY_CHANGES ? 'corrigidos' : 'com correção proposta'}\n`);
   return fixed;
 }
 
@@ -72,61 +107,87 @@ async function fixOrders() {
   let fixed = 0;
   
   for (const docSnap of snapshot.docs) {
-    const data = docSnap.data();
-    const updates = {};
-    
-    if (data.price < 0) {
-      updates.price = 0;
-      console.log(`  ❌ Pedido ${data.orderNumber}: price ${data.price} → 0`);
+    const repair = await runTransaction(db, async (transaction) => {
+      const orderRef = doc(db, 'orders', docSnap.id);
+      const currentSnapshot = await transaction.get(orderRef);
+      if (!currentSnapshot.exists()) return null;
+
+      const data = currentSnapshot.data();
+      const updates = {};
+      const nextPrice = data.price < 0 ? 0 : data.price;
+      if (data.price < 0) updates.price = 0;
+
+      if (data.payment && typeof data.payment === 'object') {
+        const payment = data.payment;
+        const hasNegativePaymentAmount = [payment.totalAmount, payment.paidAmount, payment.remainingAmount]
+          .some(value => typeof value === 'number' && value < 0);
+        const orderPriceChanged = Object.hasOwn(updates, 'price');
+
+        if (hasNegativePaymentAmount || orderPriceChanged) {
+          if (typeof nextPrice !== 'number' || !Number.isFinite(nextPrice) || nextPrice < 0) {
+            return { manualReview: 'preço do pedido inválido para recalcular o pagamento' };
+          }
+          if (payment.method != null && !['pix', 'cash', 'credit', 'debit', 'transfer'].includes(payment.method)) {
+            return { manualReview: 'forma de pagamento inválida' };
+          }
+
+          const paidAmount = typeof payment.paidAmount === 'number' && Number.isFinite(payment.paidAmount)
+            ? Math.max(0, payment.paidAmount)
+            : 0;
+          if (paidAmount > nextPrice) {
+            return { manualReview: 'valor recebido supera o novo total; exige conciliação manual' };
+          }
+
+          const remainingAmount = Math.round((nextPrice - paidAmount) * 100) / 100;
+          const status = paidAmount === nextPrice && nextPrice > 0
+            ? 'paid'
+            : paidAmount > 0
+              ? 'partial'
+              : 'pending';
+          updates.payment = {
+            ...payment,
+            status,
+            totalAmount: nextPrice,
+            paidAmount,
+            remainingAmount,
+          };
+        }
+      }
+
+      if (data.exchangeItems && Array.isArray(data.exchangeItems)) {
+        const fixedItems = data.exchangeItems.map(item => ({
+          ...item,
+          value: item.value && item.value < 0 ? 0 : item.value,
+          quantity: item.quantity < 0 ? 0 : item.quantity,
+        }));
+        if (JSON.stringify(fixedItems) !== JSON.stringify(data.exchangeItems)) {
+          updates.exchangeItems = fixedItems;
+        }
+      }
+
+      if (Object.keys(updates).length === 0) return null;
+
+      const currentVersion = data.version === undefined ? 1 : data.version;
+      if (!Number.isSafeInteger(currentVersion) || currentVersion < 1) {
+        return { manualReview: 'versão inválida; pedido não foi alterado' };
+      }
+      updates.version = currentVersion + 1;
+      updates.updatedAt = new Date().toISOString();
+      if (APPLY_CHANGES) transaction.update(orderRef, updates);
+      return { orderNumber: data.orderNumber, updates };
+    });
+
+    if (repair?.manualReview) {
+      console.warn(`  ⚠️ Pedido ${docSnap.data().orderNumber}: ${repair.manualReview}`);
+      continue;
     }
-    
-    if (data.payment) {
-      const paymentUpdates = {};
-      let hasPaymentFix = false;
-      
-      if (data.payment.totalAmount < 0) {
-        paymentUpdates.totalAmount = 0;
-        hasPaymentFix = true;
-        console.log(`  ❌ Pedido ${data.orderNumber}: payment.totalAmount ${data.payment.totalAmount} → 0`);
-      }
-      
-      if (data.payment.paidAmount < 0) {
-        paymentUpdates.paidAmount = 0;
-        hasPaymentFix = true;
-        console.log(`  ❌ Pedido ${data.orderNumber}: payment.paidAmount ${data.payment.paidAmount} → 0`);
-      }
-      
-      if (data.payment.remainingAmount < 0) {
-        paymentUpdates.remainingAmount = 0;
-        hasPaymentFix = true;
-        console.log(`  ❌ Pedido ${data.orderNumber}: payment.remainingAmount ${data.payment.remainingAmount} → 0`);
-      }
-      
-      if (hasPaymentFix) {
-        updates.payment = { ...data.payment, ...paymentUpdates };
-      }
-    }
-    
-    if (data.exchangeItems && Array.isArray(data.exchangeItems)) {
-      const fixedItems = data.exchangeItems.map(item => ({
-        ...item,
-        value: item.value && item.value < 0 ? 0 : item.value,
-        quantity: item.quantity < 0 ? 0 : item.quantity
-      }));
-      
-      if (JSON.stringify(fixedItems) !== JSON.stringify(data.exchangeItems)) {
-        updates.exchangeItems = fixedItems;
-        console.log(`  ❌ Pedido ${data.orderNumber}: exchangeItems corrigidos`);
-      }
-    }
-    
-    if (Object.keys(updates).length > 0) {
-      await updateDoc(doc(db, 'orders', docSnap.id), updates);
+    if (repair?.updates) {
+      console.log(`  ✅ Pedido ${repair.orderNumber}: ${APPLY_CHANGES ? 'corrigir' : 'correção proposta para'} ${Object.keys(repair.updates).filter(key => !['version', 'updatedAt'].includes(key)).join(', ')}`);
       fixed++;
     }
   }
   
-  console.log(`✅ ${fixed} pedidos corrigidos\n`);
+  console.log(`✅ ${fixed} pedidos ${APPLY_CHANGES ? 'corrigidos' : 'com correção proposta'}\n`);
   return fixed;
 }
 
@@ -169,12 +230,12 @@ async function fixQuotes() {
     }
     
     if (Object.keys(updates).length > 0) {
-      await updateDoc(doc(db, 'quotes', docSnap.id), updates);
+      if (APPLY_CHANGES) await updateDoc(doc(db, 'quotes', docSnap.id), updates);
       fixed++;
     }
   }
   
-  console.log(`✅ ${fixed} orçamentos corrigidos\n`);
+  console.log(`✅ ${fixed} orçamentos ${APPLY_CHANGES ? 'corrigidos' : 'com correção proposta'}\n`);
   return fixed;
 }
 
@@ -199,12 +260,12 @@ async function fixProducts() {
     }
     
     if (Object.keys(updates).length > 0) {
-      await updateDoc(doc(db, 'products', docSnap.id), updates);
+      if (APPLY_CHANGES) await updateDoc(doc(db, 'products', docSnap.id), updates);
       fixed++;
     }
   }
   
-  console.log(`✅ ${fixed} produtos corrigidos\n`);
+  console.log(`✅ ${fixed} produtos ${APPLY_CHANGES ? 'corrigidos' : 'com correção proposta'}\n`);
   return fixed;
 }
 
@@ -212,9 +273,10 @@ async function fixProducts() {
  * Executar correção
  */
 async function main() {
-  console.log('🚀 Iniciando correção de valores negativos...\n');
+  console.log(`🚀 ${APPLY_CHANGES ? 'Aplicando' : 'Simulando'} correções de valores negativos...\n`);
   
   try {
+    await authenticateAdmin();
     const customersFixed = await fixCustomers();
     const ordersFixed = await fixOrders();
     const quotesFixed = await fixQuotes();
@@ -223,8 +285,9 @@ async function main() {
     const total = customersFixed + ordersFixed + quotesFixed + productsFixed;
     
     console.log('═══════════════════════════════════════');
-    console.log(`🎉 Correção concluída!`);
-    console.log(`📊 Total: ${total} registros corrigidos`);
+    console.log(`🎉 ${APPLY_CHANGES ? 'Correção' : 'Simulação'} concluída!`);
+    console.log(`📊 Total: ${total} registros ${APPLY_CHANGES ? 'alterados' : 'com correção proposta'}`);
+    if (!APPLY_CHANGES) console.log('Nenhum dado foi alterado. Revise o relatório e use --apply para confirmar.');
     console.log('═══════════════════════════════════════');
     
     process.exit(0);

@@ -11,6 +11,7 @@ on:
           - security
           - e2e
           - critical
+          - order-integrity
           - customers
           - orders
           - products
@@ -50,6 +51,9 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -90,11 +94,14 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
 
       - name: Install dependencies
         run: |
-          npm install --legacy-peer-deps
-          npm --prefix functions install
+          npm ci --legacy-peer-deps
+          npm --prefix functions ci
 
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
@@ -105,8 +112,8 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Install Firebase CLI
-        run: npm install -g firebase-tools
+      - name: Verify Firebase CLI from the project lockfile
+        run: npx firebase --version
 
       - name: Create .env files with DEV secrets
         env:
@@ -151,8 +158,14 @@ jobs:
           CI: true
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL || 'test-user@example.invalid' }}
           PLAYWRIGHT_BASE_URL: http://localhost:4173
+          TEST_TARGET: ${{ github.event.inputs.test_target || 'e2e' }}
         run: |
-          npx firebase emulators:exec --only auth,firestore,storage,functions "node scripts/seed-emulator.mjs && npm run test:${{ github.event.inputs.test_target || 'e2e' }}"
+          if [ "$TEST_TARGET" = 'order-integrity' ]; then
+            TEST_COMMAND="npx playwright test tests/e2e/orders.spec.ts --grep 'formata preço unitário|preserva total e pagamento' --project=chromium"
+          else
+            TEST_COMMAND="npm run test:$TEST_TARGET"
+          fi
+          npx firebase emulators:exec --only auth,firestore,storage,functions "node scripts/seed-emulator.mjs && $TEST_COMMAND"
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}

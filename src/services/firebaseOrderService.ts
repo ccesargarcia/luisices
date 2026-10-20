@@ -48,8 +48,16 @@ export class FirebaseOrderService {
     }
   }
 
+  private currentOrderVersion(data: Record<string, any>): number {
+    if (data.version === undefined) return 1;
+    if (!Number.isSafeInteger(data.version) || data.version < 1) {
+      throw new Error('Este pedido tem uma versão inválida e precisa ser corrigido antes de uma nova edição.');
+    }
+    return data.version;
+  }
+
   private nextOrderVersion(data: Record<string, any>): number {
-    return (typeof data.version === 'number' ? data.version : 1) + 1;
+    return this.currentOrderVersion(data) + 1;
   }
 
   private async updateOrderWithVersion(
@@ -427,7 +435,7 @@ export class FirebaseOrderService {
       cardColor: data.cardColor,
       userId: data.userId,
       updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt,
-      version: typeof data.version === 'number' ? data.version : 1,
+      version: Number.isSafeInteger(data.version) && data.version > 0 ? data.version : 1,
       isArchived: Boolean(data.isArchived),
       archivedAt: data.archivedAt?.toDate ? data.archivedAt.toDate().toISOString() : data.archivedAt,
       archivedBy: data.archivedBy,
@@ -617,9 +625,10 @@ export class FirebaseOrderService {
       }
       const saleSnap = await transaction.get(saleRef);
       const orderData = orderSnap.data();
+      const currentVersion = this.currentOrderVersion(orderData);
 
-      if (expectedVersion !== undefined && typeof orderData.version === 'number' && orderData.version !== expectedVersion) {
-        throw new Error(`Conflito de concorrência: o pedido foi alterado por outro usuário (versão ${orderData.version} != esperada ${expectedVersion}).`);
+      if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
+        throw new Error(`Conflito de concorrência: o pedido foi alterado por outro usuário (versão ${currentVersion} != esperada ${expectedVersion}).`);
       }
 
       const now = new Date().toISOString();
@@ -686,9 +695,10 @@ export class FirebaseOrderService {
       }
       const saleSnap = await transaction.get(saleRef);
       const orderData = orderSnap.data();
+      const currentVersion = this.currentOrderVersion(orderData);
 
-      if (expectedVersion !== undefined && typeof orderData.version === 'number' && orderData.version !== expectedVersion) {
-        throw new Error(`Conflito de concorrência: o pedido foi alterado por outro usuário (versão ${orderData.version} != esperada ${expectedVersion}).`);
+      if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
+        throw new Error(`Conflito de concorrência: o pedido foi alterado por outro usuário (versão ${currentVersion} != esperada ${expectedVersion}).`);
       }
 
       // Remover campos undefined e garantir preservação de histórico e integridade do saldo restante
@@ -824,6 +834,7 @@ export class FirebaseOrderService {
         paymentDate: null,
         notes: null,
       },
+      version: 1,
       createdAt: Timestamp.now(),
       deletedAt: null,
     });
