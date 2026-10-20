@@ -125,6 +125,8 @@ export default function FixNegativeValues() {
       }
 
       if (Object.keys(updates).length > 0) {
+        updates.version = (typeof data.version === 'number' ? data.version : 1) + 1;
+        updates.updatedAt = new Date().toISOString();
         await updateDoc(doc(db, 'orders', docSnap.id), updates);
         fixed++;
       }

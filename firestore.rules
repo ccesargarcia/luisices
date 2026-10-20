@@ -285,8 +285,10 @@ service cloud.firestore {
     }
 
     function isValidOrderConcurrency(previous, next, changed) {
-      return !changed.hasAny(['version'])
-        || (next.version is int && (!('version' in previous) || next.version == previous.version + 1));
+      return changed.size() == 0
+        || (next.get('version', null) is int
+          && previous.get('version', 1) is int
+          && next.version == previous.get('version', 1) + 1);
     }
 
     function isConsistentOrderPayment(payment, price) {

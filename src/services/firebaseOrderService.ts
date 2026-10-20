@@ -10,13 +10,11 @@ import {
   addDoc,
   getDoc,
   getDocs,
-  updateDoc,
   query,
   where,
   orderBy,
   Timestamp,
   runTransaction,
-  writeBatch,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Order, OrderItem, OrderStatus, ProductionStep, ProductionWorkflow } from '../app/types';
@@ -47,6 +45,51 @@ export class FirebaseOrderService {
       return profileSnap.exists() && profileSnap.data().role === 'admin';
     } catch {
       return false;
+    }
+  }
+
+  private nextOrderVersion(data: Record<string, any>): number {
+    return (typeof data.version === 'number' ? data.version : 1) + 1;
+  }
+
+  private async updateOrderWithVersion(
+    orderRef: any,
+    buildUpdates: (orderData: Record<string, any>) => Record<string, any>
+  ): Promise<void> {
+    await runTransaction(db, async (transaction) => {
+      const orderSnap = await transaction.get(orderRef);
+      if (!orderSnap.exists()) throw new Error('Pedido não encontrado');
+      const orderData = orderSnap.data() as Record<string, any>;
+      transaction.update(orderRef, {
+        ...buildUpdates(orderData),
+        version: this.nextOrderVersion(orderData),
+      });
+    });
+  }
+
+  private async updateOrdersWithVersion(
+    orderIds: string[],
+    buildUpdates: (orderData: Record<string, any>) => Record<string, any>
+  ): Promise<void> {
+    const ids = [...new Set(orderIds)];
+    const chunkSize = 200;
+    for (let index = 0; index < ids.length; index += chunkSize) {
+      const chunk = ids.slice(index, index + chunkSize);
+      await runTransaction(db, async (transaction) => {
+        const orders = await Promise.all(chunk.map(async (id) => {
+          const orderRef = doc(db, ORDERS_COLLECTION, id);
+          const orderSnap = await transaction.get(orderRef);
+          if (!orderSnap.exists()) throw new Error(`Pedido ${id} não encontrado`);
+          return { orderRef, orderData: orderSnap.data() as Record<string, any> };
+        }));
+
+        for (const { orderRef, orderData } of orders) {
+          transaction.update(orderRef, {
+            ...buildUpdates(orderData),
+            version: this.nextOrderVersion(orderData),
+          });
+        }
+      });
     }
   }
 
@@ -529,7 +572,10 @@ export class FirebaseOrderService {
           return { orderRef, saleRef, order, sale };
         }));
         for (const { orderRef, saleRef, order, sale } of records) {
-          transaction.update(orderRef, payload);
+          transaction.update(orderRef, {
+            ...payload,
+            version: this.nextOrderVersion(order.data()),
+          });
           if (sale.exists()) {
             transaction.update(saleRef, {
               assignedTo: payload.assignedTo,
@@ -572,7 +618,6 @@ export class FirebaseOrderService {
       const saleSnap = await transaction.get(saleRef);
       const orderData = orderSnap.data();
 
-      const currentVersion = typeof orderData.version === 'number' ? orderData.version : 1;
       if (expectedVersion !== undefined && typeof orderData.version === 'number' && orderData.version !== expectedVersion) {
         throw new Error(`Conflito de concorrência: o pedido foi alterado por outro usuário (versão ${orderData.version} != esperada ${expectedVersion}).`);
       }
@@ -581,7 +626,7 @@ export class FirebaseOrderService {
 
       const orderUpdates: Record<string, any> = {
         status,
-        version: currentVersion + 1,
+        version: this.nextOrderVersion(orderData),
         updatedAt: now,
       };
 
@@ -642,7 +687,6 @@ export class FirebaseOrderService {
       const saleSnap = await transaction.get(saleRef);
       const orderData = orderSnap.data();
 
-      const currentVersion = typeof orderData.version === 'number' ? orderData.version : 1;
       if (expectedVersion !== undefined && typeof orderData.version === 'number' && orderData.version !== expectedVersion) {
         throw new Error(`Conflito de concorrência: o pedido foi alterado por outro usuário (versão ${orderData.version} != esperada ${expectedVersion}).`);
       }
@@ -704,7 +748,7 @@ export class FirebaseOrderService {
       // 2. TODAS as escritas após as leituras
       transaction.update(orderRef, {
         ...cleanUpdates,
-        version: currentVersion + 1,
+        version: this.nextOrderVersion(orderData),
         updatedAt: now,
       });
 
@@ -804,8 +848,10 @@ export class FirebaseOrderService {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
-    const current: import('../app/types').OrderAttachment[] = orderSnap.data().attachments || [];
-    await updateDoc(orderRef, { attachments: [...current, attachment] });
+    await this.updateOrderWithVersion(orderRef, (orderData) => {
+      const current: import('../app/types').OrderAttachment[] = orderData.attachments || [];
+      return { attachments: [...current, attachment], updatedAt: new Date().toISOString() };
+    });
   }
 
   /**
@@ -820,8 +866,13 @@ export class FirebaseOrderService {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
-    const current: import('../app/types').OrderAttachment[] = orderSnap.data().attachments || [];
-    await updateDoc(orderRef, { attachments: current.filter(a => a.url !== url) });
+    await this.updateOrderWithVersion(orderRef, (orderData) => {
+      const current: import('../app/types').OrderAttachment[] = orderData.attachments || [];
+      return {
+        attachments: current.filter(a => a.url !== url),
+        updatedAt: new Date().toISOString(),
+      };
+    });
   }
 
   /**
@@ -852,9 +903,10 @@ export class FirebaseOrderService {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
-    await updateDoc(orderRef, {
+    await this.updateOrderWithVersion(orderRef, () => ({
       deletedAt: Timestamp.now(),
-    });
+      updatedAt: new Date().toISOString(),
+    }));
 
     firebaseLedgerService.markOrderDeletedFromOrders(orderId).catch(err => {
       console.warn('firebaseLedgerService: erro ao marcar pedido como removido de orders:', err);
@@ -889,9 +941,10 @@ export class FirebaseOrderService {
       startedAt: new Date().toISOString(),
     };
 
-    await updateDoc(orderRef, {
+    await this.updateOrderWithVersion(orderRef, () => ({
       productionWorkflow: workflow,
-    });
+      updatedAt: new Date().toISOString(),
+    }));
   }
 
   /**
@@ -975,10 +1028,10 @@ export class FirebaseOrderService {
       // Se todas as etapas estiverem completas, atualizar status do pedido
       const allCompleted = stepOrder.every(s => workflow.steps[s].completed);
       const now = new Date().toISOString();
-      const currentVersion = Number(data.version) || 1;
+      const nextVersion = this.nextOrderVersion(data);
       const updates: any = {
         productionWorkflow: workflow,
-        version: currentVersion + 1,
+        version: nextVersion,
         updatedAt: now,
       };
 
@@ -1052,12 +1105,12 @@ export class FirebaseOrderService {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
     const now = new Date().toISOString();
-    await updateDoc(orderRef, {
+    await this.updateOrderWithVersion(orderRef, () => ({
       isArchived: true,
       archivedAt: now,
       archivedBy: userId,
       updatedAt: now,
-    });
+    }));
   }
 
   /**
@@ -1071,12 +1124,12 @@ export class FirebaseOrderService {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
     const now = new Date().toISOString();
-    await updateDoc(orderRef, {
+    await this.updateOrderWithVersion(orderRef, () => ({
       isArchived: false,
       archivedAt: null,
       archivedBy: null,
       updatedAt: now,
-    });
+    }));
   }
 
   /**
@@ -1085,17 +1138,12 @@ export class FirebaseOrderService {
   async archiveOrdersBulk(orderIds: string[]): Promise<void> {
     const userId = this.getCurrentUserId();
     const now = new Date().toISOString();
-    const batch = writeBatch(db);
-    for (const id of orderIds) {
-      const orderRef = doc(db, ORDERS_COLLECTION, id);
-      batch.update(orderRef, {
+    await this.updateOrdersWithVersion(orderIds, () => ({
         isArchived: true,
         archivedAt: now,
         archivedBy: userId,
         updatedAt: now,
-      });
-    }
-    await batch.commit();
+    }));
   }
 
   /**
@@ -1103,17 +1151,12 @@ export class FirebaseOrderService {
    */
   async unarchiveOrdersBulk(orderIds: string[]): Promise<void> {
     const now = new Date().toISOString();
-    const batch = writeBatch(db);
-    for (const id of orderIds) {
-      const orderRef = doc(db, ORDERS_COLLECTION, id);
-      batch.update(orderRef, {
+    await this.updateOrdersWithVersion(orderIds, () => ({
         isArchived: false,
         archivedAt: null,
         archivedBy: null,
         updatedAt: now,
-      });
-    }
-    await batch.commit();
+    }));
   }
 
   /**

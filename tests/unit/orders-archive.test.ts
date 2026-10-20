@@ -2,11 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { firebaseOrderService } from '../../src/services/firebaseOrderService';
 import { Order, canAccessArchivedOrders, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS, EMPLOYEE_PERMISSIONS, Permission } from '../../src/app/types';
 
-const mockUpdateDoc = vi.fn();
 const mockGetDoc = vi.fn();
-const mockBatchUpdate = vi.fn();
-const mockBatchCommit = vi.fn();
 const mockRunTransaction = vi.fn();
+const mockTransactionUpdate = vi.fn();
 
 vi.mock('../../src/lib/firebase', () => ({
   db: { id: 'mock-db' },
@@ -23,11 +21,6 @@ vi.mock('firebase/firestore', () => ({
     now: () => ({ toDate: () => new Date(), toISOString: () => '2026-10-06T02:00:00.000Z' }),
   },
   getDoc: (...args: any[]) => mockGetDoc(...args),
-  updateDoc: (...args: any[]) => mockUpdateDoc(...args),
-  writeBatch: () => ({
-    update: mockBatchUpdate,
-    commit: mockBatchCommit,
-  }),
   runTransaction: (db: any, fn: any) => mockRunTransaction(db, fn),
 }));
 
@@ -42,8 +35,10 @@ describe('Área de Arquivamento e Ciclo de Vida de Pedidos Concluídos', () => {
         version: 1,
       }),
     });
-    mockUpdateDoc.mockResolvedValue(undefined);
-    mockBatchCommit.mockResolvedValue(undefined);
+    mockRunTransaction.mockImplementation(async (_db: any, callback: any) => callback({
+      get: (...args: any[]) => mockGetDoc(...args),
+      update: (...args: any[]) => mockTransactionUpdate(...args),
+    }));
   });
 
   describe('Métodos de Serviço para Arquivamento', () => {
@@ -51,11 +46,12 @@ describe('Área de Arquivamento e Ciclo de Vida de Pedidos Concluídos', () => {
       await firebaseOrderService.archiveOrder('order-456');
 
       expect(mockGetDoc).toHaveBeenCalled();
-      expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ coll: 'orders', id: 'order-456' }),
         expect.objectContaining({
           isArchived: true,
           archivedBy: 'user-archive-123',
+          version: 2,
         })
       );
     });
@@ -64,37 +60,38 @@ describe('Área de Arquivamento e Ciclo de Vida de Pedidos Concluídos', () => {
       await firebaseOrderService.unarchiveOrder('order-456');
 
       expect(mockGetDoc).toHaveBeenCalled();
-      expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ coll: 'orders', id: 'order-456' }),
         expect.objectContaining({
           isArchived: false,
           archivedAt: null,
           archivedBy: null,
+          version: 2,
         })
       );
     });
 
-    it('archiveOrdersBulk deve atualizar múltiplos pedidos em lote via writeBatch', async () => {
+    it('archiveOrdersBulk deve incrementar a versão de cada pedido em transação', async () => {
       const ids = ['order-1', 'order-2', 'order-3'];
       await firebaseOrderService.archiveOrdersBulk(ids);
 
-      expect(mockBatchUpdate).toHaveBeenCalledTimes(3);
-      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
-      expect(mockBatchUpdate).toHaveBeenCalledWith(
+      expect(mockTransactionUpdate).toHaveBeenCalledTimes(3);
+      expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'order-1' }),
-        expect.objectContaining({ isArchived: true, archivedBy: 'user-archive-123' })
+        expect.objectContaining({ isArchived: true, archivedBy: 'user-archive-123', version: 2 })
       );
     });
 
-    it('unarchiveOrdersBulk deve restaurar múltiplos pedidos em lote via writeBatch', async () => {
+    it('unarchiveOrdersBulk deve incrementar a versão ao restaurar pedidos em transação', async () => {
       const ids = ['order-1', 'order-2'];
       await firebaseOrderService.unarchiveOrdersBulk(ids);
 
-      expect(mockBatchUpdate).toHaveBeenCalledTimes(2);
-      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
-      expect(mockBatchUpdate).toHaveBeenCalledWith(
+      expect(mockTransactionUpdate).toHaveBeenCalledTimes(2);
+      expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'order-1' }),
-        expect.objectContaining({ isArchived: false, archivedAt: null, archivedBy: null })
+        expect.objectContaining({ isArchived: false, archivedAt: null, archivedBy: null, version: 2 })
       );
     });
   });

@@ -5,6 +5,8 @@ import { doc, setDoc, updateDoc, getDoc, Timestamp } from 'firebase/firestore';
 
 let env: RulesTestEnvironment;
 const dbFor = (uid: string) => env.authenticatedContext(uid).firestore();
+const updateOrder = (db: any, path: string, changes: Record<string, any>, version = 2) =>
+  updateDoc(doc(db, path), { ...changes, version });
 
 const baseOrder = {
   userId: 'owner',
@@ -105,7 +107,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         })
       );
       await assertSucceeds(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           customerName: 'Cliente Atualizado',
         })
       );
@@ -114,7 +116,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
     it('permite que administrador edite qualquer pedido', async () => {
       const adminDb = dbFor('admin');
       await assertSucceeds(
-        updateDoc(doc(adminDb, 'orders/order-1'), {
+        updateOrder(adminDb, 'orders/order-1', {
           customerName: 'Cliente Atualizado pelo Admin',
         })
       );
@@ -123,7 +125,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
     it('permite que funcionário atribuído com permissão edit atualize o pedido', async () => {
       const empDb = dbFor('emp-assigned');
       await assertSucceeds(
-        updateDoc(doc(empDb, 'orders/order-1'), {
+        updateOrder(empDb, 'orders/order-1', {
           notes: 'Nota adicionada pelo funcionário encarregado',
         })
       );
@@ -156,7 +158,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       });
       const empNoEditDb = dbFor('emp-no-edit');
       await assertFails(
-        updateDoc(doc(empNoEditDb, 'orders/order-no-edit'), {
+        updateOrder(empNoEditDb, 'orders/order-no-edit', {
           customerName: 'Sem Permissão',
         })
       );
@@ -182,7 +184,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
     it('impede alteração do userId (propriedade do pedido)', async () => {
       const ownerDb = dbFor('owner');
       await assertFails(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           userId: 'other-user',
         })
       );
@@ -191,7 +193,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
     it('impede alteração do orderNumber (identidade do pedido)', async () => {
       const ownerDb = dbFor('owner');
       await assertFails(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           orderNumber: '#9999-9999',
         })
       );
@@ -200,7 +202,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
     it('impede alteração do createdAt (auditoria temporal)', async () => {
       const ownerDb = dbFor('owner');
       await assertFails(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           createdAt: Timestamp.now(),
         })
       );
@@ -209,17 +211,17 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
     it('impede alteração de outros campos imutáveis (createdByUid, source, idempotencyKey)', async () => {
       const ownerDb = dbFor('owner');
       await assertFails(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           createdByUid: 'malicious-uid',
         })
       );
       await assertFails(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           source: 'malicious-source',
         })
       );
       await assertFails(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           idempotencyKey: 'new-key',
         })
       );
@@ -228,12 +230,12 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
     it('impede inclusão de campos arbitrários não permitidos na atualização (lista positiva fechada via changed.hasOnly)', async () => {
       const ownerDb = dbFor('owner');
       await assertFails(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           unexpectedInjectedField: 'hack',
         })
       );
       await assertFails(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           adminOverride: true,
         })
       );
@@ -253,7 +255,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       );
       // Edição mantendo/enviando items: null
       await assertSucceeds(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           items: null,
           notes: 'Pedido legado atualizado sem itens estruturados',
         })
@@ -294,13 +296,13 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
     it('rejeita atualização com items: null quando pricingMode ou unitPrice forem inválidos', async () => {
       const ownerDb = dbFor('owner');
       await assertFails(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           items: null,
           pricingMode: 'hack_mode',
         })
       );
       await assertFails(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           items: null,
           unitPrice: -5,
         })
@@ -323,6 +325,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
           pricingMode: 'items',
           unitPrice: null,
           items: structuredItems,
+          version: 1,
           payment: {
             status: 'paid',
             totalAmount: 200,
@@ -334,7 +337,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
 
       // Edição atualizando os itens estruturados
       await assertSucceeds(
-        updateDoc(doc(ownerDb, 'orders/order-multi-items'), {
+        updateOrder(ownerDb, 'orders/order-multi-items', {
           quantity: 4,
           price: 240,
           items: [
@@ -516,7 +519,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
     it('rejeita alteração de preço que crie inconsistência com o totalAmount do pagamento', async () => {
       const ownerDb = dbFor('owner');
       await assertFails(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           price: 250, // payment.totalAmount é 200 no baseOrder
         })
       );
@@ -525,7 +528,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
     it('rejeita alteração de pagamento com paidAmount maior que o total ou remainingAmount inválido', async () => {
       const ownerDb = dbFor('owner');
       await assertFails(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           payment: {
             status: 'paid',
             totalAmount: 200,
@@ -535,7 +538,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         })
       );
       await assertFails(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           payment: {
             status: 'partial',
             totalAmount: 200,
@@ -549,14 +552,14 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
     it('permite atualização legítima de status sem alteração de valores financeiros', async () => {
       const ownerDb = dbFor('owner');
       await assertSucceeds(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           status: 'in-progress',
         })
       );
       await assertSucceeds(
-        updateDoc(doc(ownerDb, 'orders/order-1'), {
+        updateOrder(ownerDb, 'orders/order-1', {
           status: 'completed',
-        })
+        }, 3)
       );
     });
   });
@@ -599,27 +602,52 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       );
     });
 
-    it('permite atualizações legítimas que não tocam no campo version (ex: arquivamento)', async () => {
+    it('rejeita arquivamento que não incrementa version', async () => {
       const ownerDb = dbFor('owner');
-      await assertSucceeds(
+      await assertFails(
         updateDoc(doc(ownerDb, 'orders/order-1'), {
           isArchived: true,
           archivedAt: new Date().toISOString(),
           archivedBy: 'owner',
         })
       );
+      await assertSucceeds(updateOrder(ownerDb, 'orders/order-1', {
+        isArchived: true,
+        archivedAt: new Date().toISOString(),
+        archivedBy: 'owner',
+      }));
     });
 
-    it('documenta comportamento de compatibilidade: gravação que omite version preserva versão anterior', async () => {
+    it('rejeita atualização que omite version', async () => {
       const ownerDb = dbFor('owner');
-      // Gravação legítima ou auxiliar sem version é aceita e preserva o campo version existente
-      await assertSucceeds(
+      await assertFails(
         updateDoc(doc(ownerDb, 'orders/order-1'), {
-          notes: 'Edição de observação sem alterar version',
+          notes: 'Edição sem incrementar version',
         })
       );
       const snap = await getDoc(doc(ownerDb, 'orders/order-1'));
       expect(snap.data()?.version).toBe(1);
+    });
+
+    it('rejeita uma escrita concorrente que tenta reutilizar a mesma próxima versão', async () => {
+      const ownerDb = dbFor('owner');
+      await updateOrder(ownerDb, 'orders/order-1', { notes: 'Primeira edição' }, 2);
+      await assertFails(updateDoc(doc(ownerDb, 'orders/order-1'), {
+        notes: 'Edição concorrente baseada na versão antiga',
+        version: 2,
+      }));
+      expect((await getDoc(doc(ownerDb, 'orders/order-1'))).data()?.notes).toBe('Primeira edição');
+    });
+
+    it('exige a próxima versão ao atualizar pedido legado sem campo version', async () => {
+      const ownerDb = dbFor('owner');
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/legacy-order').set(baseOrder);
+      });
+
+      await assertFails(updateDoc(doc(ownerDb, 'orders/legacy-order'), { notes: 'Sem versão' }));
+      await assertSucceeds(updateOrder(ownerDb, 'orders/legacy-order', { notes: 'Versão inicializada' }, 2));
+      expect((await getDoc(doc(ownerDb, 'orders/legacy-order'))).data()?.version).toBe(2);
     });
   });
 });

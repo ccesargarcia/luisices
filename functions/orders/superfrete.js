@@ -55,6 +55,13 @@ async function authorizeSuperfrete(request) {
   return session;
 }
 
+function nextOrderVersion(order) {
+  const currentVersion = Number.isSafeInteger(order.version) && order.version > 0
+    ? order.version
+    : 1;
+  return currentVersion + 1;
+}
+
 async function reserveOrderForLabel(orderId, uid) {
   if (typeof orderId !== 'string' || !/^[A-Za-z0-9_-]{1,150}$/.test(orderId)) {
     throw new HttpsError('invalid-argument', 'Um identificador de pedido válido é obrigatório para emitir a etiqueta.');
@@ -100,6 +107,8 @@ async function reserveOrderForLabel(orderId, uid) {
       shippingUpdatedAt: Timestamp.now(),
       shippingGeneratedBy: uid,
       shippingError: null,
+      version: nextOrderVersion(order),
+      updatedAt: new Date().toISOString(),
     });
     return { attemptId };
   });
@@ -111,11 +120,14 @@ async function markLabelAttemptFailed(orderRef, attemptId, reason) {
   await getFirestore().runTransaction(async (transaction) => {
     const snap = await transaction.get(orderRef);
     if (!snap.exists || snap.data().shippingAttemptId !== attemptId) return;
+    const order = snap.data();
     transaction.update(orderRef, {
       shippingStatus: 'failed',
       shippingError: String(reason || 'Falha antes da confirmação do pagamento.').slice(0, 300),
       shippingAttemptId: null,
       shippingUpdatedAt: Timestamp.now(),
+      version: nextOrderVersion(order),
+      updatedAt: new Date().toISOString(),
     });
   });
 }
@@ -435,7 +447,19 @@ const createSuperfreteLabel = onCall(
       shippingError: null,
     };
 
-    await orderRef.update(updateData);
+    await getFirestore().runTransaction(async (transaction) => {
+      const orderSnap = await transaction.get(orderRef);
+      if (!orderSnap.exists) throw new HttpsError('not-found', 'Pedido não encontrado.');
+      const current = orderSnap.data();
+      if (current.shippingAttemptId !== attemptId || current.shippingStatus !== 'processing') {
+        throw new HttpsError('failed-precondition', 'A tentativa de emissão da etiqueta mudou; consulte o pedido antes de tentar novamente.');
+      }
+      transaction.update(orderRef, {
+        ...updateData,
+        version: nextOrderVersion(current),
+        updatedAt: new Date().toISOString(),
+      });
+    });
 
     return {
       success: true,
