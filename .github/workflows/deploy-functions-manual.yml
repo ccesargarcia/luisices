@@ -1,6 +1,12 @@
-name: Deploy Firebase Functions & Rules
+name: Deploy Firebase Functions & Rules (Dev manual / Prod automático)
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'functions/**'
+      - 'firebase.json'
   workflow_dispatch:
     inputs:
       environment:
@@ -48,10 +54,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: "firebase-functions-deploy-${{ github.ref }}"
+  cancel-in-progress: false
+
 jobs:
   deploy-functions:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -259,7 +269,8 @@ jobs:
           console.log('=============================================================\n');
           NODE
 
-          # Atualiza segredos no Secret Manager se explicitamente solicitado
+          # Em workflow_dispatch, atualiza segredos somente se selecionado.
+          # No deploy automático por merge, mantém os valores do Secret Manager como estão.
           if [ "${{ inputs.update_secrets }}" = "true" ]; then
             echo "🔐 Atualizando secrets no Google Secret Manager (Prod)..."
             if [ -n "$RESEND_API_KEY" ]; then
@@ -394,5 +405,9 @@ jobs:
             firebase deploy --only "$DEPLOY_TARGET" --project papelaria-dashboard --non-interactive --force
           fi
 
-          echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Prod)..."
-          firebase functions:secrets:prune --project papelaria-dashboard -f --non-interactive
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Prod)..."
+            firebase functions:secrets:prune --project papelaria-dashboard -f --non-interactive
+          else
+            echo "ℹ️ Deploy automático: preservando versões antigas de secrets para permitir rollback."
+          fi

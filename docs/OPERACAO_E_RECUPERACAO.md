@@ -44,11 +44,19 @@ npm run fix-negative-values -- --apply
 
 O código já inicializa Sentry no frontend e nas Functions e aplica sanitização de dados. Os DSNs precisam estar configurados nos secrets do ambiente. A configuração de alertas do Sentry/Cloud Monitoring é feita nos respectivos painéis; este repositório não confirma que essas políticas estejam ativas.
 
+## Publicar em produção após validação
+
+O workflow de E2E continua configurado para pull requests em `develop` e `main`. O deploy de produção não repete a suíte: ao receber o merge em `main`, executa o build do frontend e publica o GitHub Pages. Mudanças em `firebase.json` ou nos arquivos de regras também publicam Firestore Rules, índices, regras do Realtime Database e Storage.
+
+Mudanças em `functions/**` ou `firebase.json` acionam o deploy automático das Firebase Functions em produção. O deploy roda o lint de predeploy, mas não os testes E2E/unitários. Ele preserva os valores e versões existentes no Secret Manager; inclusão ou rotação de secrets continua sendo uma operação manual. Deploys de Cloudflare e Alexa continuam acionados pelas mudanças em seus próprios diretórios.
+
+Migrações e correções de dados de produção não são executadas pelo merge. Use os workflows operacionais específicos e revise o modo dry-run antes de gravar.
+
 ## Recuperar uma publicação
 
 - **Frontend em desenvolvimento:** reverta o commit em `develop`; o workflow publica o Hosting quando detecta alterações de frontend.
 - **Frontend em produção:** reverta o commit em `main` e acompanhe o workflow de publicação do site.
-- **Rules ou Functions:** reverta o código para a última versão conhecida como boa e publique somente o alvo afetado. Para Functions, use o deploy seletivo; publique todas apenas quando a alteração exigir.
+- **Rules ou Functions:** reverta o código para a última versão conhecida como boa e acompanhe o deploy automático acionado pelo merge em `main`. O workflow manual continua disponível para publicação seletiva.
 - **Dados:** interrompa a rotina que causou a alteração e preserve o relatório. A recuperação depende de exportação, backup ou Point-in-Time Recovery previamente habilitado e testado; deploy de código não desfaz gravações do Firestore.
 
 Após a recuperação, rode o alvo `order-integrity` no CI e confirme um pedido controlado no ambiente de desenvolvimento antes de promover a correção.

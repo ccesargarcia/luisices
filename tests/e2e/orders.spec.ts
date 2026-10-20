@@ -220,7 +220,12 @@ test.describe('Pedidos - CRUD', () => {
     await tagInput.press('Enter');
     await detailsDialog.getByRole('button', { name: 'Salvar Alterações' }).click();
 
+    // A etiqueta também fica visível no formulário. Aguarde o retorno ao modo
+    // de leitura para garantir que a gravação terminou antes de validar os dados.
+    await expect(detailsDialog.getByRole('button', { name: 'Editar' })).toBeVisible({ timeout: 15000 });
+    await expect(detailsDialog.getByRole('button', { name: 'Salvar Alterações' })).toHaveCount(0);
     await expect(detailsDialog.getByText(revisedTag)).toBeVisible({ timeout: 15000 });
+    await expect(detailsDialog.getByText('Valor Total', { exact: true })).toBeVisible();
     await expect(detailsDialog.getByText('Valor Total').locator('..')).toContainText(/130,50/);
 
     // A recarga comprova que preço e tag foram persistidos no Firestore.
@@ -232,7 +237,9 @@ test.describe('Pedidos - CRUD', () => {
     await persistedOrder.click();
 
     const persistedDetails = page.getByRole('dialog').first();
+    await expect(persistedDetails.getByText('Detalhes do Pedido')).toBeVisible();
     await expect(persistedDetails.getByText(revisedTag)).toBeVisible();
+    await expect(persistedDetails.getByText('Valor Total', { exact: true })).toBeVisible();
     await expect(persistedDetails.getByText('Valor Total').locator('..')).toContainText(/130,50/);
   });
 

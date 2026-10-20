@@ -8,6 +8,7 @@ on:
     paths-ignore:
       - '.github/workflows/**'
       - 'tests/**'
+      - 'functions/**'
       - 'README.md'
       - 'CHANGELOG.md'
       - 'docs/**'
@@ -36,6 +37,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Detect Firebase security config changes
+        id: firebase-config
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            DEPLOY_FIREBASE_CONFIG=true
+          else
+            CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA")
+            if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(firebase\.json|firestore\.rules|firestore\.indexes\.json|database\.rules\.json|storage\.rules)$'; then
+              DEPLOY_FIREBASE_CONFIG=true
+            else
+              DEPLOY_FIREBASE_CONFIG=false
+            fi
+          fi
+          echo "deploy=$DEPLOY_FIREBASE_CONFIG" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -138,7 +159,8 @@ jobs:
         env:
           VITE_BASE_PATH: /
 
-      - name: Deploy Firestore Rules (Production)
+      - name: Deploy Firebase Rules and Indexes (Production)
+        if: steps.firebase-config.outputs.deploy == 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.PROD_FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT }}
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-production-rules.json
@@ -153,7 +175,7 @@ jobs:
           JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
           fs.writeFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, process.env.FIREBASE_SERVICE_ACCOUNT, { mode: 0o600 });
           NODE
-          npx firebase deploy --only firestore:rules --project papelaria-dashboard --non-interactive
+          npx firebase deploy --only firestore:rules,firestore:indexes,database,storage --project papelaria-dashboard --non-interactive
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
