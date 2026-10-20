@@ -2,9 +2,13 @@
 
 Histórico das mudanças do Luisices, organizado por entrega e pelo efeito para quem usa o sistema. Datas no formato `AAAA-MM-DD`, considerando o horário de São Paulo.
 
-O registro começou em 12/10/2026 com as entregas recentes verificadas em produção. A versão `1.0.4` corresponde ao valor atual de `package.json`; ainda não há uma tag associada a este registro.
+O registro começou em 12/10/2026 com as entregas recentes verificadas em produção. A versão `1.0.5` corresponde ao valor atual de `package.json`.
 
 ## Não lançado
+
+Ainda sem mudanças registradas para a próxima entrega.
+
+## v1.0.5 — 2026-10-20
 
 ### Adicionado
 

@@ -2,7 +2,7 @@
 
 Aplicação de gestão de papelaria personalizada: pedidos, produção, clientes, orçamentos, precificação, galeria, loja pública, atendimento e assistência por IA.
 
-Documentação revisada em **10/10/2026**, com base na `develop` (`b2b6ef9`). A presença de uma funcionalidade no código não comprova sua configuração ou publicação em um ambiente remoto.
+Documentação revisada em **20/10/2026**, com base na versão `1.0.5`. A presença de uma funcionalidade no código não comprova sua configuração ou publicação em um ambiente remoto.
 
 ## Documentação
 
