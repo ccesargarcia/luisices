@@ -9,6 +9,7 @@ on:
       - '.github/workflows/**'
       - 'tests/**'
       - 'functions/**'
+      - '.github/*.md'
       - '*.md'
       - '*.txt'
       - 'docs/**'
