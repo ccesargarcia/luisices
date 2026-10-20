@@ -99,7 +99,7 @@ export function calculateCustomerFrequency(
  */
 export function getTopCustomerProduct(
   orders: Array<{
-    items?: Array<{ name: string; quantity: number; price?: number }>;
+    items?: Array<{ name: string; quantity: number; price?: number }> | null;
     productName?: string;
     quantity?: number;
     amount?: number;

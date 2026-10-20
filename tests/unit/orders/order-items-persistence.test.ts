@@ -257,6 +257,43 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
       expect(updatePayload.items[0].unitPrice).toBe(120);
       expect(updatePayload.items[1].unitPrice).toBe(60);
     });
+
+    it('remove itens estruturados antigos no Firestore quando a edição envia items como null', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 1,
+          customerName: 'Cliente Existente',
+          productName: 'Camiseta (2x), Caneca (1x)',
+          quantity: 3,
+          price: 150,
+          pricingMode: 'items',
+          unitPrice: null,
+          items: [
+            { name: 'Camiseta', quantity: 2, unitPrice: 50, price: 100 },
+            { name: 'Caneca', quantity: 1, unitPrice: 50, price: 50 },
+          ],
+        }),
+      });
+      mockSaleGet.mockReturnValue({ exists: () => false });
+
+      // O usuário limpou os preços unitários ou desestruturou os itens na edição: items é enviado explicitamente como null
+      await firebaseOrderService.updateOrder('order-structured-1', {
+        productName: 'Camiseta (2x), Caneca (1x)',
+        quantity: 3,
+        price: 150,
+        items: null,
+        pricingMode: 'total',
+        unitPrice: null,
+      }, 1);
+
+      expect(mockTransactionUpdate).toHaveBeenCalled();
+      const updatePayload = mockTransactionUpdate.mock.calls[0][1];
+      // Verifica que o payload grava items: null (e não mantém os itens antigos nem envia undefined)
+      expect(updatePayload).toHaveProperty('items', null);
+      expect(updatePayload.pricingMode).toBe('total');
+    });
   });
 
   describe('Duplicação de Pedidos (duplicateOrder)', () => {

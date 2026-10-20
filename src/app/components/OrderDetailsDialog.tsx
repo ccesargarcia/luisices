@@ -430,7 +430,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           productName,
           quantity: totalQuantity,
           price,
-          items: updatedItems || undefined,
+          items: updatedItems,
           unitPrice: singleUnitPrice,
           pricingMode,
           deliveryDate: editData.deliveryDate,

@@ -364,7 +364,7 @@ export class FirebaseOrderService {
       price: data.price,
       pricingMode: data.pricingMode,
       unitPrice: typeof data.unitPrice === 'number' ? data.unitPrice : null,
-      items: Array.isArray(data.items) ? data.items : undefined,
+      items: Array.isArray(data.items) ? data.items : (data.items === null ? null : undefined),
       status: data.status,
       deliveryDate: data.deliveryDate,
       notes: data.notes,
