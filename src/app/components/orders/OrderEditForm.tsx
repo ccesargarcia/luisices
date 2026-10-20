@@ -104,12 +104,21 @@ export function OrderEditForm({
       {/* Produtos */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label>Produtos *</Label>
+          <div className="flex items-center gap-2">
+            <Label>Produtos *</Label>
+            {editProducts.length >= 10 && (
+              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                (Máximo de 10 itens)
+              </span>
+            )}
+          </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="gap-1 h-7 text-xs"
+            disabled={editProducts.length >= 10}
+            title={editProducts.length >= 10 ? 'Limite máximo de 10 itens atingido' : undefined}
             onClick={() =>
               onEditProductsChange((prev) => [...prev, { name: '', quantity: '1', unitPrice: '' }])
             }
@@ -269,6 +278,8 @@ export function OrderEditForm({
                 variant="outline"
                 size="sm"
                 className="gap-1 h-7 text-xs"
+                disabled={editExchangeItems.length >= 10}
+                title={editExchangeItems.length >= 10 ? 'Limite máximo de 10 itens atingido' : undefined}
                 onClick={() =>
                   onEditExchangeItemsChange((prev) => [
                     ...prev,

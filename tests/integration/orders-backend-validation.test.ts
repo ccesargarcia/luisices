@@ -224,6 +224,20 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         })
       );
     });
+
+    it('impede inclusão de campos arbitrários não permitidos na atualização (lista positiva fechada via changed.hasOnly)', async () => {
+      const ownerDb = dbFor('owner');
+      await assertFails(
+        updateDoc(doc(ownerDb, 'orders/order-1'), {
+          unexpectedInjectedField: 'hack',
+        })
+      );
+      await assertFails(
+        updateDoc(doc(ownerDb, 'orders/order-1'), {
+          adminOverride: true,
+        })
+      );
+    });
   });
 
   describe('3. Validação de Itens Estruturados (items)', () => {
@@ -242,6 +256,53 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         updateDoc(doc(ownerDb, 'orders/order-1'), {
           items: null,
           notes: 'Pedido legado atualizado sem itens estruturados',
+        })
+      );
+    });
+
+    it('rejeita criação com items: null quando pricingMode ou unitPrice forem inválidos', async () => {
+      const ownerDb = dbFor('owner');
+      // pricingMode inválido com items: null
+      await assertFails(
+        setDoc(doc(ownerDb, 'orders/order-invalid-pricing-mode'), {
+          ...baseOrder,
+          orderNumber: '#2026-0005',
+          pricingMode: 'invalid_mode',
+          items: null,
+        })
+      );
+      // unitPrice negativo com items: null
+      await assertFails(
+        setDoc(doc(ownerDb, 'orders/order-negative-unit-price'), {
+          ...baseOrder,
+          orderNumber: '#2026-0006',
+          unitPrice: -10,
+          items: null,
+        })
+      );
+      // unitPrice excedendo 1.000.000 com items: null
+      await assertFails(
+        setDoc(doc(ownerDb, 'orders/order-huge-unit-price'), {
+          ...baseOrder,
+          orderNumber: '#2026-0007',
+          unitPrice: 1000001,
+          items: null,
+        })
+      );
+    });
+
+    it('rejeita atualização com items: null quando pricingMode ou unitPrice forem inválidos', async () => {
+      const ownerDb = dbFor('owner');
+      await assertFails(
+        updateDoc(doc(ownerDb, 'orders/order-1'), {
+          items: null,
+          pricingMode: 'hack_mode',
+        })
+      );
+      await assertFails(
+        updateDoc(doc(ownerDb, 'orders/order-1'), {
+          items: null,
+          unitPrice: -5,
         })
       );
     });
@@ -547,6 +608,18 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
           archivedBy: 'owner',
         })
       );
+    });
+
+    it('documenta comportamento de compatibilidade: gravação que omite version preserva versão anterior', async () => {
+      const ownerDb = dbFor('owner');
+      // Gravação legítima ou auxiliar sem version é aceita e preserva o campo version existente
+      await assertSucceeds(
+        updateDoc(doc(ownerDb, 'orders/order-1'), {
+          notes: 'Edição de observação sem alterar version',
+        })
+      );
+      const snap = await getDoc(doc(ownerDb, 'orders/order-1'));
+      expect(snap.data()?.version).toBe(1);
     });
   });
 });

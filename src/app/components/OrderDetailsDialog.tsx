@@ -350,6 +350,10 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       const remainingAmount = price - paidAmt;
 
       const validProducts = editProducts.filter(p => p.name.trim());
+      if (validProducts.length > 10) {
+        toast.error('O pedido não pode ter mais de 10 produtos.');
+        return;
+      }
       const productName = validProducts
         .map(p => parseInt(p.quantity) > 1 ? `${p.name.trim()} (${p.quantity}x)` : p.name.trim())
         .join(', ');
