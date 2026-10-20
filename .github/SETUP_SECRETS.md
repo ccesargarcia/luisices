@@ -1,121 +1,33 @@
-# Configuração de Secrets no GitHub Actions
+# Secrets do GitHub Actions
 
-Este documento lista todas as secrets necessárias para os workflows de CI/CD funcionarem corretamente.
+Este guia descreve os grupos de configuração. Os workflows são a fonte de verdade para os nomes exatos e para os fallbacks aceitos. Nunca registre os valores das secrets no repositório, em capturas de tela ou em logs.
 
-## 🔐 Como Configurar
+## Firebase Web
 
-1. Acesse: `https://github.com/SEU_USERNAME/luisices/settings/secrets/actions`
-2. Clique em **"New repository secret"**
-3. Adicione cada secret listada abaixo
+Para o build de desenvolvimento, os workflows usam preferencialmente secrets com prefixo `DEV_VITE_FIREBASE_`, além de algumas configurações opcionais como CDN, domínio de Functions e Sentry.
 
----
+Para produção, os nomes preferenciais usam `PROD_VITE_FIREBASE_`. Alguns workflows ainda aceitam nomes antigos com prefixo `VITE_FIREBASE_` como alternativa. Confira [deploy-dev.yml](workflows/deploy-dev.yml) e [deploy.yml](workflows/deploy.yml) antes de criar ou renomear secrets.
 
-## 📋 Secrets Necessárias
+## Autorização para deploy Firebase
 
-### **Firebase - Desenvolvimento (Dev)**
+O Hosting e os recursos Firebase precisam de contas de serviço separadas por ambiente. O nome principal para desenvolvimento é `FIREBASE_SERVICE_ACCOUNT_DEV`; os workflows de produção aceitam os nomes configurados em [deploy.yml](workflows/deploy.yml) e [deploy-functions-manual.yml](workflows/deploy-functions-manual.yml).
 
-Credenciais do projeto Firebase de desenvolvimento:
+A conta de serviço contém credenciais privadas. Armazene o JSON completo somente nas GitHub Actions Secrets e limite as permissões da conta ao necessário para o deploy correspondente.
 
-| Nome da Secret | Descrição | Onde encontrar |
-|----------------|-----------|----------------|
-| `VITE_FIREBASE_API_KEY_DEV` | API Key do Firebase (dev) | Firebase Console > Project Settings > General |
-| `VITE_FIREBASE_AUTH_DOMAIN_DEV` | Auth Domain (dev) | Firebase Console > Project Settings > General |
-| `VITE_FIREBASE_PROJECT_ID_DEV` | Project ID (dev) | Firebase Console > Project Settings > General |
-| `VITE_FIREBASE_STORAGE_BUCKET_DEV` | Storage Bucket (dev) | Firebase Console > Project Settings > General |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID_DEV` | Messaging Sender ID (dev) | Firebase Console > Project Settings > General |
-| `VITE_FIREBASE_APP_ID_DEV` | App ID (dev) | Firebase Console > Project Settings > General |
-| `VITE_FIREBASE_MEASUREMENT_ID_DEV` | Measurement ID (dev) | Firebase Console > Project Settings > General |
-| `FIREBASE_SERVICE_ACCOUNT_DEV` | Service Account JSON (dev) | Firebase Console > Project Settings > Service Accounts |
-| `RESEND_API_KEY` | Chave para envio de e-mail pelas Functions | Painel do Resend |
-| `EVOLUTION_API_KEY` | Chave para envio opcional via WhatsApp | Configuração da Evolution API |
-| `SUPERFRETE_SANDBOX_TOKEN` | Token de sandbox para cotação de frete e etiquetas (opcional) | Painel SuperFrete Sandbox |
+## Testes Playwright
 
-### **Firebase - Produção (Main)**
+Os testes E2E do CI rodam contra emuladores locais, não contra o banco real de produção. `TEST_USER_EMAIL` e `TEST_USER_PASSWORD` são configurações de teste usadas por alguns workflows; consulte [playwright.yml](workflows/playwright.yml), [screen-audit.yml](workflows/screen-audit.yml) e [test-actions.yml](workflows/test-actions.yml) para saber quando são necessárias.
 
-Credenciais do projeto Firebase de produção:
+Não use credenciais de clientes nem uma conta administrativa real como usuário de teste.
 
-| Nome da Secret | Descrição | Onde encontrar |
-|----------------|-----------|----------------|
-| `VITE_FIREBASE_API_KEY` | API Key do Firebase (prod) | Firebase Console > Project Settings > General |
-| `VITE_FIREBASE_AUTH_DOMAIN` | Auth Domain (prod) | Firebase Console > Project Settings > General |
-| `VITE_FIREBASE_PROJECT_ID` | Project ID (prod) | Firebase Console > Project Settings > General |
-| `VITE_FIREBASE_STORAGE_BUCKET` | Storage Bucket (prod) | Firebase Console > Project Settings > General |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Messaging Sender ID (prod) | Firebase Console > Project Settings > General |
-| `VITE_FIREBASE_APP_ID` | App ID (prod) | Firebase Console > Project Settings > General |
-| `VITE_FIREBASE_MEASUREMENT_ID` | Measurement ID (prod) | Firebase Console > Project Settings > General |
+## Serviços externos
 
-### **Testes E2E (Playwright)**
+Cloudflare, Alexa, Sentry, Gemini, Resend, Evolution API e outros serviços têm secrets próprias e, em alguns casos, separadas para desenvolvimento e produção. Consulte o workflow do serviço antes de configurar ou rotacionar uma chave. Não apague uma secret até confirmar que nenhum workflow ou função ainda a utiliza.
 
-Credenciais para executar os testes automatizados:
+## Como conferir uma configuração
 
-| Nome da Secret | Descrição | Exemplo |
-|----------------|-----------|---------|
-| `TEST_USER_EMAIL` | Email do usuário de teste | `teste@exemplo.com` |
-| `TEST_USER_PASSWORD` | Senha do usuário de teste | `SenhaSegura123!` |
-| `PLAYWRIGHT_BASE_URL_DEV` | URL do ambiente de dev | `https://luisices-dev.web.app` |
+1. Abra **Settings → Secrets and variables → Actions** no repositório.
+2. Compare somente os nomes das secrets com o workflow que será executado; o GitHub não permite consultar valores já armazenados.
+3. Execute o workflow no ambiente pretendido e confira o resultado sem imprimir valores privados nos logs.
 
----
-
-## 🚀 Como Obter o Service Account JSON
-
-1. Acesse o [Firebase Console](https://console.firebase.google.com/)
-2. Selecione seu projeto
-3. Vá em **Project Settings** (ícone de engrenagem)
-4. Aba **Service Accounts**
-5. Clique em **"Generate new private key"**
-6. Copie **TODO O CONTEÚDO** do arquivo JSON baixado
-7. Cole como valor da secret `FIREBASE_SERVICE_ACCOUNT_DEV`
-
-**⚠️ IMPORTANTE:** O Service Account JSON deve ser colado **completo**, incluindo as chaves `{}`.
-
----
-
-## 🧪 Criar Usuário de Teste
-
-Para os testes E2E funcionarem, você precisa:
-
-1. Criar um usuário específico para testes no Firebase Authentication
-2. **Não usar um usuário real de produção**
-3. Dar permissões adequadas no Firestore (role: `admin` ou `user`)
-
-```bash
-# Exemplo de criação via Firebase CLI
-firebase auth:create teste@exemplo.com --password "$TEST_USER_PASSWORD"
-```
-
-Depois, adicione o usuário nas collections do Firestore se necessário.
-
----
-
-## ✅ Verificar Configuração
-
-Após adicionar todas as secrets:
-
-1. Faça um push no branch `develop`
-2. Acompanhe o workflow em: `Actions` tab
-3. Verifique se o build e os testes passam
-4. Se falhar, revise as secrets nos logs (Firebase Config será mascarado)
-
----
-
-## 📞 Troubleshooting
-
-### ❌ Erro: "Firebase config is missing"
-- Verifique se todas as secrets `VITE_FIREBASE_*` foram adicionadas
-- Confirme que não há espaços no início/fim dos valores
-
-### ❌ Erro: "Authentication failed" nos testes
-- Verifique `TEST_USER_EMAIL` e `TEST_USER_PASSWORD`
-- Confirme que o usuário existe no Firebase Auth do ambiente de dev
-
-### ❌ Erro: "Deploy failed"
-- Verifique se `FIREBASE_SERVICE_ACCOUNT_DEV` está correto
-- Confirme que o JSON está completo (começa com `{` e termina com `}`)
-
----
-
-## 🔗 Links Úteis
-
-- [GitHub Actions Secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets)
-- [Firebase Service Accounts](https://firebase.google.com/docs/admin/setup)
-- [Playwright CI/CD](https://playwright.dev/docs/ci)
+Os valores não são exibidos neste guia. Para links de referência, consulte a [documentação do GitHub Actions](https://docs.github.com/en/actions/security-guides/encrypted-secrets) e a [documentação de contas de serviço Firebase](https://firebase.google.com/docs/admin/setup).

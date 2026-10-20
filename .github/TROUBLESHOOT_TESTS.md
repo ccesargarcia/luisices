@@ -1,208 +1,32 @@
-# Troubleshooting - Testes E2E Falhando
+# Diagnóstico de falhas nos testes
 
-## ❌ Problema: `TimeoutError: page.waitForURL: Timeout 10000ms exceeded`
+## Primeiro, identifique qual etapa falhou
 
-### Sintoma
-Todos os testes falham ao tentar redirecionar para `/dashboard` após o login.
+No GitHub Actions, abra a execução do commit e veja o primeiro job ou step que falhou. Build, lint, integração com regras e E2E têm causas diferentes. Baixe o relatório, trace ou vídeo anexado ao job quando estiver disponível.
 
-### Causa Raiz
-As credenciais de teste **não existem ou não estão ativas** no Firebase DEV.
+## E2E e autenticação
 
----
+O CI executa os E2E com Firebase Emulator Suite e carrega dados de teste usando `scripts/seed-emulator.mjs`. Uma conta real do Firebase DEV ou de produção não deve ser necessária para essa execução.
 
-## ✅ Checklist de Verificação
+Se o login de teste falhar:
 
-### 1. Verificar se o usuário existe no Firebase DEV
+1. Confirme que a etapa de inicialização dos emuladores terminou sem erro.
+2. Confirme que a configuração local aponta para os emuladores e que `VITE_USE_FIREBASE_EMULATOR=true`.
+3. Veja se `node scripts/seed-emulator.mjs` concluiu antes do Playwright.
+4. Abra o trace do teste para identificar a primeira resposta ou mensagem de erro.
 
-```bash
-# Selecionar projeto DEV
-firebase use dev
+## Falhas locais
 
-# Listar usuários (requer Firebase CLI)
-firebase auth:export users.json --project luisices-dev
-cat users.json | grep -i "test-user@example.invalid"
-```
+Os emuladores Firebase precisam iniciar sem conflito de portas; as suítes de integração usam Java 21 ou superior. Se uma porta estiver ocupada, encerre a execução antiga do emulador ou escolha outra porta na configuração de teste.
 
-**Ou via Console:**
-1. Acesse: https://console.firebase.google.com/
-2. Selecione o projeto `luisices-dev`
-3. Authentication > Users
-4. Procure por: `test-user@example.invalid`
+Para reproduzir um cenário, siga [tests/e2e/README.md](../tests/e2e/README.md) e use o emulador. Evite apontar testes que criam ou alteram dados para o Firebase de produção.
 
----
+## Permissões negadas
 
-### 2. Verificar se o usuário está ATIVO no Firestore
+Uma resposta `permission-denied` no emulador pode indicar que o perfil carregado pelo seed não tem a permissão esperada ou que a regra do Firestore/Storage bloqueou corretamente a operação. Confira o perfil de teste, as regras carregadas e a asserção do cenário antes de alterar qualquer regra.
 
-```bash
-# Verificar documento do usuário no Firestore
-firebase firestore:get users/{UID} --project luisices-dev
-```
+## Credenciais e secrets
 
-**Campos obrigatórios:**
-```json
-{
-  "email": "test-user@example.invalid",
-  "active": true,  // ← DEVE SER TRUE
-  "role": "admin" ou "user",
-  "permissions": {
-    "dashboard": true  // ← OBRIGATÓRIO para acessar /
-  }
-}
-```
+Não coloque senhas, JSON de service account ou tokens nos logs, issues ou documentação. Para falhas de deploy, verifique apenas se a secret necessária existe e se o workflow usa o projeto correto; não copie seu conteúdo para a saída do terminal.
 
----
-
-### 3. Criar usuário de teste (se não existir)
-
-#### Opção A: Via Console Firebase
-1. Authentication > Add user
-   - Email: `test-user@example.invalid`
-   - Password: `<SUA_SENHA_DE_TESTE>`
-
-2. Firestore > users > Add document
-   - Document ID: `{UID do usuário criado}`
-   - Campos:
-     ```json
-     {
-       "email": "test-user@example.invalid",
-       "name": "Teste E2E",
-       "active": true,
-       "role": "admin",
-       "permissions": {
-         "dashboard": true,
-         "orders": { "view": true, "create": true },
-         "customers": { "view": true }
-       },
-       "createdAt": "2026-03-06T00:00:00.000Z",
-       "updatedAt": "2026-03-06T00:00:00.000Z"
-     }
-     ```
-
-#### Opção B: Pela administração da aplicação
-
-Para contas existentes, use uma sessão administrativa autorizada e a tela
-**Usuários**. As alterações de perfil passam pela callable `updateUser`.
-O antigo script de autopromoção foi removido: as regras atuais bloqueiam
-alterações diretas de papel e permissões pelo cliente.
-
----
-
-### 4. Verificar secrets no GitHub Actions
-
-As credenciais devem estar configuradas em:
-`https://github.com/<SEU_USUARIO>/<SEU_REPOSITORIO>/settings/secrets/actions`
-
-**Secrets necessárias:**
-- ✅ `TEST_USER_EMAIL` = test-user@example.invalid
-- ✅ `TEST_USER_PASSWORD` = <SUA_SENHA_DE_TESTE>
-
-**Firebase DEV (7 secrets):**
-- ✅ `DEV_VITE_FIREBASE_API_KEY`
-- ✅ `DEV_VITE_FIREBASE_AUTH_DOMAIN`
-- ✅ `DEV_VITE_FIREBASE_PROJECT_ID`
-- ✅ `DEV_VITE_FIREBASE_STORAGE_BUCKET`
-- ✅ `DEV_VITE_FIREBASE_MESSAGING_SENDER_ID`
-- ✅ `DEV_VITE_FIREBASE_APP_ID`
-- ✅ `DEV_VITE_FIREBASE_MEASUREMENT_ID`
-
----
-
-## 🔍 Debug: Capturar erro real do login
-
-Adicione logs temporários no teste para ver o erro real:
-
-```typescript
-// tests/e2e/smoke.spec.ts
-test('✅ Login funciona', async ({ page }) => {
-  // Capturar erros do console
-  const errors: string[] = [];
-  page.on('console', msg => {
-    if (msg.type() === 'error') {
-      console.log('❌ Console Error:', msg.text());
-      errors.push(msg.text());
-    }
-  });
-
-  await page.goto('/');
-  await page.fill('input[type="email"]', TEST_USER.email);
-  await page.fill('input[type="password"]', TEST_USER.password);
-  await page.click('button[type="submit"]');
-
-  // Aguardar um pouco para ver erros
-  await page.waitForTimeout(3000);
-
-  // Capturar screenshot da página atual
-  await page.screenshot({ path: 'debug-login-state.png', fullPage: true });
-
-  // Ver qual é a URL atual (pode estar em /login com erro)
-  console.log('📍 URL atual:', page.url());
-
-  // Ver se há mensagem de erro visível
-  const errorAlert = await page.locator('[role="alert"]').textContent().catch(() => null);
-  if (errorAlert) {
-    console.log('⚠️ Erro na tela:', errorAlert);
-  }
-
-  await page.waitForURL('**/dashboard', { timeout: 10000 });
-});
-```
-
----
-
-## 🎯 Solução Rápida
-
-**Se você quer apenas fazer os testes passarem:**
-
-1. **Criar usuário no Firebase DEV manualmente** (via console)
-2. **Ou alterar as credenciais** para usar um usuário que já existe:
-
-```bash
-# No GitHub Secrets, altere TEST_USER_EMAIL para um usuário válido do DEV
-# Exemplo: se você já tem test-user@example.invalid no DEV
-TEST_USER_EMAIL=test-user@example.invalid
-TEST_USER_PASSWORD=<senha_desse_usuario>
-```
-
----
-
-## 📊 Como verificar se funcionou
-
-Após criar o usuário ou ajustar credenciais, rode localmente:
-
-```bash
-# 1. Configurar .env.test com credenciais do DEV
-cat > .env.test << 'EOF'
-TEST_USER_EMAIL=test-user@example.invalid
-TEST_USER_PASSWORD=<SUA_SENHA_DE_TESTE>
-PLAYWRIGHT_BASE_URL=https://dev.luisices.com.br
-EOF
-
-# 2. Rodar testes contra DEV
-npm run test:smoke
-
-# 3. Se passar local, fazer push para testar no CI
-git add .
-git commit -m "test: verificar credenciais DEV"
-git push origin develop
-```
-
----
-
-## 🐛 Ainda não funciona?
-
-Baixe os artifacts do GitHub Actions e veja os screenshots:
-
-1. Acesse: https://github.com/ccesargarcia/luisices/actions
-2. Clique no workflow que falhou
-3. Download `playwright-report-XX.zip`
-4. Abra `test-results/.../test-failed-1.png`
-5. Veja o que está na tela (pode ter mensagem de erro)
-
-Ou abra o trace interativo:
-```bash
-# Extrair o zip
-unzip playwright-report-57.zip
-
-# Abrir trace (mostra cada step do teste)
-npx playwright show-trace test-results/.../trace.zip
-```
+Veja [SETUP_SECRETS.md](SETUP_SECRETS.md) para os grupos de configuração atuais.

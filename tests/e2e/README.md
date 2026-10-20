@@ -1,500 +1,67 @@
-# 🧪 Testes E2E - Playwright
+# Testes E2E com Playwright
 
-Este diretório contém os testes end-to-end (E2E) automatizados usando Playwright.
+Os E2E validam jornadas visíveis da aplicação. No CI, o Firebase Auth, Firestore, Storage e Functions são executados localmente pela Firebase Emulator Suite.
 
----
+## Preparação local
 
-## 📁 Estrutura
-
-```
-tests/e2e/
-├── auth.setup.ts                     # 🔐 Setup global de autenticação
-├── auth.spec.ts                      # 🔐 Autenticação (login, logout, reset)
-├── critical-flows.spec.ts            # ⚡ Fluxos críticos consolidados
-├── customer-order-lifecycle.spec.ts  # 🔄 Ciclo de vida cliente -> pedido
-├── customers.spec.ts                 # 👥 CRUD e regras de clientes
-├── exchanges.spec.ts                 # 🤝 Permutas e parcerias
-├── gallery.spec.ts                   # 🎨 Galeria de artes e uploads
-├── help.spec.ts                      # 💡 Central de ajuda e atalhos
-├── navigation.spec.ts                # 🧭 Navegação entre páginas
-├── order-details.spec.ts             # 🔍 Detalhes e workflow de pedidos
-├── orders.spec.ts                    # 📦 Gestão e listagem de pedidos
-├── permissions.spec.ts               # 🛡️ Validação de permissões (RBAC)
-├── products.spec.ts                  # 🏷️ Catálogo interno de produtos
-├── quotes.spec.ts                    # 📝 Orçamentos e conversão
-├── reports.spec.ts                   # 📊 Relatórios e exportações
-├── responsive.spec.ts                # 📱 Responsividade e mobile-first
-├── screen-audit.spec.ts              # 🖥️ Auditoria visual de telas
-├── security.spec.ts                  # 🔒 Segurança, isolamento e Firestore rules
-├── settings.spec.ts                  # ⚙️ Configurações e preferências
-├── store.spec.ts                     # 🛍️ Lojinha pública e backoffice
-├── users.spec.ts                     # 👤 Gestão de usuários e equipe
-├── weekly-calendar.spec.ts           # 📅 Agenda semanal de entregas
-└── whatsapp.spec.ts                  # 💬 Central de atendimento WhatsApp
-```
-
----
-
-## 🚀 Como Rodar os Testes
-
-### ⚙️ Primeira vez - Configuração:
+Use Node.js 22, Java 21 ou superior e os navegadores do Playwright:
 
 ```bash
-# 1. Copiar template de credenciais
-cp .env.test.example .env.test
-
-# 2. Editar .env.test com suas credenciais
-# TEST_USER_EMAIL=test-user@example.invalid
-# TEST_USER_PASSWORD=sua-senha
-# PLAYWRIGHT_BASE_URL=https://dev.luisices.com.br
-
-# 3. Instalar firebase-admin para criar usuário de teste
-npm install --save-dev firebase-admin
-
-# 4. Criar usuário de teste no Firebase
-node scripts/create-test-user.mjs
-
-# 5. Instalar browsers do Playwright
-npx playwright install
+npm ci --legacy-peer-deps
+npm --prefix functions ci
+npx playwright install chromium
 ```
 
-### ▶️ Executar testes:
+Antes de criar a build, configure `.env.local` para usar o emulador. O valor é incorporado durante o build:
 
-```bash
-# Todos os testes E2E
-npm run test:e2e
-
-# Testes específicos
-npm run test:customers    # Apenas clientes
-npm run test:products     # Apenas produtos
-npm run test:quotes       # Apenas orçamentos
-npm run test:orders       # Apenas pedidos
-npm run test:navigation   # Apenas navegação
-npm run test:security     # Apenas testes de segurança e RBAC
-
-# Interface visual (modo debug)
-npm run test:e2e:ui
-
-# Mode debug com breakpoints
-npm run test:debug
-
-# Ver relatório do último teste
-npm run test:report
+```dotenv
+VITE_FIREBASE_API_KEY=local-emulator-key
+VITE_FIREBASE_AUTH_DOMAIN=localhost
+VITE_FIREBASE_PROJECT_ID=luisices-dev
+VITE_FIREBASE_STORAGE_BUCKET=luisices-dev.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
+VITE_FIREBASE_APP_ID=1:123456789:web:abcdef
+VITE_USE_FIREBASE_EMULATOR=true
 ```
 
-### 🌐 Execução no GitHub Actions (CI):
-
-O workflow de CI ([.github/workflows/test-actions.yml](../../.github/workflows/test-actions.yml)) suporta execução parametrizada:
-
-* **Suíte Completa (Padrão)**: Qualquer commit regular sem tags executa todos os testes E2E em paralelo (`npm run test:e2e`).
-* **Tag `[test:security]`**: Executa exclusivamente a suíte de segurança e regras do Firestore/Storage (`tests/e2e/security.spec.ts`).
-* **Tag `[test:critical]`**: Executa os fluxos críticos de pedidos, permissões RBAC e segurança.
-* **Manual (Workflow Dispatch)**: É possível disparar qualquer grupo de testes pelo menu dropdown na interface do GitHub Actions.
-
----
-
-## 📝 Estrutura dos Testes
-
-### **Smoke Tests** (`smoke.spec.ts`)
-Testes críticos que devem passar sempre:
-- ✅ App carrega sem erros
-- ✅ Login funciona
-- ✅ Dashboard acessível
-
-### **Autenticação** (`auth.spec.ts`)
-- ✅ Login com credenciais válidas
-- ✅ Login com credenciais inválidas
-- ✅ Logout
-- ✅ Reset de senha
-
-### **Navegação** (`navigation.spec.ts`)
-- ✅ Carregar todas as páginas principais
-- ✅ Navegação pelo menu lateral
-- ✅ Voltar ao dashboard
-
-### **Clientes** (`customers.spec.ts`)
-- ✅ Criar novo cliente
-- ✅ Editar cliente existente
-- ✅ Excluir cliente
-- ✅ Buscar clientes
-- ✅ Exportar para Excel
-- ✅ Validação de campos obrigatórios
-
-### **Produtos** (`products.spec.ts`)
-- ✅ Criar novo produto
-- ✅ Editar produto existente
-- ✅ Excluir produto
-- ✅ Filtrar por categoria
-- ✅ Validação de campos obrigatórios
-
-### **Orçamentos** (`quotes.spec.ts`)
-- ✅ Criar novo orçamento
-- ✅ Editar orçamento existente
-- ✅ Excluir orçamento
-- ✅ Converter orçamento em pedido
-- ✅ Filtrar por status
-- ✅ Validação de campos obrigatórios
-
-### **Pedidos** (`orders.spec.ts`)
-- ✅ Criar pedido pelo dashboard
-- ✅ Criar pedido pela agenda semanal
-- ✅ Editar pedido existente
-- ✅ Alterar status do pedido
-- ✅ Excluir pedido
-- ✅ Filtrar pedidos
-- ✅ Navegar entre semanas
-- ✅ Validação de campos obrigatórios
-
----
-
-## 🎯 Boas Práticas
-
-1. **Use dados únicos**: Use `Date.now()` para gerar nomes únicos
-2. **Limpe após os testes**: Exclua dados de teste criados
-3. **Use timeouts generosos**: Firebase pode ser lento
-4. **Evite `waitForTimeout`**: Prefira `waitForSelector` ou `expect`
-5. **Teste casos de erro**: Validações, campos obrigatórios, etc.
-
----
-
-## 🐛 Debug
-
-```bash
-# Rodar testes com browser visível
-npm run test:e2e -- --headed
-
-# Rodar teste específico
-npm run test:e2e -- customers.spec.ts
-
-# Rodar em modo debug (pausa em cada passo)
-npm run test:debug
-
-# Ver trace do último teste
-npx playwright show-trace test-results/.../trace.zip
-```
-
----
-
-## 📊 CI/CD
-
-Os testes rodam automaticamente em pull requests e no workflow de deploy para DEV. A produção deve ser promovida após a validação no ambiente de desenvolvimento.
-
----
-
-## 🔧 Configuração Avançada
-
-### Alterar URL base:
-```bash
-# .env.test
-PLAYWRIGHT_BASE_URL=http://localhost:5173
-```
-
-### Configurar timeouts:
-```typescript
-// playwright.config.ts
-timeout: 30000,  // 30 segundos por teste
-```
-
-### Executar em paralelo:
-```bash
-npm run test:e2e -- --workers=4
-```
-
-# Ver relatório do última execução
-npm run test:report
-```
-
----
-
-## 🧩 Tipos de Testes
-
-### 1. **Smoke Tests** (`smoke.spec.ts`)
-
-Testes **mínimos e rápidos** que verificam se a aplicação está funcional:
-
-- ✅ Login
-- ✅ Dashboard carrega
-- ✅ Criar pedido básico
-- ✅ Logout
-
-**Quando rodar:** Antes de cada deploy, em CI/CD
-
-**Tempo:** ~30-60 segundos
-
----
-
-### 2. **Testes de Autenticação** (`auth.spec.ts`)
-
-- Login com credenciais válidas
-- Login com credenciais inválidas
-- Logout
-- Reset de senha (quando implementado)
-- Proteção de rotas
-
-**Tempo:** ~2 minutos
-
----
-
-### 3. **Testes de Pedidos** (`orders.spec.ts`)
-
-- Criar novo pedido
-- Listar pedidos
-- Filtrar pedidos
-- Atualizar status
-- Deletar pedido
-- Validações de campos
-
-**Tempo:** ~3-4 minutos
-
----
-
-### 4. **Testes de Clientes** (`customers.spec.ts`)
-
-- Adicionar cliente
-- Listar clientes
-- Buscar cliente
-- Editar cliente
-- Deletar cliente
-
-**Tempo:** ~2-3 minutos
-
----
-
-### 5. **Testes de Produtos** (`products.spec.ts`)
-
-- Criar produto
-- Listar produtos
-- Editar produto
-- Deletar produto
-
-**Tempo:** ~2 minutos
-
----
-
-## 🔐 Credenciais de Teste
-
-### 🏠 Localmente:
-
-Arquivo: `.env.test` (não commitado, criado manualmente)
+Configure também `.env.test` com credenciais locais para o usuário que será criado no Auth Emulator:
 
 ```dotenv
 TEST_USER_EMAIL=test-user@example.invalid
-TEST_USER_PASSWORD=sua-senha
-PLAYWRIGHT_BASE_URL=https://dev.luisices.com.br
+TEST_USER_PASSWORD=uma-senha-local
+PLAYWRIGHT_BASE_URL=http://localhost:4173
 ```
 
-### 🤖 CI/CD (GitHub Actions):
+Copie `functions/.secret.local.example` para `functions/.secret.local` para que as Functions no emulador usem valores fictícios. Esses arquivos locais não devem ser versionados. Não use credenciais nem o projeto Firebase de produção.
 
-Credenciais vêm de **GitHub Secrets**:
-- `TEST_USER_EMAIL`
-- `TEST_USER_PASSWORD`
+## Executar
 
-**Veja:** [`.github/SECRETS_QUICKSTART.md`](../../.github/SECRETS_QUICKSTART.md)
-
----
-
-### ⚠️ IMPORTANTE: Criar Usuário de Teste no Firebase
-
-**As credenciais de teste devem existir no Firebase do ambiente que você está testando!**
-
-#### Opção 1: Via Console Firebase (mais rápido)
-
-1. **Authentication:**
-   - Acesse: https://console.firebase.google.com/
-   - Selecione projeto `luisices-dev`
-   - Authentication > Users > Add user
-   - Email: `test-user@example.invalid` (ou o que estiver no .env.test)
-   - Password: `<SUA_SENHA_DE_TESTE>`
-
-2. **Firestore:**
-   - Firestore Database > `users` collection > Add document
-   - Document ID: `{UID do usuário criado acima}`
-   - Campos:
-     ```json
-     {
-       "email": "test-user@example.invalid",
-       "name": "Teste E2E",
-       "active": true,
-       "role": "admin",
-       "permissions": {
-         "dashboard": true,
-         "orders": { "view": true, "create": true, "edit": true },
-         "customers": { "view": true, "create": true }
-       }
-     }
-     ```
-
-#### Opção 2: Via Script Automatizado
+Depois de configurar os arquivos locais, gere a build com o emulador ativado:
 
 ```bash
-# 1. Baixar service account do Firebase
-# (Project Settings > Service Accounts > Generate New Private Key)
-# Salvar como: luisices-dev-firebase-adminsdk.json
-
-# 2. Selecionar projeto DEV
-firebase use dev
-
-# 3. Rodar script
-node scripts/create-test-user.mjs
-
-# Ou especificar credenciais:
-node scripts/create-test-user.mjs "$TEST_USER_EMAIL" "$TEST_USER_PASSWORD"
+npm run build
 ```
 
-**⚠️ NÃO COMMITE** o arquivo de service account! (já está no .gitignore)
+Então rode toda a suíte com os emuladores e os dados de teste:
 
----
-
-### ❌ Testes falhando com `TimeoutError`?
-
-**Sintoma:** `page.waitForURL: Timeout 10000ms exceeded`
-
-**Causa:** Usuário de teste não existe ou está inativo no Firebase
-
-**Solução:**
-1. Criar usuário conforme instruções acima
-2. Verificar se `active: true` no Firestore
-3. Confirmar que `permissions.dashboard: true`
-
-**Guia completo:** [`.github/TROUBLESHOOT_TESTS.md`](../../.github/TROUBLESHOOT_TESTS.md)
-
----
-
-## 📊 Relatórios
-
-Após rodar os testes, um relatório HTML é gerado em:
-
-```
-playwright-report/index.html
-```
-
-**Abrir relatório:**
 ```bash
-npm run test:report
+npx firebase emulators:exec --project luisices-dev --only auth,firestore,storage,functions "node scripts/seed-emulator.mjs && npx playwright test --project=chromium"
 ```
 
-**O relatório mostra:**
-- ✅ Testes que passaram
-- ❌ Testes que falharam
-- 📸 Screenshots de falhas
-- 🎬 Vídeos das execuções
-- 📝 Traces para debug
+Para rodar apenas os testes de pedidos:
 
----
-
-## 🐛 Debug de Testes Falhando
-
-### 1. **Ver último relatório:**
 ```bash
-npm run test:report
+npx firebase emulators:exec --project luisices-dev --only auth,firestore,storage,functions "node scripts/seed-emulator.mjs && npx playwright test tests/e2e/orders.spec.ts --project=chromium"
 ```
 
-### 2. **Rodar em modo debug:**
+Para fluxos de pedidos relacionados a valores, etiquetas e conclusão, o workflow oferece o alvo `order-integrity`. Os nomes dos alvos e as condições atuais ficam em [playwright.yml](../../.github/workflows/playwright.yml) e [test-actions.yml](../../.github/workflows/test-actions.yml).
+
+## Diagnosticar uma falha
+
+O Playwright pode anexar relatório HTML, screenshot, vídeo e trace. Use o primeiro erro do teste para localizar a falha; o relatório pode ser aberto com:
+
 ```bash
-npm run test:debug
+npx playwright show-report
 ```
 
-Pausa em cada ação e permite:
-- Ver DOM em tempo real
-- Inspecionar elementos
-- Console do browser
-
-### 3. **Rodar teste específico:**
-```bash
-npx playwright test auth.spec.ts
-npx playwright test -g "deve fazer login"
-```
-
-### 4. **Aumentar timeout:**
-
-```typescript
-// No teste específico
-test('meu teste lento', async ({ page }) => {
-  test.setTimeout(60000); // 60 segundos
-  // ...
-});
-```
-
----
-
-## 🏗️ Escrever Novos Testes
-
-### Template básico:
-
-```typescript
-import { test, expect } from '@playwright/test';
-
-test.describe('Minha Feature', () => {
-  test.beforeEach(async ({ page }) => {
-    // Setup - executado antes de cada teste
-    await page.goto('/');
-  });
-
-  test('deve fazer algo', async ({ page }) => {
-    // Arrange
-    await page.fill('#input', 'valor');
-
-    // Act
-    await page.click('#submit');
-
-    // Assert
-    await expect(page.locator('#result')).toHaveText('Sucesso!');
-  });
-});
-```
-
-### Boas práticas:
-
-- ✅ Use `data-testid` nos componentes ao invés de classes CSS
-- ✅ Espere elementos estarem visíveis antes de interagir
-- ✅ Use `expect` do Playwright (auto-retry)
-- ✅ Limpe dados criados após o teste
-- ✅ Não dependa de ordem de execução dos testes
-
----
-
-## 🤖 Integração com CI/CD
-
-Os testes rodam **automaticamente** no GitHub Actions quando você faz push no `develop`:
-
-```yaml
-- name: Run E2E Tests (CI)
-  run: npm run test:ci
-```
-
-**Fluxo:**
-1. Push no `develop`
-2. Build da aplicação
-3. ✅ **Testes rodam**
-4. Se passarem → Deploy
-5. Se falharem → Deploy bloqueado
-
-**Ver resultados:**
-- GitHub Actions > Aba "Actions"
-- Download do artifact `playwright-report-XXX`
-
----
-
-## 📈 Cobertura de Testes
-
-| Funcionalidade | Cobertura | Arquivos |
-|----------------|-----------|----------|
-| Autenticação | ✅ 100% | `auth.spec.ts`, `smoke.spec.ts` |
-| Pedidos | ✅ 80% | `orders.spec.ts`, `smoke.spec.ts` |
-| Clientes | ⏳ 50% | `customers.spec.ts` |
-| Produtos | ⏳ 50% | `products.spec.ts` |
-
-**Meta:** 80% de cobertura nas funcionalidades críticas
-
----
-
-## 🔗 Referências
-
-- [Playwright Docs](https://playwright.dev/)
-- [Best Practices](https://playwright.dev/docs/best-practices)
-- [Debugging](https://playwright.dev/docs/debug)
-- [CI/CD](https://playwright.dev/docs/ci)
-
----
-
-**Última atualização:** 11 de setembro de 2026 (Atualizações de segurança, HSTS, PWA Cache e suíte completa E2E)
+Consulte também [o guia de diagnóstico do CI](../../.github/TROUBLESHOOT_TESTS.md). Não rode testes que gravam dados contra clientes reais ou contra o projeto Firebase de produção.

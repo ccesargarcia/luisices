@@ -9,10 +9,9 @@ on:
       - '.github/workflows/**'
       - 'tests/**'
       - 'functions/**'
-      - 'README.md'
-      - 'CHANGELOG.md'
+      - '*.md'
+      - '*.txt'
       - 'docs/**'
-      - 'DEPLOY_PRODUCAO_CHECKLIST.md'
 
 # Define permissões necessárias
 permissions:
