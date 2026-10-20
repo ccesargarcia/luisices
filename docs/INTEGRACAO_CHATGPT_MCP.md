@@ -184,12 +184,23 @@ A API suporta dois métodos equivalentes de autenticação no cabeçalho `Author
 | `orders:read` | Pedidos & Produção | Consultar fila de produção, pedidos do dia e status | Não | Sim |
 | `orders:draft` | Pedidos & Produção | Gerar rascunhos de pedidos e obter formulários | Não | Não |
 | `orders:create` | Pedidos & Produção | Registrar novos pedidos oficiais no sistema | Não | Sim |
+| `orders:update` | Pedidos & Produção | Atualizar dados e valores de pedidos existentes | Não | Não |
 | `customers:read` | Clientes | Buscar histórico e dados de contato de clientes | Não | Sim |
-| `financial:read` | Financeiro | Acesso a faturamento, ticket médio e DRE | **Sim** | Não |
-| `team:read` | Equipe | Auditar produtividade e pedidos por colaborador | **Sim** | Não |
-| `pricing:estimate` | Precificação | Calculadora de preços, insumos e margem | Não | Sim |
-| `whatsapp:compose` | WhatsApp | Gerar textos de mensagens de cobrança e avisos | Não | Sim |
-| `gallery:read` | Galeria | Buscar itens e fotos do acervo do ateliê | Não | Sim |
+| `customers:create` | Clientes | Cadastrar novos clientes no ateliê | Não | Não |
+| `customers:update` | Clientes | Atualizar dados cadastrais de clientes existentes | Não | Não |
+| `payments:read` | Financeiro de Pedidos | Consultar pagamentos e histórico de um pedido | Não | Não |
+| `payments:write` | Financeiro de Pedidos | Registrar pagamentos recebidos em pedidos | Não | Não |
+| `financial:read` | Financeiro (Sensível) | Acesso a faturamento, ticket médio e DRE | **Sim** | Não |
+| `team:read` | Equipe (Sensível) | Auditar produtividade e pedidos por colaborador | **Sim** | Não |
+| `pricing:estimate` | Precificação & Orçamentos | Calculadora de preços, insumos e margem | Não | Sim |
+| `supplies:read` | Precificação & Insumos | Consultar insumos cadastrados, estoque e custos | Não | Sim |
+| `pricing:models:read` | Precificação & Insumos | Consultar modelos e receitas salvas de precificação | Não | Sim |
+| `pricing:models:write` | Precificação & Insumos | Salvar e atualizar receitas e composições salvas | Não | Não |
+| `quotes:read` | Orçamentos | Consultar e pesquisar orçamentos de clientes | Não | Sim |
+| `quotes:write` | Orçamentos | Criar, gerar e atualizar status de orçamentos | Não | Sim |
+| `store:read` | Lojinha Virtual | Consultar produtos cadastrados na vitrine online | Não | Sim |
+| `whatsapp:compose` | Atendimento WhatsApp | Gerar textos de mensagens de cobrança e avisos | Não | Sim |
+| `gallery:read` | Galeria & Portfólio | Buscar fotos e modelos do acervo do ateliê | Não | Sim |
 
 ---
 
@@ -851,31 +862,40 @@ Content-Type: application/json
 
 ### 5.1 Catálogo de ferramentas e escopos
 
-O servidor publica 21 ferramentas. A lista abaixo reflete o registro atual em `functions/mcp/openapi.js`; a autorização efetiva também exige que o perfil e a chave permitam o escopo indicado.
+O servidor publica 30 ferramentas. A lista abaixo reflete o registro atual em `functions/mcp/openapi.js`; a autorização efetiva também exige que o perfil e a chave permitam o escopo indicado.
 
-| Ferramenta | Escopo requerido |
-| :--- | :--- |
-| `query_orders_view` | `orders:read` |
-| `daily_briefing` | `orders:read` |
-| `query_delivery_schedule` | `orders:read` |
-| `extract_order_draft` | `orders:draft` |
-| `get_order_form` | `orders:draft` |
-| `create_order` | `orders:create` |
-| `get_order_edit_form` | `orders:update` |
-| `update_order` | `orders:update` |
-| `update_order_status` | `orders:update` |
-| `update_delivery_details` | `orders:update` |
-| `query_customers` | `customers:read` |
-| `get_customer_history` | `customers:read` |
-| `create_customer` | `customers:create` |
-| `update_customer` | `customers:update` |
-| `query_order_payments` | `payments:read` |
-| `register_order_payment` | `payments:write` |
-| `get_financial_summary` | `financial:read` |
-| `get_user_summary` | `team:read` |
-| `calculate_pricing_estimate` | `pricing:estimate` |
-| `generate_whatsapp_message` | `whatsapp:compose` |
-| `search_gallery_portfolio` | `gallery:read` |
+| Ferramenta | Escopo requerido | Descrição / Módulo |
+| :--- | :--- | :--- |
+| `query_orders_view` | `orders:read` | Consultar fila de produção e status de pedidos |
+| `daily_briefing` | `orders:read` | Raio-x operacional de entregas e prazos do dia |
+| `query_delivery_schedule` | `orders:read` | Consultar cronograma consolidado de entregas |
+| `extract_order_draft` | `orders:draft` | Montar rascunho de pedido estruturado |
+| `get_order_form` | `orders:draft` | Obter formulário estruturado para novo pedido |
+| `create_order` | `orders:create` | Criar e registrar pedido oficial (idempotente) |
+| `get_order_edit_form` | `orders:update` | Obter formulário estruturado para edição |
+| `update_order` | `orders:update` | Atualizar dados e valores de um pedido existente |
+| `update_order_status` | `orders:update` | Alterar status na esteira de produção |
+| `update_delivery_details` | `orders:update` | Atualizar informações de entrega/frete |
+| `query_order_payments` | `payments:read` | Consultar pagamentos e histórico de um pedido |
+| `register_order_payment` | `payments:write` | Registrar pagamento recebido para um pedido |
+| `query_customers` | `customers:read` | Buscar clientes e contatos no sistema |
+| `get_customer_history` | `customers:read` | Obter histórico detalhado de compras do cliente |
+| `create_customer` | `customers:create` | Cadastrar novo cliente na base do ateliê |
+| `update_customer` | `customers:update` | Atualizar dados cadastrais de um cliente |
+| `get_financial_summary` | `financial:read` | Resumo financeiro, faturamento e DRE (Admin) |
+| `get_user_summary` | `team:read` | Auditoria de desempenho da equipe (Admin) |
+| `calculate_pricing_estimate` | `pricing:estimate` | Calculadora rápida de preço sugerido e margem |
+| `calculate_artisan_pricing` | `pricing:estimate` | Cálculo detalhado de precificação artesanal |
+| `list_supplies` | `supplies:read` | Consultar insumos, estoque disponível e custos |
+| `list_pricing_models` | `pricing:models:read` | Consultar receitas salvas de precificação |
+| `get_pricing_model` | `pricing:models:read` | Obter detalhes de um modelo de precificação |
+| `save_pricing_model` | `pricing:models:write` | Criar ou atualizar receita/modelo de precificação |
+| `query_quotes` | `quotes:read` | Pesquisar e consultar orçamentos de clientes |
+| `create_quote` | `quotes:write` | Criar e emitir novo orçamento comercial |
+| `update_quote_status` | `quotes:write` | Atualizar status de orçamento (aprovado/recusado) |
+| `list_store_products` | `store:read` | Consultar produtos disponíveis na vitrine/lojinha |
+| `generate_whatsapp_message` | `whatsapp:compose` | Gerar mensagens para cobrança, aviso ou entrega |
+| `search_gallery_portfolio` | `gallery:read` | Buscar fotos e modelos no acervo da galeria |
 
 Ferramentas que gravam dados devem ser usadas com os campos de prévia, confirmação explícita, controle de versão e/ou idempotência definidos no schema de cada operação. A autorização é validada novamente pelo backend em cada chamada.
 
