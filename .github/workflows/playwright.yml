@@ -147,6 +147,17 @@ jobs:
           printf 'TEST_USER_PASSWORD=%s\n' "$TEST_PASS" >> .env.test
           printf 'PLAYWRIGHT_BASE_URL=http://localhost:4173\n' >> .env.test
 
+          # Criar functions/.secret.local para o Functions Emulator não tentar acessar o Secret Manager no GCP
+          cat << 'EOF' > functions/.secret.local
+          RESEND_API_KEY=mock-resend-key
+          EVOLUTION_API_KEY=mock-evolution-key
+          RESEND_WEBHOOK_SECRET=mock-webhook-secret
+          GEMINI_API_KEY=mock-gemini-key
+          SUPERFRETE_SANDBOX_TOKEN=mock-superfrete-token
+          ORIGIN_SECRET=mock-origin-secret
+          ALEXA_IDENTITY_HMAC_KEY=mock-alexa-hmac-key
+          EOF
+
       - name: Run Unit Tests (Vitest)
         run: npm run test:unit
 
