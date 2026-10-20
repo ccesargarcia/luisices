@@ -3,7 +3,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Order, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile, canAccessArchivedOrders, canAccessEmails } from '../types';
+import { Order, OrderItem, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile, canAccessArchivedOrders, canAccessEmails } from '../types';
 import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore, Mail } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -276,7 +276,8 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       order.productName,
       order.quantity,
       order.price,
-      order.pricingMode === 'unit' ? order.unitPrice : null,
+      order.unitPrice,
+      order.items,
     );
     setEditProducts(parsedProducts.length > 0 ? parsedProducts : [{ name: '', quantity: '1', unitPrice: '' }]);
     setEditProductsBaseline(parsedProducts);
@@ -348,11 +349,67 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       }
       const remainingAmount = price - paidAmt;
 
-      const productName = editProducts
-        .filter(p => p.name.trim())
+      const validProducts = editProducts.filter(p => p.name.trim());
+      const productName = validProducts
         .map(p => parseInt(p.quantity) > 1 ? `${p.name.trim()} (${p.quantity}x)` : p.name.trim())
         .join(', ');
-      const totalQuantity = editProducts.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
+      const totalQuantity = validProducts.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
+
+      const allHaveExplicitUnitPrice = validProducts.length > 0 && validProducts.every(p => {
+        return p.unitPrice.trim() !== '' && parseDecimalMoneyInput(p.unitPrice) !== null;
+      });
+
+      let updatedItems: OrderItem[] | null = null;
+      let singleUnitPrice: number | null = null;
+      let pricingMode = order.pricingMode || 'total';
+
+      if (allHaveExplicitUnitPrice) {
+        updatedItems = validProducts.map(p => {
+          const qty = Math.max(1, parseInt(p.quantity, 10) || 1);
+          const unitPrice = parseDecimalMoneyInput(p.unitPrice)!;
+          return {
+            name: p.name.trim(),
+            quantity: qty,
+            unitPrice,
+            price: Number((qty * unitPrice).toFixed(2)),
+          };
+        });
+        singleUnitPrice = updatedItems.length === 1 ? updatedItems[0].unitPrice : null;
+        pricingMode = updatedItems.length === 1 ? 'unit' : 'items';
+      } else if (!editPricingChanged && order.items && order.items.length > 0) {
+        // Se a precificação não foi alterada e o pedido já possui itens estruturados, preserve-os intactos
+        updatedItems = order.items;
+        singleUnitPrice = typeof order.unitPrice === 'number' ? order.unitPrice : null;
+        pricingMode = order.pricingMode || (order.items.length === 1 ? 'unit' : 'items');
+      } else if (validProducts.length === 1) {
+        const singleQty = totalQuantity || 1;
+        const average = price / singleQty;
+        const averageInCents = Math.round(average * 100);
+        const inferredPrice = Math.abs(average * 100 - averageInCents) < 1e-8
+          ? averageInCents / 100
+          : null;
+        const resolvedUnit = typeof order.unitPrice === 'number' ? order.unitPrice : inferredPrice;
+        if (resolvedUnit !== null) {
+          updatedItems = [{
+            name: validProducts[0].name.trim(),
+            quantity: singleQty,
+            unitPrice: resolvedUnit,
+            price,
+          }];
+          singleUnitPrice = resolvedUnit;
+          pricingMode = 'unit';
+        } else {
+          updatedItems = null;
+          singleUnitPrice = null;
+          pricingMode = 'total';
+        }
+      } else {
+        // Pedido com múltiplos itens onde os preços unitários não foram informados (ex: pedido legado).
+        // NUNCA inventar média (price / totalQuantity). Manter items nulo para não falsear dados.
+        updatedItems = null;
+        singleUnitPrice = null;
+        pricingMode = 'total';
+      }
 
       // Preservar histórico e metadados de pagamentos anteriores
       const existingPayment = order.payment;
@@ -373,7 +430,9 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           productName,
           quantity: totalQuantity,
           price,
-          ...(editPricingChanged ? { pricingMode: 'total', unitPrice: null } : {}),
+          items: updatedItems,
+          unitPrice: singleUnitPrice,
+          pricingMode,
           deliveryDate: editData.deliveryDate,
           notes: editData.notes?.trim() ? editData.notes.trim() : null,
           status: editData.status,

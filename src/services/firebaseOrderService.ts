@@ -19,7 +19,8 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { Order, OrderStatus, ProductionStep, ProductionWorkflow } from '../app/types';
+import { Order, OrderItem, OrderStatus, ProductionStep, ProductionWorkflow } from '../app/types';
+import { parseDecimalMoneyInput } from '../app/utils/parseDecimalMoneyInput';
 import { firebaseLedgerService } from './firebaseLedgerService';
 import { firebaseCustomerService } from './firebaseCustomerService';
 
@@ -95,6 +96,31 @@ export class FirebaseOrderService {
   }
 
   /**
+   * Validar e limpar itens estruturados do pedido
+   */
+  private sanitizeOrderItems(items: any[] | null | undefined): OrderItem[] | null {
+    if (!items || !Array.isArray(items)) return null;
+    const sanitized: OrderItem[] = items
+      .map(item => {
+        const name = String(item?.name || '').trim();
+        const rawQuantity = typeof item?.quantity === 'number' ? item.quantity : parseInt(String(item?.quantity || '1'), 10);
+        const quantity = Math.max(1, Number.isFinite(rawQuantity) ? Math.round(rawQuantity) : 1);
+        let unitPrice = 0;
+        if (typeof item?.unitPrice === 'number' && Number.isFinite(item.unitPrice)) {
+          unitPrice = this.ensurePositive(item.unitPrice);
+        } else if (typeof item?.unitPrice === 'string') {
+          unitPrice = parseDecimalMoneyInput(item.unitPrice) ?? 0;
+        }
+        let price = typeof item?.price === 'number' && Number.isFinite(item.price)
+          ? this.ensurePositive(item.price)
+          : Number((quantity * unitPrice).toFixed(2));
+        return { name, quantity, unitPrice, price };
+      })
+      .filter(item => item.name.length > 0);
+    return sanitized.length > 0 ? sanitized : null;
+  }
+
+  /**
    * Validar campos e tipos com paridade estrita em relação ao backend (firestore.rules)
    */
   private validateOrderPayload(data: Partial<Order>): void {
@@ -157,6 +183,12 @@ export class FirebaseOrderService {
         }
       : null;
 
+    const sanitizedItems = this.sanitizeOrderItems(orderData.items);
+    const resolvedUnitPrice = typeof orderData.unitPrice === 'number' && Number.isFinite(orderData.unitPrice)
+      ? this.ensurePositive(orderData.unitPrice)
+      : (sanitizedItems && sanitizedItems.length === 1 ? sanitizedItems[0].unitPrice : null);
+    const resolvedPricingMode = orderData.pricingMode || (sanitizedItems && sanitizedItems.length > 1 ? 'items' : resolvedUnitPrice != null ? 'unit' : 'total');
+
     return {
       userId,
       createdByName: auth.currentUser?.displayName || auth.currentUser?.email || userId,
@@ -166,6 +198,9 @@ export class FirebaseOrderService {
       productName: orderData.productName,
       quantity: orderData.quantity,
       price,
+      pricingMode: resolvedPricingMode,
+      unitPrice: resolvedUnitPrice,
+      items: sanitizedItems || null,
       status: orderData.status || 'pending',
       deliveryDate: orderData.deliveryDate,
       notes: orderData.notes || null,
@@ -329,6 +364,7 @@ export class FirebaseOrderService {
       price: data.price,
       pricingMode: data.pricingMode,
       unitPrice: typeof data.unitPrice === 'number' ? data.unitPrice : null,
+      items: Array.isArray(data.items) ? data.items : (data.items === null ? null : undefined),
       status: data.status,
       deliveryDate: data.deliveryDate,
       notes: data.notes,
@@ -649,6 +685,12 @@ export class FirebaseOrderService {
             };
           } else if (key === 'exchangeItems') {
             cleanUpdates[key] = this.sanitizeExchangeItems(value as any);
+          } else if (key === 'items') {
+            cleanUpdates[key] = this.sanitizeOrderItems(value as any);
+          } else if (key === 'unitPrice') {
+            cleanUpdates[key] = typeof value === 'number' && Number.isFinite(value) ? this.ensurePositive(value) : null;
+          } else if (key === 'pricingMode') {
+            cleanUpdates[key] = value || 'total';
           } else {
             cleanUpdates[key] = value;
           }
@@ -722,6 +764,9 @@ export class FirebaseOrderService {
       productName: data.productName,
       quantity: data.quantity,
       price,
+      pricingMode: data.pricingMode || null,
+      unitPrice: typeof data.unitPrice === 'number' ? data.unitPrice : null,
+      items: Array.isArray(data.items) ? data.items : null,
       status: 'pending',
       deliveryDate: data.deliveryDate,
       notes: data.notes || null,

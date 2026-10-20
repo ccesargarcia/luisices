@@ -194,6 +194,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         price: data.price,
         pricingMode: data.pricingMode,
         unitPrice: typeof data.unitPrice === 'number' ? data.unitPrice : null,
+        items: Array.isArray(data.items) ? data.items : (data.items === null ? null : undefined),
         status: data.status,
         deliveryDate: data.deliveryDate,
         notes: data.notes,
