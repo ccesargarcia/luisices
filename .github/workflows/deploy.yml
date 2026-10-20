@@ -175,7 +175,10 @@ jobs:
           JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
           fs.writeFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, process.env.FIREBASE_SERVICE_ACCOUNT, { mode: 0o600 });
           NODE
-          npx firebase deploy --only firestore:rules,firestore:indexes,database,storage --project papelaria-dashboard --non-interactive
+          if ! npx firebase deploy --only firestore:rules,firestore:indexes,database,storage --project papelaria-dashboard --non-interactive; then
+            echo "⚠️ Falha ao publicar database rules em produção; publicando firestore e storage..."
+            npx firebase deploy --only firestore:rules,firestore:indexes,storage --project papelaria-dashboard --non-interactive
+          fi
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
