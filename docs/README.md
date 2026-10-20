@@ -15,7 +15,7 @@ Este diretório consolida a documentação técnica oficial, arquitetura viva e 
 | **[Dependências & Arquitetura](DEPENDENCIAS_E_ARQUITETURA.md)** | Visão estrutural de serviços, entrypoints frontend/backend, modelo de dados multi-tenant e pipelines de deploy. |
 | **[Operação e recuperação](OPERACAO_E_RECUPERACAO.md)** | Auditoria de pedidos, validação E2E, diagnóstico de falhas e recuperação de deploy ou dados. |
 | **[Copiloto de IA](COPILOTO_IA.md)** | Especificação do subsistema de inteligência artificial (Google Gemini), ferramentas (Function Calling), orçamentos de token e system prompt. |
-| **[Integração ChatGPT & MCP](INTEGRACAO_CHATGPT_MCP.md)** | Manual da API do Plugin ChatGPT e servidor MCP (OpenAPI 3.0.3, OAuth 2.1, 21 ferramentas, escopos e idempotência). |
+| **[Integração ChatGPT & MCP](INTEGRACAO_CHATGPT_MCP.md)** | Manual da API do Plugin ChatGPT e servidor MCP (OpenAPI 3.0.3, OAuth 2.1, 30 ferramentas, escopos e idempotência). |
 | **[Especificação Alexa](ESPECIFICACAO_ALEXA_ANTIGRAVITY.md)** | Especificação técnica e arquitetura de integração da Skill da Alexa. |
 | **[Backend Cloud Functions](../functions/README.md)** | Organização de micro-serviços, triggers, webhooks e tarefas agendadas no Firebase Gen2 / Cloud Run. |
 
