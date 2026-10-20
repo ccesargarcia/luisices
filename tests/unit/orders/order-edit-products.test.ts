@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { parseDecimalMoneyInput } from '../../../src/app/utils/parseDecimalMoneyInput';
 import { reconstructOrderProducts } from '../../../src/app/utils/reconstructOrderProducts';
 
 describe('reconstructOrderProducts', () => {
-  it('preserves total and paid amount when reopening a multi-item order for editing', () => {
+  it('does not invent equal unit prices for a multi-item order', () => {
     const savedOrder = {
       productName: 'Caderno (2x), Adesivo (1x)',
       quantity: 3,
@@ -16,25 +15,32 @@ describe('reconstructOrderProducts', () => {
       savedOrder.quantity,
       savedOrder.price,
     );
-    const editedTotal = editProducts.reduce(
-      (sum, product) => sum + Number(product.quantity) * (parseDecimalMoneyInput(product.unitPrice) ?? 0),
-      0,
-    );
-
     expect(editProducts).toEqual([
-      { name: 'Caderno', quantity: '2', unitPrice: '100,00' },
-      { name: 'Adesivo', quantity: '1', unitPrice: '100,00' },
+      { name: 'Caderno', quantity: '2', unitPrice: '' },
+      { name: 'Adesivo', quantity: '1', unitPrice: '' },
     ]);
-    expect(editedTotal).toBe(savedOrder.price);
-    // Resetting the product rows does not clear the payment state held by the modal.
     expect(savedOrder.payment.paidAmount).toBe(120);
   });
 
-  it('formats fractional unit prices as BRL cents for large quantities', () => {
+  it('does not round a fractional-cent average into a false unit price', () => {
     const products = reconstructOrderProducts('Etiqueta', 120, 92.19);
 
     expect(products).toEqual([
-      { name: 'Etiqueta', quantity: '120', unitPrice: '0,77' },
+      { name: 'Etiqueta', quantity: '120', unitPrice: '' },
+    ]);
+  });
+
+  it('uses an exact unit price recorded by voice order metadata', () => {
+    const products = reconstructOrderProducts('Galinha (45x), tes (48x)', 93, 255.75, 2.75);
+
+    expect(products.map(product => product.unitPrice)).toEqual(['2,75', '2,75']);
+  });
+
+  it('formats an inferred price as BRL when one product total divides exactly into cents', () => {
+    const products = reconstructOrderProducts('Caderno', 3, 300);
+
+    expect(products).toEqual([
+      { name: 'Caderno', quantity: '3', unitPrice: '100,00' },
     ]);
   });
 });

@@ -76,9 +76,9 @@ test.describe('Pedidos - CRUD', () => {
     const detailsDialog = page.getByRole('dialog').first();
     await expect(detailsDialog.getByText('Detalhes do Pedido')).toBeVisible();
     await detailsDialog.getByRole('button', { name: 'Editar' }).click();
-    await expect(detailsDialog.locator('input[placeholder="0,00"]:not(#paidAmount)')).toHaveValue('0,77');
+    await expect(detailsDialog.locator('input[placeholder="0,00"]:not(#paidAmount)')).toHaveValue('');
     await expect(detailsDialog.getByText('Total: R$ 92,19')).toBeVisible();
-    await expect(detailsDialog.locator('#paidAmount')).toHaveValue('30');
+    await expect(detailsDialog.locator('#paidAmount')).toHaveValue('30,00');
     await detailsDialog.getByRole('button', { name: 'Salvar Alterações' }).click();
 
     await expect(detailsDialog.getByText('Valor Total').locator('..')).toContainText('92,19');
@@ -112,17 +112,17 @@ test.describe('Pedidos - CRUD', () => {
     await createDialog.locator('#customerPhone').fill(customerPhone);
     await createDialog.getByPlaceholder('Produto 1').fill(itemOne);
     await createDialog.locator('input[type="number"]').nth(0).fill('2');
-    await createDialog.getByPlaceholder('0,00').first().fill('100');
+    await createDialog.getByPlaceholder('0,00').first().fill('100,00');
     await createDialog.getByRole('button', { name: /Adicionar item/i }).click();
     await createDialog.getByPlaceholder('Produto 2').fill(itemTwo);
     await createDialog.locator('input[type="number"]').nth(2).fill('1');
-    await createDialog.getByPlaceholder('0,00').nth(1).fill('100');
+    await createDialog.getByPlaceholder('0,00').nth(1).fill('100,00');
 
     const deliveryDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     await createDialog.locator('#deliveryDate').fill(deliveryDate);
     await createDialog.locator('#paymentStatus').click();
     await page.getByRole('option', { name: 'Parcial' }).click();
-    await createDialog.locator('#paidAmount').fill('50');
+    await createDialog.locator('#paidAmount').fill('50,00');
     await createDialog.locator('button[type="submit"]').click();
     await expect(createDialog).not.toBeVisible({ timeout: 20000 });
 
@@ -139,16 +139,18 @@ test.describe('Pedidos - CRUD', () => {
 
     const unitPriceInputs = detailsDialog.locator('input[placeholder="0,00"]:not(#paidAmount)');
     await expect(unitPriceInputs).toHaveCount(2);
-    await expect(unitPriceInputs.nth(0)).toHaveValue('100,00');
-    await expect(unitPriceInputs.nth(1)).toHaveValue('100,00');
+    await expect(unitPriceInputs.nth(0)).toHaveValue('');
+    await expect(unitPriceInputs.nth(1)).toHaveValue('');
     await expect(detailsDialog.getByText('Total: R$ 300,00')).toBeVisible();
-    await expect(detailsDialog.locator('#paidAmount')).toHaveValue('50');
+    await expect(detailsDialog.locator('#paidAmount')).toHaveValue('50,00');
 
+    await unitPriceInputs.nth(0).fill('100,00');
+    await unitPriceInputs.nth(1).fill('100,00');
     await detailsDialog.locator('#editStatus').click();
     await page.getByRole('option', { name: 'Concluído' }).click();
     await detailsDialog.locator('#paymentStatus').click();
     await page.getByRole('option', { name: 'Pago' }).click();
-    await expect(detailsDialog.locator('#paidAmount')).toHaveValue('300');
+    await expect(detailsDialog.locator('#paidAmount')).toHaveValue('300,00');
     await detailsDialog.getByRole('button', { name: 'Salvar Alterações' }).click();
 
     await expect(detailsDialog.getByText('Valor Total').locator('..')).toContainText('300,00');

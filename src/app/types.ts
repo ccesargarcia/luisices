@@ -82,6 +82,9 @@ export interface Order {
   productName: string;
   quantity: number;
   price: number;
+  /** Optional voice-order pricing metadata when an exact unit price was recorded. */
+  pricingMode?: 'unit' | 'total' | string;
+  unitPrice?: number | null;
   status: OrderStatus;
   deliveryDate: string;
   notes?: string | null;

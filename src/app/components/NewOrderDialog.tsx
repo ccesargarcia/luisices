@@ -28,6 +28,8 @@ import { NewOrderGallerySelect } from './orders/NewOrderGallerySelect';
 import { ProductItem } from './orders/OrderEditForm';
 import { AiOrderDraft } from '../types';
 import { secureRandomId } from '../utils/random';
+import { parseDecimalMoneyInput } from '../utils/parseDecimalMoneyInput';
+import { formatDecimalMoneyInput } from '../utils/formatDecimalMoneyInput';
 
 interface NewOrderDialogProps {
   open?: boolean;
@@ -92,7 +94,8 @@ export function NewOrderDialog({
   const totalPrice = useMemo(() => {
     return products.reduce((sum, p) => {
       const qty = parseFloat(p.quantity) || 0;
-      const unit = parseFloat(p.unitPrice) || 0;
+      const unit = p.unitPrice.trim() ? parseDecimalMoneyInput(p.unitPrice) : 0;
+      if (unit === null) return Number.NaN;
       return sum + qty * unit;
     }, 0);
   }, [products]);
@@ -144,14 +147,21 @@ export function NewOrderDialog({
         deliveryDate: initialDraft.deliveryDate || prev.deliveryDate,
         notes: initialDraft.notes || prev.notes,
         paymentMethod: (initialDraft.paymentMethod as PaymentMethod) || prev.paymentMethod,
-        paidAmount: initialDraft.paidAmount != null ? String(initialDraft.paidAmount) : prev.paidAmount,
+        paidAmount: initialDraft.paidAmount != null
+          ? formatDecimalMoneyInput(initialDraft.paidAmount)
+          : prev.paidAmount,
       }));
 
       if (initialDraft.productName) {
         const qty = initialDraft.quantity || 1;
-        const unit = initialDraft.unitPrice != null
-          ? String(initialDraft.unitPrice)
-          : (initialDraft.totalPrice != null ? String(initialDraft.totalPrice / qty) : '');
+        const draftUnitPrice = initialDraft.unitPrice != null
+          ? parseDecimalMoneyInput(String(initialDraft.unitPrice))
+          : null;
+        const unit = draftUnitPrice !== null
+          ? formatDecimalMoneyInput(draftUnitPrice)
+          : (initialDraft.totalPrice != null
+            ? formatDecimalMoneyInput(initialDraft.totalPrice / qty)
+            : '');
 
         setProducts([
           {
@@ -255,7 +265,14 @@ export function NewOrderDialog({
     }
 
     const totalAmount = totalPrice;
-    const paidAmount = formData.paidAmount ? parseFloat(formData.paidAmount) : 0;
+    const parsedPaidAmount = formData.paidAmount
+      ? parseDecimalMoneyInput(formData.paidAmount)
+      : 0;
+    const paidAmount = parsedPaidAmount ?? Number.NaN;
+    if (!formData.isExchange && !Number.isFinite(totalAmount)) {
+      toast.error('Revise os valores dos produtos. Use vírgula ou ponto e até duas casas decimais.');
+      return;
+    }
     if (!Number.isFinite(paidAmount) || paidAmount < 0 || paidAmount > totalAmount) {
       toast.error(`O valor pago deve estar entre R$ 0,00 e ${formatCurrency(totalAmount)}.`);
       return;
@@ -700,7 +717,12 @@ export function NewOrderDialog({
           {!formData.isExchange && (
             <NewOrderPaymentSection
               paymentStatus={formData.paymentStatus}
-              onPaymentStatusChange={(status) => setFormData({ ...formData, paymentStatus: status })}
+              onPaymentStatusChange={(status) => setFormData({
+                ...formData,
+                paymentStatus: status,
+                ...(status === 'paid' ? { paidAmount: formatDecimalMoneyInput(totalPrice) } : {}),
+                ...(status === 'pending' ? { paidAmount: '0,00' } : {}),
+              })}
               paymentMethod={formData.paymentMethod}
               onPaymentMethodChange={(method) => setFormData({ ...formData, paymentMethod: method })}
               paidAmount={formData.paidAmount}

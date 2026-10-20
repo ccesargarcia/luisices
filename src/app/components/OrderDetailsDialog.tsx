@@ -18,6 +18,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
 import { toast } from 'sonner';
 import { parseDecimalMoneyInput } from '../utils/parseDecimalMoneyInput';
+import { formatDecimalMoneyInput } from '../utils/formatDecimalMoneyInput';
 import { reconstructOrderProducts } from '../utils/reconstructOrderProducts';
 import { OrderInfoView } from './orders/OrderInfoView';
 import { OrderEditForm, ProductItem, OrderEditState } from './orders/OrderEditForm';
@@ -104,6 +105,12 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       return sum + qty * unit;
     }, 0);
   }, [editProducts, editProductsBaseline, order?.id, order?.price]);
+
+  const editPricingChanged = editProducts.length !== editProductsBaseline.length ||
+    editProducts.some((product, index) =>
+      product.quantity !== editProductsBaseline[index]?.quantity ||
+      product.unitPrice !== editProductsBaseline[index]?.unitPrice
+    );
 
   const matchedCustomer = useMemo(() => {
     if (!order) return null;
@@ -269,6 +276,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       order.productName,
       order.quantity,
       order.price,
+      order.pricingMode === 'unit' ? order.unitPrice : null,
     );
     setEditProducts(parsedProducts.length > 0 ? parsedProducts : [{ name: '', quantity: '1', unitPrice: '' }]);
     setEditProductsBaseline(parsedProducts);
@@ -286,7 +294,9 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       status: order.status,
       paymentStatus: order.payment?.status || 'pending',
       paymentMethod: order.payment?.method || undefined,
-      paidAmount: order.payment?.paidAmount || '' as number | '',
+      paidAmount: order.payment?.paidAmount != null
+        ? formatDecimalMoneyInput(order.payment.paidAmount)
+        : '',
       isExchange: order.isExchange || false,
       exchangeNotes: order.exchangeNotes || '',
       cardColor: order.cardColor || '',
@@ -363,6 +373,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           productName,
           quantity: totalQuantity,
           price,
+          ...(editPricingChanged ? { pricingMode: 'total', unitPrice: null } : {}),
           deliveryDate: editData.deliveryDate,
           notes: editData.notes?.trim() ? editData.notes.trim() : null,
           status: editData.status,
