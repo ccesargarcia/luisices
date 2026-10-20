@@ -77,7 +77,7 @@ test.describe('Pedidos - CRUD', () => {
     await expect(detailsDialog.getByText('Detalhes do Pedido')).toBeVisible();
     await detailsDialog.getByRole('button', { name: 'Editar' }).click();
     await expect(detailsDialog.locator('input[placeholder="0,00"]:not(#paidAmount)')).toHaveValue('');
-    await expect(detailsDialog.getByText('Total: R$ 92,19')).toBeVisible();
+    await expect(detailsDialog.getByText('Total: R$ 92,19', { exact: true })).toBeVisible();
     await expect(detailsDialog.locator('#paidAmount')).toHaveValue('30,00');
     await detailsDialog.getByRole('button', { name: 'Salvar Alterações' }).click();
 
@@ -115,7 +115,7 @@ test.describe('Pedidos - CRUD', () => {
     await createDialog.getByPlaceholder('0,00').first().fill('120,00');
     await createDialog.getByRole('button', { name: /Adicionar item/i }).click();
     await createDialog.getByPlaceholder('Produto 2').fill(itemTwo);
-    await createDialog.locator('input[type="number"]').nth(2).fill('1');
+    await createDialog.locator('input[type="number"]').nth(1).fill('1');
     await createDialog.getByPlaceholder('0,00').nth(1).fill('60,00');
 
     const deliveryDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -141,7 +141,7 @@ test.describe('Pedidos - CRUD', () => {
     await expect(unitPriceInputs).toHaveCount(2);
     await expect(unitPriceInputs.nth(0)).toHaveValue('120,00');
     await expect(unitPriceInputs.nth(1)).toHaveValue('60,00');
-    await expect(detailsDialog.getByText('Total: R$ 300,00')).toBeVisible();
+    await expect(detailsDialog.getByText('Total: R$ 300,00', { exact: true })).toBeVisible();
     await expect(detailsDialog.locator('#paidAmount')).toHaveValue('50,00');
     await detailsDialog.locator('#editStatus').click();
     await page.getByRole('option', { name: 'Concluído' }).click();
@@ -206,7 +206,7 @@ test.describe('Pedidos - CRUD', () => {
     const priceInput = detailsDialog.getByPlaceholder('0,00').first();
     await priceInput.fill('130,50');
     await expect(priceInput).toHaveValue('130,50');
-    await expect(detailsDialog.getByText('Total: R$ 130,50')).toBeVisible();
+    await expect(detailsDialog.getByText('Total: R$ 130,50', { exact: true })).toBeVisible();
 
     const tagInput = detailsDialog.getByRole('textbox', { name: 'Adicionar tag' });
     await tagInput.press('Backspace');
