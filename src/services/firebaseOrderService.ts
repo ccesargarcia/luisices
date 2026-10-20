@@ -905,13 +905,23 @@ export class FirebaseOrderService {
     const data = orderSnap.data();
     const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
     const profile = profileSnap.exists() ? profileSnap.data() : null;
+    const hasDeletePermission = (permission: unknown): boolean => {
+      if (permission === true) return true;
+      if (!permission || typeof permission !== 'object') return false;
+      return (permission as Record<string, unknown>).delete === true;
+    };
+    const archivedOrderPermission = profile?.permissions?.archivedOrders
+      ?? profile?.permissions?.orders;
+    const employeeCanDelete = data.isArchived === true
+      ? hasDeletePermission(archivedOrderPermission)
+      : hasDeletePermission(profile?.permissions?.orders);
     const canDelete = data.userId === userId
       || profile?.role === 'admin'
       || (
         profile?.role === 'funcionario'
         && profile.active === true
         && data.assignedTo === userId
-        && profile.permissions?.orders?.delete === true
+        && employeeCanDelete
       );
 
     if (!canDelete) {

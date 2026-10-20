@@ -650,4 +650,162 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       expect((await getDoc(doc(ownerDb, 'orders/legacy-order'))).data()?.version).toBe(2);
     });
   });
+
+  describe('7. Limite de Expressões CEL e Atualização Complexa (20 Etiquetas + Itens + Preço + Pagamento)', () => {
+    it('permite atualizar pedido com 20 etiquetas, itens estruturados, unitPrice e pagamento consistente sem exceder limite CEL de 1000 expressões', async () => {
+      const ownerDb = dbFor('owner');
+      const tagNames = Array.from({ length: 20 }, (_, index) => `Etiqueta E2E ${String(index + 1).padStart(2, '0')}`);
+      const tags = tagNames.map(name => ({ name, color: '#3b82f6' }));
+
+      // Pedido inicial criado com 20 etiquetas, sem itens estruturados
+      await assertSucceeds(
+        setDoc(doc(ownerDb, 'orders/order-20-tags-complex'), {
+          ...baseOrder,
+          orderNumber: '#2026-0020',
+          quantity: 1,
+          price: 100,
+          pricingMode: 'total',
+          unitPrice: null,
+          items: null,
+          tags,
+          payment: {
+            status: 'partial',
+            method: 'pix',
+            totalAmount: 100,
+            paidAmount: 30.50,
+            remainingAmount: 69.50,
+          },
+          version: 1,
+        })
+      );
+
+      // Atualização que simula a tela de edição do E2E:
+      // Altera preço para 130.50, insere itens estruturados, unitPrice, recalcula pagamento e altera 1 etiqueta das 20
+      const revisedTag = 'Etiqueta Atualizada E2E';
+      const updatedTags = [...tags.slice(0, 19), { name: revisedTag, color: '#3b82f6' }];
+
+      await assertSucceeds(
+        updateOrder(ownerDb, 'orders/order-20-tags-complex', {
+          customerName: 'Cliente Teste',
+          customerPhone: '11999999999',
+          productName: 'Convite Luxo',
+          quantity: 1,
+          price: 130.50,
+          items: [{
+            name: 'Convite Luxo',
+            quantity: 1,
+            unitPrice: 130.50,
+            price: 130.50,
+          }],
+          unitPrice: 130.50,
+          pricingMode: 'unit',
+          deliveryDate: '2026-11-20',
+          notes: 'Observações do pedido',
+          status: 'in-progress',
+          tags: updatedTags,
+          payment: {
+            status: 'partial',
+            method: 'pix',
+            totalAmount: 130.50,
+            paidAmount: 30.50,
+            remainingAmount: 100.00,
+          },
+        }, 2)
+      );
+
+      const saved = await getDoc(doc(ownerDb, 'orders/order-20-tags-complex'));
+      expect(saved.data()?.version).toBe(2);
+      expect(saved.data()?.price).toBe(130.50);
+      expect(saved.data()?.tags).toHaveLength(20);
+      expect(saved.data()?.tags[19].name).toBe(revisedTag);
+    });
+
+    it('permite atualizar pedido substituindo todas as 20 etiquetas por novas etiquetas sem exceder limite CEL', async () => {
+      const ownerDb = dbFor('owner');
+      const initialTags = Array.from({ length: 20 }, (_, j) => ({ name: `Original ${j}`, color: '#123456' }));
+
+      await assertSucceeds(
+        setDoc(doc(ownerDb, 'orders/order-20-tags-all-new'), {
+          ...baseOrder,
+          orderNumber: '#2026-0021',
+          quantity: 2,
+          price: 100,
+          tags: initialTags,
+          payment: {
+            status: 'partial',
+            method: 'pix',
+            totalAmount: 100,
+            paidAmount: 50,
+            remainingAmount: 50,
+          },
+          version: 1,
+        })
+      );
+
+      const brandNewTags = Array.from({ length: 20 }, (_, j) => ({ name: `Nova Etiqueta ${j}`, color: '#654321' }));
+
+      await assertSucceeds(
+        updateOrder(ownerDb, 'orders/order-20-tags-all-new', {
+          tags: brandNewTags,
+          price: 120,
+          payment: {
+            status: 'partial',
+            method: 'pix',
+            totalAmount: 120,
+            paidAmount: 50,
+            remainingAmount: 70,
+          },
+        }, 2)
+      );
+
+      const saved = await getDoc(doc(ownerDb, 'orders/order-20-tags-all-new'));
+      expect(saved.data()?.tags[0].name).toBe('Nova Etiqueta 0');
+    });
+
+    it('rejeita atualização quando a última etiqueta de 20 for inválida em pedido com itens estruturados', async () => {
+      const ownerDb = dbFor('owner');
+      const tags = Array.from({ length: 20 }, (_, i) => ({ name: `Etiqueta ${i}`, color: '#3b82f6' }));
+
+      await assertSucceeds(
+        setDoc(doc(ownerDb, 'orders/order-bad-20th-tag'), {
+          ...baseOrder,
+          orderNumber: '#2026-0022',
+          quantity: 1,
+          price: 130.50,
+          pricingMode: 'unit',
+          unitPrice: 130.50,
+          items: [{
+            name: 'Convite Luxo',
+            quantity: 1,
+            unitPrice: 130.50,
+            price: 130.50,
+          }],
+          tags,
+          payment: {
+            status: 'partial',
+            method: 'pix',
+            totalAmount: 130.50,
+            paidAmount: 30.50,
+            remainingAmount: 100.00,
+          },
+          version: 1,
+        })
+      );
+
+      const badTags = [...tags.slice(0, 19), { name: '', color: '#3b82f6' }]; // Nome vazio é inválido
+
+      await assertFails(
+        updateOrder(ownerDb, 'orders/order-bad-20th-tag', {
+          tags: badTags,
+          price: 130.50,
+          items: [{
+            name: 'Convite Luxo',
+            quantity: 1,
+            unitPrice: 130.50,
+            price: 130.50,
+          }],
+        }, 2)
+      );
+    });
+  });
 });
