@@ -524,7 +524,10 @@ jobs:
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
-          npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,firestore:indexes,database,storage --project luisices-dev --non-interactive
+          if ! npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,firestore:indexes,database,storage --project luisices-dev --non-interactive; then
+            echo "⚠️ Deploy com database falhou (possível ausência da instância RTDB em dev). Tentando deploy de Firestore e Storage..."
+            npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,firestore:indexes,storage --project luisices-dev --non-interactive
+          fi
 
       # --- ETAPAS DAS CLOUD FUNCTIONS ---
       - name: Instalar dependências de Functions
