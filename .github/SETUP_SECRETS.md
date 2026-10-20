@@ -28,6 +28,7 @@ Credenciais do projeto Firebase de desenvolvimento:
 | `FIREBASE_SERVICE_ACCOUNT_DEV` | Service Account JSON (dev) | Firebase Console > Project Settings > Service Accounts |
 | `RESEND_API_KEY` | Chave para envio de e-mail pelas Functions | Painel do Resend |
 | `EVOLUTION_API_KEY` | Chave para envio opcional via WhatsApp | Configuração da Evolution API |
+| `SUPERFRETE_SANDBOX_TOKEN` | Token de sandbox para cotação de frete e etiquetas (opcional) | Painel SuperFrete Sandbox |
 
 ### **Firebase - Produção (Main)**
 

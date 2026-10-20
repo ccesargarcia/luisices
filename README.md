@@ -37,6 +37,7 @@ Use **Node.js 22**, alinhado ao runtime de Functions e aos workflows. Os testes 
 npm ci
 npm --prefix functions ci
 cp .env.example .env.local
+cp functions/.secret.local.example functions/.secret.local  # Para uso com emuladores
 npm run dev
 ```
 
