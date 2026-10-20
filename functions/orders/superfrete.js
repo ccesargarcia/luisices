@@ -55,6 +55,7 @@ async function authorizeSuperfrete(request) {
   return session;
 }
 
+// Keep the exports in sync with the selective Functions target in deploy-dev.yml.
 function nextOrderVersion(order) {
   const currentVersion = Number.isSafeInteger(order.version) && order.version > 0
     ? order.version

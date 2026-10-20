@@ -285,6 +285,7 @@ service cloud.firestore {
     }
 
     function isValidOrderConcurrency(previous, next, changed) {
+      // Legacy orders without a version start at 1; every real update must advance it once.
       return changed.size() == 0
         || (next.get('version', null) is int
           && previous.get('version', 1) is int
