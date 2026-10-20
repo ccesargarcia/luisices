@@ -351,7 +351,7 @@ export function NewOrderDialog({
       const orderItems: OrderItem[] = validProducts.map(p => {
         const qty = Math.max(1, parseInt(p.quantity, 10) || 1);
         const parsedUnit = p.unitPrice.trim() ? parseDecimalMoneyInput(p.unitPrice) : null;
-        const unitPrice = parsedUnit !== null ? parsedUnit : (totalAmount / (totalQuantity || 1));
+        const unitPrice = parsedUnit !== null ? parsedUnit : 0;
         return {
           name: p.name.trim(),
           quantity: qty,
@@ -360,8 +360,8 @@ export function NewOrderDialog({
         };
       });
 
-      const singleUnitPrice = orderItems.length === 1 ? orderItems[0].unitPrice : null;
-      const pricingMode = orderItems.length === 1 ? 'unit' : 'items';
+      const singleUnitPrice = orderItems.length === 1 && orderItems[0].unitPrice > 0 ? orderItems[0].unitPrice : null;
+      const pricingMode = orderItems.length === 1 ? (singleUnitPrice !== null ? 'unit' : 'total') : 'items';
 
       const selectedMember = userProfile?.role === 'admin' && assignedTo !== '__none__'
         ? teamMembers.find(m => m.uid === assignedTo)

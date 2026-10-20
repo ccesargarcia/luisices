@@ -112,11 +112,11 @@ test.describe('Pedidos - CRUD', () => {
     await createDialog.locator('#customerPhone').fill(customerPhone);
     await createDialog.getByPlaceholder('Produto 1').fill(itemOne);
     await createDialog.locator('input[type="number"]').nth(0).fill('2');
-    await createDialog.getByPlaceholder('0,00').first().fill('100,00');
+    await createDialog.getByPlaceholder('0,00').first().fill('120,00');
     await createDialog.getByRole('button', { name: /Adicionar item/i }).click();
     await createDialog.getByPlaceholder('Produto 2').fill(itemTwo);
     await createDialog.locator('input[type="number"]').nth(2).fill('1');
-    await createDialog.getByPlaceholder('0,00').nth(1).fill('100,00');
+    await createDialog.getByPlaceholder('0,00').nth(1).fill('60,00');
 
     const deliveryDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     await createDialog.locator('#deliveryDate').fill(deliveryDate);
@@ -139,8 +139,8 @@ test.describe('Pedidos - CRUD', () => {
 
     const unitPriceInputs = detailsDialog.locator('input[placeholder="0,00"]:not(#paidAmount)');
     await expect(unitPriceInputs).toHaveCount(2);
-    await expect(unitPriceInputs.nth(0)).toHaveValue('100,00');
-    await expect(unitPriceInputs.nth(1)).toHaveValue('100,00');
+    await expect(unitPriceInputs.nth(0)).toHaveValue('120,00');
+    await expect(unitPriceInputs.nth(1)).toHaveValue('60,00');
     await expect(detailsDialog.getByText('Total: R$ 300,00')).toBeVisible();
     await expect(detailsDialog.locator('#paidAmount')).toHaveValue('50,00');
     await detailsDialog.locator('#editStatus').click();

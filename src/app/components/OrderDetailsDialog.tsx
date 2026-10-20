@@ -355,20 +355,61 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         .join(', ');
       const totalQuantity = validProducts.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
 
-      const orderItems: OrderItem[] = validProducts.map(p => {
-        const qty = Math.max(1, parseInt(p.quantity, 10) || 1);
-        const parsedUnit = p.unitPrice.trim() ? parseDecimalMoneyInput(p.unitPrice) : null;
-        const unitPrice = parsedUnit !== null ? parsedUnit : (price / (totalQuantity || 1));
-        return {
-          name: p.name.trim(),
-          quantity: qty,
-          unitPrice,
-          price: Number((qty * unitPrice).toFixed(2)),
-        };
+      const allHaveExplicitUnitPrice = validProducts.length > 0 && validProducts.every(p => {
+        return p.unitPrice.trim() !== '' && parseDecimalMoneyInput(p.unitPrice) !== null;
       });
 
-      const singleUnitPrice = orderItems.length === 1 ? orderItems[0].unitPrice : null;
-      const pricingMode = orderItems.length === 1 ? 'unit' : 'items';
+      let updatedItems: OrderItem[] | null = null;
+      let singleUnitPrice: number | null = null;
+      let pricingMode = order.pricingMode || 'total';
+
+      if (allHaveExplicitUnitPrice) {
+        updatedItems = validProducts.map(p => {
+          const qty = Math.max(1, parseInt(p.quantity, 10) || 1);
+          const unitPrice = parseDecimalMoneyInput(p.unitPrice)!;
+          return {
+            name: p.name.trim(),
+            quantity: qty,
+            unitPrice,
+            price: Number((qty * unitPrice).toFixed(2)),
+          };
+        });
+        singleUnitPrice = updatedItems.length === 1 ? updatedItems[0].unitPrice : null;
+        pricingMode = updatedItems.length === 1 ? 'unit' : 'items';
+      } else if (!editPricingChanged && order.items && order.items.length > 0) {
+        // Se a precificação não foi alterada e o pedido já possui itens estruturados, preserve-os intactos
+        updatedItems = order.items;
+        singleUnitPrice = typeof order.unitPrice === 'number' ? order.unitPrice : null;
+        pricingMode = order.pricingMode || (order.items.length === 1 ? 'unit' : 'items');
+      } else if (validProducts.length === 1) {
+        const singleQty = totalQuantity || 1;
+        const average = price / singleQty;
+        const averageInCents = Math.round(average * 100);
+        const inferredPrice = Math.abs(average * 100 - averageInCents) < 1e-8
+          ? averageInCents / 100
+          : null;
+        const resolvedUnit = typeof order.unitPrice === 'number' ? order.unitPrice : inferredPrice;
+        if (resolvedUnit !== null) {
+          updatedItems = [{
+            name: validProducts[0].name.trim(),
+            quantity: singleQty,
+            unitPrice: resolvedUnit,
+            price,
+          }];
+          singleUnitPrice = resolvedUnit;
+          pricingMode = 'unit';
+        } else {
+          updatedItems = null;
+          singleUnitPrice = null;
+          pricingMode = 'total';
+        }
+      } else {
+        // Pedido com múltiplos itens onde os preços unitários não foram informados (ex: pedido legado).
+        // NUNCA inventar média (price / totalQuantity). Manter items nulo para não falsear dados.
+        updatedItems = null;
+        singleUnitPrice = null;
+        pricingMode = 'total';
+      }
 
       // Preservar histórico e metadados de pagamentos anteriores
       const existingPayment = order.payment;
@@ -389,7 +430,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           productName,
           quantity: totalQuantity,
           price,
-          items: orderItems,
+          items: updatedItems || undefined,
           unitPrice: singleUnitPrice,
           pricingMode,
           deliveryDate: editData.deliveryDate,

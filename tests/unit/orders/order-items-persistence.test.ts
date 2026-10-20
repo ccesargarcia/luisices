@@ -186,6 +186,77 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
       expect(updatePayload.unitPrice).toBeNull();
       expect(updatePayload.version).toBe(2);
     });
+
+    it('não inventa média ou preços unitários iguais quando um pedido legado sem items é editado sem valores unitários', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 1,
+          customerName: 'Cliente Antigo',
+          productName: 'Caderno (2x), Adesivo (1x)',
+          quantity: 3,
+          price: 300,
+          pricingMode: 'total',
+          unitPrice: null,
+          items: null,
+        }),
+      });
+      mockSaleGet.mockReturnValue({ exists: () => false });
+
+      // Edição de campos gerais (ex: data de entrega / status), mantendo preços desconhecidos como null
+      await firebaseOrderService.updateOrder('order-legacy-1', {
+        deliveryDate: '2026-12-15',
+        status: 'completed',
+        items: null,
+        pricingMode: 'total',
+        unitPrice: null,
+      }, 1);
+
+      expect(mockTransactionUpdate).toHaveBeenCalled();
+      const updatePayload = mockTransactionUpdate.mock.calls[0][1];
+      expect(updatePayload.items).toBeNull();
+      expect(updatePayload.pricingMode).toBe('total');
+      expect(updatePayload.unitPrice).toBeNull();
+      // Garante que nenhuma média aritmética (ex: 300 / 3 = 100) foi atribuída aos produtos
+      expect(updatePayload.items).not.toEqual([
+        { name: 'Caderno', quantity: 2, unitPrice: 100, price: 200 },
+        { name: 'Adesivo', quantity: 1, unitPrice: 100, price: 100 },
+      ]);
+    });
+
+    it('permite que um pedido legado sem items receba items estruturados com preços distintos ao ser editado com valores reais', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 1,
+          customerName: 'Cliente Antigo',
+          productName: 'Caderno (2x), Adesivo (1x)',
+          quantity: 3,
+          price: 300,
+          items: null,
+        }),
+      });
+      mockSaleGet.mockReturnValue({ exists: () => false });
+
+      const distinctItems = [
+        { name: 'Caderno', quantity: 2, unitPrice: 120, price: 240 },
+        { name: 'Adesivo', quantity: 1, unitPrice: 60, price: 60 },
+      ];
+
+      await firebaseOrderService.updateOrder('order-legacy-1', {
+        items: distinctItems,
+        pricingMode: 'items',
+        unitPrice: null,
+      }, 1);
+
+      expect(mockTransactionUpdate).toHaveBeenCalled();
+      const updatePayload = mockTransactionUpdate.mock.calls[0][1];
+      expect(updatePayload.items).toEqual(distinctItems);
+      expect(updatePayload.items[0].unitPrice).toBe(120);
+      expect(updatePayload.items[1].unitPrice).toBe(60);
+    });
   });
 
   describe('Duplicação de Pedidos (duplicateOrder)', () => {
