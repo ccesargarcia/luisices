@@ -44,8 +44,20 @@ export async function optimizeImageToWebP(
   if (file.type === 'image/svg+xml') return file;
   if (file.type === 'image/gif') return file; // Preserva animações de GIF
 
+  // Fallback seguro quando o ambiente não suporta DOM/Canvas/Image (ex: Node.js / SSR / testes unitários)
+  const ImageConstructor = typeof Image !== 'undefined'
+    ? Image
+    : (typeof globalThis !== 'undefined' ? (globalThis as any).Image : undefined);
+  const doc = typeof document !== 'undefined'
+    ? document
+    : (typeof globalThis !== 'undefined' ? (globalThis as any).document : undefined);
+
+  if (!ImageConstructor || !doc) {
+    return file;
+  }
+
   try {
-    const optimizedBlob = await convertImageElementToWebP(file, maxDimension, quality);
+    const optimizedBlob = await convertImageElementToWebP(file, maxDimension, quality, ImageConstructor, doc);
     if (!optimizedBlob) {
       return file;
     }
@@ -101,10 +113,14 @@ export async function optimizeImageForAi(file: File): Promise<File> {
 function convertImageElementToWebP(
   file: File,
   maxDimension: number,
-  quality: number
+  quality: number,
+  ImageCtor?: any,
+  docObj?: any
 ): Promise<Blob | null> {
   return new Promise((resolve, reject) => {
-    const img = new Image();
+    const Ctor = ImageCtor || (typeof Image !== 'undefined' ? Image : (globalThis as any).Image);
+    const doc = docObj || (typeof document !== 'undefined' ? document : (globalThis as any).document);
+    const img = new Ctor();
     const objectUrl = URL.createObjectURL(file);
 
     img.onload = () => {
@@ -113,7 +129,7 @@ function convertImageElementToWebP(
       try {
         const { width, height } = calculateDimensions(img.naturalWidth || img.width, img.naturalHeight || img.height, maxDimension);
 
-        const canvas = document.createElement('canvas');
+        const canvas = doc.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
 
@@ -132,7 +148,7 @@ function convertImageElementToWebP(
         // Suporte a toBlob nativo
         if (canvas.toBlob) {
           canvas.toBlob(
-            (blob) => {
+            (blob: Blob | null) => {
               if (blob) {
                 resolve(blob);
               } else {
@@ -153,7 +169,7 @@ function convertImageElementToWebP(
       }
     };
 
-    img.onerror = (err) => {
+    img.onerror = (err: unknown) => {
       URL.revokeObjectURL(objectUrl);
       reject(err);
     };
