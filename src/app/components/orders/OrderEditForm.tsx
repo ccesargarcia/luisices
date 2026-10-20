@@ -15,6 +15,7 @@ import { TagInput } from '../TagInput';
 import { OrderStatus, PaymentStatus, PaymentMethod, Tag } from '../../types';
 import { Plus, Trash2, Repeat2, X, Save } from 'lucide-react';
 import { parseDecimalMoneyInput } from '../../utils/parseDecimalMoneyInput';
+import { formatDecimalMoneyInput } from '../../utils/formatDecimalMoneyInput';
 
 export interface ProductItem {
   name: string;
@@ -463,8 +464,8 @@ export function OrderEditForm({
                 onEditDataChange({
                   ...editData,
                   paymentStatus: value,
-                  ...(value === 'paid' ? { paidAmount: total } : {}),
-                  ...(value === 'pending' ? { paidAmount: 0 } : {}),
+                  ...(value === 'paid' ? { paidAmount: formatDecimalMoneyInput(total) } : {}),
+                  ...(value === 'pending' ? { paidAmount: '0,00' } : {}),
                 });
               }}
             >

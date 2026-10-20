@@ -6,6 +6,8 @@ import { Label } from '../ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Plus, Trash2, BookOpen } from 'lucide-react';
 import { ProductItem } from './OrderEditForm';
+import { parseDecimalMoneyInput } from '../../utils/parseDecimalMoneyInput';
+import { formatDecimalMoneyInput } from '../../utils/formatDecimalMoneyInput';
 
 interface NewOrderItemsSelectProps {
   products: ProductItem[];
@@ -62,7 +64,8 @@ export function NewOrderItemsSelect({
 
           <div className="space-y-2">
             {products.map((item, idx) => {
-              const sub = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
+              const unitPrice = parseDecimalMoneyInput(item.unitPrice);
+              const sub = (parseFloat(item.quantity) || 0) * (unitPrice ?? 0);
               return (
                 <div key={idx} className="space-y-0.5">
                   <div className="grid grid-cols-[36px_1fr_56px_96px_36px] gap-2 items-center">
@@ -112,7 +115,7 @@ export function NewOrderItemsSelect({
                                   onProductsChange((prev) =>
                                     prev.map((item, i) =>
                                       i === idx
-                                        ? { ...item, name: p.name, unitPrice: String(p.unitPrice) }
+                                        ? { ...item, name: p.name, unitPrice: formatDecimalMoneyInput(p.unitPrice) }
                                         : item
                                     )
                                   );
@@ -161,16 +164,25 @@ export function NewOrderItemsSelect({
                       required={idx === 0}
                     />
                     <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
+                      type="text"
+                      inputMode="decimal"
                       placeholder="0,00"
                       value={item.unitPrice}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^0-9.,]/g, '');
                         onProductsChange((prev) =>
-                          prev.map((p, i) => (i === idx ? { ...p, unitPrice: e.target.value } : p))
-                        )
-                      }
+                          prev.map((p, i) => (i === idx ? { ...p, unitPrice: value } : p))
+                        );
+                      }}
+                      onBlur={() => {
+                        if (unitPrice !== null) {
+                          onProductsChange((prev) =>
+                            prev.map((p, i) => (i === idx
+                              ? { ...p, unitPrice: formatDecimalMoneyInput(unitPrice) }
+                              : p))
+                          );
+                        }
+                      }}
                       className="text-right px-2"
                       required={idx === 0}
                     />

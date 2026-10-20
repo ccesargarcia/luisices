@@ -2,6 +2,8 @@ import React from 'react';
 import { PaymentStatus, PaymentMethod } from '../../types';
 import { Label } from '../ui/label';
 import { Input } from '../ui/input';
+import { parseDecimalMoneyInput } from '../../utils/parseDecimalMoneyInput';
+import { formatDecimalMoneyInput } from '../../utils/formatDecimalMoneyInput';
 import {
   Select,
   SelectContent,
@@ -31,6 +33,8 @@ export function NewOrderPaymentSection({
   totalPrice,
   formatCurrency,
 }: NewOrderPaymentSectionProps) {
+  const parsedPaidAmount = parseDecimalMoneyInput(paidAmount);
+
   return (
     <div className="border-t pt-4 space-y-4">
       <h3 className="font-medium text-sm">Informações de Pagamento</h3>
@@ -77,27 +81,37 @@ export function NewOrderPaymentSection({
         <Label htmlFor="paidAmount">Valor Pago (R$)</Label>
         <Input
           id="paidAmount"
-          type="number"
-          min="0"
-          step="0.01"
-          max={totalPrice || undefined}
+          type="text"
+          inputMode="decimal"
           value={paidAmount}
           onChange={(e) => {
-            const value = e.target.value;
+            const value = e.target.value.replace(/[^0-9.,]/g, '');
             if (value === '') {
               onPaidAmountChange('');
               return;
             }
-            const normalized = Math.min(totalPrice, Math.max(0, Number(value)));
-            onPaidAmountChange(Number.isFinite(normalized) ? String(normalized) : '');
+            const parsed = parseDecimalMoneyInput(value);
+            if (parsed === null) {
+              onPaidAmountChange(value);
+              return;
+            }
+            const normalized = Number.isFinite(totalPrice)
+              ? Math.min(totalPrice, Math.max(0, parsed))
+              : parsed;
+            onPaidAmountChange(normalized === parsed ? value : formatDecimalMoneyInput(normalized));
+          }}
+          onBlur={() => {
+            if (parsedPaidAmount !== null) {
+              onPaidAmountChange(formatDecimalMoneyInput(parsedPaidAmount));
+            }
           }}
           placeholder={
             totalPrice > 0 ? `Máximo: ${formatCurrency(totalPrice)}` : 'Informe o valor pago'
           }
         />
-        {paidAmount && totalPrice > 0 && (
+        {paidAmount && parsedPaidAmount !== null && totalPrice > 0 && (
           <p className="text-sm text-muted-foreground">
-            Restante: {formatCurrency(Math.max(0, totalPrice - parseFloat(paidAmount)))}
+            Restante: {formatCurrency(Math.max(0, totalPrice - parsedPaidAmount))}
           </p>
         )}
       </div>
