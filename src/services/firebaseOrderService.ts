@@ -148,6 +148,42 @@ export class FirebaseOrderService {
   }
 
   /**
+   * Registra reduções do saldo por forma de pagamento, abatendo cada ajuste
+   * da mesma forma usada nas entradas positivas mais recentes do histórico.
+   */
+  private buildPaymentReductionEntries(
+    history: any[],
+    amountToReduce: number,
+    date: string,
+    fallbackMethod: string,
+    reason: string,
+  ): any[] {
+    let remaining = Math.round(amountToReduce * 100) / 100;
+    const reductions = new Map<string, number>();
+
+    for (let index = history.length - 1; index >= 0 && remaining > 0; index -= 1) {
+      const entryAmount = Number(history[index]?.amount) || 0;
+      if (entryAmount <= 0) continue;
+
+      const reduction = Math.min(entryAmount, remaining);
+      const method = history[index]?.method || fallbackMethod;
+      reductions.set(method, Math.round(((reductions.get(method) || 0) + reduction) * 100) / 100);
+      remaining = Math.round((remaining - reduction) * 100) / 100;
+    }
+
+    if (remaining > 0) {
+      reductions.set(fallbackMethod, Math.round(((reductions.get(fallbackMethod) || 0) + remaining) * 100) / 100);
+    }
+
+    return Array.from(reductions.entries()).map(([method, reduction]) => ({
+      amount: -reduction,
+      date,
+      method,
+      notes: `${reason} Forma ${method}: R$ ${reduction.toFixed(2)}.`,
+    }));
+  }
+
+  /**
    * Validar e limpar itens estruturados do pedido
    */
   private sanitizeOrderItems(items: any[] | null | undefined): OrderItem[] | null {
@@ -772,7 +808,7 @@ export class FirebaseOrderService {
                     : (existingPaid > 0 ? [{
                         amount: existingPaid,
                         date: existingPayment.paymentDate || now,
-                        method: payment.method || existingPayment.method || 'pix',
+                        method: existingPayment.method || payment.method || 'pix',
                         notes: 'Pagamento inicial registrado',
                       }] : []));
 
@@ -780,15 +816,17 @@ export class FirebaseOrderService {
               const unadjustedExcess = Math.round((historySum - paidAmount) * 100) / 100;
 
               if (unadjustedExcess > 0) {
-                const refundNote = `Estorno/crédito automático de R$ ${unadjustedExcess.toFixed(2)} por redução do valor pago (de R$ ${existingPaid.toFixed(2)} para R$ ${paidAmount.toFixed(2)}).`;
-                const refundEntry = {
-                  amount: -unadjustedExcess,
-                  date: now,
-                  method: payment.method || existingPayment.method || 'pix',
-                  notes: refundNote,
-                };
-                history = [...baseHistory, refundEntry];
-                notes = notes ? `${notes} | ${refundNote}` : refundNote;
+                const reason = `Estorno/crédito automático de R$ ${unadjustedExcess.toFixed(2)} por redução do valor pago (de R$ ${existingPaid.toFixed(2)} para R$ ${paidAmount.toFixed(2)}).`;
+                const adjustmentEntries = this.buildPaymentReductionEntries(
+                  baseHistory,
+                  unadjustedExcess,
+                  now,
+                  existingPayment.method || 'pix',
+                  reason,
+                );
+                history = [...baseHistory, ...adjustmentEntries];
+                const adjustmentNote = adjustmentEntries.map(entry => entry.notes).join(' ');
+                notes = notes ? `${notes} | ${adjustmentNote}` : adjustmentNote;
               } else {
                 history = baseHistory.length > 0 ? baseHistory : null;
               }
@@ -848,15 +886,17 @@ export class FirebaseOrderService {
           const unadjustedExcess = Math.round((historySum - paidAmount) * 100) / 100;
 
           if (unadjustedExcess > 0) {
-            const refundNote = `Estorno/crédito automático de R$ ${unadjustedExcess.toFixed(2)} por redução do total do pedido (de R$ ${existingPaid.toFixed(2)} para R$ ${totalAmount.toFixed(2)}).`;
-            const refundEntry = {
-              amount: -unadjustedExcess,
-              date: now,
-              method: orderData.payment.method || 'pix',
-              notes: refundNote,
-            };
-            history = [...baseHistory, refundEntry];
-            notes = notes ? `${notes} | ${refundNote}` : refundNote;
+            const reason = `Estorno/crédito automático de R$ ${unadjustedExcess.toFixed(2)} por redução do total do pedido (de R$ ${existingPaid.toFixed(2)} para R$ ${totalAmount.toFixed(2)}).`;
+            const adjustmentEntries = this.buildPaymentReductionEntries(
+              baseHistory,
+              unadjustedExcess,
+              now,
+              orderData.payment.method || 'pix',
+              reason,
+            );
+            history = [...baseHistory, ...adjustmentEntries];
+            const adjustmentNote = adjustmentEntries.map(entry => entry.notes).join(' ');
+            notes = notes ? `${notes} | ${adjustmentNote}` : adjustmentNote;
           } else {
             history = baseHistory.length > 0 ? baseHistory : null;
           }
