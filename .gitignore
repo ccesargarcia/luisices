@@ -14,6 +14,9 @@ cloudflare-status-report.md
 .env.production
 .env.*.local
 
+# Local Copilot CLI MCP configuration may contain access tokens
+.mcp.json
+
 # Firebase
 .firebase/
 firebase-debug.log
