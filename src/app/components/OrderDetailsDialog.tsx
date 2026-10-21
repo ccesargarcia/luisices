@@ -421,8 +421,9 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         ? (editData.paymentStatus === 'pending' ? 'pending' : 'paid')
         : (paidAmt >= price ? 'paid' : (paidAmt > 0 ? 'partial' : 'pending'));
 
-      const isFirstPaymentRegistration = (existingPayment?.paidAmount || 0) === 0 && paidAmt > 0;
-      const resolvedPaymentDate = paidAmt === 0
+      const effectivePaidAmount = Math.min(paidAmt, price);
+      const isFirstPaymentRegistration = (existingPayment?.paidAmount || 0) === 0 && effectivePaidAmount > 0;
+      const resolvedPaymentDate = effectivePaidAmount === 0
         ? null
         : (existingPayment?.paymentDate || (isFirstPaymentRegistration ? new Date().toISOString() : null));
 
@@ -430,8 +431,8 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         status: resolvedPaymentStatus,
         method: editData.paymentMethod || existingPayment?.method || null,
         totalAmount: price,
-        paidAmount: paidAmt,
-        remainingAmount: Math.round(Math.max(0, price - paidAmt) * 100) / 100,
+        paidAmount: effectivePaidAmount,
+        remainingAmount: Math.round(Math.max(0, price - effectivePaidAmount) * 100) / 100,
         paymentDate: resolvedPaymentDate,
         notes: existingPayment?.notes || null,
         history: existingPayment?.history || null,

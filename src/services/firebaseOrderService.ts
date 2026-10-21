@@ -223,7 +223,9 @@ export class FirebaseOrderService {
     let payment = null;
     if (orderData.payment) {
       const totalAmount = price;
-      const paidAmount = this.ensurePositive(orderData.payment.paidAmount);
+      const rawPaidAmount = this.ensurePositive(orderData.payment.paidAmount);
+      // Regra estrita do Firestore (firestore.rules:344): 0 <= paidAmount <= price
+      const paidAmount = Math.min(rawPaidAmount, totalAmount);
       const remainingAmount = this.ensurePositive(
         Math.round(Math.max(0, totalAmount - paidAmount) * 100) / 100
       );
@@ -733,11 +735,13 @@ export class FirebaseOrderService {
           } else if (key === 'payment' && value) {
             const payment = value as any;
             const totalAmount = resolvedPrice;
-            const paidAmount = this.ensurePositive(
+            const rawPaidAmount = this.ensurePositive(
               payment.paidAmount !== undefined
                 ? payment.paidAmount
                 : (existingPayment.paidAmount || 0)
             );
+            // Regra estrita do Firestore (firestore.rules:344): 0 <= paidAmount <= price
+            const paidAmount = Math.min(rawPaidAmount, totalAmount);
             // Saldo restante recalculado estritamente para nunca violar a regra de integridade do Firestore
             const remainingAmount = this.ensurePositive(
               Math.round(Math.max(0, totalAmount - paidAmount) * 100) / 100
@@ -781,7 +785,9 @@ export class FirebaseOrderService {
       // Se apenas o preço foi alterado e o pedido já possui payment, sincronizar totalAmount, remainingAmount e status
       if (cleanUpdates.price !== undefined && !cleanUpdates.payment && orderData.payment) {
         const totalAmount = cleanUpdates.price;
-        const paidAmount = this.ensurePositive(orderData.payment.paidAmount || 0);
+        const rawPaidAmount = this.ensurePositive(orderData.payment.paidAmount || 0);
+        // Regra estrita do Firestore (firestore.rules:344): paidAmount nunca pode exceder o novo preço
+        const paidAmount = Math.min(rawPaidAmount, totalAmount);
         const remainingAmount = this.ensurePositive(
           Math.round(Math.max(0, totalAmount - paidAmount) * 100) / 100
         );
