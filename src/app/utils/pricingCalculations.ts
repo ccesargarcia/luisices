@@ -36,9 +36,13 @@ export interface HourlyRateBreakdown {
 export function calculateHourlyRate(
   settings: Partial<StudioPricingSettings> = {}
 ): HourlyRateBreakdown {
-  const desiredSalary = Number(settings.desiredSalary) || DEFAULT_PRICING_SETTINGS.desiredSalary;
-  const days = Number(settings.workingDaysPerMonth) || DEFAULT_PRICING_SETTINGS.workingDaysPerMonth;
-  const hoursPerDay = Number(settings.workingHoursPerDay) || DEFAULT_PRICING_SETTINGS.workingHoursPerDay;
+  const configuredOrDefault = (value: unknown, fallback: number) =>
+    value !== undefined && value !== null && Number.isFinite(Number(value))
+      ? Math.max(0, Number(value))
+      : fallback;
+  const desiredSalary = configuredOrDefault(settings.desiredSalary, DEFAULT_PRICING_SETTINGS.desiredSalary);
+  const days = configuredOrDefault(settings.workingDaysPerMonth, DEFAULT_PRICING_SETTINGS.workingDaysPerMonth);
+  const hoursPerDay = configuredOrDefault(settings.workingHoursPerDay, DEFAULT_PRICING_SETTINGS.workingHoursPerDay);
 
   const monthlyHours = Math.max(1, days * hoursPerDay);
 
@@ -132,6 +136,13 @@ export function calculateRecipePricing(
     settings = {},
   } = params;
 
+  const safeWastePercent = Math.max(0, Number(wasteMarginPercent) || 0);
+  const safeFeePercent = Math.max(0, Number(paymentFeePercent) || 0);
+  const safeProfitPercent = Math.max(0, Number(profitMarginPercent) || 0);
+  const safeSetupMinutes = Math.max(0, Number(setupTimeMinutes) || 0);
+  const safeProdMinutes = Math.max(0, Number(productionTimeMinutes) || 0);
+  const safeProportionalPercent = Math.max(0, Number(proportionalPercent) || 0);
+
   const rates = calculateHourlyRate(settings);
 
   // 1. Custo dos materiais diretos (com suporte a rendimento de folhas inteiras se configurado)
@@ -142,18 +153,20 @@ export function calculateRecipePricing(
       const sheetsNeeded = Math.ceil(1 / item.piecesPerSheet);
       cost = (Number(item.unitCost) || 0) * sheetsNeeded;
     } else {
-      cost = Number(item.totalCost) || (Number(item.unitCost) || 0) * (Number(item.quantityUsed) || 0);
+      cost = item.totalCost !== undefined && item.totalCost !== null && Number.isFinite(Number(item.totalCost))
+        ? Number(item.totalCost)
+        : (Number(item.unitCost) || 0) * (Number(item.quantityUsed) || 0);
     }
-    return acc + cost;
+    return acc + Math.max(0, cost);
   }, 0);
 
   // Perda de materiais (margem de erro de corte/impressão)
-  const wasteAmount = materialsCost * (wasteMarginPercent / 100);
+  const wasteAmount = materialsCost * (safeWastePercent / 100);
   const materialsCostWithWaste = materialsCost + wasteAmount;
 
   // 2. Custo de mão de obra (Setup da encomenda + Produção por peça)
-  const setupMinutesNum = Number(setupTimeMinutes) || 0;
-  const prodMinutesNum = Number(productionTimeMinutes) || 0;
+  const setupMinutesNum = safeSetupMinutes;
+  const prodMinutesNum = safeProdMinutes;
   const totalLaborMinutes = setupMinutesNum + prodMinutesNum;
 
   const setupCost = setupMinutesNum * rates.minuteRate;
@@ -166,7 +179,7 @@ export function calculateRecipePricing(
     laborCost = unitLaborCost + setupCost;
     equivalentMinutesCovered = totalLaborMinutes;
   } else {
-    laborCost = materialsCost * (Number(proportionalPercent) / 100);
+    laborCost = materialsCost * (safeProportionalPercent / 100);
     equivalentMinutesCovered = rates.minuteRate > 0 ? Math.round(laborCost / rates.minuteRate) : 0;
   }
 
@@ -179,7 +192,7 @@ export function calculateRecipePricing(
   const totalUnitCost = materialsCostWithWaste + laborCost;
 
   // 4. Preço de Ponto de Equilíbrio (Custo Total + Taxas de Venda, Lucro Zero)
-  const feeDecimal = paymentFeePercent / 100;
+  const feeDecimal = safeFeePercent / 100;
   const breakevenPrice = feeDecimal < 0.99 ? totalUnitCost / (1 - feeDecimal) : totalUnitCost;
 
   // 5. Formação do Preço Sugerido
@@ -187,11 +200,11 @@ export function calculateRecipePricing(
 
   if (pricingMethod === 'markup_on_cost') {
     // Markup multiplicador sobre o custo: Custo * (1 + Margem) / (1 - Taxa)
-    const costWithMarkup = totalUnitCost * (1 + profitMarginPercent / 100);
+    const costWithMarkup = totalUnitCost * (1 + safeProfitPercent / 100);
     suggestedUnitPrice = feeDecimal < 0.99 ? costWithMarkup / (1 - feeDecimal) : costWithMarkup;
   } else {
     // Margem sobre a Venda (Divisor): Preço = Custo / (1 - (Taxas + Margem))
-    const totalDeductionsPercent = paymentFeePercent + profitMarginPercent;
+    const totalDeductionsPercent = safeFeePercent + safeProfitPercent;
     const rawDivisor = 1 - totalDeductionsPercent / 100;
 
     // Garantir monotonicidade estrita: se as deduções somadas atingirem >= 98%,
@@ -240,20 +253,22 @@ export function calculateRecipePricing(
         const itemBatchUnitCost = ((Number(item.unitCost) || 0) * sheetsNeeded) / qty;
         batchMaterialCostUnit += itemBatchUnitCost;
       } else {
-        const unitItemCost = Number(item.totalCost) || (Number(item.unitCost) || 0) * (Number(item.quantityUsed) || 0);
-        batchMaterialCostUnit += unitItemCost;
+        const unitItemCost = item.totalCost !== undefined && item.totalCost !== null && Number.isFinite(Number(item.totalCost))
+          ? Number(item.totalCost)
+          : (Number(item.unitCost) || 0) * (Number(item.quantityUsed) || 0);
+        batchMaterialCostUnit += Math.max(0, unitItemCost);
       }
     });
 
-    const batchMaterialWithWaste = batchMaterialCostUnit * (1 + wasteMarginPercent / 100);
+    const batchMaterialWithWaste = batchMaterialCostUnit * (1 + safeWastePercent / 100);
     const batchUnitCost = batchMaterialWithWaste + batchUnitLabor;
 
     let batchUnitPrice = 0;
     if (pricingMethod === 'markup_on_cost') {
-      const costWithMarkup = batchUnitCost * (1 + profitMarginPercent / 100);
+      const costWithMarkup = batchUnitCost * (1 + safeProfitPercent / 100);
       batchUnitPrice = feeDecimal < 0.99 ? costWithMarkup / (1 - feeDecimal) : costWithMarkup;
     } else {
-      const totalDeductionsPercent = paymentFeePercent + profitMarginPercent;
+      const totalDeductionsPercent = safeFeePercent + safeProfitPercent;
       const safeDivisor = Math.max(0.02, 1 - totalDeductionsPercent / 100);
       batchUnitPrice = batchUnitCost / safeDivisor;
     }
@@ -276,7 +291,7 @@ export function calculateRecipePricing(
 
   return {
     materialsCost: Math.round(materialsCost * 100) / 100,
-    wasteMarginPercent,
+    wasteMarginPercent: safeWastePercent,
     wasteAmount: Math.round(wasteAmount * 100) / 100,
     materialsCostWithWaste: Math.round(materialsCostWithWaste * 100) / 100,
     laborMode,
@@ -285,7 +300,7 @@ export function calculateRecipePricing(
     totalLaborMinutes,
     hourlyRateApplied: Math.round(rates.hourlyRate * 100) / 100,
     minuteRateApplied: Math.round(rates.minuteRate * 100) / 100,
-    proportionalPercent: Number(proportionalPercent) || 0,
+    proportionalPercent: safeProportionalPercent,
     laborCost: Math.round(laborCost * 100) / 100,
     setupCost: Math.round(setupCost * 100) / 100,
     equivalentMinutesCovered,
@@ -293,9 +308,9 @@ export function calculateRecipePricing(
     totalUnitCost: Math.round(totalUnitCost * 100) / 100,
     breakevenPrice: Math.round(breakevenPrice * 100) / 100,
     pricingMethod,
-    paymentFeePercent,
+    paymentFeePercent: safeFeePercent,
     paymentFeeAmount: Math.round(paymentFeeAmount * 100) / 100,
-    profitMarginPercent,
+    profitMarginPercent: safeProfitPercent,
     suggestedUnitPrice: Math.round(suggestedUnitPrice * 100) / 100,
     effectivePrice: Math.round(effectivePrice * 100) / 100,
     netProfitAmount: Math.round(netProfitAmount * 100) / 100,

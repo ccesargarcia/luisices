@@ -38,7 +38,7 @@ describe('Inteligência Comercial: Raio X, Ticket Médio e Faixas de Clientes', 
       date: '2026-09-20T10:00:00.000Z', // Há 20 dias
       createdAt: '2026-09-20T10:00:00.000Z',
       paymentMethod: 'pix',
-      items: [{ name: 'Agenda Luxo 2026', quantity: 2, price: 150 }],
+      items: [{ name: 'Agenda Luxo 2026', quantity: 2, price: 300 }],
     },
     {
       id: 'ord-2',
@@ -126,6 +126,11 @@ describe('Inteligência Comercial: Raio X, Ticket Médio e Faixas de Clientes', 
       expect(topProd?.name).toBe('Agenda Luxo 2026');
       expect(topProd?.count).toBe(2);
       expect(topProd?.revenue).toBe(300);
+    });
+
+    it('não multiplica novamente a receita quando price já é o subtotal da linha', () => {
+      expect(getTopCustomerProduct([{ status: 'completed', items: [{ name: 'Caderno', quantity: 3, price: 75 }] }]))
+        .toEqual({ name: 'Caderno', count: 3, revenue: 75 });
     });
 
     it('deve identificar a forma de pagamento predominante', () => {

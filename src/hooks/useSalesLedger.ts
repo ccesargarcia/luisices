@@ -7,7 +7,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { SaleRecord, LedgerPeriod, Tag } from '../app/types';
 import { firebaseLedgerService, getSalesLedgerQuery, getSalesLedgerDateRangeQuery } from '../services/firebaseLedgerService';
-import { parseLocalDate } from '../app/utils/date';
+import { getReportDateRange } from '../app/utils/reportDateRange';
 
 export interface DateRange {
   start: Date;
@@ -15,63 +15,8 @@ export interface DateRange {
 }
 
 export function getLedgerDateRange(period: LedgerPeriod, customRange?: { start?: string; end?: string }): DateRange {
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-
-  switch (period) {
-    case 'today':
-      return { start: todayStart, end: todayEnd };
-
-    case 'yesterday': {
-      const yStart = new Date(todayStart);
-      yStart.setDate(yStart.getDate() - 1);
-      const yEnd = new Date(todayEnd);
-      yEnd.setDate(yEnd.getDate() - 1);
-      return { start: yStart, end: yEnd };
-    }
-
-    case 'week': {
-      const wStart = new Date(now);
-      wStart.setDate(now.getDate() - 7);
-      wStart.setHours(0, 0, 0, 0);
-      return { start: wStart, end: todayEnd };
-    }
-
-    case 'month': {
-      // Do primeiro dia do mês atual até o último momento do mês atual
-      const mStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      const mEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-      return { start: mStart, end: mEnd };
-    }
-
-    case 'quarter': {
-      const qStart = new Date(now);
-      qStart.setDate(now.getDate() - 90);
-      qStart.setHours(0, 0, 0, 0);
-      return { start: qStart, end: todayEnd };
-    }
-
-    case 'year': {
-      // Do início do ano atual até agora
-      const yStart = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-      return { start: yStart, end: todayEnd };
-    }
-
-    case 'custom': {
-      const cStart = customRange?.start
-        ? parseLocalDate(customRange.start, false)
-        : new Date(2000, 0, 1, 0, 0, 0, 0);
-      const cEnd = customRange?.end
-        ? parseLocalDate(customRange.end, true)
-        : todayEnd;
-      return { start: cStart, end: cEnd };
-    }
-
-    case 'all':
-    default:
-      return { start: new Date(2000, 0, 1), end: new Date(2100, 0, 1) };
-  }
+  if (period === 'yesterday') return getReportDateRange('today', 1);
+  return getReportDateRange(period, 0, customRange);
 }
 
 export function useSalesLedger(options?: {

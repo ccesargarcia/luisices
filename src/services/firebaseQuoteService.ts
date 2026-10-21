@@ -21,6 +21,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Quote, QuoteStatus } from '../app/types';
+import { calculateQuoteTotals, validateQuoteMath } from '../app/components/quotes/quoteHelpers';
 
 const QUOTES_COLLECTION = 'quotes';
 
@@ -43,9 +44,9 @@ export class FirebaseQuoteService {
    */
   private sanitizeQuoteItems(items: any[]): any[] {
     return items.map(item => ({
-      ...item,
+      name: String(item.name).trim(),
       unitPrice: this.ensurePositive(item.unitPrice),
-      quantity: Math.max(0, item.quantity ?? 0)
+      quantity: item.quantity,
     }));
   }
 
@@ -100,7 +101,7 @@ export class FirebaseQuoteService {
   /**
    * Validar integridade e regras de negócio de orçamento
    */
-  private validateQuotePayload(data: Partial<Quote>, isCreate = false): void {
+  private validateQuotePayload(data: Partial<Quote>, isCreate = false, validateMath = isCreate): void {
     if (isCreate || data.customerName !== undefined) {
       if (!data.customerName || typeof data.customerName !== 'string' || !data.customerName.trim()) {
         throw new Error('Nome do cliente é obrigatório.');
@@ -109,11 +110,17 @@ export class FirebaseQuoteService {
         throw new Error('Nome do cliente deve ter no máximo 200 caracteres.');
       }
     }
-    if (data.totalPrice !== undefined && (typeof data.totalPrice !== 'number' || data.totalPrice < 0)) {
+    if (data.totalPrice !== undefined && (typeof data.totalPrice !== 'number' || !Number.isFinite(data.totalPrice) || data.totalPrice < 0)) {
       throw new Error('Preço total não pode ser negativo.');
     }
     if (data.status !== undefined && !['draft', 'sent', 'approved', 'rejected', 'expired'].includes(data.status)) {
       throw new Error('Status do orçamento inválido.');
+    }
+    if (validateMath) {
+      const totals = validateQuoteMath(data.items || [], data.discount ?? 0, data.discountType ?? 'percent');
+      if (data.totalPrice === undefined || !Number.isFinite(data.totalPrice) || Math.abs(data.totalPrice - totals.total) >= 0.005) {
+        throw new Error('O total informado não confere com os itens e o desconto.');
+      }
     }
   }
 
@@ -182,11 +189,13 @@ export class FirebaseQuoteService {
 
   // ─── Update ──────────────────────────────────────────────────────────────────
   async updateQuote(id: string, changes: Partial<Quote>): Promise<void> {
-    this.validateQuotePayload(changes, false);
     const userId = this.getCurrentUserId();
     const quoteSnap = await getDoc(doc(db, QUOTES_COLLECTION, id));
     if (!quoteSnap.exists()) throw new Error(`Orçamento ${id} não encontrado`);
     const quoteData = quoteSnap.data();
+    const merged = { ...quoteData, ...changes } as Partial<Quote>;
+    const mathFields: (keyof Quote)[] = ['items', 'discount', 'discountType', 'totalPrice'];
+    this.validateQuotePayload(merged, false, mathFields.some((field) => changes[field] !== undefined));
     if (quoteData.userId !== userId) {
       const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
       if (!profileSnap.exists() || profileSnap.data().role !== 'admin') {

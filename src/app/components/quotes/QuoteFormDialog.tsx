@@ -41,7 +41,7 @@ import {
   Truck,
   BookOpen,
 } from 'lucide-react';
-import { EMPTY_ITEM, defaultDelivery, calcTotal } from './quoteHelpers';
+import { EMPTY_ITEM, defaultDelivery, calculateQuoteTotals, validateQuoteMath } from './quoteHelpers';
 import { toast } from 'sonner';
 import { useUserSettings } from '../../../hooks/useUserSettings';
 import { SuperfreteCalculatorDialog } from '../shipping/SuperfreteCalculatorDialog';
@@ -177,20 +177,21 @@ export function QuoteFormDialog({
   }
 
   function addItem() {
-    setForm((f) => ({ ...f, items: [...f.items, { ...EMPTY_ITEM }] }));
+    setForm((f) => {
+      if (f.items.length >= 10) {
+        toast.error('Um orçamento pode ter no máximo 10 itens.');
+        return f;
+      }
+      return { ...f, items: [...f.items, { ...EMPTY_ITEM }] };
+    });
   }
 
   function removeItem(idx: number) {
     setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
   }
 
-  const subtotal = calcTotal(form.items);
-  const discountAmt = form.discount
-    ? form.discountType === 'percent'
-      ? subtotal * (parseFloat(form.discount) / 100)
-      : parseFloat(form.discount)
-    : 0;
-  const finalTotal = Math.max(0, subtotal - discountAmt);
+  const totals = calculateQuoteTotals(form.items, form.discount ? Number(form.discount) : 0, form.discountType);
+  const { subtotal, discountAmount: discountAmt, total: finalTotal } = totals;
 
   async function handleSave() {
     const discountValue = form.discount === '' ? 0 : Number(form.discount);
@@ -200,6 +201,12 @@ export function QuoteFormDialog({
     }
     if (form.discountType === 'percent' && discountValue > 100) {
       toast.error('O desconto percentual não pode ser superior a 100%.');
+      return;
+    }
+    try {
+      validateQuoteMath(form.items, discountValue, form.discountType);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Revise os valores do orçamento.');
       return;
     }
     const trimmedName = form.customerName.trim();
@@ -546,7 +553,7 @@ export function QuoteFormDialog({
                 <Input
                   type="number"
                   min={0}
-                  max={form.discountType === 'percent' ? 100 : undefined}
+                  max={form.discountType === 'percent' ? 100 : subtotal}
                   step="0.01"
                   placeholder="0"
                   value={form.discount}

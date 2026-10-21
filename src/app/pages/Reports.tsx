@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { formatCurrency } from '../utils/currency';
 import { parseLocalDate } from '../utils/date';
+import { getReportDateRange } from '../utils/reportDateRange';
 import { Tag } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { SectionErrorBoundary } from '../components/common/SectionErrorBoundary';
@@ -91,29 +92,7 @@ const PERIOD_LABELS: Record<Period, string> = {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getDateRange(period: Period, offset = 0, customRange?: { start?: string; end?: string }) {
-  const now  = new Date();
-  if (period === 'today') {
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    todayStart.setDate(todayStart.getDate() - offset);
-    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-    todayEnd.setDate(todayEnd.getDate() - offset);
-    return { start: todayStart, end: todayEnd };
-  }
-  if (period === 'all') {
-    return { start: new Date(2000, 0, 1), end: new Date(2100, 0, 1) };
-  }
-  if (period === 'custom') {
-    const cStart = customRange?.start ? new Date(customRange.start) : new Date(2000, 0, 1);
-    cStart.setHours(0, 0, 0, 0);
-    const cEnd = customRange?.end ? new Date(customRange.end) : new Date();
-    cEnd.setHours(23, 59, 59, 999);
-    return { start: cStart, end: cEnd };
-  }
-  const days: Record<string, number> = { week: 7, month: 30, quarter: 90, year: 365 };
-  const d    = days[period] || 30;
-  const end  = new Date(now); end.setDate(now.getDate() - d * offset);
-  const start = new Date(now); start.setDate(now.getDate() - d * (offset + 1));
-  return { start, end };
+  return getReportDateRange(period, offset, customRange);
 }
 
 function formatShortDate(iso: string) {
