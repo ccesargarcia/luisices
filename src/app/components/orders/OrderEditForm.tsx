@@ -471,15 +471,16 @@ export function OrderEditForm({
           <div className="space-y-2">
             <Label htmlFor="paymentStatus">Status do Pagamento *</Label>
             <Select
-              value={editData.paymentStatus}
+              value={currentPrice === 0 && editData.paymentStatus === 'partial' ? 'paid' : editData.paymentStatus}
               onValueChange={(value: PaymentStatus) => {
                 const total = totalPrice > 0 ? totalPrice : originalPrice;
+                const effectiveValue: PaymentStatus = total === 0 && value === 'partial' ? 'paid' : value;
                 let newPaid = editData.paidAmount;
-                if (value === 'paid') {
+                if (effectiveValue === 'paid') {
                   newPaid = formatDecimalMoneyInput(total);
-                } else if (value === 'pending') {
+                } else if (effectiveValue === 'pending') {
                   newPaid = '0,00';
-                } else if (value === 'partial') {
+                } else if (effectiveValue === 'partial') {
                   const currentParsed = parseDecimalMoneyInput(String(editData.paidAmount || '0')) || 0;
                   if (currentParsed === 0 || currentParsed >= total) {
                     newPaid = '';
@@ -487,7 +488,7 @@ export function OrderEditForm({
                 }
                 onEditDataChange({
                   ...editData,
-                  paymentStatus: value,
+                  paymentStatus: effectiveValue,
                   paidAmount: newPaid,
                 });
               }}
@@ -497,7 +498,9 @@ export function OrderEditForm({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="pending">Pendente</SelectItem>
-                <SelectItem value="partial">Parcial</SelectItem>
+                {currentPrice > 0 && (
+                  <SelectItem value="partial">Parcial</SelectItem>
+                )}
                 <SelectItem value="paid">Pago</SelectItem>
               </SelectContent>
             </Select>
@@ -541,7 +544,9 @@ export function OrderEditForm({
                 const val = e.target.value.replace(/[^0-9.,]/g, '');
                 const parsed = parseDecimalMoneyInput(val);
                 let autoStatus: PaymentStatus = editData.paymentStatus;
-                if (parsed !== null && currentPrice > 0) {
+                if (currentPrice === 0) {
+                  autoStatus = 'paid';
+                } else if (parsed !== null && currentPrice > 0) {
                   if (parsed >= currentPrice) {
                     autoStatus = 'paid';
                   } else if (parsed > 0) {

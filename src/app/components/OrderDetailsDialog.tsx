@@ -418,8 +418,13 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       // Preservar histórico e metadados de pagamentos anteriores com status e saldo consistentes
       const existingPayment = order.payment;
       const resolvedPaymentStatus: PaymentStatus = price === 0
-        ? (editData.paymentStatus || 'paid')
+        ? (editData.paymentStatus === 'pending' ? 'pending' : 'paid')
         : (paidAmt >= price ? 'paid' : (paidAmt > 0 ? 'partial' : 'pending'));
+
+      const isFirstPaymentRegistration = (existingPayment?.paidAmount || 0) === 0 && paidAmt > 0;
+      const resolvedPaymentDate = paidAmt === 0
+        ? null
+        : (existingPayment?.paymentDate || (isFirstPaymentRegistration ? new Date().toISOString() : null));
 
       const paymentData: any = {
         status: resolvedPaymentStatus,
@@ -427,7 +432,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         totalAmount: price,
         paidAmount: paidAmt,
         remainingAmount: Math.round(Math.max(0, price - paidAmt) * 100) / 100,
-        paymentDate: existingPayment?.paymentDate || (paidAmt > 0 ? new Date().toISOString() : null),
+        paymentDate: resolvedPaymentDate,
         notes: existingPayment?.notes || null,
         history: existingPayment?.history || null,
       };

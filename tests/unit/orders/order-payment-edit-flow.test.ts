@@ -332,5 +332,153 @@ describe('Fluxo Completo de Edição de Valor Pago e Prevenção de Erro de Perm
       expect(ledgerCall.paymentStatus).toBe('partial');
       expect(ledgerCall.paymentMethod).toBe('pix');
     });
+
+    it('independe da ordem das chaves no payload (processa payment antes de price sem desatualizar totalAmount)', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 1,
+          price: 100,
+          payment: { status: 'partial', totalAmount: 100, paidAmount: 40, remainingAmount: 60 },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      // Cria objeto onde a chave 'payment' vem antes de 'price'
+      const updatesWithPaymentFirst: any = {};
+      updatesWithPaymentFirst.payment = { paidAmount: 50 };
+      updatesWithPaymentFirst.price = 180;
+
+      await firebaseOrderService.updateOrder('order-order-keys', updatesWithPaymentFirst);
+
+      const updatedPayload = mockTransactionUpdate.mock.calls[0][1];
+      expect(updatedPayload.price).toBe(180);
+      expect(updatedPayload.payment.totalAmount).toBe(180); // Deve ser 180, NÃO 100
+      expect(updatedPayload.payment.paidAmount).toBe(50);
+      expect(updatedPayload.payment.remainingAmount).toBe(130);
+      expect(updatedPayload.payment.status).toBe('partial');
+      expect(isConsistentOrderPaymentRule(updatedPayload.payment, 180)).toBe(true);
+    });
+
+    it('recalcula remainingAmount estritamente mesmo que o chamador envie um saldo inconsistente', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 1,
+          price: 100,
+          payment: { status: 'pending', totalAmount: 100, paidAmount: 0, remainingAmount: 100 },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      // Chamador enviou remainingAmount 9999 (inconsistente)
+      await firebaseOrderService.updateOrder('order-bad-remaining', {
+        payment: {
+          paidAmount: 30,
+          remainingAmount: 9999,
+        } as any,
+      });
+
+      const updatedPayload = mockTransactionUpdate.mock.calls[0][1];
+      expect(updatedPayload.payment.remainingAmount).toBe(70);
+      expect(isConsistentOrderPaymentRule(updatedPayload.payment, 100)).toBe(true);
+    });
+
+    it('não permite status "partial" em pedido de valor zero (resolve para "paid" ou "pending")', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 1,
+          price: 0,
+          isExchange: true,
+          payment: { status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0 },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 0 }),
+      });
+
+      // Chamador tenta enviar status partial para pedido de valor zero
+      await firebaseOrderService.updateOrder('order-zero-price', {
+        payment: {
+          status: 'partial',
+          paidAmount: 0,
+        } as any,
+      });
+
+      const updatedPayload = mockTransactionUpdate.mock.calls[0][1];
+      // Status deve ser 'paid' (ou 'pending'), NUNCA 'partial'
+      expect(updatedPayload.payment.status).toBe('paid');
+      expect(isConsistentOrderPaymentRule(updatedPayload.payment, 0)).toBe(true);
+    });
+
+    it('não atribui data atual a pagamentos antigos sem data quando apenas dados cadastrais são editados', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 1,
+          price: 100,
+          customerName: 'Nome Antigo',
+          // Pedido legado já tinha valor pago mas paymentDate era null
+          payment: { status: 'partial', totalAmount: 100, paidAmount: 50, remainingAmount: 50, paymentDate: null },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      // Edição simples de dados do pedido mantendo o mesmo pagamento
+      await firebaseOrderService.updateOrder('order-legacy-date', {
+        customerName: 'Nome Atualizado',
+        payment: {
+          paidAmount: 50,
+        } as any,
+      });
+
+      const updatedPayload = mockTransactionUpdate.mock.calls[0][1];
+      // paymentDate NÃO deve ter sido preenchido com a data de hoje!
+      expect(updatedPayload.payment.paymentDate).toBeNull();
+    });
+
+    it('atribui data atual quando o pedido era pendente (paidAmount 0) e recebe um pagamento novo', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 1,
+          price: 100,
+          payment: { status: 'pending', totalAmount: 100, paidAmount: 0, remainingAmount: 100, paymentDate: null },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      // Registro de primeiro pagamento de R$ 50
+      await firebaseOrderService.updateOrder('order-new-payment', {
+        payment: {
+          paidAmount: 50,
+        } as any,
+      });
+
+      const updatedPayload = mockTransactionUpdate.mock.calls[0][1];
+      // Primeiro pagamento registrado deve conter data válida
+      expect(updatedPayload.payment.paymentDate).toBeDefined();
+      expect(typeof updatedPayload.payment.paymentDate).toBe('string');
+      expect(new Date(updatedPayload.payment.paymentDate).getTime()).not.toBeNaN();
+    });
   });
 });
