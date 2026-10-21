@@ -1,5 +1,5 @@
 const HIDDEN_FIELDS = new Set([
-  'id', 'uid', 'userId', 'createdBy', 'assignedTo', 'version', 'expectedVersion',
+  'id', 'uid', 'userId', 'createdBy', 'assignedTo', 'version', 'expectedVersion', 'idempotencyKey',
   'selectionDateField', 'paymentDateBasis', 'mcpScopes', 'rawData', 'debug',
   'traceId', 'requestId', 'modelId', 'recipeId', 'cacheKey', 'token',
 ]);
@@ -107,6 +107,16 @@ function formatToolResultText(toolName, result) {
     return `💬 Mensagem pronta para revisar:\n${result.messageText || result.text}`;
   }
 
+  if (toolName === 'calculate_pricing_estimate' || toolName === 'calculate_artisan_pricing') {
+    return [
+      '🏷️ Sugestão de Precificação',
+      result.suggestedUnitPrice != null && `Preço unitário: ${humanizeValue(result.suggestedUnitPrice, 'suggestedUnitPrice')}`,
+      result.suggestedTotalPrice != null && `Preço total: ${humanizeValue(result.suggestedTotalPrice, 'suggestedTotalPrice')}`,
+      result.unitCost != null && `Custo unitário: ${humanizeValue(result.unitCost, 'unitCost')}`,
+      (result.profitMarginPercent != null || result.margin != null) && `Margem de lucro: ${humanizeValue(result.profitMarginPercent ?? result.margin, 'margin')}`,
+    ].filter(Boolean).join('\n');
+  }
+
   const preview = result?.preview || {};
   if (result?.requiresConfirmation || result?.status === 'preview') {
     const changes = preview.changes && typeof preview.changes === 'object'
@@ -131,8 +141,10 @@ function formatToolResultText(toolName, result) {
     update_order_status: '✅ Etapa do pedido atualizada',
     register_order_payment: '✅ Pagamento registrado',
     create_customer: '✅ Cliente cadastrado',
+    update_customer: '✅ Cliente atualizado',
     create_quote: '✅ Orçamento criado',
     update_quote_status: '✅ Orçamento atualizado',
+    save_pricing_model: '✅ Modelo de precificação salvo',
   };
   if (result?.success === true && completionLabels[toolName]) {
     const completed = completionLabels[toolName];
@@ -152,6 +164,9 @@ function formatToolResultText(toolName, result) {
     ['items', 'itens', toolName === 'search_gallery_portfolio' ? 'arte' : 'item', (item) => [item.title || item.name || item.orderNumber, item.category, ...(Array.isArray(item.tags) ? item.tags.slice(0, 2) : [])].filter(Boolean).join(' · ')],
     ['deliveries', 'entregas', 'entrega', (item) => [item.orderNumber, item.customerName, item.productName, item.deliveryDate && humanizeValue(item.deliveryDate, 'deliveryDate')].filter(Boolean).join(' · ')],
     ['quotes', 'orçamentos', 'orçamento', (item) => [item.quoteNumber, item.customerName, item.title, item.totalPrice != null && humanizeValue(item.totalPrice, 'totalPrice')].filter(Boolean).join(' · ')],
+    ['supplies', 'insumos', 'insumo', (item) => [item.name, item.unit && `Un: ${item.unit}`, item.unitCost != null && `Custo: ${humanizeValue(item.unitCost, 'unitCost')}`, item.stockQuantity != null && `Estoque: ${item.stockQuantity}`].filter(Boolean).join(' · ')],
+    ['models', 'modelos de precificação', 'modelo', (item) => [item.name || item.title, item.category, item.suggestedPrice != null && humanizeValue(item.suggestedPrice, 'suggestedPrice')].filter(Boolean).join(' · ')],
+    ['products', 'produtos da vitrine', 'produto', (item) => [item.name || item.title, item.price != null && humanizeValue(item.price, 'totalPrice'), item.category].filter(Boolean).join(' · ')],
   ];
   for (const [field, label, singular, describe] of listFields) {
     const items = result?.[field];
@@ -176,13 +191,36 @@ function formatToolResultText(toolName, result) {
 }
 
 function publicErrorMessage(error) {
+  const detail = String(error?.message || '').toLocaleLowerCase('pt-BR');
+
+  if (error?.code === 'failed-precondition') {
+    if (detail.includes('transição não permitida: pending para completed')) {
+      return 'Este pedido ainda está pendente. Para concluí-lo, primeiro mova-o para Em produção.';
+    }
+    if (detail.includes('valor já recebido') || detail.includes('total já recebido')) {
+      return 'O novo total não pode ser menor que o valor já pago. Confira o total do pedido e os pagamentos registrados.';
+    }
+    if (detail.includes('versão do pedido mudou') || detail.includes('pedido foi alterado durante a operação')) {
+      return 'Este pedido foi atualizado enquanto você trabalhava nele. Vou consultar os dados atuais antes de tentar novamente.';
+    }
+    if (detail.includes('pedido mudou durante a operação')) {
+      return 'Este pedido mudou desde a prévia. Vou consultar os dados atuais antes de tentar novamente.';
+    }
+    if (detail.includes('status atual do pedido não é reconhecido')) {
+      return 'Não reconheci a etapa atual deste pedido. Nenhuma alteração foi feita; confira o pedido no Luisices.';
+    }
+    if (detail.includes('gravação segura indisponível')) {
+      return 'Não foi possível salvar a alteração com segurança agora. Nenhuma mudança foi feita; tente novamente em instantes.';
+    }
+    return 'Não foi possível concluir essa ação com os dados atuais. Confira o pedido e tente novamente.';
+  }
+
   const knownMessages = {
-    unauthenticated: 'Sua sessão não foi reconhecida. Conecte sua conta novamente e tente outra vez.',
-    'permission-denied': 'Seu perfil não tem permissão para esta ação. Peça acesso a um administrador.',
-    'invalid-argument': 'Alguma informação precisa de ajuste. Confira os campos, valores e datas e tente novamente.',
-    'not-found': 'Não encontrei esse registro ou você não tem acesso a ele. Confira os dados e tente novamente.',
-    'failed-precondition': 'Os dados atuais não permitem concluir esta ação. Atualize as informações e tente novamente.',
-    'already-exists': 'Esta ação já foi realizada ou os dados entram em conflito. Atualize as informações antes de tentar novamente.',
+    unauthenticated: 'Sua conexão com o Luisices expirou. Entre novamente e tente outra vez.',
+    'permission-denied': 'Você não tem acesso para fazer isso. Peça ao administrador do Luisices para liberar essa ação.',
+    'invalid-argument': 'Não consegui usar os dados informados. Confira o pedido e os valores e tente novamente.',
+    'not-found': 'Não encontrei esse pedido ou você não tem acesso a ele. Confira o número e tente novamente.',
+    'already-exists': 'Essa ação já foi realizada ou há informações em conflito. Atualize o pedido antes de tentar novamente.',
   };
   if (knownMessages[error?.code]) return knownMessages[error.code];
   return 'Não consegui concluir agora. Tente novamente em instantes; se o problema continuar, peça ajuda ao suporte.';

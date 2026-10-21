@@ -86,4 +86,31 @@ describe('MCP response presentation', () => {
     expect(financial).toContain('A receber:');
     expect(financial.split('\n')).toHaveLength(5);
   });
+
+  it('formats pricing estimate and supplies list in human-friendly terms', () => {
+    const pricing = formatToolResultText('calculate_pricing_estimate', {
+      suggestedUnitPrice: 18.5,
+      suggestedTotalPrice: 185,
+      unitCost: 6.2,
+      profitMarginPercent: 40,
+    });
+
+    expect(pricing).toContain('Sugestão de Precificação');
+    expect(pricing).toContain('Preço unitário:');
+    expect(pricing).toContain('18,50');
+    expect(pricing).toContain('Margem de lucro: 40%');
+
+    const supplies = formatToolResultText('list_supplies', {
+      totalFound: 4,
+      supplies: [
+        { name: 'Papel Offset 180g', unit: 'fls', unitCost: 0.45, stockQuantity: 500 },
+        { name: 'Fita de Cetim Rosa', unit: 'm', unitCost: 1.2, stockQuantity: 30 },
+      ],
+    });
+
+    expect(supplies).toContain('4 insumos encontrados');
+    expect(supplies).toContain('Papel Offset 180g');
+    expect(supplies).toContain('Custo:');
+    expect(supplies).toContain('0,45');
+  });
 });
