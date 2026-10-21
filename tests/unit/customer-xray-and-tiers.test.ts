@@ -133,6 +133,20 @@ describe('Inteligência Comercial: Raio X, Ticket Médio e Faixas de Clientes', 
         .toEqual({ name: 'Caderno', count: 3, revenue: 75 });
     });
 
+    it('calcula a receita de itens legados usando preço unitário quando price não existe', () => {
+      expect(getTopCustomerProduct([{
+        status: 'completed',
+        items: [{ name: 'Agenda antiga', quantity: 4, unitPrice: 12.5 }],
+      }])).toEqual({ name: 'Agenda antiga', count: 4, revenue: 50 });
+    });
+
+    it('preserva preço de linha zero e ignora receita de pedidos cancelados', () => {
+      expect(getTopCustomerProduct([
+        { status: 'completed', items: [{ name: 'Brinde', quantity: 2, price: 0, unitPrice: 10 }] },
+        { status: 'cancelled', items: [{ name: 'Brinde', quantity: 5, price: 500 }] },
+      ])).toEqual({ name: 'Brinde', count: 2, revenue: 0 });
+    });
+
     it('deve identificar a forma de pagamento predominante', () => {
       // ord-1: pix, ord-2: pix, ord-3: credit -> PIX vence
       const prefPayment = getPreferredPaymentMethod(mockOrders);

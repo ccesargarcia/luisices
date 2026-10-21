@@ -118,7 +118,14 @@ jobs:
           ALEXA_IDENTITY_HMAC_KEY=mock-alexa-hmac-key
           EOF
 
+      - name: Prepare test metrics directory
+        run: mkdir -p test-results
+
       - name: Run Unit Tests (Vitest)
+        if: matrix.shard == 1
+        env:
+          TEST_REPORT_DIR: test-results
+          TEST_REPORT_NAME: vitest-unit-${{ matrix.shard }}
         run: npm run test:unit
 
       - name: Lint Functions
@@ -138,6 +145,9 @@ jobs:
 
       - name: Run Rules Integration Tests
         if: matrix.shard == 1
+        env:
+          TEST_REPORT_DIR: test-results
+          TEST_REPORT_NAME: vitest-integration-${{ matrix.shard }}
         run: npm run test:integration
 
       - name: Run RTDB Presence Integration Tests
@@ -148,30 +158,46 @@ jobs:
         run: npm run build
 
       - name: Run E2E tests with Firebase Emulator Suite (0 Cloud Reads)
-        if: inputs.test_target != 'order-integrity' || matrix.shard == 1
+        if: >-
+          (inputs.test_target == 'all' || inputs.test_target == '' || github.event.inputs.test_target == 'all' || github.event.inputs.test_target == '')
+          && !contains(github.event.head_commit.message, '[test:security]')
+          && !contains(github.event.head_commit.message, '[test:critical]')
+          && !contains(github.event.head_commit.message, '[fast]')
+          && !contains(github.event.head_commit.message, '[test:fast]')
+          || matrix.shard == 1
         env:
           CI: true
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL || 'test-user@example.invalid' }}
           PLAYWRIGHT_BASE_URL: http://localhost:4173
+          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/playwright-shard-${{ matrix.shard }}.json
           INPUT_TARGET: ${{ inputs.test_target || github.event.inputs.test_target || '' }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           npx firebase emulators:exec --project luisices-dev --only auth,firestore,storage,functions "node scripts/seed-emulator.mjs && if [ \"\$INPUT_TARGET\" = 'security' ] || echo \"\$COMMIT_MSG\" | grep -qi '\\[test:security\\]'; then
             echo '🛡️ Executando exclusivamente testes de segurança...'
-            npx playwright test tests/e2e/security.spec.ts --project=chromium --reporter=github,list,html
+            npx playwright test tests/e2e/security.spec.ts --project=chromium --reporter=github,list,json,html
           elif [ \"\$INPUT_TARGET\" = 'critical' ] || echo \"\$COMMIT_MSG\" | grep -qiE '\\[test:critical\\]|\\[fast\\]|\\[test:fast\\]'; then
             echo '⚡ Executando testes críticos e de segurança...'
-            npx playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts tests/e2e/security.spec.ts --project=chromium --reporter=github,list,html
+            npx playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts tests/e2e/security.spec.ts --project=chromium --reporter=github,list,json,html
           elif [ \"\$INPUT_TARGET\" = 'order-integrity' ]; then
             echo '🧾 Executando E2E de preço, etiquetas, pagamento e conclusão de pedidos...'
-            npx playwright test tests/e2e/orders.spec.ts --grep 'formata preço unitário|preserva total e pagamento|importa pedido com 20 etiquetas' --project=chromium --reporter=github,list,html
+            npx playwright test tests/e2e/orders.spec.ts --grep 'formata preço unitário|preserva total e pagamento|importa pedido com 20 etiquetas' --project=chromium --reporter=github,list,json,html
           elif [ -n \"\$INPUT_TARGET\" ] && [ \"\$INPUT_TARGET\" != 'all' ]; then
             echo \"🎯 Executando target específico: \$INPUT_TARGET...\"
-            npx playwright test tests/e2e/\${INPUT_TARGET}.spec.ts --project=chromium --reporter=github,list,html
+            npx playwright test tests/e2e/\${INPUT_TARGET}.spec.ts --project=chromium --reporter=github,list,json,html
           else
             echo '🚀 Executando suíte completa de testes E2E (Máquina ${{ matrix.shard }} de 2)...'
-            npx playwright test --shard=${{ matrix.shard }}/2 --project=chromium --reporter=github,list,html
+            npx playwright test --shard=${{ matrix.shard }}/2 --project=chromium --reporter=github,list,json,html
           fi"
+
+      - name: Upload raw test metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-metrics-shard-${{ matrix.shard }}
+          path: test-results/*.json
+          retention-days: 30
+          if-no-files-found: ignore
 
       - name: Upload test report
         if: always()
@@ -200,3 +226,54 @@ jobs:
             ls -1 test-results >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  test-trends:
+    if: always()
+    needs: e2e-tests
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download test metrics from all shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-metrics-shard-*
+          path: test-results
+          merge-multiple: true
+
+      - name: Restore recent test history
+        uses: actions/cache/restore@v4
+        with:
+          path: test-trends/history.json
+          key: test-trends-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            test-trends-${{ github.base_ref || github.ref_name }}-
+            test-trends-main-
+
+      - name: Generate charts and comparison summary
+        id: generate-trends
+        env:
+          TEST_RESULTS_DIR: test-results
+          TEST_TREND_DIR: test-trends
+          TEST_TREND_BRANCH: ${{ github.head_ref || github.ref_name }}
+          TEST_TREND_TARGET: ${{ inputs.test_target || github.event.inputs.test_target || (contains(github.event.head_commit.message, '[test:security]') && 'security') || (contains(github.event.head_commit.message, '[test:critical]') && 'critical') || (contains(github.event.head_commit.message, '[fast]') && 'critical') || (contains(github.event.head_commit.message, '[test:fast]') && 'critical') || 'all' }}
+        run: node scripts/summarize-test-trends.mjs
+
+      - name: Upload test trend charts and history
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-trends
+          path: test-trends/
+          retention-days: 90
+
+      - name: Save history for trusted branch runs
+        if: always() && steps.generate-trends.outputs.has_metrics == 'true' && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: test-trends/history.json
+          key: test-trends-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}

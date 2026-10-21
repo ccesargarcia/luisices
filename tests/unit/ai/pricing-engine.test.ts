@@ -156,4 +156,36 @@ describe('IA-04: Paridade e Correção do Motor de Precificação (Backend & Fro
     expect(nodeRes.suggestedUnitPrice).toBeCloseTo(tsRes.suggestedUnitPrice, 2);
     expect(nodeRes.netProfitAmount).toBeCloseTo(tsRes.netProfitAmount, 2);
   });
+
+  it('mantém paridade quando custos e percentuais negativos são saneados para zero', () => {
+    const params = {
+      items: [
+        { name: 'Insumo inválido', unit: 'unidade' as const, unitCost: 25, quantityUsed: 2, totalCost: -10 },
+        { name: 'Insumo sem total', unit: 'unidade' as const, unitCost: -3, quantityUsed: 4 },
+      ],
+      wasteMarginPercent: -5,
+      setupTimeMinutes: -20,
+      productionTimeMinutes: -10,
+      proportionalPercent: -50,
+      profitMarginPercent: -30,
+      paymentFeePercent: -4,
+      settings: sampleSettings,
+    };
+
+    const backend = nodePricing.calculateRecipePricing(params);
+    const frontend = tsPricing.calculateRecipePricing(params);
+
+    expect(backend.materialsCost).toBe(0);
+    expect(backend.totalLaborMinutes).toBe(0);
+    expect(backend.wasteAmount).toBe(0);
+    expect(frontend.materialsCost).toBe(backend.materialsCost);
+    expect(frontend.totalUnitCost).toBeCloseTo(backend.totalUnitCost, 8);
+    expect(frontend.suggestedUnitPrice).toBeCloseTo(backend.suggestedUnitPrice, 8);
+    expect(frontend.batchTiers).toHaveLength(backend.batchTiers.length);
+    frontend.batchTiers.forEach((tier, index) => {
+      expect(tier.unitCost).toBeCloseTo(backend.batchTiers[index].unitCost, 8);
+      expect(tier.unitPrice).toBeCloseTo(backend.batchTiers[index].unitPrice, 8);
+      expect(tier.totalPrice).toBeCloseTo(backend.batchTiers[index].totalPrice, 8);
+    });
+  });
 });

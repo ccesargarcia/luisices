@@ -47,6 +47,9 @@ test.describe('Orçamentos - CRUD', () => {
     await card.click();
     const details = page.locator('[role="dialog"]').first();
     await expect(details.getByText('R$ 270,00')).toBeVisible();
+    const pdfDownload = page.waitForEvent('download');
+    await details.getByRole('button', { name: /Exportar PDF/i }).click();
+    expect((await pdfDownload).suggestedFilename()).toMatch(/^orcamento-.*\.pdf$/);
     await details.getByRole('button', { name: /^Excluir$/i }).click();
     const alert = page.locator('[role="alertdialog"]');
     await expect(alert).toBeVisible();
@@ -69,6 +72,53 @@ test.describe('Orçamentos - CRUD', () => {
     await dialog.getByRole('button', { name: /Salvar Orçamento/i }).click();
     await expect(dialog).toBeVisible();
     await expect(page.getByText(/desconto não pode ser maior que o subtotal/i)).toBeVisible();
+  });
+
+  test('recalcula e persiste o total ao editar itens e desconto', async ({ page }) => {
+    test.setTimeout(90000);
+    const clientName = `Cliente Edição ${Date.now()}`;
+    const clientPhone = `11966${String(Math.floor(100000 + Math.random() * 900000))}`;
+
+    await page.getByRole('button', { name: /Novo Orçamento/i }).click();
+    let dialog = page.locator('[role="dialog"]').first();
+    await dialog.locator('button[role="combobox"]').first().click();
+    await page.getByRole('option', { name: /Novo cliente/i }).click();
+    await dialog.locator('#q-cname').fill(clientName);
+    await dialog.locator('#q-cphone').fill(clientPhone);
+    await dialog.getByPlaceholder(/Ex: Camiseta personalizada/i).first().fill('Produto editável');
+    await dialog.getByPlaceholder('0,00').first().fill('100');
+
+    const deliveryInput = dialog.locator('#q-delivery');
+    if (!(await deliveryInput.inputValue())) {
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + 14);
+      await deliveryInput.fill(futureDate.toISOString().split('T')[0]);
+    }
+    await dialog.getByRole('button', { name: /Salvar Orçamento/i }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 15000 });
+
+    const card = page.locator('.cursor-pointer, [role="button"]').filter({ hasText: clientName }).first();
+    await expect(card).toBeVisible();
+    await card.click();
+    dialog = page.locator('[role="dialog"]').first();
+    await dialog.getByRole('button', { name: /Editar/i }).click();
+
+    dialog = page.locator('[role="dialog"]').first();
+    await expect(dialog.getByText('Editar Orçamento')).toBeVisible();
+    await dialog.getByPlaceholder('0,00').first().fill('125');
+    await dialog.locator('input[type="number"]').nth(2).fill('10');
+    await expect(dialog.getByText('R$ 112,50')).toBeVisible();
+    await dialog.getByRole('button', { name: /Salvar Orçamento/i }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 15000 });
+
+    await card.click();
+    dialog = page.locator('[role="dialog"]').first();
+    await expect(dialog.getByText('R$ 112,50')).toBeVisible();
+    await dialog.getByRole('button', { name: /^Excluir$/i }).click();
+    const alert = page.locator('[role="alertdialog"]');
+    await expect(alert).toBeVisible();
+    await alert.getByRole('button', { name: /Excluir/i }).click();
+    await expect(alert).not.toBeVisible();
   });
 
   test('limita a interface aos 10 itens aceitos pelo backend', async ({ page }) => {

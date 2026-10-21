@@ -14,6 +14,10 @@ export default defineConfig({
       NODE_PATH: path.resolve(__dirname, 'functions/node_modules'),
     },
     include: ['tests/unit/**/*.{test,spec}.{ts,tsx}', 'src/**/*.{test,spec}.{ts,tsx}'],
+    reporters: process.env.TEST_REPORT_DIR ? ['default', 'json'] : undefined,
+    outputFile: process.env.TEST_REPORT_DIR
+      ? { json: `${process.env.TEST_REPORT_DIR}/${process.env.TEST_REPORT_NAME || 'vitest'}.json` }
+      : undefined,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

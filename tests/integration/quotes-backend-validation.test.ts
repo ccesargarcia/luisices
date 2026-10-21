@@ -78,6 +78,44 @@ describe('Validação matemática de orçamentos nas regras do Firestore', () =>
     }));
   });
 
+  it('aceita exatamente 10 itens e os limites máximos válidos de quantidade e preço', async () => {
+    const items = Array.from({ length: 10 }, (_, i) => ({
+      name: `Item ${i + 1}`,
+      quantity: i === 0 ? 10000 : 1,
+      unitPrice: i === 0 ? 1000000 : 0,
+    }));
+    await assertSucceeds(setDoc(doc(dbFor(), 'quotes/max-valid-boundaries'), {
+      ...baseQuote,
+      items,
+      discount: 0,
+      discountType: 'fixed',
+      totalPrice: 10000000000,
+    }));
+  });
+
+  it('rejeita limites inválidos de quantidade, preço, nome e precisão do desconto', async () => {
+    const validSingle = [{ name: 'Produto', quantity: 1, unitPrice: 10 }];
+    const invalidQuotes = [
+      { id: 'zero-quantity', items: [{ ...validSingle[0], quantity: 0 }], discount: 0, totalPrice: 0 },
+      { id: 'quantity-over-limit', items: [{ ...validSingle[0], quantity: 10001 }], discount: 0, totalPrice: 100010 },
+      { id: 'price-over-limit', items: [{ ...validSingle[0], unitPrice: 1000000.01 }], discount: 0, totalPrice: 1000000.01 },
+      { id: 'blank-name', items: [{ ...validSingle[0], name: '   ' }], discount: 0, totalPrice: 10 },
+      { id: 'name-over-limit', items: [{ ...validSingle[0], name: 'A'.repeat(301) }], discount: 0, totalPrice: 10 },
+      { id: 'fractional-cent-discount', items: validSingle, discount: 0.001, discountType: 'fixed', totalPrice: 10 },
+      { id: 'negative-discount', items: validSingle, discount: -0.01, discountType: 'fixed', totalPrice: 10 },
+      { id: 'unknown-discount-type', items: validSingle, discount: 0, discountType: 'amount', totalPrice: 10 },
+      { id: 'negative-total', items: validSingle, discount: 0, discountType: 'fixed', totalPrice: -1 },
+    ];
+
+    for (const { id, ...quote } of invalidQuotes) {
+      await assertFails(setDoc(doc(dbFor(), `quotes/${id}`), {
+        ...baseQuote,
+        ...quote,
+        discountType: quote.discountType ?? 'fixed',
+      }));
+    }
+  });
+
   it('valida atualizações de valor e permite transição de status sem alterar o cálculo', async () => {
     await env.withSecurityRulesDisabled(async (context) => {
       await context.firestore().doc('quotes/existing').set(baseQuote);

@@ -125,6 +125,9 @@ test.describe('Fluxos Críticos de Negócio', () => {
 
     const priceInput = quoteDialog.getByPlaceholder('0,00').first();
     await priceInput.fill('150');
+    await quoteDialog.locator('input[type="number"]').nth(0).fill('2');
+    await quoteDialog.locator('input[type="number"]').nth(2).fill('10');
+    await expect(quoteDialog.getByText('R$ 270,00')).toBeVisible();
 
     // Data de entrega
     const deliveryInput = quoteDialog.locator('#q-delivery');
@@ -178,6 +181,9 @@ test.describe('Fluxos Críticos de Negócio', () => {
         await generatedCard.click();
         const orderDetails = page.locator('[role="dialog"]').first();
         if (await orderDetails.isVisible({ timeout: 5000 })) {
+          await expect(orderDetails.getByText('R$ 270,00')).toBeVisible();
+          await expect(orderDetails.getByText(new RegExp(`${productName} \\(2x\\)`))).toBeVisible();
+          await expect(orderDetails.getByText(/Total: 2 unidades/i)).toBeVisible();
           const deleteOrderBtn = orderDetails.getByRole('button', { name: /Excluir Pedido/i });
           if (await deleteOrderBtn.isVisible({ timeout: 3000 })) {
             await deleteOrderBtn.click();
