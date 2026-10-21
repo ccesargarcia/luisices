@@ -96,14 +96,18 @@ export function calculateReportMetrics(
     if (Array.isArray(history) && history.length > 0) {
       let historySum = 0;
       history.forEach((h) => {
-        if (h.amount > 0) {
+        const hAmount = Number(h.amount || 0);
+        if (hAmount !== 0) {
           const m = h.method || 'other';
           const cur = payMap.get(m) ?? { total: 0, count: 0 };
-          payMap.set(m, { total: cur.total + h.amount, count: cur.count + 1 });
-          historySum += h.amount;
+          payMap.set(m, {
+            total: Math.max(0, Math.round((cur.total + hAmount) * 100) / 100),
+            count: cur.count + (hAmount > 0 ? 1 : 0),
+          });
+          historySum += hAmount;
         }
       });
-      const unassignedPaid = Math.max(0, paid - historySum);
+      const unassignedPaid = Math.max(0, Math.round((paid - historySum) * 100) / 100);
       if (unassignedPaid > 0) {
         const fallback = o.payment?.method || 'other';
         const cur = payMap.get(fallback) ?? { total: 0, count: 0 };
@@ -287,6 +291,34 @@ describe('Conciliação Financeira & Contábil: Relatórios vs. Clientes', () =>
       expect(reportMetrics.totalPaid).toBe(750);
       expect(reportMetrics.totalPending).toBe(0);
       expect(reportMetrics.payMap['pix']?.total).toBe(750);
+    });
+
+    it('deve abater estornos e ajustes negativos no histórico sem inflar a contagem de transações', () => {
+      const ordersWithRefund: OrderTestSample[] = [
+        {
+          id: 'ord-refund',
+          userId: PARTNER_A,
+          price: 70,
+          status: 'completed',
+          payment: {
+            status: 'completed',
+            method: 'pix',
+            paidAmount: 70,
+            history: [
+              { amount: 100, method: 'pix' },
+              { amount: -30, method: 'pix' },
+            ],
+          },
+        },
+      ];
+
+      const reportMetrics = calculateReportMetrics(ordersWithRefund, 'all', PARTNER_A);
+
+      expect(reportMetrics.totalPaid).toBe(70);
+      expect(reportMetrics.totalPending).toBe(0);
+      expect(reportMetrics.payMap['pix']?.total).toBe(70);
+      // Contagem deve registrar apenas a entrada positiva original (1), sem inflar por causa do estorno
+      expect(reportMetrics.payMap['pix']?.count).toBe(1);
     });
   });
 });

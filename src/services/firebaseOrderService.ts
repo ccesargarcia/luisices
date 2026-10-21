@@ -242,7 +242,7 @@ export class FirebaseOrderService {
         paymentDate: orderData.payment.paymentDate || (paidAmount > 0 ? new Date().toISOString() : null),
         notes: orderData.payment.notes || null,
         history: orderData.payment.history?.map(h => ({
-          amount: this.ensurePositive(h.amount),
+          amount: typeof h.amount === 'number' && Number.isFinite(h.amount) ? Math.round(h.amount * 100) / 100 : 0,
           date: h.date,
           method: h.method || null,
           notes: h.notes || null
@@ -717,6 +717,8 @@ export class FirebaseOrderService {
         throw new Error(`Conflito de concorrência: o pedido foi alterado por outro usuário (versão ${currentVersion} != esperada ${expectedVersion}).`);
       }
 
+      const now = new Date().toISOString();
+
       // 1. Determinar o preço efetivo final antes de processar qualquer propriedade,
       // para que a consistência do pagamento não dependa da ordem das chaves em `updates`.
       const hasPriceUpdate = typeof updates.price === 'number';
@@ -735,13 +737,15 @@ export class FirebaseOrderService {
           } else if (key === 'payment' && value) {
             const payment = value as any;
             const totalAmount = resolvedPrice;
+            const existingPaid = this.ensurePositive(existingPayment.paidAmount || 0);
             const rawPaidAmount = this.ensurePositive(
               payment.paidAmount !== undefined
                 ? payment.paidAmount
-                : (existingPayment.paidAmount || 0)
+                : existingPaid
             );
             // Regra estrita do Firestore (firestore.rules:344): 0 <= paidAmount <= price
             const paidAmount = Math.min(rawPaidAmount, totalAmount);
+            const excess = Math.round(Math.max(0, existingPaid - paidAmount) * 100) / 100;
             // Saldo restante recalculado estritamente para nunca violar a regra de integridade do Firestore
             const remainingAmount = this.ensurePositive(
               Math.round(Math.max(0, totalAmount - paidAmount) * 100) / 100
@@ -751,12 +755,34 @@ export class FirebaseOrderService {
               ? (payment.status === 'pending' || (!payment.status && existingPayment.status === 'pending') ? 'pending' : 'paid')
               : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending'));
 
-            const isFirstPaymentRegistration = (existingPayment.paidAmount || 0) === 0 && paidAmount > 0;
+            const isFirstPaymentRegistration = existingPaid === 0 && paidAmount > 0;
             const resolvedPaymentDate = paidAmount === 0
               ? null
               : (payment.paymentDate !== undefined
                   ? payment.paymentDate
-                  : (existingPayment.paymentDate || (isFirstPaymentRegistration ? new Date().toISOString() : null)));
+                  : (existingPayment.paymentDate || (isFirstPaymentRegistration ? now : null)));
+
+            let history = payment.history !== undefined ? payment.history : (existingPayment.history || null);
+            let notes = payment.notes !== undefined ? payment.notes : (existingPayment.notes || null);
+            if (excess > 0 && payment.history === undefined) {
+              const refundNote = `Estorno/crédito automático de R$ ${excess.toFixed(2)} por redução do valor pago (de R$ ${existingPaid.toFixed(2)} para R$ ${paidAmount.toFixed(2)}).`;
+              const refundEntry = {
+                amount: -excess,
+                date: now,
+                method: payment.method || existingPayment.method || 'pix',
+                notes: refundNote,
+              };
+              const baseHistory = Array.isArray(existingPayment.history)
+                ? [...existingPayment.history]
+                : (existingPaid > 0 ? [{
+                    amount: existingPaid,
+                    date: existingPayment.paymentDate || now,
+                    method: existingPayment.method || 'pix',
+                    notes: 'Pagamento inicial registrado',
+                  }] : []);
+              history = [...baseHistory, refundEntry];
+              notes = notes ? `${notes} | ${refundNote}` : refundNote;
+            }
 
             cleanUpdates[key] = {
               status: resolvedStatus,
@@ -765,8 +791,8 @@ export class FirebaseOrderService {
               paidAmount,
               remainingAmount,
               paymentDate: resolvedPaymentDate,
-              notes: payment.notes !== undefined ? payment.notes : (existingPayment.notes || null),
-              history: payment.history !== undefined ? payment.history : (existingPayment.history || null),
+              notes,
+              history,
             };
           } else if (key === 'exchangeItems') {
             cleanUpdates[key] = this.sanitizeExchangeItems(value as any);
@@ -785,9 +811,10 @@ export class FirebaseOrderService {
       // Se apenas o preço foi alterado e o pedido já possui payment, sincronizar totalAmount, remainingAmount e status
       if (cleanUpdates.price !== undefined && !cleanUpdates.payment && orderData.payment) {
         const totalAmount = cleanUpdates.price;
-        const rawPaidAmount = this.ensurePositive(orderData.payment.paidAmount || 0);
+        const existingPaid = this.ensurePositive(orderData.payment.paidAmount || 0);
         // Regra estrita do Firestore (firestore.rules:344): paidAmount nunca pode exceder o novo preço
-        const paidAmount = Math.min(rawPaidAmount, totalAmount);
+        const paidAmount = Math.min(existingPaid, totalAmount);
+        const excess = Math.round(Math.max(0, existingPaid - paidAmount) * 100) / 100;
         const remainingAmount = this.ensurePositive(
           Math.round(Math.max(0, totalAmount - paidAmount) * 100) / 100
         );
@@ -795,18 +822,40 @@ export class FirebaseOrderService {
           ? (orderData.payment.status === 'pending' ? 'pending' : 'paid')
           : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending'));
 
+        let history = orderData.payment.history || null;
+        let notes = orderData.payment.notes || null;
+        if (excess > 0) {
+          const refundNote = `Estorno/crédito automático de R$ ${excess.toFixed(2)} por redução do total do pedido (de R$ ${existingPaid.toFixed(2)} para R$ ${totalAmount.toFixed(2)}).`;
+          const refundEntry = {
+            amount: -excess,
+            date: now,
+            method: orderData.payment.method || 'pix',
+            notes: refundNote,
+          };
+          const baseHistory = Array.isArray(orderData.payment.history)
+            ? [...orderData.payment.history]
+            : (existingPaid > 0 ? [{
+                amount: existingPaid,
+                date: orderData.payment.paymentDate || now,
+                method: orderData.payment.method || 'pix',
+                notes: 'Pagamento inicial registrado',
+              }] : []);
+          history = [...baseHistory, refundEntry];
+          notes = notes ? `${notes} | ${refundNote}` : refundNote;
+        }
+
         cleanUpdates.payment = {
           ...orderData.payment,
           totalAmount,
           paidAmount,
           remainingAmount,
           status: resolvedStatus,
+          notes,
+          history,
         };
       }
 
       if (Object.keys(cleanUpdates).length === 0) return;
-
-      const now = new Date().toISOString();
 
       // 2. TODAS as escritas após as leituras
       transaction.update(orderRef, {

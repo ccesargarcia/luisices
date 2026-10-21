@@ -509,7 +509,67 @@ describe('Fluxo Completo de Edição de Valor Pago e Prevenção de Erro de Perm
       expect(updatedPayload.payment.remainingAmount).toBe(0);
       expect(updatedPayload.payment.status).toBe('paid');
 
+      // Registra estorno/crédito explícito de R$ 30,00 no histórico
+      expect(updatedPayload.payment.history).toBeDefined();
+      expect(updatedPayload.payment.history).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            amount: -30,
+            notes: expect.stringContaining('Estorno/crédito automático de R$ 30.00'),
+          }),
+        ])
+      );
+      const historySum = updatedPayload.payment.history.reduce((acc: number, h: any) => acc + h.amount, 0);
+      expect(Math.round(historySum * 100) / 100).toBe(70);
+      expect(updatedPayload.payment.notes).toContain('Estorno/crédito automático de R$ 30.00');
+
       expect(isConsistentOrderPaymentRule(updatedPayload.payment, 70)).toBe(true);
+    });
+
+    it('registra estorno no histórico e ajusta notes quando a edição reduz o paidAmount diretamente', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 2,
+          price: 100,
+          payment: {
+            status: 'paid',
+            totalAmount: 100,
+            paidAmount: 100,
+            remainingAmount: 0,
+            history: [{ amount: 100, date: '2026-01-01', method: 'pix', notes: 'Pagamento inicial' }],
+          },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      // Usuário ajusta o valor pago de 100 para 60 (restando 40)
+      await firebaseOrderService.updateOrder('order-adjusted-paid', {
+        payment: {
+          paidAmount: 60,
+        } as any,
+      });
+
+      const updatedPayload = mockTransactionUpdate.mock.calls[0][1];
+      expect(updatedPayload.payment.totalAmount).toBe(100);
+      expect(updatedPayload.payment.paidAmount).toBe(60);
+      expect(updatedPayload.payment.remainingAmount).toBe(40);
+      expect(updatedPayload.payment.status).toBe('partial');
+      expect(updatedPayload.payment.history).toHaveLength(2);
+      expect(updatedPayload.payment.history[1]).toMatchObject({
+        amount: -40,
+        method: 'pix',
+        notes: expect.stringContaining('Estorno/crédito automático de R$ 40.00'),
+      });
+
+      const historySum = updatedPayload.payment.history.reduce((acc: number, h: any) => acc + h.amount, 0);
+      expect(Math.round(historySum * 100) / 100).toBe(60);
+      expect(updatedPayload.payment.notes).toContain('Estorno/crédito automático de R$ 40.00');
+      expect(isConsistentOrderPaymentRule(updatedPayload.payment, 100)).toBe(true);
     });
 
     it('limita paidAmount caso o chamador envie valor pago maior que o total do pedido', async () => {
