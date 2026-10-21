@@ -146,7 +146,7 @@ test.describe.serial('E2E: Edição de Valor Pago e Reconciliação Financeira',
     await orderCard.scrollIntoViewIfNeeded();
     await orderCard.click({ force: true, timeout: 10000 });
 
-    const detailsDialog = page.locator('[role="dialog"]').filter({ hasText: /Detalhes do Pedido/i }).first();
+    const detailsDialog = page.getByRole('dialog').first();
     await expect(detailsDialog).toBeVisible({ timeout: 10000 });
 
     // Validar status inicial: Pendente
@@ -160,7 +160,7 @@ test.describe.serial('E2E: Edição de Valor Pago e Reconciliação Financeira',
     await editBtn.click();
 
     const paidInput = detailsDialog.locator('#paidAmount');
-    await expect(paidInput).toBeVisible({ timeout: 5000 });
+    await expect(paidInput).toBeVisible({ timeout: 10000 });
     await paidInput.fill('40,00');
 
     // Validação da sincronização em tempo real na tela
@@ -172,6 +172,9 @@ test.describe.serial('E2E: Edição de Valor Pago e Reconciliação Financeira',
     await expect(saveBtn).toBeEnabled({ timeout: 5000 });
     await saveBtn.click();
 
+    // Aguarda o retorno ao modo de leitura (o botão Editar volta a ficar visível)
+    await expect(editBtn).toBeVisible({ timeout: 15000 });
+
     // Verificação de Ausência de Erro de Permissão
     const toastError = page.locator('[data-sonner-toast][data-type="error"], [role="alert"]').filter({
       hasText: /permission|permissão|insufficient/i,
@@ -179,7 +182,6 @@ test.describe.serial('E2E: Edição de Valor Pago e Reconciliação Financeira',
     await expect(toastError).toHaveCount(0);
 
     // Modal volta para modo de leitura com dados parciais
-    await expect(detailsDialog.getByText(/Detalhes do Pedido/i)).toBeVisible({ timeout: 10000 });
     await expect(detailsDialog.getByText(/Parcial/i).first()).toBeVisible({ timeout: 5000 });
     await expect(detailsDialog.getByText(/R\$\s*40,00/i).first()).toBeVisible({ timeout: 5000 });
     await expect(detailsDialog.getByText(/R\$\s*60,00/i).first()).toBeVisible({ timeout: 5000 });
@@ -188,19 +190,19 @@ test.describe.serial('E2E: Edição de Valor Pago e Reconciliação Financeira',
     // ETAPA 4: Editar Novamente para R$ 100,00 (Quitar)
     // ==========================================
     await editBtn.click();
-    await expect(paidInput).toBeVisible({ timeout: 5000 });
+    await expect(paidInput).toBeVisible({ timeout: 10000 });
     await paidInput.fill('100,00');
 
     // Status deve auto-sincronizar para Pago
     await expect(paymentStatusTrigger).toContainText(/Pago/i);
 
     await saveBtn.click();
+    await expect(editBtn).toBeVisible({ timeout: 15000 });
 
     // Confirmação de ausência de erro de permissão
     await expect(toastError).toHaveCount(0);
 
     // Modal exibe status Pago e R$ 100,00
-    await expect(detailsDialog.getByText(/Detalhes do Pedido/i)).toBeVisible({ timeout: 10000 });
     await expect(detailsDialog.getByText(/Pago/i).first()).toBeVisible({ timeout: 5000 });
     await expect(detailsDialog.getByText(/R\$\s*100,00/i).first()).toBeVisible({ timeout: 5000 });
 

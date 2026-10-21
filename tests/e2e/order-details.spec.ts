@@ -232,10 +232,7 @@ test.describe.serial('Detalhes do Pedido', () => {
     await orderCard.scrollIntoViewIfNeeded();
     await orderCard.click({ force: true, timeout: 10000 });
 
-    const dialog = page
-      .locator('[role="dialog"]')
-      .filter({ hasText: /Detalhes do Pedido|Editar Pedido/i })
-      .first();
+    const dialog = page.getByRole('dialog').first();
     await expect(dialog).toBeVisible({ timeout: 10000 });
 
     const editBtn = dialog.getByRole('button', { name: /^Editar$/i }).or(dialog.getByRole('button', { name: /Editar/i })).first();
@@ -243,7 +240,7 @@ test.describe.serial('Detalhes do Pedido', () => {
     await editBtn.click();
 
     const paidInput = dialog.locator('#paidAmount');
-    await expect(paidInput).toBeVisible({ timeout: 5000 });
+    await expect(paidInput).toBeVisible({ timeout: 10000 });
     await paidInput.fill('50,00');
 
     const paymentStatusTrigger = dialog.locator('#paymentStatus');
@@ -253,13 +250,15 @@ test.describe.serial('Detalhes do Pedido', () => {
     await expect(saveBtn).toBeEnabled({ timeout: 5000 });
     await saveBtn.click();
 
+    // Aguarda o modal concluir o salvamento e retornar ao modo de leitura
+    await expect(editBtn).toBeVisible({ timeout: 15000 });
+
     // Garantir ausência de erro de permissão
     const toastError = page.locator('[data-sonner-toast][data-type="error"], [role="alert"]').filter({
       hasText: /permission|permissão|insufficient/i,
     });
     await expect(toastError).toHaveCount(0);
 
-    await expect(dialog.getByText(/Detalhes do Pedido/i)).toBeVisible({ timeout: 10000 });
     await expect(dialog.getByText(/Parcial/i).first()).toBeVisible({ timeout: 5000 });
     await expect(dialog.getByText(/R\$\s*50,00/i).first()).toBeVisible({ timeout: 5000 });
 

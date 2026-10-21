@@ -480,5 +480,67 @@ describe('Fluxo Completo de Edição de Valor Pago e Prevenção de Erro de Perm
       expect(typeof updatedPayload.payment.paymentDate).toBe('string');
       expect(new Date(updatedPayload.payment.paymentDate).getTime()).not.toBeNaN();
     });
+
+    it('limita paidAmount ao total quando outro fluxo reduz o preço do pedido abaixo do valor já pago', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 2,
+          price: 100,
+          payment: { status: 'paid', totalAmount: 100, paidAmount: 100, remainingAmount: 0 },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      // Outro fluxo reduz o preço do pedido de 100 para 70 (ex: remoção de item ou desconto)
+      await firebaseOrderService.updateOrder('order-reduced-price', {
+        price: 70,
+      });
+
+      const updatedPayload = mockTransactionUpdate.mock.calls[0][1];
+      expect(updatedPayload.price).toBe(70);
+      expect(updatedPayload.payment.totalAmount).toBe(70);
+      // paidAmount deve ser limitado a 70 para não violar a regra do Firestore: paid <= price
+      expect(updatedPayload.payment.paidAmount).toBe(70);
+      expect(updatedPayload.payment.remainingAmount).toBe(0);
+      expect(updatedPayload.payment.status).toBe('paid');
+
+      expect(isConsistentOrderPaymentRule(updatedPayload.payment, 70)).toBe(true);
+    });
+
+    it('limita paidAmount caso o chamador envie valor pago maior que o total do pedido', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 1,
+          price: 100,
+          payment: { status: 'pending', totalAmount: 100, paidAmount: 0, remainingAmount: 100 },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      // Chamador envia paidAmount de 150 em pedido de 100
+      await firebaseOrderService.updateOrder('order-overpaid', {
+        payment: {
+          paidAmount: 150,
+        } as any,
+      });
+
+      const updatedPayload = mockTransactionUpdate.mock.calls[0][1];
+      expect(updatedPayload.payment.totalAmount).toBe(100);
+      expect(updatedPayload.payment.paidAmount).toBe(100);
+      expect(updatedPayload.payment.remainingAmount).toBe(0);
+      expect(updatedPayload.payment.status).toBe('paid');
+
+      expect(isConsistentOrderPaymentRule(updatedPayload.payment, 100)).toBe(true);
+    });
   });
 });
