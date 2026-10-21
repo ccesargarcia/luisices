@@ -572,6 +572,97 @@ describe('Fluxo Completo de Edição de Valor Pago e Prevenção de Erro de Perm
       expect(isConsistentOrderPaymentRule(updatedPayload.payment, 100)).toBe(true);
     });
 
+    it('registra estorno mesmo quando a tela envia history: null para um pedido que não tinha histórico gravado', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 2,
+          price: 100,
+          payment: {
+            status: 'paid',
+            totalAmount: 100,
+            paidAmount: 100,
+            remainingAmount: 0,
+          },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      // Tela envia history: null explicitamente e reduz valor pago para 40
+      await firebaseOrderService.updateOrder('order-reduced-with-null-history', {
+        payment: {
+          paidAmount: 40,
+          history: null,
+        } as any,
+      });
+
+      const updatedPayload = mockTransactionUpdate.mock.calls[0][1];
+      expect(updatedPayload.payment.paidAmount).toBe(40);
+      expect(updatedPayload.payment.remainingAmount).toBe(60);
+      expect(updatedPayload.payment.status).toBe('partial');
+      expect(updatedPayload.payment.history).toHaveLength(2);
+      expect(updatedPayload.payment.history[0]).toMatchObject({
+        amount: 100,
+      });
+      expect(updatedPayload.payment.history[1]).toMatchObject({
+        amount: -60,
+        notes: expect.stringContaining('Estorno/crédito automático de R$ 60.00'),
+      });
+      const historySum = updatedPayload.payment.history.reduce((acc: number, h: any) => acc + h.amount, 0);
+      expect(Math.round(historySum * 100) / 100).toBe(40);
+      expect(updatedPayload.payment.notes).toContain('Estorno/crédito automático de R$ 60.00');
+      expect(isConsistentOrderPaymentRule(updatedPayload.payment, 100)).toBe(true);
+    });
+
+    it('registra estorno quando a tela envia history com o histórico existente anterior não ajustado', async () => {
+      const existingHistory = [{ amount: 100, date: '2026-01-01', method: 'pix', notes: 'Pagamento inicial' }];
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 2,
+          price: 100,
+          payment: {
+            status: 'paid',
+            totalAmount: 100,
+            paidAmount: 100,
+            remainingAmount: 0,
+            history: existingHistory,
+          },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      // Tela envia o histórico existente sem alteração mas reduz paidAmount para 40
+      await firebaseOrderService.updateOrder('order-reduced-with-existing-history', {
+        payment: {
+          paidAmount: 40,
+          history: existingHistory,
+        } as any,
+      });
+
+      const updatedPayload = mockTransactionUpdate.mock.calls[0][1];
+      expect(updatedPayload.payment.paidAmount).toBe(40);
+      expect(updatedPayload.payment.remainingAmount).toBe(60);
+      expect(updatedPayload.payment.status).toBe('partial');
+      expect(updatedPayload.payment.history).toHaveLength(2);
+      expect(updatedPayload.payment.history[1]).toMatchObject({
+        amount: -60,
+        notes: expect.stringContaining('Estorno/crédito automático de R$ 60.00'),
+      });
+      const historySum = updatedPayload.payment.history.reduce((acc: number, h: any) => acc + h.amount, 0);
+      expect(Math.round(historySum * 100) / 100).toBe(40);
+      expect(updatedPayload.payment.notes).toContain('Estorno/crédito automático de R$ 60.00');
+      expect(isConsistentOrderPaymentRule(updatedPayload.payment, 100)).toBe(true);
+    });
+
     it('limita paidAmount caso o chamador envie valor pago maior que o total do pedido', async () => {
       mockOrderGet.mockReturnValue({
         exists: () => true,

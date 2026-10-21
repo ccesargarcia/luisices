@@ -435,7 +435,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         remainingAmount: Math.round(Math.max(0, price - effectivePaidAmount) * 100) / 100,
         paymentDate: resolvedPaymentDate,
         notes: existingPayment?.notes || null,
-        history: existingPayment?.history || null,
+        history: existingPayment?.history && existingPayment.history.length > 0 ? existingPayment.history : undefined,
       };
 
       const updates: Partial<Omit<Order, 'id' | 'userId' | 'createdAt' | 'orderNumber'>> = {
