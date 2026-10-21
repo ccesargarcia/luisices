@@ -415,14 +415,18 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         pricingMode = 'total';
       }
 
-      // Preservar histórico e metadados de pagamentos anteriores
+      // Preservar histórico e metadados de pagamentos anteriores com status e saldo consistentes
       const existingPayment = order.payment;
+      const resolvedPaymentStatus: PaymentStatus = price === 0
+        ? (editData.paymentStatus || 'paid')
+        : (paidAmt >= price ? 'paid' : (paidAmt > 0 ? 'partial' : 'pending'));
+
       const paymentData: any = {
-        status: editData.paymentStatus,
+        status: resolvedPaymentStatus,
         method: editData.paymentMethod || existingPayment?.method || null,
         totalAmount: price,
         paidAmount: paidAmt,
-        remainingAmount,
+        remainingAmount: Math.round(Math.max(0, price - paidAmt) * 100) / 100,
         paymentDate: existingPayment?.paymentDate || (paidAmt > 0 ? new Date().toISOString() : null),
         notes: existingPayment?.notes || null,
         history: existingPayment?.history || null,

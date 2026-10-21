@@ -220,23 +220,39 @@ export class FirebaseOrderService {
     const price = this.ensurePositive(orderData.price);
 
     // Sanitize payment object: replace undefined with null so Firestore doesn't reject it
-    const payment = orderData.payment
-      ? {
-          status: orderData.payment.status || 'pending',
-          method: orderData.payment.method || null,
-          totalAmount: this.ensurePositive(orderData.payment.totalAmount),
-          paidAmount: this.ensurePositive(orderData.payment.paidAmount),
-          remainingAmount: this.ensurePositive(orderData.payment.remainingAmount),
-          paymentDate: orderData.payment.paymentDate || null,
-          notes: orderData.payment.notes || null,
-          history: orderData.payment.history?.map(h => ({
-            amount: this.ensurePositive(h.amount),
-            date: h.date,
-            method: h.method,
-            notes: h.notes || null
-          })) || null
-        }
-      : null;
+    let payment = null;
+    if (orderData.payment) {
+      const totalAmount = this.ensurePositive(
+        orderData.payment.totalAmount !== undefined
+          ? orderData.payment.totalAmount
+          : price
+      );
+      const paidAmount = this.ensurePositive(orderData.payment.paidAmount);
+      const remainingAmount = this.ensurePositive(
+        orderData.payment.remainingAmount !== undefined
+          ? Math.round(orderData.payment.remainingAmount * 100) / 100
+          : Math.round(Math.max(0, totalAmount - paidAmount) * 100) / 100
+      );
+      const resolvedStatus = totalAmount === 0
+        ? (orderData.payment.status || 'paid')
+        : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending'));
+
+      payment = {
+        status: resolvedStatus,
+        method: orderData.payment.method || null,
+        totalAmount,
+        paidAmount,
+        remainingAmount,
+        paymentDate: orderData.payment.paymentDate || (paidAmount > 0 ? new Date().toISOString() : null),
+        notes: orderData.payment.notes || null,
+        history: orderData.payment.history?.map(h => ({
+          amount: this.ensurePositive(h.amount),
+          date: h.date,
+          method: h.method || null,
+          notes: h.notes || null
+        })) || null
+      };
+    }
 
     const sanitizedItems = this.sanitizeOrderItems(orderData.items);
     const resolvedUnitPrice = typeof orderData.unitPrice === 'number' && Number.isFinite(orderData.unitPrice)
@@ -715,9 +731,9 @@ export class FirebaseOrderService {
             const payment = value as any;
             const existingPayment = orderData.payment || {};
             const totalAmount = this.ensurePositive(
-              payment.totalAmount !== undefined
-                ? payment.totalAmount
-                : (cleanUpdates.price !== undefined ? cleanUpdates.price : (orderData.price || 0))
+              cleanUpdates.price !== undefined
+                ? cleanUpdates.price
+                : (payment.totalAmount !== undefined ? payment.totalAmount : (orderData.price || 0))
             );
             const paidAmount = this.ensurePositive(
               payment.paidAmount !== undefined
@@ -726,18 +742,20 @@ export class FirebaseOrderService {
             );
             const remainingAmount = this.ensurePositive(
               payment.remainingAmount !== undefined
-                ? payment.remainingAmount
-                : (existingPayment.remainingAmount !== undefined && payment.paidAmount === undefined && payment.totalAmount === undefined && cleanUpdates.price === undefined)
-                  ? existingPayment.remainingAmount
-                  : Math.max(0, totalAmount - paidAmount)
+                ? Math.round(payment.remainingAmount * 100) / 100
+                : Math.round(Math.max(0, totalAmount - paidAmount) * 100) / 100
             );
+            const resolvedStatus = totalAmount === 0
+              ? (payment.status || existingPayment.status || 'paid')
+              : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending'));
+
             cleanUpdates[key] = {
-              status: payment.status || existingPayment.status || 'pending',
-              method: payment.method !== undefined ? payment.method : (existingPayment.method || null),
+              status: resolvedStatus,
+              method: payment.method !== undefined ? (payment.method || null) : (existingPayment.method || null),
               totalAmount,
               paidAmount,
               remainingAmount,
-              paymentDate: payment.paymentDate !== undefined ? payment.paymentDate : (existingPayment.paymentDate || null),
+              paymentDate: payment.paymentDate !== undefined ? payment.paymentDate : (existingPayment.paymentDate || (paidAmount > 0 ? new Date().toISOString() : null)),
               notes: payment.notes !== undefined ? payment.notes : (existingPayment.notes || null),
               history: payment.history !== undefined ? payment.history : (existingPayment.history || null),
             };
@@ -754,6 +772,26 @@ export class FirebaseOrderService {
           }
         }
       });
+
+      // Se apenas o preço foi alterado e o pedido já possui payment, sincronizar totalAmount, remainingAmount e status
+      if (cleanUpdates.price !== undefined && !cleanUpdates.payment && orderData.payment) {
+        const totalAmount = cleanUpdates.price;
+        const paidAmount = this.ensurePositive(orderData.payment.paidAmount || 0);
+        const remainingAmount = this.ensurePositive(
+          Math.round(Math.max(0, totalAmount - paidAmount) * 100) / 100
+        );
+        const resolvedStatus = totalAmount === 0
+          ? (orderData.payment.status || 'paid')
+          : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending'));
+
+        cleanUpdates.payment = {
+          ...orderData.payment,
+          totalAmount,
+          paidAmount,
+          remainingAmount,
+          status: resolvedStatus,
+        };
+      }
 
       if (Object.keys(cleanUpdates).length === 0) return;
 

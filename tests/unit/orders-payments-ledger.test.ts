@@ -212,4 +212,119 @@ describe('Etapa 4: Pedidos, Pagamentos e Financeiro (Achados 5, 6 e 7)', () => {
       expect(setCallArgs.userId).toBe('user-1');
     });
   });
+
+  describe('Reconciliação e integridade de status de pagamento (isConsistentOrderPayment)', () => {
+    it('reconcilia status de pagamento para "partial" quando paidAmount > 0 e menor que o total', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 1,
+          price: 100,
+          payment: { status: 'pending', totalAmount: 100, paidAmount: 0, remainingAmount: 100 },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      // Usuário editou valor pago para 40, mas enviou status "pending" por desatenção
+      await firebaseOrderService.updateOrder('order-123', {
+        payment: {
+          status: 'pending',
+          paidAmount: 40,
+        } as any,
+      });
+
+      const orderUpdateArgs = mockTransactionUpdate.mock.calls[0][1];
+      expect(orderUpdateArgs.payment.status).toBe('partial');
+      expect(orderUpdateArgs.payment.paidAmount).toBe(40);
+      expect(orderUpdateArgs.payment.totalAmount).toBe(100);
+      expect(orderUpdateArgs.payment.remainingAmount).toBe(60);
+    });
+
+    it('reconcilia status de pagamento para "paid" quando paidAmount é igual ao total', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 1,
+          price: 100,
+          payment: { status: 'partial', totalAmount: 100, paidAmount: 50, remainingAmount: 50 },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      await firebaseOrderService.updateOrder('order-123', {
+        payment: {
+          status: 'partial',
+          paidAmount: 100,
+        } as any,
+      });
+
+      const orderUpdateArgs = mockTransactionUpdate.mock.calls[0][1];
+      expect(orderUpdateArgs.payment.status).toBe('paid');
+      expect(orderUpdateArgs.payment.paidAmount).toBe(100);
+      expect(orderUpdateArgs.payment.remainingAmount).toBe(0);
+    });
+
+    it('reconcilia status de pagamento para "pending" quando paidAmount é 0', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 1,
+          price: 100,
+          payment: { status: 'partial', totalAmount: 100, paidAmount: 50, remainingAmount: 50 },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      await firebaseOrderService.updateOrder('order-123', {
+        payment: {
+          status: 'partial',
+          paidAmount: 0,
+        } as any,
+      });
+
+      const orderUpdateArgs = mockTransactionUpdate.mock.calls[0][1];
+      expect(orderUpdateArgs.payment.status).toBe('pending');
+      expect(orderUpdateArgs.payment.paidAmount).toBe(0);
+      expect(orderUpdateArgs.payment.remainingAmount).toBe(100);
+    });
+
+    it('sincroniza payment automaticamente ao alterar apenas o preço do pedido', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 1,
+          price: 100,
+          payment: { status: 'partial', totalAmount: 100, paidAmount: 40, remainingAmount: 60 },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      // Apenas o preço foi alterado de 100 para 160
+      await firebaseOrderService.updateOrder('order-123', { price: 160 });
+
+      const orderUpdateArgs = mockTransactionUpdate.mock.calls[0][1];
+      expect(orderUpdateArgs.price).toBe(160);
+      expect(orderUpdateArgs.payment).toBeDefined();
+      expect(orderUpdateArgs.payment.totalAmount).toBe(160);
+      expect(orderUpdateArgs.payment.paidAmount).toBe(40);
+      expect(orderUpdateArgs.payment.remainingAmount).toBe(120);
+      expect(orderUpdateArgs.payment.status).toBe('partial');
+    });
+  });
 });
