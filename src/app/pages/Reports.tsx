@@ -398,14 +398,17 @@ export function Reports() {
         let historySum = 0;
         history.forEach((h: any) => {
           const hAmount = Number(h.amount || 0);
-          if (hAmount > 0) {
+          if (hAmount !== 0) {
             const m = h.method || 'other';
             const cur = payMap.get(m) ?? { total: 0, count: 0 };
-            payMap.set(m, { total: cur.total + hAmount, count: cur.count + 1 });
+            payMap.set(m, {
+              total: Math.max(0, Math.round((cur.total + hAmount) * 100) / 100),
+              count: cur.count + (hAmount > 0 ? 1 : 0),
+            });
             historySum += hAmount;
           }
         });
-        const unassignedPaid = Math.max(0, paid - historySum);
+        const unassignedPaid = Math.max(0, Math.round((paid - historySum) * 100) / 100);
         if (unassignedPaid > 0) {
           const fallbackMethod = (o as any).paymentMethod || liveOrder?.payment?.method || 'other';
           const cur = payMap.get(fallbackMethod) ?? { total: 0, count: 0 };
