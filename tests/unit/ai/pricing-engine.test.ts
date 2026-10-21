@@ -65,6 +65,29 @@ describe('IA-04: Paridade e Correção do Motor de Precificação (Backend & Fro
     expect(nodeResult.suggestedUnitPrice).toBe(tsResult.suggestedUnitPrice);
   });
 
+  it('mantém custo total zero mesmo quando custo unitário e quantidade sugerem outro valor', () => {
+    const params = {
+      items: [{ name: 'Amostra grátis', unitCost: 29.75, quantityUsed: 1, totalCost: 0 }],
+      wasteMarginPercent: 0, productionTimeMinutes: 0, setupTimeMinutes: 0,
+      profitMarginPercent: 0, paymentFeePercent: 0, settings: sampleSettings,
+    };
+    const backend = nodePricing.calculateRecipePricing(params);
+    const frontend = tsPricing.calculateRecipePricing(params);
+    expect(backend.materialsCost).toBe(0);
+    expect(frontend.materialsCost).toBe(backend.materialsCost);
+    expect(frontend.suggestedUnitPrice).toBe(backend.suggestedUnitPrice);
+  });
+
+  it('preserva configurações explícitas iguais a zero na taxa horária', () => {
+    const zeroSettings = {
+      desiredSalary: 0, workingDaysPerMonth: 0, workingHoursPerDay: 0,
+      monthlyFixedExpenses: { rent: 0, electricity: 0, internet: 0, meiTax: 0, softwareSubscriptions: 0, otherFixedExpenses: 0 },
+    };
+    const backend = nodePricing.calculateHourlyRate(zeroSettings);
+    const frontend = tsPricing.calculateHourlyRate(zeroSettings);
+    expect(frontend).toEqual(backend);
+  });
+
   it('deve ter paridade exata em caso completo com setup, rendimento de folha e batch tiers', () => {
     const complexParams = {
       items: [

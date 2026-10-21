@@ -48,7 +48,48 @@ export function defaultDelivery(): string {
 }
 
 export function calcTotal(items: QuoteItem[]): number {
-  return items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+  return roundCurrency(items.reduce((s, i) => s + lineSubtotal(i), 0));
+}
+
+export function lineSubtotal(item: Pick<QuoteItem, 'quantity' | 'unitPrice'>): number {
+  return roundCurrency(item.quantity * item.unitPrice);
+}
+
+export function roundCurrency(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+export function calculateQuoteTotals(
+  items: QuoteItem[], discount = 0, discountType: 'percent' | 'fixed' = 'percent'
+): { subtotal: number; discountAmount: number; total: number } {
+  const subtotal = calcTotal(items);
+  const discountAmount = roundCurrency(discountType === 'percent' ? subtotal * discount / 100 : discount);
+  return { subtotal, discountAmount, total: roundCurrency(subtotal - discountAmount) };
+}
+
+export function validateQuoteMath(items: QuoteItem[], discount = 0, discountType: 'percent' | 'fixed' = 'percent') {
+  if (!Array.isArray(items) || items.length < 1 || items.length > 10) {
+    throw new Error('O orçamento deve ter entre 1 e 10 itens.');
+  }
+  for (const item of items) {
+    if (!item || typeof item.name !== 'string' || !item.name.trim() || item.name.trim().length > 300
+      || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 10000
+      || !Number.isFinite(item.unitPrice) || item.unitPrice < 0 || item.unitPrice > 1000000
+      || Math.round((item.unitPrice + Number.EPSILON) * 100) / 100 !== item.unitPrice) {
+      throw new Error('Revise os itens: nome, quantidade ou preço inválido.');
+    }
+  }
+  if (!Number.isFinite(discount) || discount < 0
+    || Math.round((discount + Number.EPSILON) * 100) / 100 !== discount
+    || !['percent', 'fixed'].includes(discountType)
+    || (discountType === 'percent' && discount > 100)) {
+    throw new Error('Desconto inválido.');
+  }
+  const totals = calculateQuoteTotals(items, discount, discountType);
+  if (totals.discountAmount > totals.subtotal) {
+    throw new Error('O desconto não pode ser maior que o subtotal do orçamento.');
+  }
+  return totals;
 }
 
 export function buildWhatsAppMessage(

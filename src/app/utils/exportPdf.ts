@@ -7,6 +7,7 @@
  */
 
 import { Quote, Order } from '../types';
+import { calculateQuoteTotals, lineSubtotal } from '../components/quotes/quoteHelpers';
 
 function formatCurrency(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -113,7 +114,7 @@ export async function exportQuotePDF(quote: Quote, businessName?: string) {
   y += 3;
 
   // ── Items table ──
-  const subtotals = quote.items.map(i => i.quantity * i.unitPrice);
+  const subtotals = quote.items.map(lineSubtotal);
   const rawTotal  = subtotals.reduce((s, v) => s + v, 0);
 
   autoTable(doc, {
@@ -136,9 +137,7 @@ export async function exportQuotePDF(quote: Quote, businessName?: string) {
   // Discount + total block
   const summaryX = pageW - 10;
   if (quote.discount != null && quote.discount > 0) {
-    const discountAmt = quote.discountType === 'percent'
-      ? rawTotal * (quote.discount / 100)
-      : quote.discount;
+    const discountAmt = calculateQuoteTotals(quote.items, quote.discount, quote.discountType || 'fixed').discountAmount;
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(120, 120, 130);

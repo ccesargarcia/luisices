@@ -99,7 +99,7 @@ export function calculateCustomerFrequency(
  */
 export function getTopCustomerProduct(
   orders: Array<{
-    items?: Array<{ name: string; quantity: number; price?: number }> | null;
+    items?: Array<{ name: string; quantity: number; price?: number; unitPrice?: number }> | null;
     productName?: string;
     quantity?: number;
     amount?: number;
@@ -119,7 +119,10 @@ export function getTopCustomerProduct(
         const name = item.name || 'Produto';
         const cur = countMap.get(name) || { count: 0, revenue: 0 };
         const qty = item.quantity || 1;
-        const rev = isCompleted ? (item.price || 0) * qty : 0;
+        // Order items store `price` as the line subtotal (quantity × unitPrice).
+        // Older records may omit it; derive the subtotal from unitPrice then.
+        const lineTotal = item.price ?? (item.unitPrice !== undefined ? item.unitPrice * qty : 0);
+        const rev = isCompleted ? lineTotal : 0;
         countMap.set(name, {
           count: cur.count + qty,
           revenue: cur.revenue + rev,

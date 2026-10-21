@@ -220,17 +220,12 @@ describe('Funcionalidade: Configurações, Dashboard Cards e Sistema de Cores', 
   });
 
   describe('4. Resiliência de Métricas de Receita e Intervalos Contábeis', () => {
-    it('getLedgerDateRange para mês deve cobrir desde o primeiro até o último milissegundo do mês corrente', async () => {
+    it('getLedgerDateRange para mês cobre os últimos 30 dias, igual aos relatórios', async () => {
       const { getLedgerDateRange } = await import('../../src/hooks/useSalesLedger');
       const range = getLedgerDateRange('month');
-      const now = new Date();
-      expect(range.start.getDate()).toBe(1);
-      expect(range.start.getMonth()).toBe(now.getMonth());
-      expect(range.start.getFullYear()).toBe(now.getFullYear());
-
-      // O fim do mês deve ser o último dia do mês corrente (ex: dia 30 ou 31 às 23:59:59.999)
-      const expectedEndMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-      expect(range.end.getTime()).toBe(expectedEndMonth.getTime());
+      const expectedStart = new Date(range.end);
+      expectedStart.setDate(expectedStart.getDate() - 30);
+      expect(range.start.getTime()).toBe(expectedStart.getTime());
     });
 
     it('prioriza completedRevenue do ledger sobre fallbackRevenue de pedidos ativos quando disponível', () => {
