@@ -182,12 +182,12 @@ function calculateRecipePricing(params = {}) {
       if (item.piecesPerSheet && item.piecesPerSheet > 0 && item.useSheetRounding) {
         const sheetsNeeded = Math.ceil(qty / item.piecesPerSheet);
         const itemBatchUnitCost = ((Number(item.unitCost) || 0) * sheetsNeeded) / qty;
-        batchMaterialCostUnit += itemBatchUnitCost;
+        batchMaterialCostUnit += Math.max(0, itemBatchUnitCost);
       } else {
         const unitItemCost = Number(item.totalCost) !== undefined && !isNaN(Number(item.totalCost)) && item.totalCost !== null
           ? Number(item.totalCost)
           : (Number(item.unitCost) || 0) * (Number(item.quantityUsed) || 0);
-        batchMaterialCostUnit += unitItemCost;
+        batchMaterialCostUnit += Math.max(0, unitItemCost);
       }
     });
 

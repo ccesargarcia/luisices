@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { doc, autoTable } = vi.hoisted(() => {
+const { doc, autoTable, MockJsPDF } = vi.hoisted(() => {
   const doc: Record<string, any> = {
     internal: { pageSize: { getWidth: () => 210, getHeight: () => 297 } },
     setFillColor: vi.fn(),
@@ -19,10 +19,16 @@ const { doc, autoTable } = vi.hoisted(() => {
   const autoTable = vi.fn((target: any, options: any) => {
     target.lastAutoTable = { finalY: options.startY + 20 };
   });
-  return { doc, autoTable };
+  class MockJsPDF {
+    constructor() {
+      return doc;
+    }
+  }
+
+  return { doc, autoTable, MockJsPDF };
 });
 
-vi.mock('jspdf', () => ({ jsPDF: vi.fn(() => doc) }));
+vi.mock('jspdf', () => ({ jsPDF: MockJsPDF }));
 vi.mock('jspdf-autotable', () => ({ default: autoTable }));
 
 import { exportQuotePDF } from '../../src/app/utils/exportPdf';
