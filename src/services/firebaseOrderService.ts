@@ -764,24 +764,34 @@ export class FirebaseOrderService {
 
             let history = payment.history !== undefined ? payment.history : (existingPayment.history || null);
             let notes = payment.notes !== undefined ? payment.notes : (existingPayment.notes || null);
-            if (excess > 0 && payment.history === undefined) {
-              const refundNote = `Estorno/crédito automático de R$ ${excess.toFixed(2)} por redução do valor pago (de R$ ${existingPaid.toFixed(2)} para R$ ${paidAmount.toFixed(2)}).`;
-              const refundEntry = {
-                amount: -excess,
-                date: now,
-                method: payment.method || existingPayment.method || 'pix',
-                notes: refundNote,
-              };
-              const baseHistory = Array.isArray(existingPayment.history)
-                ? [...existingPayment.history]
-                : (existingPaid > 0 ? [{
-                    amount: existingPaid,
-                    date: existingPayment.paymentDate || now,
-                    method: existingPayment.method || 'pix',
-                    notes: 'Pagamento inicial registrado',
-                  }] : []);
-              history = [...baseHistory, refundEntry];
-              notes = notes ? `${notes} | ${refundNote}` : refundNote;
+            if (excess > 0) {
+              const baseHistory = Array.isArray(payment.history) && payment.history.length > 0
+                ? [...payment.history]
+                : (Array.isArray(existingPayment.history) && existingPayment.history.length > 0
+                    ? [...existingPayment.history]
+                    : (existingPaid > 0 ? [{
+                        amount: existingPaid,
+                        date: existingPayment.paymentDate || now,
+                        method: payment.method || existingPayment.method || 'pix',
+                        notes: 'Pagamento inicial registrado',
+                      }] : []));
+
+              const historySum = baseHistory.reduce((sum: number, h: any) => sum + (Number(h?.amount) || 0), 0);
+              const unadjustedExcess = Math.round((historySum - paidAmount) * 100) / 100;
+
+              if (unadjustedExcess > 0) {
+                const refundNote = `Estorno/crédito automático de R$ ${unadjustedExcess.toFixed(2)} por redução do valor pago (de R$ ${existingPaid.toFixed(2)} para R$ ${paidAmount.toFixed(2)}).`;
+                const refundEntry = {
+                  amount: -unadjustedExcess,
+                  date: now,
+                  method: payment.method || existingPayment.method || 'pix',
+                  notes: refundNote,
+                };
+                history = [...baseHistory, refundEntry];
+                notes = notes ? `${notes} | ${refundNote}` : refundNote;
+              } else {
+                history = baseHistory.length > 0 ? baseHistory : null;
+              }
             }
 
             cleanUpdates[key] = {
@@ -825,14 +835,7 @@ export class FirebaseOrderService {
         let history = orderData.payment.history || null;
         let notes = orderData.payment.notes || null;
         if (excess > 0) {
-          const refundNote = `Estorno/crédito automático de R$ ${excess.toFixed(2)} por redução do total do pedido (de R$ ${existingPaid.toFixed(2)} para R$ ${totalAmount.toFixed(2)}).`;
-          const refundEntry = {
-            amount: -excess,
-            date: now,
-            method: orderData.payment.method || 'pix',
-            notes: refundNote,
-          };
-          const baseHistory = Array.isArray(orderData.payment.history)
+          const baseHistory = Array.isArray(orderData.payment.history) && orderData.payment.history.length > 0
             ? [...orderData.payment.history]
             : (existingPaid > 0 ? [{
                 amount: existingPaid,
@@ -840,8 +843,23 @@ export class FirebaseOrderService {
                 method: orderData.payment.method || 'pix',
                 notes: 'Pagamento inicial registrado',
               }] : []);
-          history = [...baseHistory, refundEntry];
-          notes = notes ? `${notes} | ${refundNote}` : refundNote;
+
+          const historySum = baseHistory.reduce((sum: number, h: any) => sum + (Number(h?.amount) || 0), 0);
+          const unadjustedExcess = Math.round((historySum - paidAmount) * 100) / 100;
+
+          if (unadjustedExcess > 0) {
+            const refundNote = `Estorno/crédito automático de R$ ${unadjustedExcess.toFixed(2)} por redução do total do pedido (de R$ ${existingPaid.toFixed(2)} para R$ ${totalAmount.toFixed(2)}).`;
+            const refundEntry = {
+              amount: -unadjustedExcess,
+              date: now,
+              method: orderData.payment.method || 'pix',
+              notes: refundNote,
+            };
+            history = [...baseHistory, refundEntry];
+            notes = notes ? `${notes} | ${refundNote}` : refundNote;
+          } else {
+            history = baseHistory.length > 0 ? baseHistory : null;
+          }
         }
 
         cleanUpdates.payment = {
