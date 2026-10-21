@@ -404,12 +404,14 @@ export function NewOrderDialog({
           notes: null,
           history: null,
         } : {
-          status: formData.paymentStatus,
+          status: totalAmount === 0
+            ? (formData.paymentStatus || 'paid')
+            : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending')),
           method: formData.paymentMethod || null,
           totalAmount,
           paidAmount,
-          remainingAmount: totalAmount - paidAmount,
-          paymentDate: null,
+          remainingAmount: Math.round(Math.max(0, totalAmount - paidAmount) * 100) / 100,
+          paymentDate: paidAmount > 0 ? new Date().toISOString() : null,
           notes: null,
           history: null,
         },
@@ -750,7 +752,18 @@ export function NewOrderDialog({
               paymentMethod={formData.paymentMethod}
               onPaymentMethodChange={(method) => setFormData({ ...formData, paymentMethod: method })}
               paidAmount={formData.paidAmount}
-              onPaidAmountChange={(paid) => setFormData({ ...formData, paidAmount: paid })}
+              onPaidAmountChange={(paid) => {
+                const parsed = parseDecimalMoneyInput(paid);
+                let autoStatus: PaymentStatus = formData.paymentStatus;
+                if (parsed !== null && totalPrice > 0) {
+                  if (parsed >= totalPrice) autoStatus = 'paid';
+                  else if (parsed > 0) autoStatus = 'partial';
+                  else autoStatus = 'pending';
+                } else if (paid === '' || parsed === 0) {
+                  autoStatus = 'pending';
+                }
+                setFormData({ ...formData, paidAmount: paid, paymentStatus: autoStatus });
+              }}
               totalPrice={totalPrice}
               formatCurrency={formatCurrency}
             />
