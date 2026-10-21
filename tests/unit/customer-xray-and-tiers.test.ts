@@ -133,6 +133,22 @@ describe('Inteligência Comercial: Raio X, Ticket Médio e Faixas de Clientes', 
       const prefPayment = getPreferredPaymentMethod(mockOrders);
       expect(prefPayment).toBe('pix');
     });
+
+    it('não conta estornos como novos pagamentos ao calcular a forma predominante', () => {
+      const orders = [{
+        status: 'completed',
+        payment: {
+          method: 'cash',
+          history: [
+            { amount: 100, method: 'pix' },
+            { amount: -30, method: 'cash' },
+            { amount: -10, method: 'cash' },
+          ],
+        },
+      }];
+
+      expect(getPreferredPaymentMethod(orders)).toBe('pix');
+    });
   });
 
   describe('4. Classificação por Faixas de Gasto (Tiers) Configuráveis', () => {

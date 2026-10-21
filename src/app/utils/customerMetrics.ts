@@ -152,7 +152,7 @@ export function getTopCustomerProduct(
  */
 export function getPreferredPaymentMethod(
   orders: Array<{
-    payment?: { method?: string | null; history?: Array<{ method: string }> | null };
+    payment?: { method?: string | null; history?: Array<{ amount?: number; method: string }> | null };
     paymentMethod?: string;
     status?: string;
   }>
@@ -165,7 +165,9 @@ export function getPreferredPaymentMethod(
   validOrders.forEach((o) => {
     if (o.payment?.history && o.payment.history.length > 0) {
       o.payment.history.forEach((h) => {
-        if (h.method) methodCounts[h.method] = (methodCounts[h.method] || 0) + 1;
+        if (h.method && (h.amount === undefined || h.amount > 0)) {
+          methodCounts[h.method] = (methodCounts[h.method] || 0) + 1;
+        }
       });
     } else {
       const m = o.payment?.method || o.paymentMethod;

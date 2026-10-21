@@ -663,6 +663,80 @@ describe('Fluxo Completo de Edição de Valor Pago e Prevenção de Erro de Perm
       expect(isConsistentOrderPaymentRule(updatedPayload.payment, 100)).toBe(true);
     });
 
+    it('atribui a redução à forma original do pagamento mesmo se a forma selecionada foi trocada', async () => {
+      const existingHistory = [{ amount: 100, date: '2026-01-01', method: 'pix', notes: 'Pagamento inicial' }];
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 2,
+          price: 100,
+          payment: {
+            status: 'paid',
+            method: 'pix',
+            totalAmount: 100,
+            paidAmount: 100,
+            remainingAmount: 0,
+            history: existingHistory,
+          },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      await firebaseOrderService.updateOrder('order-reduced-after-method-change', {
+        payment: {
+          method: 'cash',
+          paidAmount: 70,
+          history: existingHistory,
+        } as any,
+      });
+
+      const updatedPayload = mockTransactionUpdate.mock.calls[0][1];
+      expect(updatedPayload.payment.method).toBe('cash');
+      expect(updatedPayload.payment.history).toHaveLength(2);
+      expect(updatedPayload.payment.history[1]).toMatchObject({ amount: -30, method: 'pix' });
+      expect(updatedPayload.payment.history.reduce((sum: number, entry: any) => sum + entry.amount, 0)).toBe(70);
+    });
+
+    it('usa a forma original ao criar histórico-base de um pedido legado sem histórico', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 2,
+          price: 100,
+          payment: {
+            status: 'paid',
+            method: 'pix',
+            totalAmount: 100,
+            paidAmount: 100,
+            remainingAmount: 0,
+          },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'user-1', amount: 100 }),
+      });
+
+      await firebaseOrderService.updateOrder('legacy-order-reduced-after-method-change', {
+        payment: {
+          method: 'cash',
+          paidAmount: 70,
+          history: undefined,
+        } as any,
+      });
+
+      const updatedPayload = mockTransactionUpdate.mock.calls[0][1];
+      expect(updatedPayload.payment.history).toHaveLength(2);
+      expect(updatedPayload.payment.history[0]).toMatchObject({ amount: 100, method: 'pix' });
+      expect(updatedPayload.payment.history[1]).toMatchObject({ amount: -30, method: 'pix' });
+      expect(updatedPayload.payment.method).toBe('cash');
+    });
+
     it('limita paidAmount caso o chamador envie valor pago maior que o total do pedido', async () => {
       mockOrderGet.mockReturnValue({
         exists: () => true,
