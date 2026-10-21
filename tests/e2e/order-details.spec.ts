@@ -224,6 +224,48 @@ test.describe.serial('Detalhes do Pedido', () => {
     await closeAnyOpenDialog(page);
   });
 
+  test('deve editar o valor pago do pedido sem erro de permissão e atualizar o status para parcial', async ({ page }) => {
+    await closeAnyOpenDialog(page);
+
+    const orderCard = await findOrderCard(page, testOrderData.customer, testOrderData.product);
+    await expect(orderCard).toBeVisible({ timeout: 15000 });
+    await orderCard.scrollIntoViewIfNeeded();
+    await orderCard.click({ force: true, timeout: 10000 });
+
+    const dialog = page
+      .locator('[role="dialog"]')
+      .filter({ hasText: /Detalhes do Pedido|Editar Pedido/i })
+      .first();
+    await expect(dialog).toBeVisible({ timeout: 10000 });
+
+    const editBtn = dialog.getByRole('button', { name: /^Editar$/i }).or(dialog.getByRole('button', { name: /Editar/i })).first();
+    await expect(editBtn).toBeVisible({ timeout: 5000 });
+    await editBtn.click();
+
+    const paidInput = dialog.locator('#paidAmount');
+    await expect(paidInput).toBeVisible({ timeout: 5000 });
+    await paidInput.fill('50,00');
+
+    const paymentStatusTrigger = dialog.locator('#paymentStatus');
+    await expect(paymentStatusTrigger).toContainText(/Parcial/i);
+
+    const saveBtn = dialog.getByRole('button', { name: /Salvar Alterações/i });
+    await expect(saveBtn).toBeEnabled({ timeout: 5000 });
+    await saveBtn.click();
+
+    // Garantir ausência de erro de permissão
+    const toastError = page.locator('[data-sonner-toast][data-type="error"], [role="alert"]').filter({
+      hasText: /permission|permissão|insufficient/i,
+    });
+    await expect(toastError).toHaveCount(0);
+
+    await expect(dialog.getByText(/Detalhes do Pedido/i)).toBeVisible({ timeout: 10000 });
+    await expect(dialog.getByText(/Parcial/i).first()).toBeVisible({ timeout: 5000 });
+    await expect(dialog.getByText(/R\$\s*50,00/i).first()).toBeVisible({ timeout: 5000 });
+
+    await closeAnyOpenDialog(page);
+  });
+
   test('deve entrar em modo de edição e excluir pedido', async ({ page }) => {
     await closeAnyOpenDialog(page);
 
