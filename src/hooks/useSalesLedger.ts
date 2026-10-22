@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { SaleRecord, LedgerPeriod, Tag } from '../app/types';
 import { firebaseLedgerService, getSalesLedgerQuery, getSalesLedgerDateRangeQuery } from '../services/firebaseLedgerService';
 import { getReportDateRange } from '../app/utils/reportDateRange';
+import { calculatePaymentBalance } from '../app/utils/financialMath';
 
 export interface DateRange {
   start: Date;
@@ -199,7 +200,11 @@ export function useSalesLedger(options?: {
     const totalValidAmount = validSales.reduce((sum, s) => sum + (s.amount || 0), 0);
 
     // Total efetivamente recebido/pago
-    const totalPaid = validSales.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
+    const totalPaid = validSales.reduce((sum, s) => sum + calculatePaymentBalance(
+      s.amount,
+      s.paidAmount,
+      s.paymentStatus,
+    ).paidAmount, 0);
 
     // Ticket Médio no período
     const averageTicket = totalCount > 0 ? totalValidAmount / totalCount : 0;

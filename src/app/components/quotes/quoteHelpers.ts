@@ -1,4 +1,4 @@
-import { Quote, QuoteItem, QuoteStatus } from '../../types';
+import { OrderItem, Quote, QuoteItem, QuoteStatus } from '../../types';
 import { formatCurrency } from '../../utils/currency';
 
 export const STATUS_LABELS: Record<QuoteStatus, string> = {
@@ -65,6 +65,63 @@ export function calculateQuoteTotals(
   const subtotal = calcTotal(items);
   const discountAmount = roundCurrency(discountType === 'percent' ? subtotal * discount / 100 : discount);
   return { subtotal, discountAmount, total: roundCurrency(subtotal - discountAmount) };
+}
+
+export function buildQuoteOrderPricing(
+  items: QuoteItem[],
+  totalPrice: number
+): { items: OrderItem[]; unitPrice: number | null; pricingMode: 'unit' | 'items' } {
+  const lineTotalsCents = items.map((item) => Math.round(lineSubtotal(item) * 100));
+  const subtotalCents = lineTotalsCents.reduce((sum, cents) => sum + cents, 0);
+  const totalCents = Math.round(roundCurrency(totalPrice) * 100);
+  const hasDiscount = subtotalCents > 0 && subtotalCents !== totalCents;
+
+  const allocatedLineCents = [...lineTotalsCents];
+  if (hasDiscount) {
+    // Allocate integer cents by largest remainder so line totals stay nonnegative and sum exactly.
+    const denominator = BigInt(subtotalCents);
+    const shares = lineTotalsCents.map((lineCents) => {
+      const numerator = BigInt(lineCents) * BigInt(totalCents);
+      return {
+        cents: Number(numerator / denominator),
+        remainder: numerator % denominator,
+      };
+    });
+    shares.forEach((share, index) => {
+      allocatedLineCents[index] = share.cents;
+    });
+
+    let remainingCents = totalCents - allocatedLineCents.reduce((sum, cents) => sum + cents, 0);
+    const largestRemainders = shares
+      .map((share, index) => ({ index, remainder: share.remainder }))
+      .sort((a, b) => (
+        a.remainder === b.remainder ? a.index - b.index : a.remainder > b.remainder ? -1 : 1
+      ));
+
+    for (let i = 0; i < remainingCents; i += 1) {
+      allocatedLineCents[largestRemainders[i].index] += 1;
+    }
+  }
+
+  const orderItems = items.map((item, index): OrderItem => {
+    const itemTotalCents = allocatedLineCents[index];
+
+    const price = itemTotalCents / 100;
+    return {
+      name: item.name,
+      quantity: item.quantity,
+      // Preserve the exact allocated line total; unit prices may need sub-cent precision.
+      unitPrice: price / item.quantity,
+      price,
+    };
+  });
+
+  const singleItem = orderItems.length === 1;
+  return {
+    items: orderItems,
+    unitPrice: singleItem ? orderItems[0].unitPrice : null,
+    pricingMode: singleItem ? 'unit' : 'items',
+  };
 }
 
 export function validateQuoteMath(items: QuoteItem[], discount = 0, discountType: 'percent' | 'fixed' = 'percent') {

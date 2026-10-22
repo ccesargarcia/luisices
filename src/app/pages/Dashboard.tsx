@@ -41,6 +41,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { useSalesLedger } from '../../hooks/useSalesLedger';
 import { DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
+import { calculatePaymentBalance } from '../utils/financialMath';
 import { parseLocalDate } from '../utils/date';
 import { exportOrdersToExcel } from '../utils/exportData';
 import { toast } from 'sonner';
@@ -248,7 +249,11 @@ export function Dashboard() {
     const completedInMonth = ordersInMonth.filter((o) => o.status === 'completed');
     const fallbackRevenue = completedInMonth.reduce((sum, o) => sum + (o.price || 0), 0);
     const fallbackCount = completedInMonth.length;
-    const fallbackPaid = ordersInMonth.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0);
+    const fallbackPaid = ordersInMonth.reduce((sum, o) => sum + calculatePaymentBalance(
+      o.price,
+      o.payment?.paidAmount,
+      o.payment?.status,
+    ).paidAmount, 0);
     const validOrdersInMonth = ordersInMonth.filter((o) => o.status !== 'cancelled');
     const fallbackAvgTicket = validOrdersInMonth.length > 0
       ? validOrdersInMonth.reduce((sum, o) => sum + (o.price || 0), 0) / validOrdersInMonth.length
@@ -285,18 +290,17 @@ export function Dashboard() {
     ).length;
 
     const totalPaid = isFilterActive
-      ? orders.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0)
+      ? orders.reduce((sum, o) => sum + calculatePaymentBalance(o.price, o.payment?.paidAmount, o.payment?.status).paidAmount, 0)
       : (ledgerStats.totalPaid > 0
           ? ledgerStats.totalPaid
-          : orders.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0));
+          : orders.reduce((sum, o) => sum + calculatePaymentBalance(o.price, o.payment?.paidAmount, o.payment?.status).paidAmount, 0));
 
     // "A Receber": total do que ainda não foi pago em pedidos ativos
-    const totalPending = activeOrders
-      .filter(o => !o.payment || o.payment.status !== 'paid')
-      .reduce((sum, o) => {
-        if (!o.payment) return sum + o.price; // sem pagamento = tudo pendente
-        return sum + (o.payment.remainingAmount ?? o.price - (o.payment.paidAmount || 0));
-      }, 0);
+    const totalPending = activeOrders.reduce((sum, o) => sum + calculatePaymentBalance(
+      o.price,
+      o.payment?.paidAmount,
+      o.payment?.status,
+    ).remainingAmount, 0);
 
     // Previsão de receita (pedidos em andamento + pendentes)
     const expectedRevenue = orders

@@ -109,15 +109,12 @@ service cloud.firestore {
     // the Firestore Rules expression evaluation limit.
     function canCreateOwnedDocument(module, data) {
       let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
-      let role = profile.get('role', '');
-      return isActiveProfile(profile)
+      return profile.get('active', true)
+        && (!('tokensValidAfterTime' in profile) || request.auth.token.auth_time > profile.tokensValidAfterTime)
         && (
-          role == 'admin'
+          profile.get('role', '') == 'admin'
           || (data.userId == request.auth.uid
-            && hasPerm(
-              profile.get('permissions', {}).get(module, false),
-              'create'
-            ))
+            && hasPerm(profile.get('permissions', {}).get(module, false), 'create'))
         );
     }
 
@@ -141,6 +138,20 @@ service cloud.firestore {
             && !changed.hasAny(['assignedTo'])
             && (!changed.hasAny(['deletedAt'])
               || hasPerm(profile.get('permissions', {}).get('orders', false), 'delete'))
+          )
+        );
+    }
+
+    function canUpdateOwnedQuote(previous, next) {
+      let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
+      let role = profile.get('role', '');
+      return isActiveProfile(profile)
+        && (
+          role == 'admin'
+          || (
+            (previous.userId == request.auth.uid || role == 'funcionario')
+            && (!('userId' in next) || next.userId == previous.userId)
+            && hasPerm(profile.get('permissions', {}).get('quotes', false), 'edit')
           )
         );
     }
@@ -413,70 +424,63 @@ service cloud.firestore {
         && (!('quantity' in data) || (data.quantity is number && data.quantity > 0));
     }
 
-    function isValidQuoteItem(item) {
-      return item is map && item.size() == 3
-        && 'name' in item && 'quantity' in item && 'unitPrice' in item
-        && item.name is string && item.name.size() >= 1 && item.name.size() <= 300
-        && item.name.matches('[\\s\\S]*[^\\s][\\s\\S]*')
-        && item.quantity is int && item.quantity >= 1 && item.quantity <= 10000
-        && item.unitPrice is number && item.unitPrice >= 0 && item.unitPrice <= 1000000
-        && math.abs(item.unitPrice * 100 - math.round(item.unitPrice * 100)) < 0.001;
-    }
-
-    function isValidQuoteItems(items) {
-      let count = items.size();
-      return items is list && count >= 1 && count <= 10
-        && isValidQuoteItem(items[0])
-        && (count <= 1 || isValidQuoteItem(items[1]))
-        && (count <= 2 || isValidQuoteItem(items[2]))
-        && (count <= 3 || isValidQuoteItem(items[3]))
-        && (count <= 4 || isValidQuoteItem(items[4]))
-        && (count <= 5 || isValidQuoteItem(items[5]))
-        && (count <= 6 || isValidQuoteItem(items[6]))
-        && (count <= 7 || isValidQuoteItem(items[7]))
-        && (count <= 8 || isValidQuoteItem(items[8]))
-        && (count <= 9 || isValidQuoteItem(items[9]));
+    function itemValidTotal(item) {
+      return (item.quantity is int && item.quantity >= 1 && item.quantity <= 10000
+        && item.unitPrice >= 0 && item.unitPrice <= 1000000
+        && math.abs(item.unitPrice * 100 - math.round(item.unitPrice * 100)) < 0.001
+        && item.name.size() <= 300 && item.name.matches('[\\s\\S]*[^\\s][\\s\\S]*'))
+        ? item.quantity * item.unitPrice
+        : -1000000000000000;
     }
 
     function quoteSubtotal(items) {
-      let count = items.size();
-      return (count > 0 ? items[0].quantity * items[0].unitPrice : 0)
-        + (count > 1 ? items[1].quantity * items[1].unitPrice : 0)
-        + (count > 2 ? items[2].quantity * items[2].unitPrice : 0)
-        + (count > 3 ? items[3].quantity * items[3].unitPrice : 0)
-        + (count > 4 ? items[4].quantity * items[4].unitPrice : 0)
-        + (count > 5 ? items[5].quantity * items[5].unitPrice : 0)
-        + (count > 6 ? items[6].quantity * items[6].unitPrice : 0)
-        + (count > 7 ? items[7].quantity * items[7].unitPrice : 0)
-        + (count > 8 ? items[8].quantity * items[8].unitPrice : 0)
-        + (count > 9 ? items[9].quantity * items[9].unitPrice : 0);
+      let c = items.size();
+      let s1 = itemValidTotal(items[0])
+        + (c > 1 ? itemValidTotal(items[1]) : 0)
+        + (c > 2 ? itemValidTotal(items[2]) : 0)
+        + (c > 3 ? itemValidTotal(items[3]) : 0)
+        + (c > 4 ? itemValidTotal(items[4]) : 0);
+      return c <= 5 ? s1 : s1
+        + (c > 5 ? itemValidTotal(items[5]) : 0)
+        + (c > 6 ? itemValidTotal(items[6]) : 0)
+        + (c > 7 ? itemValidTotal(items[7]) : 0)
+        + (c > 8 ? itemValidTotal(items[8]) : 0)
+        + (c > 9 ? itemValidTotal(items[9]) : 0);
     }
 
     function isValidQuoteMath(data) {
-      let subtotal = quoteSubtotal(data.items);
-      let discount = data.get('discount', null) == null ? 0 : data.get('discount', 0);
-      let discountType = data.get('discountType', null) == null ? 'percent' : data.get('discountType', null);
-      let discountAmount = discountType == 'percent' ? subtotal * discount / 100 : discount;
-      return isValidQuoteItems(data.items)
-        && discount is number && discount >= 0
-        && math.abs(discount * 100 - math.round(discount * 100)) < 0.001
+      let items = data.get('items', []);
+      let count = items.size();
+      let disc = data.get('discount', 0);
+      let discount = float(disc == null ? 0 : disc);
+      let dt = data.get('discountType', 'percent');
+      let discountType = dt == null ? 'percent' : dt;
+      let subtotal = float((items is list && count >= 1 && count <= 10) ? quoteSubtotal(items) : -1);
+      let discountAmount = discountType == 'percent' ? (subtotal * discount / 100.0) : discount;
+      let dCents = discount * 100.0;
+      let totalPrice = float(data.get('totalPrice', -1));
+      let diff = totalPrice - (subtotal - discountAmount);
+      return subtotal >= 0.0
+        && discount >= 0.0
+        && math.abs(math.round(dCents) - dCents) < 0.001
         && (discountType in ['percent', 'fixed'])
-        && (discountType != 'percent' || discount <= 100)
+        && (discountType != 'percent' || discount <= 100.0)
         && discountAmount <= subtotal
-        && data.totalPrice is number && data.totalPrice >= 0
-        && math.abs(data.totalPrice - (subtotal - discountAmount)) < 0.0051;
+        && totalPrice >= 0.0
+        && math.abs(diff) < 0.0051;
     }
 
     function isValidQuote(data) {
-      return data.get('totalPrice', null) is number && data.totalPrice >= 0
-        && data.get('customerName', null) is string && data.customerName.size() >= 1 && data.customerName.size() <= 200
+      let name = data.get('customerName', '');
+      return name.size() >= 1 && name.size() <= 200
         && data.get('status', 'draft') in ['draft', 'sent', 'approved', 'rejected', 'expired']
         && isValidQuoteMath(data);
     }
 
     function isValidQuoteUpdate(data, previous) {
+      let name = data.get('customerName', '');
       return (!('totalPrice' in data) || (data.totalPrice is number && data.totalPrice >= 0))
-        && (!('customerName' in data) || (data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 200))
+        && (!('customerName' in data) || (name is string && name.size() >= 1 && name.size() <= 200))
         && (!('status' in data) || data.status in ['draft', 'sent', 'approved', 'rejected', 'expired'])
         && (!data.diff(previous).affectedKeys().hasAny(['items', 'totalPrice', 'discount', 'discountType'])
           || isValidQuoteMath(data));
@@ -611,13 +615,12 @@ service cloud.firestore {
       allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('quotes', 'view'))
         || isAdmin()
         || employeeHasQuotesPerm('view');
-      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && canCreateOwnedModule('quotes')) || isAdmin())
+      allow create: if request.auth != null
+        && canCreateOwnedDocument('quotes', request.resource.data)
         && isValidQuote(request.resource.data);
-      allow update: if (
-        isAdmin()
-        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('quotes', 'edit'))
-        || employeeHasQuotesPerm('edit')
-      ) && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId)
+      allow update: if request.auth != null
+        && resource != null
+        && canUpdateOwnedQuote(resource.data, request.resource.data)
         && isValidQuoteUpdate(request.resource.data, resource.data);
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('quotes', 'delete'))
         || isAdmin()

@@ -31,6 +31,32 @@ describe('IA-07 & IA-08: Execução de Ferramentas e Saídas Estruturadas', () =
   const cache = new AiResponseCache();
   const budget = new AiBudgetManager(null);
 
+  it('usa o motor de precificação compartilhado e preserva percentuais zero no MCP legado', async () => {
+    const executor = new AiToolsExecutor({ getPricingSettings: async () => ({}) });
+    const result = await executor.executeCalculateArtisanPricing({
+      productName: 'Teste',
+      quantity: 1,
+      pricingMode: 'markup',
+      markupPercent: 0,
+      items: [{ name: 'Papel', quantity: 1, unitCost: 10 }],
+      laborTimeMinutes: 0,
+      hourlyRate: 0,
+    }, { uid: 'admin-1' });
+
+    expect(result.success).toBe(true);
+    expect(result.suggestedUnitPrice).toBe(result.unitPrice);
+    // R$ 10 de material + 10% de perda, com 4,5% de taxa configurada.
+    expect(result.suggestedTotalPrice).toBe(11.52);
+    expect(result.paymentFeePercent).toBe(4.5);
+  });
+
+  it('rejeita percentual de precificação fora do intervalo do negócio', async () => {
+    const executor = new AiToolsExecutor({ getPricingSettings: async () => ({}) });
+    await expect(executor.executeCalculateArtisanPricing({
+      productName: 'Teste', quantity: 1, pricingMode: 'margem', profitMarginPercent: 96,
+    }, { uid: 'admin-1' })).rejects.toMatchObject({ code: 'invalid-argument' });
+  });
+
   it('sintetiza chamadas de múltiplas ferramentas em uma segunda rodada limitada', async () => {
     const requests: any[] = [];
     const mockGeminiClient = {

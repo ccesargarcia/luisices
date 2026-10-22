@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { formatCurrency } from '../utils/currency';
+import { calculatePaymentBalance } from '../utils/financialMath';
 import { parseLocalDate } from '../utils/date';
 import { getReportDateRange } from '../utils/reportDateRange';
 import { Tag } from '../types';
@@ -358,15 +359,14 @@ export function Reports() {
 
       const saleAmount = o.amount || 0;
       const liveOrder = ordersMap.get(o.orderId || o.id);
-      const isCompleted = o.status === 'completed' || (o.paymentStatus as any) === 'paid' || liveOrder?.payment?.status === 'paid';
-
-      let paid = (o as any).paidAmount || liveOrder?.payment?.paidAmount || 0;
-      // Se o pedido ou pagamento estiver concluído e o paidAmount estiver 0 ou ausente, considera o valor total quitado
-      if (isCompleted && paid === 0 && saleAmount > 0) {
-        paid = saleAmount;
-      }
-
-      const remaining = Math.max(0, saleAmount - paid);
+      const payment = liveOrder?.payment;
+      const paymentBalance = calculatePaymentBalance(
+        saleAmount,
+        payment ? payment.paidAmount : (o as any).paidAmount,
+        payment?.status || o.paymentStatus,
+      );
+      const paid = paymentBalance.paidAmount;
+      const remaining = paymentBalance.remainingAmount;
       if (remaining > 0) {
         totalPending += remaining;
         pendingCount += 1;
@@ -375,8 +375,9 @@ export function Reports() {
       const history = liveOrder?.payment?.history || (o as any).paymentHistory;
       if (Array.isArray(history) && history.length > 0) {
         let historySum = 0;
+        let historyAmountRemaining = paid;
         history.forEach((h: any) => {
-          const hAmount = Number(h.amount || 0);
+          const hAmount = Math.min(historyAmountRemaining, Math.max(0, Number(h.amount) || 0));
           if (hAmount !== 0) {
             const m = h.method || 'other';
             const cur = payMap.get(m) ?? { total: 0, count: 0 };
@@ -385,6 +386,7 @@ export function Reports() {
               count: cur.count + (hAmount > 0 ? 1 : 0),
             });
             historySum += hAmount;
+            historyAmountRemaining -= hAmount;
           }
         });
         const unassignedPaid = Math.max(0, Math.round((paid - historySum) * 100) / 100);

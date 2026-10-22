@@ -862,6 +862,19 @@ class AiToolsExecutor {
       studioSettings.monthlyFixedExpenses[field] = valid ? Number(value) : fallback;
       inputs[`monthlyFixedExpenses.${field}`] = { value: studioSettings.monthlyFixedExpenses[field], source: valid ? 'configuration' : 'default', label: `Despesa fixa mensal: ${field} (R$)`, invalidConfiguration: value !== undefined && !valid };
     }
+    if (args.hourlyRate !== undefined) {
+      const requestedRate = parse(args.hourlyRate, 'hourlyRate', 0, 10000);
+      const monthlyHours = Math.max(1, studioSettings.workingDaysPerMonth * studioSettings.workingHoursPerDay);
+      const fixedPerHour = Object.values(studioSettings.monthlyFixedExpenses).reduce((sum, value) => sum + value, 0) / monthlyHours;
+      // O valor informado substitui a parcela de salário; os custos fixos cadastrados continuam cobertos.
+      studioSettings.desiredSalary = Math.max(0, (requestedRate - fixedPerHour) * monthlyHours);
+      inputs.desiredSalary = {
+        value: studioSettings.desiredSalary,
+        source: 'argument',
+        label: 'Salário mensal equivalente à hora informada (R$)',
+      };
+      inputs.hourlyRate = { value: Math.max(requestedRate, fixedPerHour), source: 'argument', label: 'Valor da hora solicitado (R$)', fixedCostFloor: fixedPerHour };
+    }
     const read = (field, fallback, configField, min = 0, max = Infinity) => {
       const supplied = args[field] !== undefined;
       const value = supplied ? parse(args[field], field, min, max) : fallback;
@@ -915,6 +928,7 @@ class AiToolsExecutor {
       });
     }
 
+    const pricingMethod = args.pricingMode === 'markup' ? 'markup_on_cost' : 'margin_on_sale';
     const calcResult = calculateRecipePricing({
       items,
       wasteMarginPercent,
@@ -923,6 +937,7 @@ class AiToolsExecutor {
       setupTimeMinutes,
       profitMarginPercent,
       paymentFeePercent,
+      pricingMethod,
       settings: studioSettings,
     });
 
@@ -935,7 +950,7 @@ class AiToolsExecutor {
       items, wasteMarginPercent, laborMode: 'time',
       productionTimeMinutes: laborTimeMinutes * seriesEfficiency,
       setupTimeMinutes: setupTimeMinutes / qty,
-      profitMarginPercent, paymentFeePercent, settings: studioSettings,
+      profitMarginPercent, paymentFeePercent, pricingMethod, settings: studioSettings,
     });
     const rates = calculateHourlyRate(studioSettings);
     const setupLaborPerUnit = (setupTimeMinutes / qty) * rates.minuteRate;
@@ -2308,17 +2323,34 @@ class AiToolsExecutor {
 
   async executeCalculateArtisanPricing(args = {}, scope) {
     const productName = String(args.productName || 'Encomenda').trim();
-    const quantity = Math.max(1, Number(args.quantity) || 1);
-    const pricingMode = args.pricingMode === 'margem' ? 'margem' : 'markup';
-    const markupPercent = Number(args.markupPercent) || 100;
-    const profitMarginPercent = Number(args.profitMarginPercent) || 50;
+    const quantity = args.quantity === undefined ? 1 : Number(args.quantity);
+    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 100000) {
+      const error = new Error('Quantidade inválida: informe um número inteiro entre 1 e 100.000.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const pricingMode = args.pricingMode === undefined || args.pricingMode === 'margem' ? 'margem' : 'markup';
+    const selectedPercent = pricingMode === 'markup'
+      ? (args.markupPercent === undefined ? 100 : Number(args.markupPercent))
+      : (args.profitMarginPercent === undefined ? 50 : Number(args.profitMarginPercent));
+    const maxPercent = pricingMode === 'markup' ? 1000 : 95;
+    if (!Number.isFinite(selectedPercent) || selectedPercent < 0 || selectedPercent > maxPercent) {
+      const error = new Error(`Percentual inválido: informe valor entre 0 e ${maxPercent}%.`);
+      error.code = 'invalid-argument';
+      throw error;
+    }
 
     let itemsCostTotal = 0;
     const itemBreakdown = [];
     if (Array.isArray(args.items)) {
       for (const item of args.items) {
-        const qty = Number(item.quantity) || 0;
-        const unit = Number(item.unitCost) || 0;
+        const qty = Number(item.quantity);
+        const unit = Number(item.unitCost);
+        if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unit) || unit < 0) {
+          const error = new Error('Insumos devem ter quantidade e custo unitário não negativos.');
+          error.code = 'invalid-argument';
+          throw error;
+        }
         const sub = Math.round(qty * unit * 100) / 100;
         itemsCostTotal += sub;
         itemBreakdown.push({
@@ -2330,21 +2362,28 @@ class AiToolsExecutor {
       }
     }
 
-    const laborTimeMinutes = Number(args.laborTimeMinutes) || 0;
-    const hourlyRate = Number(args.hourlyRate) || 20;
-    const laborCost = Math.round((laborTimeMinutes / 60) * hourlyRate * 100) / 100;
-
-    const totalCost = itemsCostTotal + laborCost;
-
-    let suggestedTotalPrice = 0;
-    if (pricingMode === 'markup') {
-      suggestedTotalPrice = Math.round(totalCost * (1 + markupPercent / 100) * 100) / 100;
-    } else {
-      const marginFrac = Math.min(0.95, profitMarginPercent / 100);
-      suggestedTotalPrice = Math.round((totalCost / (1 - marginFrac)) * 100) / 100;
+    const laborTimeMinutes = args.laborTimeMinutes === undefined ? 0 : Number(args.laborTimeMinutes);
+    if (!Number.isFinite(laborTimeMinutes) || laborTimeMinutes < 0 || laborTimeMinutes > 60000) {
+      const error = new Error('Tempo de trabalho inválido: informe minutos entre 0 e 60.000.');
+      error.code = 'invalid-argument';
+      throw error;
     }
-
-    const unitPrice = Math.round((suggestedTotalPrice / quantity) * 100) / 100;
+    const estimate = await this.executePricingEstimate({
+      productName,
+      quantity,
+      rawMaterialsCost: itemsCostTotal / quantity,
+      customizationCost: 0,
+      laborTimeMinutes: laborTimeMinutes / quantity,
+      profitMarginPercent: selectedPercent,
+      pricingMode,
+      ...(args.hourlyRate !== undefined ? { hourlyRate: args.hourlyRate } : {}),
+    }, scope);
+    const totalCost = Math.round(estimate.unitCost * quantity * 100) / 100;
+    const laborCost = Math.round((estimate.breakdown.specializedLabor * quantity) * 100) / 100;
+    const suggestedTotalPrice = estimate.suggestedTotalPrice;
+    const unitPrice = estimate.suggestedUnitPrice;
+    const markupPercent = pricingMode === 'markup' ? selectedPercent : 0;
+    const profitMarginPercent = pricingMode === 'margem' ? selectedPercent : 0;
 
     const depositPct = args.depositOption === '30' ? 30 : args.depositOption === '100' ? 100 : 50;
     const depositAmount = Math.round(suggestedTotalPrice * (depositPct / 100) * 100) / 100;
@@ -2360,11 +2399,15 @@ class AiToolsExecutor {
       totalCost,
       suggestedTotalPrice,
       unitPrice,
+      suggestedUnitPrice: unitPrice,
       depositPercentage: depositPct,
       depositAmount,
       remainingAmount,
       itemBreakdown,
-      formattedSummary: `💰 **Precificação calculada para "${productName}" (${quantity} un):**\n• Custo total de insumos e mão de obra: R$ ${totalCost.toFixed(2)}\n• Preço final sugerido (${pricingMode === 'markup' ? `Markup ${markupPercent}%` : `Margem ${profitMarginPercent}%`}): R$ ${suggestedTotalPrice.toFixed(2)} (R$ ${unitPrice.toFixed(2)}/un)\n• Sinal (${depositPct}%): R$ ${depositAmount.toFixed(2)} | Saldo restante: R$ ${remainingAmount.toFixed(2)}`,
+      paymentFeePercent: estimate.inputs.paymentFeePercent.value,
+      breakdown: estimate.breakdown,
+      assumptions: estimate.assumptions,
+      formattedSummary: `💰 **Precificação calculada para "${productName}" (${quantity} un):**\n• Custo total de insumos e mão de obra: R$ ${totalCost.toFixed(2)}\n• Preço final sugerido (${pricingMode === 'markup' ? `Markup ${markupPercent}%` : `Margem ${profitMarginPercent}%`}): R$ ${suggestedTotalPrice.toFixed(2)} (R$ ${unitPrice.toFixed(2)}/un)\n• Sinal (${depositPct}%): R$ ${depositAmount.toFixed(2)} | Saldo restante: R$ ${remainingAmount.toFixed(2)}\n• Taxa de pagamento: ${estimate.inputs.paymentFeePercent.value}% (configuração do ateliê)`,
     };
   }
 

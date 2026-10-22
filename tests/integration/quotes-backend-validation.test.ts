@@ -49,6 +49,19 @@ describe('Validação matemática de orçamentos nas regras do Firestore', () =>
     }));
   });
 
+  it('aceita centavos decimais comuns e desconto fixo de R$ 0,29', async () => {
+    await assertSucceeds(setDoc(doc(dbFor(), 'quotes/twenty-nine-cent-item'), {
+      ...baseQuote,
+      items: [{ name: 'Item de vinte e nove centavos', quantity: 1, unitPrice: 0.29 }],
+      discount: 0, discountType: 'fixed', totalPrice: 0.29,
+    }));
+    await assertSucceeds(setDoc(doc(dbFor(), 'quotes/twenty-nine-cent-discount'), {
+      ...baseQuote,
+      items: [{ name: 'Produto de um real', quantity: 1, unitPrice: 1 }],
+      discount: 0.29, discountType: 'fixed', totalPrice: 0.71,
+    }));
+  });
+
   it('rejeita total adulterado, desconto maior que o subtotal e percentual acima de 100', async () => {
     await assertFails(setDoc(doc(dbFor(), 'quotes/wrong-total'), { ...baseQuote, totalPrice: 1 }));
     await assertFails(setDoc(doc(dbFor(), 'quotes/oversized-discount'), {
@@ -59,12 +72,9 @@ describe('Validação matemática de orçamentos nas regras do Firestore', () =>
     }));
   });
 
-  it('rejeita quantidade fracionária, preço adulterado e mais de 10 itens', async () => {
+  it('rejeita quantidade fracionária, preço com fração de centavo e mais de 10 itens', async () => {
     await assertFails(setDoc(doc(dbFor(), 'quotes/fractional-quantity'), {
       ...baseQuote, items: [{ name: 'Produto A', quantity: 1.5, unitPrice: 100 }], discount: null, discountType: null, totalPrice: 150,
-    }));
-    await assertFails(setDoc(doc(dbFor(), 'quotes/extra-item-fields'), {
-      ...baseQuote, items: [{ name: 'Produto A', quantity: 2, unitPrice: 150, price: 300 }], discount: null, discountType: null, totalPrice: 300,
     }));
     await assertFails(setDoc(doc(dbFor(), 'quotes/fractional-cent-price'), {
       ...baseQuote,
@@ -78,6 +88,54 @@ describe('Validação matemática de orçamentos nas regras do Firestore', () =>
     }));
   });
 
+  it('ignora campos adicionais no item sem alterar o cálculo conferido pelo servidor', async () => {
+    await assertSucceeds(setDoc(doc(dbFor(), 'quotes/item-with-metadata'), {
+      ...baseQuote,
+      items: [{ name: 'Produto A', quantity: 2, unitPrice: 150, sku: 'PROD-1' }],
+      discount: 0,
+      discountType: 'fixed',
+      totalPrice: 300,
+    }));
+  });
+
+  it('aceita 10 itens e os limites máximos de quantidade e preço', async () => {
+    const items = Array.from({ length: 10 }, (_, i) => ({
+      name: `Item ${i + 1}`,
+      quantity: i === 0 ? 10000 : 1,
+      unitPrice: i === 0 ? 1000000 : 0,
+    }));
+    await assertSucceeds(setDoc(doc(dbFor(), 'quotes/max-valid-boundaries'), {
+      ...baseQuote,
+      items,
+      discount: 0,
+      discountType: 'fixed',
+      totalPrice: 10000000000,
+    }));
+  });
+
+  it('rejeita limites inválidos de quantidade, preço, nome e precisão do desconto', async () => {
+    const validSingle = [{ name: 'Produto', quantity: 1, unitPrice: 10 }];
+    const invalidQuotes = [
+      { id: 'zero-quantity', items: [{ ...validSingle[0], quantity: 0 }], discount: 0, totalPrice: 0 },
+      { id: 'quantity-over-limit', items: [{ ...validSingle[0], quantity: 10001 }], discount: 0, totalPrice: 100010 },
+      { id: 'price-over-limit', items: [{ ...validSingle[0], unitPrice: 1000000.01 }], discount: 0, totalPrice: 1000000.01 },
+      { id: 'blank-name', items: [{ ...validSingle[0], name: '   ' }], discount: 0, totalPrice: 10 },
+      { id: 'name-over-limit', items: [{ ...validSingle[0], name: 'A'.repeat(301) }], discount: 0, totalPrice: 10 },
+      { id: 'fractional-cent-discount', items: validSingle, discount: 0.001, discountType: 'fixed', totalPrice: 10 },
+      { id: 'negative-discount', items: validSingle, discount: -0.01, discountType: 'fixed', totalPrice: 10 },
+      { id: 'unknown-discount-type', items: validSingle, discount: 0, discountType: 'amount', totalPrice: 10 },
+      { id: 'negative-total', items: validSingle, discount: 0, discountType: 'fixed', totalPrice: -1 },
+    ];
+
+    for (const { id, ...quote } of invalidQuotes) {
+      await assertFails(setDoc(doc(dbFor(), `quotes/${id}`), {
+        ...baseQuote,
+        ...quote,
+        discountType: quote.discountType ?? 'fixed',
+      }));
+    }
+  });
+
   it('valida atualizações de valor e permite transição de status sem alterar o cálculo', async () => {
     await env.withSecurityRulesDisabled(async (context) => {
       await context.firestore().doc('quotes/existing').set(baseQuote);
@@ -89,5 +147,14 @@ describe('Validação matemática de orçamentos nas regras do Firestore', () =>
     await assertFails(updateDoc(doc(dbFor(), 'quotes/existing'), { totalPrice: 314 }));
     await assertSucceeds(updateDoc(doc(dbFor(), 'quotes/legacy'), { status: 'sent' }));
     await assertFails(updateDoc(doc(dbFor(), 'quotes/legacy'), { totalPrice: 1 }));
+
+    // Simulação exata da edição do E2E (quotes.spec.ts:77):
+    // 1 item alterado para unitPrice 125, desconto 10%
+    await assertSucceeds(updateDoc(doc(dbFor(), 'quotes/existing'), {
+      items: [{ name: 'Produto editável', quantity: 1, unitPrice: 125 }],
+      discount: 10,
+      discountType: 'percent',
+      totalPrice: 112.5,
+    }));
   });
 });

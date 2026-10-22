@@ -29,6 +29,18 @@ test.describe("Relatórios", () => {
     await weekBtn.click();
   });
 
+  test("deve aplicar e exibir um intervalo personalizado", async ({ page }) => {
+    await page.getByRole("button", { name: "Personalizado", exact: true }).click();
+    const dateInputs = page.locator('input[type="date"]');
+    await expect(dateInputs).toHaveCount(2);
+    await dateInputs.nth(0).fill("2026-01-10");
+    await dateInputs.nth(1).fill("2026-01-20");
+    await expect(dateInputs.nth(0)).toHaveValue("2026-01-10");
+    await expect(dateInputs.nth(1)).toHaveValue("2026-01-20");
+    await expect(page.getByText("Personalizado", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Receita Total")).toBeVisible();
+  });
+
   test("deve exibir métricas de pedidos", async ({ page }) => {
     // Verificar container de status de pedidos ou dados
     await expect(page.getByText("Status dos Pedidos")).toBeVisible({ timeout: 10000 });

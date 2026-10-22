@@ -56,6 +56,7 @@ import {
 import {
   STATUS_LABELS,
   STATUS_VARIANT,
+  buildQuoteOrderPricing,
   formatDate,
   buildWhatsAppMessage,
 } from './quoteHelpers';
@@ -173,6 +174,8 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         .join(', ');
       const totalQty = quote.items.reduce((s, i) => s + i.quantity, 0);
 
+      const orderPricing = buildQuoteOrderPricing(quote.items, quote.totalPrice);
+
       const order = await firebaseOrderService.createOrder(
         {
           customerName: trimmedName,
@@ -181,14 +184,9 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           productName,
           quantity: totalQty,
           price: quote.totalPrice,
-          items: quote.items.map((i) => ({
-            name: i.name,
-            quantity: i.quantity,
-            unitPrice: i.unitPrice,
-            price: Number((i.quantity * i.unitPrice).toFixed(2)),
-          })),
-          pricingMode: quote.items.length === 1 ? 'unit' : 'items',
-          unitPrice: quote.items.length === 1 ? quote.items[0].unitPrice : null,
+          items: orderPricing.items,
+          pricingMode: orderPricing.pricingMode,
+          unitPrice: orderPricing.unitPrice,
           status: 'pending' as OrderStatus,
           deliveryDate: quote.deliveryDate,
           notes: [
@@ -205,6 +203,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       );
 
       toast.success(`Pedido ${order.orderNumber} criado com sucesso!`);
+      onRefresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro ao aprovar orçamento');
     } finally {
@@ -218,6 +217,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
     try {
       await firebaseQuoteService.updateStatus(quote.id, 'rejected');
       toast.success('Orçamento rejeitado');
+      onRefresh();
     } catch (e) {
       toast.error('Erro ao rejeitar orçamento');
     } finally {

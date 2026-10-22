@@ -158,7 +158,13 @@ jobs:
           ALEXA_IDENTITY_HMAC_KEY=mock-alexa-hmac-key
           EOF
 
+      - name: Prepare test metrics directory
+        run: mkdir -p test-results
+
       - name: Run Unit Tests (Vitest)
+        env:
+          TEST_REPORT_DIR: test-results
+          TEST_REPORT_NAME: vitest-unit-1
         run: npm run test:unit
 
       - name: Build (dev)
@@ -169,14 +175,24 @@ jobs:
           CI: true
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL || 'test-user@example.invalid' }}
           PLAYWRIGHT_BASE_URL: http://localhost:4173
+          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/playwright-shard-1.json
           TEST_TARGET: ${{ github.event.inputs.test_target || 'e2e' }}
         run: |
           if [ "$TEST_TARGET" = 'order-integrity' ]; then
-            TEST_COMMAND="npx playwright test tests/e2e/orders.spec.ts --grep 'formata preço unitário|preserva total e pagamento|importa pedido com 20 etiquetas' --project=chromium"
+            TEST_COMMAND="npx playwright test tests/e2e/orders.spec.ts --grep 'formata preço unitário|preserva total e pagamento|importa pedido com 20 etiquetas' --project=chromium --reporter=html,list,json"
           else
-            TEST_COMMAND="npm run test:$TEST_TARGET"
+            TEST_COMMAND="npm run test:$TEST_TARGET -- --reporter=html,list,json"
           fi
           npx firebase emulators:exec --only auth,firestore,storage,functions "node scripts/seed-emulator.mjs && $TEST_COMMAND"
+
+      - name: Upload raw test metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-metrics-shard-1
+          path: test-results/*.json
+          retention-days: 30
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
@@ -184,3 +200,54 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
+
+  test-trends:
+    if: always() && inputs.test_target != 'backend-sdk'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download test metrics
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-metrics-shard-*
+          path: test-results
+          merge-multiple: true
+
+      - name: Restore recent test history
+        uses: actions/cache/restore@v4
+        with:
+          path: test-trends/history.json
+          key: test-trends-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            test-trends-${{ github.ref_name }}-
+            test-trends-main-
+
+      - name: Generate charts and comparison summary
+        id: generate-trends
+        env:
+          TEST_RESULTS_DIR: test-results
+          TEST_TREND_DIR: test-trends
+          TEST_TREND_BRANCH: ${{ github.ref_name }}
+          TEST_TREND_TARGET: ${{ github.event.inputs.test_target || 'e2e' }}
+        run: node scripts/summarize-test-trends.mjs
+
+      - name: Upload test trend charts and history
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-trends
+          path: test-trends/
+          retention-days: 90
+
+      - name: Save history for trusted branch runs
+        if: always() && steps.generate-trends.outputs.has_metrics == 'true' && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: test-trends/history.json
+          key: test-trends-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}

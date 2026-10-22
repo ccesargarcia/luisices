@@ -304,17 +304,86 @@ jobs:
       - name: Lint Functions
         run: npm --prefix functions run lint
 
+      - name: Preparar métricas dos testes
+        run: mkdir -p test-results
+
       - name: Executar Testes Unitários (Vitest)
+        env:
+          TEST_REPORT_DIR: test-results
+          TEST_REPORT_NAME: vitest-unit-1
         run: npm run test:unit
+
+      - name: Publicar métricas dos testes unitários
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-metrics-unit
+          path: test-results/vitest-unit-1.json
+          retention-days: 30
+          if-no-files-found: ignore
 
       - name: Validar build do Frontend sem publicar
         if: needs.detect-changes.outputs.need_frontend_validation == 'true'
         run: npm run build
 
+  unit-test-trends:
+    if: always() && needs.functions-validation.result != 'skipped'
+    needs: functions-validation
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Baixar métricas unitárias
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-metrics-unit
+          path: test-results
+          merge-multiple: true
+
+      - name: Restaurar histórico recente
+        uses: actions/cache/restore@v4
+        with:
+          path: test-trends/history.json
+          key: test-trends-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            test-trends-${{ github.ref_name }}-
+            test-trends-main-
+
+      - name: Gerar gráfico e comparação
+        id: generate-trends
+        env:
+          TEST_RESULTS_DIR: test-results
+          TEST_TREND_DIR: test-trends
+          TEST_TREND_BRANCH: ${{ github.ref_name }}
+          TEST_TREND_TARGET: unit
+        run: node scripts/summarize-test-trends.mjs
+
+      - name: Publicar gráfico e histórico
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-trends
+          path: test-trends/
+          retention-days: 90
+
+      - name: Salvar histórico da branch
+        if: always() && steps.generate-trends.outputs.has_metrics == 'true' && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: test-trends/history.json
+          key: test-trends-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+
   e2e-tests:
     name: 🧪 Testes E2E Completos (Playwright)
     needs: detect-changes
     if: needs.detect-changes.outputs.need_e2e == 'true'
+    permissions:
+      actions: read
+      contents: read
     uses: ./.github/workflows/test-actions.yml
     secrets: inherit
 
