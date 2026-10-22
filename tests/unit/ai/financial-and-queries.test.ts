@@ -164,6 +164,32 @@ describe('IA-02: Cálculos Financeiros Exatos e Consultas Completas', () => {
       expect(summary.faturamentoRealizado).toBe(0);
       expect(summary.volumeTotalEmitido).toBe(0);
     });
+
+    it('usa o mesmo saldo em resumo financeiro, resumo diário e auditoria do colaborador', async () => {
+      const inconsistentOrders = [
+        { orderId: 'overpaid', orderNumber: '#1', customerName: 'Cliente A', totalPrice: 100, paidAmount: 150, remainingAmount: 30, status: 'completed', paymentStatus: 'partial', userId: 'user-test', createdAt: '2026-09-20T12:00:00Z' },
+        { orderId: 'paid', orderNumber: '#2', customerName: 'Cliente B', totalPrice: 50, paidAmount: 0, remainingAmount: 50, status: 'pending', paymentStatus: 'paid', userId: 'user-test', createdAt: '2026-09-20T12:00:00Z' },
+        { orderId: 'negative', orderNumber: '#3', customerName: 'Cliente C', totalPrice: 25, paidAmount: -5, remainingAmount: -10, status: 'pending', paymentStatus: 'pending', userId: 'user-test', createdAt: '2026-09-20T12:00:00Z' },
+        { orderId: 'cancelled', orderNumber: '#4', customerName: 'Cliente D', totalPrice: 500, paidAmount: 500, remainingAmount: 0, status: 'cancelled', paymentStatus: 'paid', userId: 'user-test', createdAt: '2026-09-20T12:00:00Z' },
+      ];
+      const inconsistentRepos = {
+        getScopedOrders: async () => inconsistentOrders,
+        getTeamMembers: async () => [{ uid: 'user-test', name: 'Teste Colaborador', email: 'teste@test.local' }],
+        getScopedCustomers: async () => ({ customers: [] }),
+      };
+      const inconsistentExecutor = new AiToolsExecutor(inconsistentRepos);
+      const scopeAdmin = getCallerScope('user-admin', { role: 'admin', active: true });
+
+      const summary = await inconsistentExecutor.executeFinancialSummary({ period: 'all' }, scopeAdmin);
+      const briefing = await inconsistentExecutor.executeDailyBriefing({ date: '2026-09-26' }, scopeAdmin);
+      const audit = await inconsistentExecutor.executeUserSummary({ userIdentifier: 'Teste Colaborador' }, scopeAdmin);
+
+      expect(summary).toMatchObject({ totalRecebido: 150, totalPendenteReceber: 25, volumeTotalEmitido: 175 });
+      expect(briefing).toMatchObject({ totalReceived: 150, pendingPaymentTotal: 25, pendingPaymentCount: 1 });
+      expect(audit.metrics).toMatchObject({ totalReceived: 150, pendingReceivables: 25, grossIssuedVolume: 175 });
+      expect(audit.sampleOrders.find((order: any) => order.orderNumber === '#1')).toMatchObject({ paidAmount: 100, remainingAmount: 0 });
+      expect(audit.sampleOrders.find((order: any) => order.orderNumber === '#2')).toMatchObject({ paidAmount: 50, remainingAmount: 0 });
+    });
   });
 
   describe('executeQueryOrdersView', () => {
@@ -235,6 +261,23 @@ describe('IA-02: Cálculos Financeiros Exatos e Consultas Completas', () => {
       expect(sanitizeOrderForAi('2', { status: 'em produção' }).status).toBe('in-progress');
       expect(sanitizeOrderForAi('3', { status: 'cancelado' }).status).toBe('cancelled');
       expect(sanitizeOrderForAi('4', { status: 'pendente' }).status).toBe('pending');
+    });
+
+    it('normaliza recebido e saldo mesmo quando os campos persistidos divergem', () => {
+      expect(sanitizeOrderForAi('5', {
+        totalPrice: 100,
+        paidAmount: 150,
+        remainingAmount: 30,
+        status: 'completed',
+        paymentStatus: 'partial',
+      })).toMatchObject({ paidAmount: 100, remainingAmount: 0 });
+      expect(sanitizeOrderForAi('6', {
+        totalPrice: 50,
+        paidAmount: 0,
+        remainingAmount: 50,
+        status: 'pending',
+        paymentStatus: 'paid',
+      })).toMatchObject({ paidAmount: 50, remainingAmount: 0 });
     });
   });
 

@@ -5,6 +5,7 @@
 const { BUSINESS_TIMEZONE, TOOL_LIMITS } = require('./config');
 const { calculateRecipePricing, calculateHourlyRate, DEFAULT_PRICING_SETTINGS } = require('./pricing/pricingCalculator');
 const { sanitizeCollaboratorInfo, filterOrdersByScope } = require('./authorization');
+const { resolvePaymentAmounts, sumPaymentCents } = require('./financialMath');
 
 function getBusinessDate(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -462,10 +463,8 @@ class AiToolsExecutor {
 
     const realizedRevenue = completedOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
     const grossIssuedVolume = validOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
-    const totalReceived = validOrders.reduce((sum, o) => sum + (Number(o.paidAmount) || 0), 0);
-    const pendingReceivables = validOrders
-      .filter((o) => o.paymentStatus !== 'paid')
-      .reduce((sum, o) => sum + (Number(o.remainingAmount !== undefined ? o.remainingAmount : (o.totalPrice - (o.paidAmount || 0))) || 0), 0);
+    const totalReceived = sumPaymentCents(validOrders, 'paidCents') / 100;
+    const pendingReceivables = sumPaymentCents(validOrders, 'remainingCents') / 100;
 
     const averageTicket = completedOrders.length > 0
       ? realizedRevenue / completedOrders.length
@@ -526,13 +525,10 @@ class AiToolsExecutor {
     const completedOrders = orders.filter((o) => o.status === 'completed');
     const validOrders = orders.filter((o) => o.status !== 'cancelled');
 
-    const pendingPaymentOrders = validOrders.filter((o) => o.paymentStatus !== 'paid');
-    const pendingPaymentTotal = pendingPaymentOrders.reduce(
-      (acc, curr) => acc + (Number(curr.remainingAmount !== undefined ? curr.remainingAmount : (curr.totalPrice - (curr.paidAmount || 0))) || 0),
-      0
-    );
+    const pendingPaymentOrders = validOrders.filter((order) => resolvePaymentAmounts(order).remainingCents > 0);
+    const pendingPaymentTotal = sumPaymentCents(validOrders, 'remainingCents') / 100;
     const realizedRevenue = completedOrders.reduce((acc, curr) => acc + (Number(curr.totalPrice) || 0), 0);
-    const totalReceived = validOrders.reduce((acc, curr) => acc + (Number(curr.paidAmount) || 0), 0);
+    const totalReceived = sumPaymentCents(validOrders, 'paidCents') / 100;
 
     return {
       todayDate,
@@ -1241,10 +1237,8 @@ class AiToolsExecutor {
 
     const grossIssuedVolume = validOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
     const realizedRevenue = completedOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
-    const totalReceived = validOrders.reduce((sum, o) => sum + (Number(o.paidAmount) || 0), 0);
-    const pendingReceivables = validOrders
-      .filter((o) => o.paymentStatus !== 'paid')
-      .reduce((sum, o) => sum + (Number(o.remainingAmount !== undefined ? o.remainingAmount : (o.totalPrice - (o.paidAmount || 0))) || 0), 0);
+    const totalReceived = sumPaymentCents(validOrders, 'paidCents') / 100;
+    const pendingReceivables = sumPaymentCents(validOrders, 'remainingCents') / 100;
 
     const averageTicket = completedOrders.length > 0
       ? realizedRevenue / completedOrders.length
@@ -1252,15 +1246,19 @@ class AiToolsExecutor {
         ? grossIssuedVolume / validOrders.length
         : 0;
 
-    const sampleOrders = orders.slice(0, 10).map((o) => ({
-      orderNumber: o.orderNumber,
-      customerName: o.customerName,
-      productName: o.productName || o.productSummary,
-      totalPrice: Number((Number(o.totalPrice) || 0).toFixed(2)),
-      paidAmount: Number((Number(o.paidAmount) || 0).toFixed(2)),
-      status: o.status,
-      deliveryDate: o.deliveryDate,
-    }));
+    const sampleOrders = orders.slice(0, 10).map((o) => {
+      const payment = resolvePaymentAmounts(o);
+      return {
+        orderNumber: o.orderNumber,
+        customerName: o.customerName,
+        productName: o.productName || o.productSummary,
+        totalPrice: payment.totalPrice,
+        paidAmount: payment.paidAmount,
+        remainingAmount: payment.remainingAmount,
+        status: o.status,
+        deliveryDate: o.deliveryDate,
+      };
+    });
 
     return {
       authorized: true,

@@ -5,6 +5,7 @@
 const { filterOrdersByScope, filterCustomersByScope, filterGalleryByScope } = require('./authorization');
 const { TOOL_LIMITS } = require('./config');
 const { traceMcpStep } = require('../mcp/tracing');
+const { resolvePaymentAmounts } = require('./financialMath');
 
 function normalizeTimestamp(val) {
   if (!val) return '';
@@ -58,7 +59,8 @@ function sanitizeOrderForAi(id, data = {}) {
           : (data.value !== undefined && data.value !== null
             ? data.value
             : (data.amount !== undefined && data.amount !== null ? data.amount : 0)))));
-  const totalPrice = Number(rawPrice) || 0;
+  const parsedPrice = Number(rawPrice);
+  const totalPrice = Number.isFinite(parsedPrice) ? parsedPrice : 0;
 
   // Extrai valor já pago considerando payment.paidAmount, paidAmount, signalAmount
   const rawPaid = data.payment?.paidAmount !== undefined && data.payment?.paidAmount !== null
@@ -68,19 +70,15 @@ function sanitizeOrderForAi(id, data = {}) {
       : (data.signalAmount !== undefined && data.signalAmount !== null
         ? data.signalAmount
         : 0));
-  const paidAmount = Number(rawPaid) || 0;
-
-  // Extrai saldo restante considerando payment.remainingAmount, remainingAmount ou calculando diferença
-  const rawRemaining = data.payment?.remainingAmount !== undefined && data.payment?.remainingAmount !== null
-    ? data.payment.remainingAmount
-    : (data.remainingAmount !== undefined && data.remainingAmount !== null
-      ? data.remainingAmount
-      : Math.max(0, totalPrice - paidAmount));
-  const remainingAmount = Number(rawRemaining) || 0;
+  const parsedPaidAmount = Number(rawPaid);
+  const storedPaidAmount = Number.isFinite(parsedPaidAmount) ? parsedPaidAmount : 0;
 
   // Normaliza status do pagamento
-  const rawPaymentStatus = data.payment?.status || data.paymentStatus || (paidAmount >= totalPrice && totalPrice > 0 ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending'));
+  const rawPaymentStatus = data.payment?.status || data.paymentStatus || (storedPaidAmount >= totalPrice && totalPrice > 0 ? 'paid' : (storedPaidAmount > 0 ? 'partial' : 'pending'));
   const paymentStatus = String(rawPaymentStatus).toLowerCase();
+  const paymentAmounts = resolvePaymentAmounts({ totalPrice, paidAmount: storedPaidAmount, paymentStatus });
+  const paidAmount = paymentAmounts.paidAmount;
+  const remainingAmount = paymentAmounts.remainingAmount;
 
   // Normaliza status do pedido
   const rawStatus = String(data.status || 'pending').toLowerCase().trim();

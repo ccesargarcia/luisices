@@ -57,7 +57,7 @@ describe('IA-07 & IA-08: Execução de Ferramentas e Saídas Estruturadas', () =
     }, { uid: 'admin-1' })).rejects.toMatchObject({ code: 'invalid-argument' });
   });
 
-  it('sintetiza chamadas de múltiplas ferramentas em uma segunda rodada limitada', async () => {
+  it('preserva respostas financeiras de múltiplas ferramentas sem reescrita', async () => {
     const requests: any[] = [];
     const mockGeminiClient = {
       generateContent: async (payload: any) => {
@@ -96,13 +96,10 @@ describe('IA-07 & IA-08: Execução de Ferramentas e Saídas Estruturadas', () =
       data: { message: 'Cruze o resumo de hoje com os clientes que devo contatar.' },
     });
 
-    expect(requests).toHaveLength(2);
-    expect(requests[1].tools).toBeUndefined();
-    expect(requests[1].contents.at(-2).role).toBe('model');
-    expect(requests[1].contents.at(-1).parts).toHaveLength(2);
-    expect(requests[1].contents.at(-1).parts[0].functionResponse.name).toBe('daily_briefing');
-    expect(result.reply).toContain('Ana tem pedidos em aberto');
-    expect(result.reply).not.toContain('Raio-X Operacional');
+    expect(requests).toHaveLength(1);
+    expect(result.reply).toContain('Raio-X Operacional');
+    expect(result.reply).toContain('R$ 50.00');
+    expect(result.reply).toContain('Ana');
   });
 
   it('deve executar resposta do chat com chamada de ferramenta (Function Call)', async () => {
@@ -154,7 +151,8 @@ describe('IA-07 & IA-08: Execução de Ferramentas e Saídas Estruturadas', () =
     expect(res.pricingEstimate).toBeDefined();
     expect(res.pricingEstimate.productName).toBe('Topo de Bolo Shaker');
     expect(res.pricingEstimate.suggestedUnitPrice).toBeGreaterThan(0);
-    expect(res.reply).toContain('Estimativa de Precificação');
+    expect(res.reply).toContain('Simulação para Topo de Bolo Shaker');
+    expect(res.reply).toContain('Preço sugerido por unidade');
   });
 
   it('deve executar enriquecimento de produto da lojinha com schema JSON estruturado', async () => {

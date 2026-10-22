@@ -16,17 +16,19 @@ describe('Contrato de exibição de custos/premissas', () => {
     const html = renderToStaticMarkup(<AiPricingDetails estimate={result} />);
     expect(html).toContain('12,00');
     expect(html).toContain('0,00');
-    expect(html).toContain('padrão assumido');
-    expect(html).toContain('origem humana não comprovada');
-    expect(html).toContain('Setup rateado');
-    expect(html).toContain('Despesas fixas já incluídas');
+    expect(html).toContain('Ver composição do preço');
+    expect(html).toContain('usei valores padrão');
+    expect(html).not.toContain('origem humana não comprovada');
+    expect(html).not.toContain('fator de eficiência');
+    expect(html).toContain('dividido entre as unidades do lote');
+    expect(html).toContain('Despesas fixas do ateliê já estão consideradas');
   });
   it('adapta histórico antigo do backend pelo subtotal, sem inferir divisão ou somar labor duas vezes', () => {
     const old: AiPricingEstimate = { ...base, breakdown: { materialsBase: 20, totalMaterialsWithWaste: 22, wasteMarginAmount: 2, directLaborPerUnit: 5, setupLaborPerUnit: 1, specializedLabor: 6, fixedCostsShare: 0.5 } };
     expect(getAiPricingDetails(old).map((detail) => detail.value)).toEqual([20, 2, 5, 1]);
     const html = renderToStaticMarkup(<AiPricingDetails estimate={old} />);
     expect(html).toContain('Materiais e personalização (subtotal)');
-    expect(html).toContain('premissas indisponíveis');
+    expect(html).toContain('dados de origem desta estimativa antiga não estão disponíveis');
     expect(html).not.toMatch(/R\$\s*0,00/);
   });
   it('adapta nomes legados do frontend e omite ausências', () => {

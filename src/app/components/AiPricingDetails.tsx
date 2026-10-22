@@ -5,16 +5,27 @@ import { formatCurrency } from '../utils/currency';
 
 export function AiPricingDetails({ estimate }: { estimate: AiPricingEstimate }) {
   const details = getAiPricingDetails(estimate);
+  const inputs = Object.values(estimate.inputs || {});
+  const hasDefaults = inputs.some((input) => input.source === 'default');
+  const hasInvalidSettings = inputs.some((input) => input.invalidConfiguration);
+  const hasConfiguredValues = inputs.some((input) => input.source === 'configuration');
   return (
-    <div className="text-[11px] space-y-1 text-muted-foreground border-t border-blue-500/20 pt-2 mt-2">
-      {details.length ? details.map((detail) => (
-        <div key={detail.label}>• {detail.label}: {formatCurrency(detail.value)}/un</div>
-      )) : <div>Detalhamento de custos indisponível.</div>}
-      {estimate.breakdown?.fixedCostsIncludedInLabor && <div>Despesas fixas já incluídas na mão de obra.</div>}
-      <div className="font-medium">Premissas — revise antes de usar:</div>
-      {estimate.assumptions?.length ? estimate.assumptions.map((assumption, index) => (
-        <div key={index}>{assumption}</div>
-      )) : <div>Estimativa antiga: origem das entradas e premissas indisponíveis.</div>}
+    <div className="text-[11px] text-muted-foreground border-t border-blue-500/20 pt-2 mt-2">
+      <details>
+        <summary className="cursor-pointer font-medium">Ver composição do preço</summary>
+        <div className="space-y-1 pt-2">
+          {details.length ? details.map((detail) => (
+            <div key={detail.label}>• {detail.label}: {formatCurrency(detail.value)}/un</div>
+          )) : <div>Detalhamento de custos indisponível.</div>}
+          {estimate.breakdown?.fixedCostsIncludedInLabor && <div>Despesas fixas do ateliê já estão consideradas na mão de obra.</div>}
+          <div className="font-medium pt-1">Sobre esta estimativa</div>
+          {hasDefaults && <div>Alguns custos ou tempos não foram informados e usei valores padrão. Atualize esses dados para chegar a um preço mais preciso.</div>}
+          {hasInvalidSettings && <div>Uma configuração inválida foi substituída por um valor padrão.</div>}
+          {hasConfiguredValues && <div>Alguns valores vêm das configurações do ateliê.</div>}
+          {!inputs.length && <div>Os dados de origem desta estimativa antiga não estão disponíveis.</div>}
+          {estimate.assumptions?.some((assumption) => assumption.startsWith('Setup de ')) && <div>O tempo de preparação foi dividido entre as unidades do lote.</div>}
+        </div>
+      </details>
     </div>
   );
 }

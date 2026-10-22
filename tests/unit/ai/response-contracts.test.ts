@@ -22,6 +22,12 @@ function chatFor(executor: any, calls: any[], repos: any = reposFor(), synthesis
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Contratos de resposta: Alexa, financeiro e contexto', () => {
+  it('orienta respostas curtas e evita listar premissas técnicas no texto', () => {
+    expect(COPILOT_SYSTEM_INSTRUCTION).toContain('1–3 frases curtas');
+    expect(COPILOT_SYSTEM_INSTRUCTION).toContain('palavras do dia a dia');
+    expect(COPILOT_SYSTEM_INSTRUCTION).not.toContain('Mostre entradas, configurações e premissas retornadas');
+  });
+
   it('usa a configuração efetiva Alexa no prompt enviado, sem ler Firestore ou carregar secrets no schema', async () => {
     vi.stubEnv('ALEXA_ENVIRONMENT', 'dev');
     const config = await getAlexaConfig();
@@ -77,8 +83,8 @@ describe('Contratos de resposta: Alexa, financeiro e contexto', () => {
     const response = await chat.handler(request('Quanto entrou em caixa em janeiro de 2025?'));
     expect(chat.generateContent).toHaveBeenCalledTimes(1);
     expect(response.reply).toContain(summary.periodLabel);
-    expect(response.reply).toContain('Pagamentos registrados nos pedidos selecionados');
-    expect(response.reply).toContain('não apura entradas de caixa por data de recebimento');
+    expect(response.reply).toContain('Já recebido nesses pedidos');
+    expect(response.reply).toContain('não representa entradas ocorridas somente nesse período');
     expect(response.reply).not.toMatch(/Total Recebido|Faturamento Realizado|quitados em caixa/);
     expect(response.reply).toContain('40,00');
     expect(response.reply).toContain('60,00');
@@ -90,20 +96,18 @@ describe('Contratos de resposta: Alexa, financeiro e contexto', () => {
     const result = await executor.executeFinancialSummary({ period: '2025-01' }, scope);
     expect(result).toMatchObject({ totalRecebido: 0, totalPendenteReceber: 0, volumeTotalEmitido: 0, faturamentoRealizado: 0, totalPedidosValidos: 0 });
     const chat = chatFor(executor, [{ name: 'get_financial_summary', args: { period: '2025-01' } }], repos);
-    expect((await chat.handler(request())).reply).toContain('não apura entradas de caixa');
+    expect((await chat.handler(request())).reply).toContain('não representa entradas ocorridas somente nesse período');
   });
 
-  it('síntese recebe os mesmos critérios financeiros e preserva orçamento de rodadas', async () => {
+  it('mantém resultados financeiros determinísticos quando há várias ferramentas', async () => {
     const repos = reposFor();
     const chat = chatFor(new AiToolsExecutor(repos), [{ name: 'get_financial_summary', args: { period: '2025-01' } }, { name: 'query_orders_view', args: {} }], repos);
-    await chat.handler(request());
-    expect(chat.payloads).toHaveLength(2);
-    expect(chat.payloads[1].tools).toBeUndefined();
-    const result = chat.payloads[1].contents.at(-1).parts[0].functionResponse.response.result;
-    expect(result).toContain('Pagamentos registrados nos pedidos selecionados');
-    expect(result).toContain('inclusive registrados depois');
-    expect(chat.payloads[1].system_instruction.parts[0].text).toContain('NÃO comprova entrada de caixa');
-    expect(chat.payloads[1].generationConfig.maxOutputTokens).toBe(768);
+    const response = await chat.handler(request());
+    expect(chat.payloads).toHaveLength(1);
+    expect(response.reply).toMatch(/R\$\s*40,00/);
+    expect(response.reply).toMatch(/R\$\s*60,00/);
+    expect(response.reply).toContain('não representa entradas ocorridas somente nesse período');
+    expect(response.reply).not.toContain('inclusive registrados depois');
   });
 });
 
@@ -118,7 +122,8 @@ describe('Precificação: origens, validação e paridade', () => {
     expect(result.isExplicitMaterialsCost).toBe(false);
     const chat = chatFor(executor, [{ name: 'calculate_pricing_estimate', args: { productName: 'Simulação' } }]);
     const response = await chat.handler(request('Simule um preço'));
-    expect(response.reply).toContain('padrão assumido');
+    expect(response.reply).toContain('Usei alguns valores padrão');
+    expect(response.reply).not.toContain('fator de eficiência');
     expect(response.reply).not.toContain('orçamento oficial');
     expect(chat.payloads).toHaveLength(1);
   });
