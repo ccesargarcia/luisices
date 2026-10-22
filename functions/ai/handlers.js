@@ -411,7 +411,8 @@ function createAiAgentChatHandler(deps = {}) {
             extractedPricing = await toolsExecutor.executePricingEstimate(args, scope);
             const unitFmt = extractedPricing.suggestedUnitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             const totalFmt = extractedPricing.suggestedTotalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            answers.push(`📊 **Estimativa de Precificação:**\n\n• **Produto:** ${extractedPricing.productName} (${extractedPricing.quantity} un)\n• **Custo Base Unitário:** R$ ${extractedPricing.unitCost.toFixed(2)}\n• **Preço Unitário Sugerido:** ${unitFmt}\n• **Valor Total Sugerido:** ${totalFmt} *(Margem: ${extractedPricing.profitMarginPercent}%*)\n\n${(extractedPricing.assumptions || []).join(" ")} Revise as entradas antes de usar os valores. Estimativa não é orçamento salvo.`);
+            const hasDefaults = Object.values(extractedPricing.inputs || {}).some((input) => input.source === 'default' || input.invalidConfiguration);
+            answers.push(`**Simulação para ${extractedPricing.productName} (${extractedPricing.quantity} un):**\n• Preço sugerido por unidade: ${unitFmt}\n• Total sugerido: ${totalFmt}${hasDefaults ? '\nUsei alguns valores padrão; confira o detalhamento antes de aplicar.' : ''}\nÉ uma estimativa e ainda não foi salva como orçamento.`);
           } else if (name === 'daily_briefing') {
             const briefing = await toolsExecutor.executeDailyBriefing(args, scope);
             let text = `📋 **Raio-X Operacional do Dia (${briefing.todayDate}):**\n\n`;
@@ -430,7 +431,7 @@ function createAiAgentChatHandler(deps = {}) {
               const fatFmt = Number(fin.faturamentoRealizado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
               const recFmt = Number(fin.totalRecebido || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
               const penFmt = Number(fin.totalPendenteReceber || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-              answers.push(`💰 **Resumo Financeiro (${fin.periodLabel || fin.period}):**\n\n• **Valor de pedidos concluídos:** ${fatFmt} (${fin.pedidosConcluidos} concluídos)\n• **Volume emitido:** ${Number(fin.volumeTotalEmitido || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n• **Pagamentos registrados nos pedidos selecionados:** ${recFmt}\n• **Pendente:** ${penFmt}\n• **Ticket Médio:** R$ ${fin.ticketMedio.toFixed(2)}\n\nSeleção: ${fin.criterioFiltro || "Data de criação do pedido (createdAt)"}. ${fin.paymentScopeNotice || "Pagamentos associados não comprovam entradas de caixa no período por data de recebimento."} Concluído não significa quitado; estes valores não são lucro.`);
+              answers.push(`**Resumo financeiro — ${fin.periodLabel || fin.period}:**\n• Pedidos concluídos: ${fatFmt}\n• Total de pedidos não cancelados: ${Number(fin.volumeTotalEmitido || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n• Já recebido nesses pedidos: ${recFmt}\n• Falta receber: ${penFmt}\n• Ticket médio: ${Number(fin.ticketMedio || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\nOs pedidos são selecionados pela data de criação; o recebido é o acumulado atual e não representa entradas ocorridas somente nesse período.`);
             }
           } else if (name === 'query_orders_view') {
             const result = await toolsExecutor.executeQueryOrdersView(args, scope);
@@ -466,7 +467,8 @@ function createAiAgentChatHandler(deps = {}) {
         // curta de síntese. Consultas simples continuam sem a chamada extra,
         // reduzindo latência e custo. O resultado determinístico acima segue
         // como fallback caso a síntese falhe.
-        if (functionCalls.length > 1 && TOOL_LIMITS.MAX_MODEL_ROUNDS > 1 && answers.length > 1 && answers.join('\n\n').length <= 8000) {
+        const containsFinancialResults = functionCalls.some((call) => ['get_financial_summary', 'daily_briefing', 'get_user_summary', 'query_orders_view', 'calculate_pricing_estimate'].includes(call.name));
+        if (!containsFinancialResults && functionCalls.length > 1 && TOOL_LIMITS.MAX_MODEL_ROUNDS > 1 && answers.length > 1 && answers.join('\n\n').length <= 8000) {
           const remainingMs = TIMEOUTS.CHAT_TOTAL_MS - (Date.now() - startTime);
           if (remainingMs > 1000) {
             let synthesisContextChars = 8000;
