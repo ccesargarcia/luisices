@@ -615,6 +615,7 @@ jobs:
           EVOLUTION_API_KEY: ${{ secrets.DEV_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.dev_gemini || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
           SUPERFRETE_SANDBOX_TOKEN: ${{ secrets.SUPERFRETE_SANDBOX_TOKEN }}
+          ORDER_TRACKING_ENCRYPTION_KEY: ${{ secrets.DEV_ORDER_TRACKING_ENCRYPTION_KEY }}
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
