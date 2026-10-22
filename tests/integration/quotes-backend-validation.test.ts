@@ -127,5 +127,14 @@ describe('Validação matemática de orçamentos nas regras do Firestore', () =>
     await assertFails(updateDoc(doc(dbFor(), 'quotes/existing'), { totalPrice: 314 }));
     await assertSucceeds(updateDoc(doc(dbFor(), 'quotes/legacy'), { status: 'sent' }));
     await assertFails(updateDoc(doc(dbFor(), 'quotes/legacy'), { totalPrice: 1 }));
+
+    // Simulação exata da edição do E2E (quotes.spec.ts:77):
+    // 1 item alterado para unitPrice 125, desconto 10%
+    await assertSucceeds(updateDoc(doc(dbFor(), 'quotes/existing'), {
+      items: [{ name: 'Produto editável', quantity: 1, unitPrice: 125 }],
+      discount: 10,
+      discountType: 'percent',
+      totalPrice: 112.5,
+    }));
   });
 });

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Quote, OrderStatus, canAccessEmails } from '../../types';
+import { Quote, OrderStatus, OrderItem, canAccessEmails } from '../../types';
 import { formatCurrency } from '../../utils/currency';
 import { formatDateTime as formatDateTimeUtil } from '../../utils/date';
 import { normalizePhoneForWhatsApp, formatPhoneForDisplay } from '../../utils/whatsapp';
@@ -173,6 +173,51 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         .join(', ');
       const totalQty = quote.items.reduce((s, i) => s + i.quantity, 0);
 
+      const quoteSubtotal = quote.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+      const isSingleItem = quote.items.length === 1;
+
+      let orderItems: OrderItem[];
+      let orderUnitPrice: number | null = null;
+
+      if (isSingleItem) {
+        const item = quote.items[0];
+        const unitPrice = Number((quote.totalPrice / (item.quantity || 1)).toFixed(2));
+        orderItems = [{
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice,
+          price: quote.totalPrice,
+        }];
+        orderUnitPrice = unitPrice;
+      } else if (quoteSubtotal > 0 && Math.abs(quoteSubtotal - quote.totalPrice) > 0.005) {
+        // Distribuir desconto proporcionalmente entre os itens
+        let accumulatedPrice = 0;
+        orderItems = quote.items.map((i, index) => {
+          const isLast = index === quote.items.length - 1;
+          const rawPrice = (i.quantity * i.unitPrice) * (quote.totalPrice / quoteSubtotal);
+          const itemPrice = isLast
+            ? Number((quote.totalPrice - accumulatedPrice).toFixed(2))
+            : Number(rawPrice.toFixed(2));
+          accumulatedPrice += itemPrice;
+          const unitPrice = Number((itemPrice / (i.quantity || 1)).toFixed(2));
+          return {
+            name: i.name,
+            quantity: i.quantity,
+            unitPrice,
+            price: itemPrice,
+          };
+        });
+        orderUnitPrice = null;
+      } else {
+        orderItems = quote.items.map((i) => ({
+          name: i.name,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          price: Number((i.quantity * i.unitPrice).toFixed(2)),
+        }));
+        orderUnitPrice = quote.items.length === 1 ? quote.items[0].unitPrice : null;
+      }
+
       const order = await firebaseOrderService.createOrder(
         {
           customerName: trimmedName,
@@ -181,14 +226,9 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           productName,
           quantity: totalQty,
           price: quote.totalPrice,
-          items: quote.items.map((i) => ({
-            name: i.name,
-            quantity: i.quantity,
-            unitPrice: i.unitPrice,
-            price: Number((i.quantity * i.unitPrice).toFixed(2)),
-          })),
-          pricingMode: quote.items.length === 1 ? 'unit' : 'items',
-          unitPrice: quote.items.length === 1 ? quote.items[0].unitPrice : null,
+          items: orderItems,
+          pricingMode: isSingleItem ? 'unit' : 'items',
+          unitPrice: orderUnitPrice,
           status: 'pending' as OrderStatus,
           deliveryDate: quote.deliveryDate,
           notes: [
@@ -205,6 +245,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       );
 
       toast.success(`Pedido ${order.orderNumber} criado com sucesso!`);
+      onRefresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro ao aprovar orçamento');
     } finally {
@@ -218,6 +259,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
     try {
       await firebaseQuoteService.updateStatus(quote.id, 'rejected');
       toast.success('Orçamento rejeitado');
+      onRefresh();
     } catch (e) {
       toast.error('Erro ao rejeitar orçamento');
     } finally {

@@ -443,7 +443,7 @@ service cloud.firestore {
         + (c > 3 ? itemValidTotal(items[3]) : 0)
         + (c > 4 ? itemValidTotal(items[4]) : 0);
       return c <= 5 ? s1 : s1
-        + itemValidTotal(items[5])
+        + (c > 5 ? itemValidTotal(items[5]) : 0)
         + (c > 6 ? itemValidTotal(items[6]) : 0)
         + (c > 7 ? itemValidTotal(items[7]) : 0)
         + (c > 8 ? itemValidTotal(items[8]) : 0)
@@ -453,21 +453,23 @@ service cloud.firestore {
     function isValidQuoteMath(data) {
       let items = data.get('items', []);
       let count = items.size();
-      let subtotal = (items is list && count >= 1 && count <= 10) ? quoteSubtotal(items) : -1;
       let disc = data.get('discount', 0);
-      let discount = disc == null ? 0 : disc;
+      let discount = float(disc == null ? 0 : disc);
       let dt = data.get('discountType', 'percent');
       let discountType = dt == null ? 'percent' : dt;
-      let discountAmount = discountType == 'percent' ? subtotal * discount / 100 : discount;
-      let dCents = discount * 100;
-      return subtotal >= 0
-        && discount >= 0
+      let subtotal = float((items is list && count >= 1 && count <= 10) ? quoteSubtotal(items) : -1);
+      let discountAmount = discountType == 'percent' ? (subtotal * discount / 100.0) : discount;
+      let dCents = discount * 100.0;
+      let totalPrice = float(data.get('totalPrice', -1));
+      let diff = totalPrice - (subtotal - discountAmount);
+      return subtotal >= 0.0
+        && discount >= 0.0
         && math.round(dCents) == dCents
         && (discountType in ['percent', 'fixed'])
-        && (discountType != 'percent' || discount <= 100)
+        && (discountType != 'percent' || discount <= 100.0)
         && discountAmount <= subtotal
-        && data.totalPrice >= 0
-        && math.abs(data.totalPrice - (subtotal - discountAmount)) < 0.0051;
+        && totalPrice >= 0.0
+        && math.abs(diff) < 0.0051;
     }
 
     function isValidQuote(data) {
@@ -483,7 +485,7 @@ service cloud.firestore {
         && (!('customerName' in data) || (name is string && name.size() >= 1 && name.size() <= 200))
         && (!('status' in data) || data.status in ['draft', 'sent', 'approved', 'rejected', 'expired'])
         && (!data.diff(previous).affectedKeys().hasAny(['items', 'totalPrice', 'discount', 'discountType'])
-          || (('items' in data) && isValidQuoteMath(data)));
+          || isValidQuoteMath(data));
     }
 
     function isValidProduct(data) {
