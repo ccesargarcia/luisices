@@ -163,12 +163,14 @@ test.describe('Fluxos Críticos de Negócio', () => {
       page.getByText(/criado com sucesso/i).or(detailsDialog.getByText('Aprovado', { exact: true })).first()
     ).toBeVisible({ timeout: 15000 });
 
-    // Fechar diálogo de detalhes se aberto
-    const closeBtn = detailsDialog.getByRole('button', { name: /Fechar/i }).first();
-    if (await closeBtn.isVisible().catch(() => false)) {
-      await closeBtn.click();
-    } else {
+    // A aprovação pode fechar ou remontar o diálogo ao atualizar o orçamento.
+    // Aguarda esse fechamento antes de tentar sair, evitando clicar em um botão já removido.
+    const dialogClosedAfterApproval = await expect(detailsDialog)
+      .toBeHidden({ timeout: 3000 })
+      .then(() => true, () => false);
+    if (!dialogClosedAfterApproval) {
       await page.keyboard.press('Escape');
+      await expect(detailsDialog).toBeHidden({ timeout: 5000 });
     }
 
     // 5. Cleanup: Ir ao dashboard e apagar o pedido gerado

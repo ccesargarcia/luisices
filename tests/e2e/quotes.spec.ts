@@ -117,7 +117,9 @@ test.describe('Orçamentos - CRUD', () => {
     await expect(dialog).not.toBeVisible({ timeout: 15000 });
 
     // Reload before checking so this asserts server persistence instead of relying on listener timing.
-    await page.reload();
+    // Reabrir explicitamente a rota evita que uma renovação de sessão durante o reload
+    // deixe o teste no dashboard e garante uma leitura nova do orçamento persistido.
+    await page.goto('/orcamentos');
     await expect(page.locator('main h1').first()).toContainText(/Orçamentos/i, { timeout: 15000 });
     await page.getByTestId('search-quotes-input').fill(clientName);
     card = page.getByTestId('quote-card').filter({ hasText: clientName }).first();
