@@ -31,6 +31,7 @@ export function QuoteCard({ quote, onClick, compact = false }: QuoteCardProps) {
 
   return (
     <Card
+      data-testid="quote-card"
       className="cursor-pointer hover:shadow-md transition-all overflow-hidden"
       style={
         quote.cardColor

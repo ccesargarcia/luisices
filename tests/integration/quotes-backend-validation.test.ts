@@ -49,6 +49,19 @@ describe('Validação matemática de orçamentos nas regras do Firestore', () =>
     }));
   });
 
+  it('aceita centavos decimais comuns e desconto fixo de R$ 0,29', async () => {
+    await assertSucceeds(setDoc(doc(dbFor(), 'quotes/twenty-nine-cent-item'), {
+      ...baseQuote,
+      items: [{ name: 'Item de vinte e nove centavos', quantity: 1, unitPrice: 0.29 }],
+      discount: 0, discountType: 'fixed', totalPrice: 0.29,
+    }));
+    await assertSucceeds(setDoc(doc(dbFor(), 'quotes/twenty-nine-cent-discount'), {
+      ...baseQuote,
+      items: [{ name: 'Produto de um real', quantity: 1, unitPrice: 1 }],
+      discount: 0.29, discountType: 'fixed', totalPrice: 0.71,
+    }));
+  });
+
   it('rejeita total adulterado, desconto maior que o subtotal e percentual acima de 100', async () => {
     await assertFails(setDoc(doc(dbFor(), 'quotes/wrong-total'), { ...baseQuote, totalPrice: 1 }));
     await assertFails(setDoc(doc(dbFor(), 'quotes/oversized-discount'), {
@@ -59,12 +72,9 @@ describe('Validação matemática de orçamentos nas regras do Firestore', () =>
     }));
   });
 
-  it('rejeita quantidade fracionária, preço adulterado e mais de 10 itens', async () => {
+  it('rejeita quantidade fracionária, preço com fração de centavo e mais de 10 itens', async () => {
     await assertFails(setDoc(doc(dbFor(), 'quotes/fractional-quantity'), {
       ...baseQuote, items: [{ name: 'Produto A', quantity: 1.5, unitPrice: 100 }], discount: null, discountType: null, totalPrice: 150,
-    }));
-    await assertFails(setDoc(doc(dbFor(), 'quotes/extra-item-fields'), {
-      ...baseQuote, items: [{ name: 'Produto A', quantity: 2, unitPrice: 150, price: 300 }], discount: null, discountType: null, totalPrice: 300,
     }));
     await assertFails(setDoc(doc(dbFor(), 'quotes/fractional-cent-price'), {
       ...baseQuote,
@@ -78,7 +88,17 @@ describe('Validação matemática de orçamentos nas regras do Firestore', () =>
     }));
   });
 
-  it('aceita exatamente 10 itens e os limites máximos válidos de quantidade e preço', async () => {
+  it('ignora campos adicionais no item sem alterar o cálculo conferido pelo servidor', async () => {
+    await assertSucceeds(setDoc(doc(dbFor(), 'quotes/item-with-metadata'), {
+      ...baseQuote,
+      items: [{ name: 'Produto A', quantity: 2, unitPrice: 150, sku: 'PROD-1' }],
+      discount: 0,
+      discountType: 'fixed',
+      totalPrice: 300,
+    }));
+  });
+
+  it('aceita 10 itens e os limites máximos de quantidade e preço', async () => {
     const items = Array.from({ length: 10 }, (_, i) => ({
       name: `Item ${i + 1}`,
       quantity: i === 0 ? 10000 : 1,

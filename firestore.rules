@@ -425,14 +425,12 @@ service cloud.firestore {
     }
 
     function itemValidTotal(item) {
-      let p = item.unitPrice * 100;
-      return (
-        item.size() == 3
-        && item.quantity is int && item.quantity >= 1 && item.quantity <= 10000
+      return (item.quantity is int && item.quantity >= 1 && item.quantity <= 10000
         && item.unitPrice >= 0 && item.unitPrice <= 1000000
-        && math.round(p) == p
-        && item.name.size() <= 300 && item.name.matches('[\\s\\S]*[^\\s][\\s\\S]*')
-      ) ? item.quantity * item.unitPrice : -1000000000000000;
+        && math.abs(item.unitPrice * 100 - math.round(item.unitPrice * 100)) < 0.001
+        && item.name.size() <= 300 && item.name.matches('[\\s\\S]*[^\\s][\\s\\S]*'))
+        ? item.quantity * item.unitPrice
+        : -1000000000000000;
     }
 
     function quoteSubtotal(items) {
@@ -464,7 +462,7 @@ service cloud.firestore {
       let diff = totalPrice - (subtotal - discountAmount);
       return subtotal >= 0.0
         && discount >= 0.0
-        && math.round(dCents) == dCents
+        && math.abs(math.round(dCents) - dCents) < 0.001
         && (discountType in ['percent', 'fixed'])
         && (discountType != 'percent' || discount <= 100.0)
         && discountAmount <= subtotal

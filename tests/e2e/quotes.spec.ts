@@ -43,7 +43,10 @@ test.describe('Orçamentos - CRUD', () => {
     await expect(dialog).not.toBeVisible({ timeout: 15000 });
     await expect(page.getByText(clientName).first()).toBeVisible({ timeout: 10000 });
 
-    const card = page.locator('.cursor-pointer, [role="button"]').filter({ hasText: clientName }).first();
+    const search = page.getByTestId('search-quotes-input');
+    await search.fill(clientName);
+    const card = page.getByTestId('quote-card').filter({ hasText: clientName }).first();
+    await expect(card).toBeVisible({ timeout: 15000 });
     await card.click();
     const details = page.locator('[role="dialog"]').first();
     await expect(details.getByText('R$ 270,00')).toBeVisible();
@@ -97,8 +100,10 @@ test.describe('Orçamentos - CRUD', () => {
     await dialog.getByRole('button', { name: /Salvar Orçamento/i }).click();
     await expect(dialog).not.toBeVisible({ timeout: 15000 });
 
-    const card = page.locator('.cursor-pointer, [role="button"]').filter({ hasText: clientName }).first();
-    await expect(card).toBeVisible();
+    const search = page.getByTestId('search-quotes-input');
+    await search.fill(clientName);
+    let card = page.getByTestId('quote-card').filter({ hasText: clientName }).first();
+    await expect(card).toBeVisible({ timeout: 15000 });
     await card.click();
     dialog = page.locator('[role="dialog"]').first();
     await dialog.getByRole('button', { name: /Editar/i }).click();
@@ -111,6 +116,12 @@ test.describe('Orçamentos - CRUD', () => {
     await dialog.getByRole('button', { name: /Salvar Orçamento/i }).click();
     await expect(dialog).not.toBeVisible({ timeout: 15000 });
 
+    // Reload before checking so this asserts server persistence instead of relying on listener timing.
+    await page.reload();
+    await expect(page.locator('main h1').first()).toContainText(/Orçamentos/i, { timeout: 15000 });
+    await page.getByTestId('search-quotes-input').fill(clientName);
+    card = page.getByTestId('quote-card').filter({ hasText: clientName }).first();
+    await expect(card).toContainText('R$ 112,50', { timeout: 15000 });
     await card.click();
     dialog = page.locator('[role="dialog"]').first();
     await expect(dialog.getByText('R$ 112,50')).toBeVisible();
