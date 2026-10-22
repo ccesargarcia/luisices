@@ -71,14 +71,22 @@ describe('MCP & ChatGPT Plugin / OpenAPI 3.0.3 Specification', () => {
       expect(exposedPaths).not.toContain('/tools/calculate_pricing_estimate');
     });
 
-    it('mantém a regra de valor positivo válida no MCP JSON Schema e no OpenAPI 3.0.3', () => {
+    it('publica valores monetários como número ou texto local e mantém os limites no OpenAPI 3.0.3', () => {
       const paymentTool = TOOLS_METADATA.find((tool) => tool.name === 'register_order_payment');
       const schema = buildOpenApiSchema('https://api.dev.luisices.com.br/chatGptToolsEndpoint');
       const openApiAmount = schema.paths['/tools/register_order_payment'].post.requestBody.content['application/json'].schema.properties.amount;
 
-      expect(paymentTool?.requestBody.properties.amount).toMatchObject({ type: 'number', exclusiveMinimum: 0 });
-      expect(openApiAmount).toMatchObject({ type: 'number', minimum: 0, exclusiveMinimum: true });
-      expect(typeof openApiAmount.exclusiveMinimum).toBe('boolean');
+      expect(paymentTool?.requestBody.properties.amount).toMatchObject({
+        'x-accept-localized-money': true,
+        anyOf: [
+          { type: 'number', exclusiveMinimum: 0 },
+          { type: 'string', pattern: expect.stringContaining('\\d') },
+        ],
+      });
+      expect(openApiAmount.anyOf).toEqual(expect.arrayContaining([
+        { type: 'number', minimum: 0, exclusiveMinimum: true },
+        expect.objectContaining({ type: 'string', pattern: expect.any(String) }),
+      ]));
     });
   });
 

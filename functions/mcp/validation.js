@@ -8,12 +8,35 @@ function invalid(message) {
   throw error;
 }
 
+function parseLocalizedMoney(value, path) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string') invalid(`${path} deve ser um valor monetário válido.`);
+  let text = value.trim().replace(/^R\$\s*/i, '').replace(/\s/g, '');
+  let normalized;
+  if (/^\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/.test(text)) {
+    normalized = text.replace(/\./g, '').replace(',', '.');
+  } else if (/^\d{1,3}(?:,\d{3})+\.\d{1,2}$/.test(text)) {
+    normalized = text.replace(/,/g, '');
+  } else if (/^\d+(?:[,.]\d{1,2})?$/.test(text)) {
+    normalized = text.replace(',', '.');
+  } else if (/^[,.]\d{1,2}$/.test(text)) {
+    normalized = `0.${text.slice(1)}`;
+  } else {
+    invalid(`${path} deve ser um valor válido, como 25,50 ou 1.234,56.`);
+  }
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount)) invalid(`${path} deve ser um valor monetário válido.`);
+  return amount;
+}
+
 function validateValue(value, schema, path) {
   if (value === null) {
     if (schema.nullable) return;
     invalid(`${path} não pode ser nulo.`);
   }
-  if (schema.type === 'string') {
+  if (schema['x-accept-localized-money']) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) invalid(`${path} deve ser um valor monetário válido.`);
+  } else if (schema.type === 'string') {
     if (typeof value !== 'string') invalid(`${path} deve ser texto.`);
     if (value.length > (schema.maxLength ?? 4096)) invalid(`${path} excede o limite de caracteres.`);
     if (schema.minLength !== undefined && value.length < schema.minLength) invalid(`${path} é muito curto.`);
@@ -50,6 +73,9 @@ function validateObject(value, schema, path = 'arguments') {
   for (const [key, entry] of Object.entries(value)) {
     if (!Object.prototype.hasOwnProperty.call(properties, key)) invalid(`Campo não permitido: ${path}.${key}.`);
     const propSchema = properties[key];
+    if (propSchema?.['x-accept-localized-money']) {
+      value[key] = parseLocalizedMoney(entry, `${path}.${key}`);
+    }
     // MCP clients in the legacy create_order flow send confirmation flags as strings.
     // Keep this narrow compatibility while numeric fields remain strictly typed.
     if (propSchema?.type === 'boolean' && typeof entry === 'string') {

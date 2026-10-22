@@ -4,6 +4,24 @@
 
 const { TOOL_SCOPE_MAP, MCP_SCOPES } = require('./constants');
 
+const MONEY_TEXT_PATTERN = '^(?:R\\$\\s*)?(?:\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?|\\d{1,3}(?:,\\d{3})+(?:\\.\\d{1,2})?|\\d+(?:[,.]\\d{1,2})?|[,.]\\d{1,2})$';
+
+function moneyInput(description, { minimum = 0, maximum, exclusiveMinimum } = {}) {
+  const numeric = { type: 'number' };
+  if (minimum !== undefined) numeric.minimum = minimum;
+  if (maximum !== undefined) numeric.maximum = maximum;
+  if (exclusiveMinimum !== undefined) numeric.exclusiveMinimum = exclusiveMinimum;
+  const string = { type: 'string', pattern: MONEY_TEXT_PATTERN };
+  return {
+    anyOf: [numeric, string],
+    'x-accept-localized-money': true,
+    ...(minimum !== undefined ? { minimum } : {}),
+    ...(maximum !== undefined ? { maximum } : {}),
+    ...(exclusiveMinimum !== undefined ? { exclusiveMinimum } : {}),
+    description: `${description} Aceita número ou valor digitado como 25,50, 25.50 ou 1.234,56.`,
+  };
+}
+
 /**
  * Definição padronizada de cada ferramenta com schemas de entrada e saída.
  */
@@ -274,13 +292,8 @@ const TOOLS_METADATA = [
           maximum: 100000,
           description: 'Quantidade.',
         },
-        totalPrice: {
-          type: 'number',
-          minimum: 0,
-          maximum: 10000000,
-          description: 'Valor total acertado.',
-        },
-        paidAmount: { type: 'number', minimum: 0, maximum: 10000000, description: 'Valor já pago, se informado.' },
+        totalPrice: moneyInput('Valor total acertado.', { minimum: 0, maximum: 10000000 }),
+        paidAmount: moneyInput('Valor já pago, se informado.', { minimum: 0, maximum: 10000000 }),
         deliveryDate: {
           type: 'string',
           maxLength: 10,
@@ -331,18 +344,8 @@ const TOOLS_METADATA = [
           minimum: 1,
           maximum: 100000,
         },
-        totalPrice: {
-          type: 'number',
-          description: 'Valor total do pedido em reais (ex: 210.00).',
-          minimum: 0,
-          maximum: 10000000,
-        },
-        paidAmount: {
-          type: 'number',
-          description: 'Valor de entrada ou sinal efetivamente já recebido (ex: 100.00). Omita se não houve pagamento; exige payments:write.',
-          default: 0,
-          maximum: 10000000,
-        },
+        totalPrice: moneyInput('Valor total do pedido em reais.', { minimum: 0, maximum: 10000000 }),
+        paidAmount: { ...moneyInput('Valor de entrada ou sinal efetivamente já recebido. Omita se não houve pagamento; exige payments:write.', { minimum: 0, maximum: 10000000 }), default: 0 },
         paymentMethod: {
           type: 'string',
           enum: ['pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'transferencia', 'outro'],
@@ -410,8 +413,8 @@ const TOOLS_METADATA = [
         customerPhone: { type: 'string', maxLength: 50, description: 'Novo telefone/WhatsApp, se for alterar.' },
         productName: { type: 'string', maxLength: 300, description: 'Nova descrição do produto.' },
         quantity: { type: 'integer', minimum: 1, maximum: 10000, description: 'Nova quantidade.' },
-        totalPrice: { type: 'number', minimum: 0, maximum: 10000000, description: 'Novo valor total do pedido em reais. Informe este campo OU unitPrice, nunca ambos.' },
-        unitPrice: { type: 'number', minimum: 0, maximum: 1000000, description: 'Novo valor por unidade em reais. O backend calcula o total multiplicando pela quantidade final do pedido. Informe este campo OU totalPrice, nunca ambos.' },
+        totalPrice: moneyInput('Novo valor total do pedido em reais. Informe este campo OU unitPrice, nunca ambos.', { minimum: 0, maximum: 10000000 }),
+        unitPrice: moneyInput('Novo valor por unidade em reais. O backend calcula o total multiplicando pela quantidade final do pedido. Informe este campo OU totalPrice, nunca ambos.', { minimum: 0, maximum: 1000000 }),
         deliveryDate: { type: 'string', description: 'Novo prazo no formato AAAA-MM-DD ou DD/MM/AAAA.' },
         theme: { type: 'string', maxLength: 200, description: 'Novo tema do pedido.' },
         notes: { type: 'string', maxLength: 1000, description: 'Novas observações de produção.' },
@@ -479,7 +482,7 @@ const TOOLS_METADATA = [
       required: ['orderNumber', 'amount', 'method', 'idempotencyKey'],
       properties: {
         orderNumber: { type: 'string', description: 'Número do pedido ou ID do documento.' },
-        amount: { type: 'number', exclusiveMinimum: 0, description: 'Valor recebido em reais.' },
+        amount: moneyInput('Valor recebido em reais.', { exclusiveMinimum: 0 }),
         method: { type: 'string', enum: ['pix', 'cash', 'credit', 'debit', 'transfer'], description: 'Forma de pagamento.' },
         notes: { type: 'string', maxLength: 300, description: 'Referência ou observação opcional.' },
         idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{8,128}$', description: 'Campo interno: gere e preencha em silêncio; nunca peça, mostre ou explique este valor à pessoa.' },
@@ -706,7 +709,7 @@ const TOOLS_METADATA = [
         customerPhone: { type: 'string', maxLength: 50, description: 'Telefone/WhatsApp do cliente.' },
         productName: { type: 'string', minLength: 1, maxLength: 500, description: 'Nome e itens da encomenda.' },
         quantity: { type: 'integer', minimum: 1, default: 1 },
-        totalPrice: { type: 'number', minimum: 0, description: 'Valor total do orçamento.' },
+        totalPrice: moneyInput('Valor total do orçamento.', { minimum: 0 }),
         depositPercentage: { type: 'number', minimum: 0, maximum: 100, default: 50, description: 'Percentual de entrada/sinal exigido.' },
         paymentMethod: { type: 'string', enum: ['pix', 'cartao', 'dinheiro'], default: 'pix' },
         validUntil: { type: 'string', maxLength: 10, description: 'Validade da proposta no formato AAAA-MM-DD.' },
@@ -770,6 +773,9 @@ function toOpenApi30Schema(schema) {
   }
   if (converted.items && typeof converted.items === 'object') {
     converted.items = toOpenApi30Schema(converted.items);
+  }
+  if (Array.isArray(converted.anyOf)) {
+    converted.anyOf = converted.anyOf.map((entry) => toOpenApi30Schema(entry));
   }
 
   return converted;
