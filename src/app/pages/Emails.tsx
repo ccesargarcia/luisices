@@ -13,6 +13,7 @@ import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
+import { emailService } from '../../services/emailService';
 import { ReceivedEmail, SendEmailPayload } from '../types';
 import { Button } from '../components/ui/button';
 import { EmailHtmlViewer } from '../components/emails/EmailHtmlViewer';
@@ -276,6 +277,7 @@ export function Emails() {
     canDelete,
     hasMoreReceived, hasMoreSent, loadingHistory, loadHistory, error,
   } = useEmails();
+  const canMoveEmailsToTrash = canEdit || canDelete;
 
   // Informações do negócio dinamizadas das Configurações
   const businessName = settings?.businessName?.trim() || 'Luisices Personalizados';
@@ -688,9 +690,10 @@ export function Emails() {
   };
 
   const handleConfirmBulkDelete = async () => {
-    if (!canDelete || !selectedEmailIds.size || isBulkDeleting) return;
-    setIsBulkDeleting(true);
     const folder = activeFolder;
+    const canPerformDeleteAction = folder === 'trash' ? canDelete : canMoveEmailsToTrash;
+    if (!canPerformDeleteAction || !selectedEmailIds.size || isBulkDeleting) return;
+    setIsBulkDeleting(true);
     try {
       const ids = [...selectedEmailIds];
       if (folder === 'trash') {
@@ -797,21 +800,29 @@ export function Emails() {
 
   const handleEmptyTrash = async () => {
     if (!canDelete || isBulkDeleting) return;
-    const allTrashed = [
-      ...receivedEmails.filter((e) => e.trashed).map((e) => ({ id: e.id, type: 'received' as const })),
-      ...sentEmails.filter((e) => e.trashed).map((e) => ({ id: e.id, type: 'sent' as const })),
-    ];
-    if (allTrashed.length === 0) return;
     setIsBulkDeleting(true);
     try {
-      const results = await Promise.allSettled(
-        allTrashed.map((item) => (item.type === 'received' ? deleteReceived(item.id) : deleteSent(item.id)))
-      );
-      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
-      toast.success(`Lixeira esvaziada (${succeeded} e-mail(s) excluído(s)).`);
+      const trashed = await emailService.getAllTrashedEmailIds();
+      const total = trashed.received.length + trashed.sent.length;
+      if (!total) {
+        toast.info('A lixeira já está vazia.');
+        setIsEmptyTrashDialogOpen(false);
+        return;
+      }
+      const [receivedResult, sentResult] = await Promise.all([
+        emailService.permanentlyDeleteEmails('receivedEmails', trashed.received),
+        emailService.permanentlyDeleteEmails('sentEmails', trashed.sent),
+      ]);
+      const succeeded = receivedResult.deleted + sentResult.deleted;
+      const failed = receivedResult.failed + sentResult.failed;
+      if (succeeded) toast.success(`${succeeded} e-mail(s) excluído(s) definitivamente.`);
+      if (failed) toast.error(`${failed} e-mail(s) não puderam ser excluídos. Tente novamente.`);
       setSelectedEmailId(null);
       setSelectedEmailIds(new Set());
-      setIsEmptyTrashDialogOpen(false);
+      if (!failed) setIsEmptyTrashDialogOpen(false);
+    } catch (error) {
+      console.error('Erro ao esvaziar a lixeira:', error);
+      toast.error('Não foi possível esvaziar a lixeira. Tente novamente.');
     } finally {
       setIsBulkDeleting(false);
     }
@@ -1654,7 +1665,7 @@ export function Emails() {
                   {activeFolder === 'trash' ? (
                     <>
                       <Button
-                        disabled={(!canEdit && !canDelete) || isBulkDeleting}
+                        disabled={!canMoveEmailsToTrash || isBulkDeleting}
                         size="sm"
                         variant="outline"
                         className="h-7 px-2 text-[11px] gap-1 text-primary hover:text-primary font-medium"
@@ -1668,11 +1679,12 @@ export function Emails() {
                       <Button
                         disabled={!canDelete || isBulkDeleting}
                         size="sm"
-                        className="h-auto min-h-7 max-w-full whitespace-normal px-2.5 text-[11px] gap-1 shadow-sm font-semibold bg-red-600 hover:bg-red-700 text-white dark:bg-red-600 dark:hover:bg-red-700 dark:text-white border-0 [&>span]:min-w-0 [&>span]:[overflow-wrap:anywhere]"
+                        variant="destructive"
+                        className="h-8 px-2.5 text-xs"
                         onClick={() => setIsBulkDeleteDialogOpen(true)}
-                        title="Excluir e-mails selecionados definitivamente"
+                        title={canDelete ? "Excluir e-mails selecionados definitivamente" : "Você não tem permissão para excluir e-mails."}
                       >
-                        <Trash2 className="size-3.5 text-white" />
+                        <Trash2 className="size-3.5" />
                         <span>Excluir definitivamente ({selectedEmailIds.size})</span>
                       </Button>
                     </>
@@ -1719,13 +1731,14 @@ export function Emails() {
                         </>
                       )}
                       <Button
-                        disabled={(!canEdit && !canDelete) || isBulkDeleting}
+                        disabled={!canMoveEmailsToTrash || isBulkDeleting}
                         size="sm"
-                        className="h-auto min-h-7 max-w-full whitespace-normal px-2.5 text-[11px] gap-1 shadow-sm font-semibold bg-red-600 hover:bg-red-700 text-white dark:bg-red-600 dark:hover:bg-red-700 dark:text-white border-0 [&>span]:min-w-0 [&>span]:[overflow-wrap:anywhere]"
+                        variant="destructive"
+                        className="h-8 px-2.5 text-xs"
                         onClick={() => setIsBulkDeleteDialogOpen(true)}
-                        title="Mover e-mails selecionados para a lixeira"
+                        title={canMoveEmailsToTrash ? "Mover e-mails selecionados para a lixeira" : "Você não tem permissão para mover e-mails para a lixeira."}
                       >
-                        <Trash2 className="size-3.5 text-white" />
+                        <Trash2 className="size-3.5" />
                         <span>Excluir ({selectedEmailIds.size})</span>
                       </Button>
                     </>
@@ -1905,7 +1918,7 @@ export function Emails() {
                                         </DropdownMenuItem>
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem
-                  disabled={!canDelete || isBulkDeleting}
+                                          disabled={!canDelete || isBulkDeleting}
                                           variant="destructive"
                                           onClick={() => {
                                             setEmailToDelete({
@@ -2001,7 +2014,7 @@ export function Emails() {
                                         </DropdownMenuItem>
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem
-                  disabled={!canDelete || isBulkDeleting}
+                                          disabled={!canMoveEmailsToTrash || isBulkDeleting}
                                           variant="destructive"
                                           onClick={() => {
                                             setEmailToDelete({
@@ -2066,7 +2079,7 @@ export function Emails() {
                                         </DropdownMenuItem>
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem
-                  disabled={!canDelete || isBulkDeleting}
+                                          disabled={!canMoveEmailsToTrash || isBulkDeleting}
                                           variant="destructive"
                                           onClick={() => {
                                             setEmailToDelete({
@@ -2157,7 +2170,7 @@ export function Emails() {
                           </ContextMenuItem>
                           <ContextMenuSeparator />
                           <ContextMenuItem
-                            disabled={!canDelete || isBulkDeleting}
+                            disabled={!canMoveEmailsToTrash || isBulkDeleting}
                             variant="destructive"
                             onClick={() => {
                               setEmailToDelete({
@@ -2279,7 +2292,7 @@ export function Emails() {
                           </ContextMenuItem>
                           <ContextMenuSeparator />
                           <ContextMenuItem
-                  disabled={!canDelete || isBulkDeleting}
+                            disabled={!canMoveEmailsToTrash || isBulkDeleting}
                             variant="destructive"
                             onClick={() => {
                               setEmailToDelete({
@@ -2358,7 +2371,7 @@ export function Emails() {
                           </ContextMenuItem>
                           <ContextMenuSeparator />
                           <ContextMenuItem
-                  disabled={!canDelete || isBulkDeleting}
+                            disabled={!canMoveEmailsToTrash || isBulkDeleting}
                             variant="destructive"
                             onClick={() => {
                               setEmailToDelete({
@@ -2534,7 +2547,11 @@ export function Emails() {
                 </div>
 
                 <Button
-                  disabled={!canDelete || isBulkDeleting}
+                  disabled={
+                    (currentReceivedEmail?.trashed || currentSentEmail?.trashed
+                      ? !canDelete
+                      : !canMoveEmailsToTrash) || isBulkDeleting
+                  }
                   size="sm"
                   variant="ghost"
                   onClick={() => {

@@ -127,6 +127,9 @@ export interface Order {
   shippingServiceName?: string | null;
   shippingCost?: number | null;
   shippingUpdatedAt?: string | null;
+  /** Indica apenas se existe um link público ativo; o hash secreto não é exposto ao cliente. */
+  hasPublicTracking?: boolean;
+  publicTrackingExpiresAt?: string | null;
 }
 
 export interface OrderItem {

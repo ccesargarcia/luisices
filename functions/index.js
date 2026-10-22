@@ -56,6 +56,10 @@ module.exports = {
   // ─── Pedidos e Vitrine Pública ─────────────────────────────────────────────
   syncAllOrdersToAiView: orderFunctions.syncAllOrdersToAiView,
   submitPublicCatalogOrder: orderFunctions.submitPublicCatalogOrder,
+  createOrderTrackingLink: orderFunctions.createOrderTrackingLink,
+  listOrderTrackingLinks: orderFunctions.listOrderTrackingLinks,
+  revokeOrderTrackingLink: orderFunctions.revokeOrderTrackingLink,
+  getPublicOrderTracking: orderFunctions.getPublicOrderTracking,
 
   // ─── Inteligência Artificial (Google Gemini) ────────────────────────────────
   aiAgentChat: aiFunctions.aiAgentChat,

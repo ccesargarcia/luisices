@@ -102,9 +102,10 @@ jobs:
           EVOLUTION_API_KEY: ${{ secrets.DEV_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.dev_gemini || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
           SUPERFRETE_SANDBOX_TOKEN: ${{ secrets.SUPERFRETE_SANDBOX_TOKEN }}
+          ORDER_TRACKING_ENCRYPTION_KEY: ${{ secrets.DEV_ORDER_TRACKING_ENCRYPTION_KEY }}
           GCLOUD_PROJECT: luisices-dev
         run: |
-          trap 'rm -f functions/.env.luisices-dev' EXIT
+          trap 'rm -f functions/.env.luisices-dev "$HOME/order_tracking_encryption_key.txt"' EXIT
           if [ -n "$SENTRY_DSN" ]; then
             printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=development\n' "$SENTRY_DSN" > functions/.env.luisices-dev
           fi
@@ -133,6 +134,10 @@ jobs:
             fi
             printf '%s' "$SUPERFRETE_SANDBOX_TOKEN" > "$HOME/superfrete_sandbox_token.txt"
             firebase functions:secrets:set SUPERFRETE_SANDBOX_TOKEN --project luisices-dev --data-file "$HOME/superfrete_sandbox_token.txt" --non-interactive --force
+            if [ -n "$ORDER_TRACKING_ENCRYPTION_KEY" ]; then
+              printf '%s' "$ORDER_TRACKING_ENCRYPTION_KEY" > "$HOME/order_tracking_encryption_key.txt"
+              firebase functions:secrets:set ORDER_TRACKING_ENCRYPTION_KEY --project luisices-dev --data-file "$HOME/order_tracking_encryption_key.txt" --non-interactive --force
+            fi
             if [ -n "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" ]; then
               echo "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" > "$HOME/alexa_hmac.txt"
               firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
@@ -141,6 +146,15 @@ jobs:
               echo "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" > "$HOME/origin_secret.txt"
               firebase functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force || true
             fi
+          fi
+
+          if ! firebase functions:secrets:get ORDER_TRACKING_ENCRYPTION_KEY --project luisices-dev --non-interactive > /dev/null 2>&1; then
+            if [ -z "$ORDER_TRACKING_ENCRYPTION_KEY" ]; then
+              echo "❌ Configure DEV_ORDER_TRACKING_ENCRYPTION_KEY no GitHub ou no Secret Manager do projeto luisices-dev antes do deploy."
+              exit 1
+            fi
+            printf '%s' "$ORDER_TRACKING_ENCRYPTION_KEY" > "$HOME/order_tracking_encryption_key.txt"
+            firebase functions:secrets:set ORDER_TRACKING_ENCRYPTION_KEY --project luisices-dev --data-file "$HOME/order_tracking_encryption_key.txt" --non-interactive --force
           fi
 
           # Garante que ALEXA_IDENTITY_HMAC_KEY existe no Secret Manager de Dev antes do deploy se secret disponível
@@ -223,8 +237,9 @@ jobs:
           ORIGIN_SECRET: ${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
           ALEXA_HMAC: ${{ secrets.PROD_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY }}
           ALEXA_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID || secrets.ALEXA_PROD_SKILL_ID || secrets.ALEXA_SKILL_ID }}
+          ORDER_TRACKING_ENCRYPTION_KEY: ${{ secrets.PROD_ORDER_TRACKING_ENCRYPTION_KEY }}
         run: |
-          trap 'rm -f functions/.env.papelaria-dashboard' EXIT
+          trap 'rm -f functions/.env.papelaria-dashboard "$HOME/order_tracking_encryption_key.txt"' EXIT
           if [ -n "$SENTRY_DSN" ]; then
             printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=production\n' "$SENTRY_DSN" > functions/.env.papelaria-dashboard
           fi
@@ -281,6 +296,10 @@ jobs:
               echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
               firebase functions:secrets:set EVOLUTION_API_KEY --project papelaria-dashboard --data-file "$HOME/evolution_api_key.txt" --non-interactive --force || true
             fi
+            if [ -n "$ORDER_TRACKING_ENCRYPTION_KEY" ]; then
+              printf '%s' "$ORDER_TRACKING_ENCRYPTION_KEY" > "$HOME/order_tracking_encryption_key.txt"
+              firebase functions:secrets:set ORDER_TRACKING_ENCRYPTION_KEY --project papelaria-dashboard --data-file "$HOME/order_tracking_encryption_key.txt" --non-interactive --force
+            fi
             if [ -n "$RESEND_WEBHOOK_SECRET" ]; then
               echo "$RESEND_WEBHOOK_SECRET" > "$HOME/resend_webhook.txt"
               firebase functions:secrets:set RESEND_WEBHOOK_SECRET --project papelaria-dashboard --data-file "$HOME/resend_webhook.txt" --non-interactive --force || true
@@ -297,6 +316,15 @@ jobs:
               echo "$ORIGIN_SECRET" > "$HOME/origin_secret_prod.txt"
               firebase functions:secrets:set ORIGIN_SECRET --project papelaria-dashboard --data-file "$HOME/origin_secret_prod.txt" --non-interactive --force || true
             fi
+          fi
+
+          if ! firebase functions:secrets:get ORDER_TRACKING_ENCRYPTION_KEY --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
+            if [ -z "$ORDER_TRACKING_ENCRYPTION_KEY" ]; then
+              echo "❌ Configure PROD_ORDER_TRACKING_ENCRYPTION_KEY no GitHub ou no Secret Manager do projeto papelaria-dashboard antes do deploy."
+              exit 1
+            fi
+            printf '%s' "$ORDER_TRACKING_ENCRYPTION_KEY" > "$HOME/order_tracking_encryption_key.txt"
+            firebase functions:secrets:set ORDER_TRACKING_ENCRYPTION_KEY --project papelaria-dashboard --data-file "$HOME/order_tracking_encryption_key.txt" --non-interactive --force
           fi
 
           # Garante que segredos críticos existam no Secret Manager de Prod antes do deploy se secret disponível no GitHub

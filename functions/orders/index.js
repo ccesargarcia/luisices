@@ -2,11 +2,38 @@
  * Módulo de Pedidos e Catálogo Público (Cloud Functions v2).
  */
 
-const { Timestamp, getFirestore } = require('firebase-admin/firestore');
+const { Timestamp, FieldValue, getFirestore } = require('firebase-admin/firestore');
 const { HttpsError } = require('firebase-functions/v2/https');
 const { onCall } = require('../common/sentryFunctions');
+const { ORDER_TRACKING_ENCRYPTION_KEY } = require('../common/secrets');
 const crypto = require('crypto');
-const { publicCatalogOrderLimiter } = require('../common/rateLimiters');
+const { publicCatalogOrderLimiter, publicOrderTrackingLimiter } = require('../common/rateLimiters');
+
+function getTrackingEncryptionKey() {
+  const key = Buffer.from(ORDER_TRACKING_ENCRYPTION_KEY.value() || '', 'base64');
+  if (key.length !== 32) {
+    throw new HttpsError('failed-precondition', 'A chave segura dos links não está configurada no servidor.');
+  }
+  return key;
+}
+
+function encryptTrackingToken(token) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', getTrackingEncryptionKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]);
+  return [iv, cipher.getAuthTag(), ciphertext].map(part => part.toString('base64url')).join('.');
+}
+
+function decryptTrackingToken(value) {
+  const [ivValue, tagValue, ciphertextValue] = String(value || '').split('.');
+  if (!ivValue || !tagValue || !ciphertextValue) throw new Error('invalid_ciphertext');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', getTrackingEncryptionKey(), Buffer.from(ivValue, 'base64url'));
+  decipher.setAuthTag(Buffer.from(tagValue, 'base64url'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(ciphertextValue, 'base64url')),
+    decipher.final(),
+  ]).toString('utf8');
+}
 
 /**
  * Sincronização legado mantida para compatibilidade retroativa com clientes antigos.
@@ -16,6 +43,203 @@ const syncAllOrdersToAiView = onCall(async () => {
     success: true,
     count: 0,
     message: 'A sincronização agora é nativa e em tempo real em memória.',
+  };
+});
+
+/** Gera/rotaciona um link secreto de acompanhamento para um pedido autorizado. */
+const createOrderTrackingLink = onCall({ cors: true, maxInstances: 10, secrets: [ORDER_TRACKING_ENCRYPTION_KEY] }, async (request) => {
+  const uid = request.auth?.uid;
+  const orderId = request.data?.orderId;
+  if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para gerar o link.');
+  if (typeof orderId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(orderId)) {
+    throw new HttpsError('invalid-argument', 'Pedido inválido.');
+  }
+  const expirationDays = request.data?.expirationDays === undefined ? 90 : request.data.expirationDays;
+  if (expirationDays !== null && ![7, 30, 90].includes(expirationDays)) {
+    throw new HttpsError('invalid-argument', 'Escolha uma validade de 7, 30 ou 90 dias, ou sem expiração.');
+  }
+  try {
+    await publicOrderTrackingLimiter.consume(`create:${uid}`);
+  } catch {
+    throw new HttpsError('resource-exhausted', 'Muitos links foram gerados em sequência. Aguarde um pouco.');
+  }
+
+  const db = getFirestore();
+  const orderRef = db.doc(`orders/${orderId}`);
+  const orderSnap = await orderRef.get();
+  if (!orderSnap.exists) throw new HttpsError('not-found', 'Pedido não encontrado.');
+  const order = orderSnap.data() || {};
+  const profileSnap = await db.doc(`userProfiles/${uid}`).get();
+  const profile = profileSnap.data() || {};
+  const isAdmin = profileSnap.exists && profile.role === 'admin' && profile.active !== false;
+  const canViewOrders = isAdmin || profile.permissions?.orders === true || profile.permissions?.orders?.view === true;
+  if (!profileSnap.exists || profile.active === false || !canViewOrders || (order.userId !== uid && order.assignedTo !== uid && !isAdmin)) {
+    throw new HttpsError('permission-denied', 'Você não tem acesso para compartilhar este pedido.');
+  }
+  if (order.isArchived || order.status === 'cancelled') {
+    throw new HttpsError('failed-precondition', 'Pedidos arquivados ou cancelados não podem ser compartilhados.');
+  }
+
+  const token = crypto.randomBytes(32).toString('base64url');
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const expiresAt = expirationDays === null
+    ? null
+    : new Date(Date.now() + expirationDays * 24 * 60 * 60 * 1000).toISOString();
+  const linkId = crypto.randomUUID();
+  const linkRef = db.doc(`orderTrackingLinks/${linkId}`);
+  const batch = db.batch();
+  if (order.publicTrackingLinkId) {
+    batch.set(db.doc(`orderTrackingLinks/${order.publicTrackingLinkId}`), { revokedAt: FieldValue.serverTimestamp() }, { merge: true });
+  }
+  batch.set(linkRef, {
+    orderId,
+    orderNumber: order.orderNumber || '',
+    customerName: order.customerName || '',
+    status: order.status || 'pending',
+    createdByUid: uid,
+    createdByName: profile.displayName || profile.email || uid,
+    tokenCiphertext: encryptTrackingToken(token),
+    tokenHash,
+    expiresAt,
+    createdAt: FieldValue.serverTimestamp(),
+    revokedAt: null,
+  });
+  batch.update(orderRef, {
+    publicTrackingHash: tokenHash,
+    publicTrackingExpiresAt: expiresAt,
+    publicTrackingLinkId: linkId,
+  });
+  await batch.commit();
+  return { token, expiresAt, linkId };
+});
+
+/** Lista links criados pelo usuário ou todos para administradores. Os tokens só saem por callable autenticada. */
+const listOrderTrackingLinks = onCall({ cors: true, maxInstances: 10, secrets: [ORDER_TRACKING_ENCRYPTION_KEY] }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para consultar os links.');
+  const profileSnap = await getFirestore().doc(`userProfiles/${uid}`).get();
+  const profile = profileSnap.data() || {};
+  if (!profileSnap.exists || profile.active === false) throw new HttpsError('permission-denied', 'Sua conta não pode consultar links.');
+  const isAdmin = profile.role === 'admin';
+  const canViewOrders = isAdmin || profile.permissions?.orders === true || profile.permissions?.orders?.view === true;
+  if (!canViewOrders) throw new HttpsError('permission-denied', 'Você não tem permissão para consultar links de pedidos.');
+  getTrackingEncryptionKey();
+
+  const cursorId = request.data?.cursor;
+  if (cursorId !== undefined && cursorId !== null && (typeof cursorId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(cursorId))) {
+    throw new HttpsError('invalid-argument', 'Cursor de paginação inválido.');
+  }
+  const pageSize = Math.max(1, Math.min(Number(request.data?.pageSize) || 50, 100));
+  const db = getFirestore();
+  let query = db.collection('orderTrackingLinks');
+  if (!isAdmin) query = query.where('createdByUid', '==', uid);
+  query = query.orderBy('createdAt', 'desc');
+  if (cursorId) {
+    const cursor = await db.doc(`orderTrackingLinks/${cursorId}`).get();
+    if (!cursor.exists || (!isAdmin && cursor.data()?.createdByUid !== uid)) {
+      throw new HttpsError('invalid-argument', 'Cursor de paginação inválido.');
+    }
+    query = query.startAfter(cursor);
+  }
+  query = query.limit(pageSize + 1);
+  const snapshot = await query.get();
+  const hasMore = snapshot.docs.length > pageSize;
+  const docs = snapshot.docs.slice(0, pageSize);
+  const links = docs.map((doc) => {
+    const data = doc.data();
+    let token = null;
+    try {
+      token = decryptTrackingToken(data.tokenCiphertext);
+    } catch (error) {
+      console.error('[listOrderTrackingLinks] Não foi possível descriptografar o token:', doc.id, error?.message);
+    }
+    return {
+      id: doc.id,
+      orderId: data.orderId || '',
+      orderNumber: data.orderNumber || '',
+      customerName: data.customerName || '',
+      status: data.status || 'pending',
+      token,
+      expiresAt: data.expiresAt || null,
+      createdAt: data.createdAt?.toDate?.()?.toISOString?.() || null,
+      revokedAt: data.revokedAt?.toDate?.()?.toISOString?.() || null,
+      createdByUid: data.createdByUid || '',
+      createdByName: data.createdByName || data.createdByUid || '',
+    };
+  });
+  return { links, nextCursor: hasMore ? docs.at(-1)?.id || null : null };
+});
+
+/** Invalida imediatamente o link público de acompanhamento. */
+const revokeOrderTrackingLink = onCall({ cors: true, maxInstances: 10 }, async (request) => {
+  const uid = request.auth?.uid;
+  const orderId = request.data?.orderId;
+  if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para desativar o link.');
+  if (typeof orderId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(orderId)) {
+    throw new HttpsError('invalid-argument', 'Pedido inválido.');
+  }
+  const db = getFirestore();
+  const orderRef = db.doc(`orders/${orderId}`);
+  const orderSnap = await orderRef.get();
+  if (!orderSnap.exists) throw new HttpsError('not-found', 'Pedido não encontrado.');
+  const order = orderSnap.data() || {};
+  const profileSnap = await db.doc(`userProfiles/${uid}`).get();
+  const profile = profileSnap.data() || {};
+  const isAdmin = profileSnap.exists && profile.role === 'admin' && profile.active !== false;
+  const canViewOrders = isAdmin || profile.permissions?.orders === true || profile.permissions?.orders?.view === true;
+  if (!profileSnap.exists || profile.active === false || !canViewOrders || (order.userId !== uid && order.assignedTo !== uid && !isAdmin)) {
+    throw new HttpsError('permission-denied', 'Você não tem acesso para alterar o compartilhamento deste pedido.');
+  }
+  if (typeof order.publicTrackingHash !== 'string') return { success: true, revoked: false };
+  const batch = db.batch();
+  batch.update(orderRef, {
+    publicTrackingHash: FieldValue.delete(),
+    publicTrackingExpiresAt: FieldValue.delete(),
+    publicTrackingLinkId: FieldValue.delete(),
+  });
+  if (order.publicTrackingLinkId) {
+    batch.set(db.doc(`orderTrackingLinks/${order.publicTrackingLinkId}`), { revokedAt: FieldValue.serverTimestamp() }, { merge: true });
+  }
+  await batch.commit();
+  return { success: true, revoked: true };
+});
+
+/** Retorna somente dados próprios para acompanhamento público; nunca expõe dados financeiros/contato. */
+const getPublicOrderTracking = onCall({ cors: true, maxInstances: 20 }, async (request) => {
+  const ip = request.rawRequest?.ip || request.rawRequest?.headers?.['x-forwarded-for']?.split(',')?.[0]?.trim() || 'unknown';
+  try {
+    await publicOrderTrackingLimiter.consume(ip);
+  } catch {
+    throw new HttpsError('resource-exhausted', 'Muitas consultas em sequência. Aguarde um pouco e tente novamente.');
+  }
+  const token = request.data?.token;
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{40,50}$/.test(token)) {
+    throw new HttpsError('not-found', 'Link de acompanhamento inválido ou desativado.');
+  }
+  const db = getFirestore();
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const orderSnapshot = await db.collection('orders').where('publicTrackingHash', '==', tokenHash).limit(1).get();
+  if (orderSnapshot.empty) throw new HttpsError('not-found', 'Link de acompanhamento inválido ou desativado.');
+  const orderSnap = orderSnapshot.docs[0];
+  const order = orderSnap.data() || {};
+  const expiryIsMissing = !Object.prototype.hasOwnProperty.call(order, 'publicTrackingExpiresAt');
+  const expiresAtMs = typeof order.publicTrackingExpiresAt === 'string'
+    ? Date.parse(order.publicTrackingExpiresAt)
+    : Number.NaN;
+  const isExpired = order.publicTrackingExpiresAt !== null
+    && (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now());
+  if (order.publicTrackingHash !== tokenHash || order.isArchived || expiryIsMissing || isExpired) {
+    throw new HttpsError('not-found', 'Link de acompanhamento inválido ou desativado.');
+  }
+  return {
+    orderNumber: typeof order.orderNumber === 'string' ? order.orderNumber : '',
+    status: ['pending', 'in-progress', 'completed', 'cancelled'].includes(order.status) ? order.status : 'pending',
+    productName: typeof order.productName === 'string' ? order.productName.slice(0, 160) : 'Pedido personalizado',
+    quantity: Number.isSafeInteger(order.quantity) && order.quantity > 0 ? order.quantity : 1,
+    deliveryDate: typeof order.deliveryDate === 'string' ? order.deliveryDate : '',
+    updatedAt: typeof order.updatedAt === 'string' ? order.updatedAt : (typeof order.createdAt === 'string' ? order.createdAt : ''),
+    shippingStatus: typeof order.shippingStatus === 'string' ? order.shippingStatus : '',
+    shippingTrackingNumber: typeof order.shippingTrackingNumber === 'string' ? order.shippingTrackingNumber : '',
   };
 });
 
@@ -296,6 +520,10 @@ if (isDevOrEmulator) {
 module.exports = {
   syncAllOrdersToAiView,
   submitPublicCatalogOrder,
+  createOrderTrackingLink,
+  listOrderTrackingLinks,
+  revokeOrderTrackingLink,
+  getPublicOrderTracking,
   handleSubmitPublicCatalogOrder,
   calculateSuperfreteShipping,
   createSuperfreteLabel,

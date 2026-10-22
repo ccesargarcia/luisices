@@ -46,6 +46,12 @@ const publicCatalogOrderLimiter = new RateLimiterMemory({
   duration: 900,
 });
 
+// Consulta pública de acompanhamento: evita enumeração/abuso do endpoint por IP.
+const publicOrderTrackingLimiter = new RateLimiterMemory({
+  points: 30,
+  duration: 60,
+});
+
 module.exports = {
   passwordResetLimiter,
   adminUserActionLimiter,
@@ -54,4 +60,5 @@ module.exports = {
   aiAgentLimiter,
   galleryAiLimiter,
   publicCatalogOrderLimiter,
+  publicOrderTrackingLimiter,
 };

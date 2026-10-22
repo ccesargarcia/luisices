@@ -818,6 +818,11 @@ service cloud.firestore {
       allow delete: if canAccessEmails('delete');
     }
 
+    // Tokens recuperáveis ficam cifrados e só são acessados por Cloud Functions autenticadas.
+    match /orderTrackingLinks/{linkId} {
+      allow read, write: if false;
+    }
+
     // Regras para configurações públicas da loja / catálogo online
     match /storeSettings/{docId} {
       allow read: if true;

@@ -4,7 +4,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Order, OrderItem, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile, canAccessArchivedOrders, canAccessEmails } from '../types';
-import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore, Mail } from 'lucide-react';
+import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore, Mail, Loader2, Link2, Link2Off } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
@@ -14,6 +14,7 @@ import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { firebaseGalleryService } from '../../services/firebaseGalleryService';
+import { orderTrackingService } from '../../services/orderTrackingService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
 import { toast } from 'sonner';
@@ -24,6 +25,7 @@ import { OrderInfoView } from './orders/OrderInfoView';
 import { OrderEditForm, ProductItem, OrderEditState } from './orders/OrderEditForm';
 import { OrderAttachmentsSection } from './orders/OrderAttachmentsSection';
 import { OrderGallerySection } from './orders/OrderGallerySection';
+import { Input } from './ui/input';
 
 interface OrderDetailsDialogProps {
   order: Order | null;
@@ -68,6 +70,13 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [employees, setEmployees] = useState<UserProfile[]>([]);
   const [assigning, setAssigning] = useState(false);
+  const [creatingTrackingLink, setCreatingTrackingLink] = useState(false);
+  const [revokingTrackingLink, setRevokingTrackingLink] = useState(false);
+  const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
+  const [trackingExpiration, setTrackingExpiration] = useState('90');
+  const [trackingLinkActive, setTrackingLinkActive] = useState(Boolean(order?.hasPublicTracking));
+  const [generatedTrackingUrl, setGeneratedTrackingUrl] = useState('');
+  const [generatedTrackingExpiresAt, setGeneratedTrackingExpiresAt] = useState<string | null | undefined>(undefined);
 
   const [editProducts, setEditProducts] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
   const [editProductsBaseline, setEditProductsBaseline] = useState<ProductItem[]>([]);
@@ -153,10 +162,68 @@ Equipe ${settings?.businessName || 'Luisices'}`;
   const formatCurrencyEdit = (v: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
+  const currentTrackingExpiresAt = generatedTrackingExpiresAt !== undefined
+    ? generatedTrackingExpiresAt
+    : order?.publicTrackingExpiresAt;
+  const trackingExpiryLabel = currentTrackingExpiresAt === null
+    ? 'Este link não expira.'
+    : typeof currentTrackingExpiresAt === 'string' && Number.isFinite(Date.parse(currentTrackingExpiresAt))
+      ? `Validade até ${new Intl.DateTimeFormat('pt-BR').format(new Date(currentTrackingExpiresAt))}.`
+      : 'A validade deste link não está disponível.';
+
+  const handleCreateTrackingLink = async () => {
+    if (!order || creatingTrackingLink) return;
+    setCreatingTrackingLink(true);
+    try {
+      const expirationDays = trackingExpiration === 'never' ? null : Number(trackingExpiration) as 7 | 30 | 90;
+      const link = await orderTrackingService.createLink(order.id, expirationDays);
+      const token = link.token;
+      setGeneratedTrackingExpiresAt(link.expiresAt);
+      const base = import.meta.env.BASE_URL || '/';
+      const url = new URL(`${base.replace(/\/$/, '')}/acompanhar/${token}`, window.location.origin).toString();
+      setGeneratedTrackingUrl(url);
+      setTrackingLinkActive(true);
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success('Link copiado. Envie para o cliente acompanhar o pedido.');
+      } catch {
+        toast.info('Link criado. Copie o endereço exibido abaixo.');
+      }
+    } catch (error) {
+      console.error('Erro ao gerar link de acompanhamento:', error);
+      toast.error('Não foi possível gerar o link de acompanhamento.');
+    } finally {
+      setCreatingTrackingLink(false);
+    }
+  };
+
+  const handleRevokeTrackingLink = async () => {
+    if (!order || revokingTrackingLink) return;
+    setRevokingTrackingLink(true);
+    try {
+      await orderTrackingService.revokeLink(order.id);
+      setTrackingLinkActive(false);
+      setGeneratedTrackingUrl('');
+      setGeneratedTrackingExpiresAt(undefined);
+      toast.success('Link de acompanhamento desativado.');
+    } catch (error) {
+      console.error('Erro ao desativar link de acompanhamento:', error);
+      toast.error('Não foi possível desativar o link.');
+    } finally {
+      setRevokingTrackingLink(false);
+    }
+  };
+
   // Resetar estado de edição sempre que o pedido aberto mudar
   useEffect(() => {
     setIsEditing(false);
+    setGeneratedTrackingUrl('');
+    setGeneratedTrackingExpiresAt(undefined);
   }, [order?.id]);
+
+  useEffect(() => {
+    setTrackingLinkActive(Boolean(order?.hasPublicTracking));
+  }, [order?.id, order?.hasPublicTracking]);
 
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [singleCreatorName, setSingleCreatorName] = useState<string | null>(null);
@@ -576,18 +643,18 @@ Equipe ${settings?.businessName || 'Luisices'}`;
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="2xl" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
         <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+          <div className="flex flex-col gap-2">
             <DialogTitle className="text-base sm:text-lg">
               {isEditing ? 'Editar Pedido' : `Detalhes do Pedido ${order.orderNumber || '#' + order.id}`}
             </DialogTitle>
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               {!isEditing && (
                 <>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => exportOrderPDF(effectiveOrder || order, settings?.businessName)}
-                    className="gap-2"
+                    className="shrink-0 gap-2"
                   >
                     <Download className="size-4" />
                     PDF
@@ -597,11 +664,23 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                       size="sm"
                       variant="outline"
                       onClick={() => setEmailDialogOpen(true)}
-                      className="gap-2"
+                      className="shrink-0 gap-2"
                       title="Enviar detalhes por e-mail"
                     >
                       <Mail className="size-4 text-primary" />
                       E-mail
+                    </Button>
+                  )}
+                  {!order.isArchived && order.status !== 'cancelled' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setTrackingDialogOpen(true)}
+                      className="shrink-0 gap-2"
+                      title="Compartilhar uma página segura de acompanhamento com o cliente"
+                    >
+                      <Link2 className="size-4" />
+                      {trackingLinkActive ? 'Gerenciar link' : 'Link do cliente'}
                     </Button>
                   )}
                   {hasPermission(p => p.orders?.create ?? false) && (
@@ -610,7 +689,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                       variant="outline"
                       onClick={handleDuplicate}
                       disabled={isDuplicating}
-                      className="gap-2"
+                      className="shrink-0 gap-2"
                     >
                       <Copy className="size-4" />
                       {isDuplicating ? 'Duplicando...' : 'Duplicar'}
@@ -621,7 +700,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                       size="sm"
                       variant="outline"
                       onClick={handleEditClick}
-                      className="gap-2"
+                      className="shrink-0 gap-2"
                     >
                       <Edit className="size-4" />
                       Editar
@@ -633,7 +712,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                       variant="outline"
                       onClick={handleToggleArchive}
                       disabled={isArchiving}
-                      className="gap-1.5"
+                      className="shrink-0 gap-1.5"
                       title={order.isArchived ? 'Desarquivar este pedido' : 'Arquivar este pedido'}
                     >
                       {order.isArchived ? (
@@ -657,7 +736,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                   Arquivado
                 </Badge>
               )}
-              <Badge className={statusColors[order.status]}>
+              <Badge className={`shrink-0 ${statusColors[order.status]}`}>
                 {statusLabels[order.status]}
               </Badge>
             </div>
@@ -809,6 +888,61 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           defaultBody={orderEmailBody}
         />
       )}
+
+      <Dialog open={trackingDialogOpen} onOpenChange={setTrackingDialogOpen}>
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle>Acompanhamento do cliente</DialogTitle>
+            <DialogDescription>
+              Compartilhe uma página com o status e a previsão do pedido. Dados pessoais e valores não aparecem nela.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {trackingLinkActive ? (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                <p className="font-medium text-foreground">Há um link ativo para este pedido.</p>
+                <p className="mt-1 text-muted-foreground">{trackingExpiryLabel}</p>
+                <p className="mt-1 text-muted-foreground">Gerar outro link invalida o anterior. Você também pode desativar o acesso quando quiser.</p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Escolha por quanto tempo o link ficará disponível. A validade é verificada pelo servidor.</p>
+            )}
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="tracking-expiration">Validade do link</label>
+              <Select value={trackingExpiration} onValueChange={setTrackingExpiration}>
+                <SelectTrigger id="tracking-expiration"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">7 dias</SelectItem>
+                  <SelectItem value="30">30 dias</SelectItem>
+                  <SelectItem value="90">90 dias</SelectItem>
+                  <SelectItem value="never">Sem expiração</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">A qualquer momento, você pode renovar o link ou desativá-lo.</p>
+            </div>
+
+            {generatedTrackingUrl && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="generated-tracking-url">Link criado</label>
+                <Input id="generated-tracking-url" readOnly value={generatedTrackingUrl} onFocus={event => event.currentTarget.select()} />
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-between">
+            {trackingLinkActive ? (
+              <Button variant="destructive" onClick={handleRevokeTrackingLink} disabled={revokingTrackingLink} className="gap-2">
+                {revokingTrackingLink ? <Loader2 className="size-4 animate-spin" /> : <Link2Off className="size-4" />}
+                Desativar link
+              </Button>
+            ) : <span />}
+            <Button onClick={handleCreateTrackingLink} disabled={creatingTrackingLink} className="gap-2">
+              {creatingTrackingLink ? <Loader2 className="size-4 animate-spin" /> : <Copy className="size-4" />}
+              {creatingTrackingLink ? 'Criando…' : trackingLinkActive ? 'Renovar e copiar link' : 'Criar e copiar link'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

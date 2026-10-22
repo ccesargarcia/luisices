@@ -1,14 +1,51 @@
 import {
+  collection,
   doc,
+  getDocs,
+  query,
   updateDoc,
   deleteDoc,
   serverTimestamp,
+  where,
+  writeBatch,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../lib/firebase';
 import { SendEmailPayload, EmailUsage } from '../app/types';
 
 export class EmailService {
+  async getAllTrashedEmailIds(): Promise<{ received: string[]; sent: string[] }> {
+    const readTrashedIds = async (collectionName: 'receivedEmails' | 'sentEmails') => {
+      const snapshots = await Promise.all([
+        getDocs(query(collection(db, collectionName), where('trashed', '==', true))),
+        getDocs(query(collection(db, collectionName), where('deleted', '==', true))),
+      ]);
+      return [...new Set(snapshots.flatMap(snapshot => snapshot.docs.map(email => email.id)))];
+    };
+    const [received, sent] = await Promise.all([
+      readTrashedIds('receivedEmails'),
+      readTrashedIds('sentEmails'),
+    ]);
+    return { received, sent };
+  }
+
+  async permanentlyDeleteEmails(collectionName: 'receivedEmails' | 'sentEmails', ids: string[]): Promise<{ deleted: number; failed: number }> {
+    let deleted = 0;
+    let failed = 0;
+    for (let offset = 0; offset < ids.length; offset += 400) {
+      const chunk = ids.slice(offset, offset + 400);
+      const batch = writeBatch(db);
+      chunk.forEach(id => batch.delete(doc(db, collectionName, id)));
+      try {
+        await batch.commit();
+        deleted += chunk.length;
+      } catch {
+        failed += chunk.length;
+      }
+    }
+    return { deleted, failed };
+  }
+
   /**
    * Envia um e-mail utilizando a Cloud Function sendCustomEmail (Resend)
    */

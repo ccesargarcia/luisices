@@ -3,13 +3,17 @@ import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
-import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2, Users, Mic, Bot, AlertCircle } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
+import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2, Users, Mic, Bot, AlertCircle, Link2, Loader2 } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { openWhatsAppForOrder } from '../utils/whatsapp';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { formatDateShort } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
 import { useAuth } from '../../contexts/AuthContext';
+import { orderTrackingService } from '../../services/orderTrackingService';
+import { toast } from 'sonner';
+import { useEffect, useState } from 'react';
 
 function hexToRgba(hex: string, alpha: number) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -20,6 +24,7 @@ function hexToRgba(hex: string, alpha: number) {
 
 interface OrderCardProps {
   order: Order;
+  trackingUrl?: string;
   onClick?: () => void;
   isSelected?: boolean;
   onToggleSelect?: (orderId: string, selected: boolean) => void;
@@ -39,11 +44,22 @@ const statusLabels = {
   cancelled: 'Cancelado',
 };
 
-export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }: OrderCardProps) {
+export function OrderCard({ order, trackingUrl, onClick, isSelected = false, onToggleSelect }: OrderCardProps) {
   const { settings } = useUserSettings();
-  const { user } = useAuth();
+  const { user, isAdmin, hasPermission } = useAuth();
+  const [creatingTrackingLink, setCreatingTrackingLink] = useState(false);
+  const [generatedTrackingUrl, setGeneratedTrackingUrl] = useState('');
+  const [trackingLinkActive, setTrackingLinkActive] = useState(Boolean(order.hasPublicTracking));
   const compact = settings?.compactCards ?? false;
   const isShared = order.userId && order.userId !== user?.uid;
+  const canShareTracking = isAdmin || (
+    hasPermission(p => p.orders?.view ?? false)
+    && (order.userId === user?.uid || order.assignedTo === user?.uid)
+  );
+
+  useEffect(() => {
+    setTrackingLinkActive(Boolean(order.hasPublicTracking));
+  }, [order.id, order.hasPublicTracking]);
 
   const handleSelectToggle = (event: React.MouseEvent | React.KeyboardEvent) => {
     event.stopPropagation();
@@ -70,6 +86,71 @@ export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }
       default: return null;
     }
   };
+
+  const createTrackingLink = async (expirationDays: 7 | 30 | 90 | null) => {
+    if (creatingTrackingLink) return;
+    setCreatingTrackingLink(true);
+    try {
+      const result = await orderTrackingService.createLink(order.id, expirationDays);
+      const base = import.meta.env.BASE_URL || '/';
+      const url = new URL(`${base.replace(/\/$/, '')}/acompanhar/${result.token}`, window.location.origin).toString();
+      setGeneratedTrackingUrl(url);
+      setTrackingLinkActive(true);
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success(trackingLinkActive
+          ? 'Novo link copiado. O link anterior foi desativado.'
+          : 'Link criado e copiado para compartilhar com o cliente.');
+      } catch {
+        toast.info('Link criado. Selecione e copie o endereço exibido no card.');
+      }
+    } catch (error) {
+      console.error('Erro ao gerar link de acompanhamento pelo card:', error);
+      toast.error('Não foi possível gerar o link de acompanhamento.');
+    } finally {
+      setCreatingTrackingLink(false);
+    }
+  };
+
+  const trackingControl = canShareTracking && !order.isArchived && order.status !== 'cancelled' ? (
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5" onClick={event => event.stopPropagation()}>
+      {trackingLinkActive && (
+        <Badge variant="outline" className="gap-1 text-[10px] text-primary border-primary/30 bg-primary/5">
+          <Link2 className="size-3" />
+          Link ativo{order.publicTrackingExpiresAt ? ` · até ${formatDateShort(order.publicTrackingExpiresAt)}` : ' · sem expiração'}
+        </Badge>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" size="sm" variant="outline" disabled={creatingTrackingLink} className="h-7 gap-1 px-2 text-[11px]">
+            {creatingTrackingLink ? <Loader2 className="size-3.5 animate-spin" /> : <Link2 className="size-3.5" />}
+            {trackingLinkActive ? 'Gerar novo link' : 'Compartilhar link'}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" onClick={event => event.stopPropagation()}>
+          <DropdownMenuItem onSelect={() => void createTrackingLink(7)}>Gerar link por 7 dias</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void createTrackingLink(30)}>Gerar link por 30 dias</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void createTrackingLink(90)}>Gerar link por 90 dias</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void createTrackingLink(null)}>Gerar link sem expiração</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {(generatedTrackingUrl || trackingUrl) && (
+        <button
+          type="button"
+          className="min-w-0 basis-full truncate text-left text-[10px] text-muted-foreground hover:text-foreground"
+          title={generatedTrackingUrl || trackingUrl}
+          aria-label="Copiar link de acompanhamento"
+          onClick={() => {
+            void navigator.clipboard.writeText(generatedTrackingUrl || trackingUrl || '')
+              .then(() => toast.success('Link copiado.'))
+              .catch(() => toast.error('Não foi possível copiar o link.'));
+          }}
+        >
+          {generatedTrackingUrl || trackingUrl}
+        </button>
+      )}
+    </div>
+  ) : null;
 
   return (
     <Card
@@ -164,6 +245,7 @@ export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }
               ))}
             </div>
           )}
+          {trackingControl}
         </div>
       ) : (
         /* ── COMFORTABLE ─────────────────────────────────── */
@@ -263,6 +345,7 @@ export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }
                 </div>
               </div>
             )}
+            {trackingControl}
             {order.payment && order.payment.method && (
               <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
                 {getPaymentIcon(order.payment.method)}

@@ -37,6 +37,7 @@ import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
+import { orderTrackingService } from '../../services/orderTrackingService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { useSalesLedger } from '../../hooks/useSalesLedger';
@@ -122,6 +123,7 @@ export function Dashboard() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
   const [creatorProfiles, setCreatorProfiles] = useState<UserProfile[]>([]);
+  const [trackingLinksByOrderId, setTrackingLinksByOrderId] = useState<Record<string, string>>({});
   const [viewMode, setViewMode] = useState<'grid' | 'table'>(() => {
     try {
       const saved = localStorage.getItem('orders_view_mode');
@@ -145,6 +147,36 @@ export function Dashboard() {
     }
     firebaseUserService.listUsers().then(setCreatorProfiles).catch(() => setCreatorProfiles([]));
   }, [userProfile?.role]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user || !hasPermission(p => p.orders?.view ?? false)) {
+      setTrackingLinksByOrderId({});
+      return;
+    }
+    void (async () => {
+      try {
+        const activeLinks: Record<string, string> = {};
+        let cursor: string | null = null;
+        do {
+          const page = await orderTrackingService.listLinks(cursor);
+          for (const link of page.links) {
+            const notExpired = !link.expiresAt || Date.parse(link.expiresAt) > Date.now();
+            if (!activeLinks[link.orderId] && link.token && !link.revokedAt && notExpired) {
+              const base = import.meta.env.BASE_URL || '/';
+              activeLinks[link.orderId] = new URL(`${base.replace(/\/$/, '')}/acompanhar/${link.token}`, window.location.origin).toString();
+            }
+          }
+          cursor = page.nextCursor;
+        } while (cursor);
+        if (!cancelled) setTrackingLinksByOrderId(activeLinks);
+      } catch (error) {
+        console.warn('Não foi possível carregar links compartilhados para os cards:', error);
+        if (!cancelled) setTrackingLinksByOrderId({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.uid, userProfile?.role, hasPermission]);
 
   const currentMonthName = useMemo(() => {
     const name = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date());
@@ -594,6 +626,7 @@ export function Dashboard() {
           <OrderCard
             key={order.id}
             order={order}
+            trackingUrl={trackingLinksByOrderId[order.id]}
             isSelected={selectedOrderIds.includes(order.id)}
             onToggleSelect={toggleOrderSelection}
             onClick={() => handleOrderClick(order)}
