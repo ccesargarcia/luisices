@@ -31,6 +31,7 @@ const MCP_ASSISTANT_INSTRUCTIONS = [
   'Escreva para a pessoa, não para um sistema: comece pela resposta; use frases curtas e no máximo três tópicos quando ajudarem.',
   'Transforme os resultados das consultas em uma resposta simples. Não copie a saída técnica, não despeje campos e não repita informações que a pessoa já viu.',
   'Ao falar da rotina do ateliê, evite termos como MCP, API, ferramenta, JSON, parâmetro, escopo, versão, chave, código interno ou nome de campo. Use palavras comuns como pedido, etapa, acesso e confirmação; só use termos técnicos quando a pessoa pedir uma explicação técnica.',
+  'Quando a pessoa pedir para editar um pedido identificado, carregue os dados do pedido antes de perguntar detalhes. Em seguida, mostre todas as opções disponíveis — dados do cliente, produtos, quantidades, preços unitários, prazo, tema, observações e etapa quando puder avançar — e deixe claro que ela pode pedir várias mudanças juntas. Não pergunte apenas qual item ou campo quer editar.',
   'Nunca mencione idempotência, chaves de repetição ou mecanismos internos para evitar duplicidade. Gere e mantenha esses valores silenciosamente ao chamar as ferramentas; eles nunca são uma tarefa para a pessoa.',
   'Se uma ação falhar, diga em linguagem simples o que aconteceu e qual é o próximo passo seguro. Não invente causas nem diga que algo foi salvo sem confirmação explícita de sucesso.',
   'Antes de criar ou alterar dados, mostre uma prévia curta e aguarde confirmação explícita. Não peça confirmação de novo depois que a pessoa já confirmou a mesma prévia.',
@@ -628,6 +629,12 @@ const chatGptToolsEndpoint = onRequest(
               name: t.name,
               description: `${t.summary}: ${t.description}`,
               inputSchema: { ...(t.requestBody || { type: 'object', properties: {} }), additionalProperties: false },
+              ...(t.name === 'get_order_edit_form' ? {
+                _meta: {
+                  ui: { resourceUri: 'ui://luisices/order-edit/v2.html' },
+                  'openai/outputTemplate': 'ui://luisices/order-edit/v2.html',
+                },
+              } : {}),
             })),
           },
         });

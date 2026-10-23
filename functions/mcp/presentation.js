@@ -83,6 +83,28 @@ function humanizeValue(value, key) {
 function formatToolResultText(toolName, result) {
   if (toolName === 'get_order_form' && result?.formMarkdown) return result.formMarkdown;
 
+  if (toolName === 'get_order_edit_form' && result?.order) {
+    const order = result.order;
+    const items = Array.isArray(order.items) ? order.items : [];
+    const itemLines = items.map((item) => {
+      const quantity = Number(item.quantity) || 1;
+      const unitPrice = Number(item.unitPrice) || 0;
+      return `• ${item.name || 'Produto'} — ${quantity} ${quantity === 1 ? 'unidade' : 'unidades'} × ${humanizeValue(unitPrice, 'unitPrice')}`;
+    });
+    return [
+      `📝 Pedido ${order.orderNumber} — ${order.customerName || 'Cliente não informado'}`,
+      'Você pode mudar uma ou várias destas informações; não precisa escolher apenas um campo:',
+      ...(Array.isArray(result.editableOptions) ? result.editableOptions.map((option) => `• ${option}`) : []),
+      ...(itemLines.length ? ['', 'Itens atuais:', ...itemLines] : []),
+      '',
+      `Telefone: ${order.customerPhone || 'não informado'} · Etapa: ${humanizeValue(order.status, 'status')}`,
+      `Total atual: ${humanizeValue(order.totalPrice, 'totalPrice')} · Quantidade: ${order.quantity}`,
+      `Prazo: ${order.deliveryDate ? humanizeValue(order.deliveryDate, 'deliveryDate') : 'não informado'} · Tema: ${order.theme || 'não informado'}`,
+      `Observações: ${order.notes || 'nenhuma'}`,
+      'Pagamentos registrados serão preservados. Vou mostrar todas as mudanças para você conferir antes de salvar.',
+    ].join('\n');
+  }
+
   if (toolName === 'daily_briefing') {
     return [
       '📌 Resumo do dia',

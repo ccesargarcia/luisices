@@ -389,8 +389,8 @@ const TOOLS_METADATA = [
   {
     name: 'get_order_edit_form',
     scope: 'orders:update',
-    summary: 'Formulário para Editar Pedido',
-    description: 'Carrega os dados de um pedido para revisão e edição. O valor pode ser informado como total do pedido ou preço unitário; neste caso, o total é calculado pela quantidade. Alterações exigem prévia e confirmação explícita.',
+    summary: 'Abrir edição de pedido',
+    description: 'Carrega o pedido e apresenta de imediato todas as opções editáveis: cliente, telefone, itens (produto, quantidade e preço unitário), prazo, tema, observações e etapa de produção. Não pergunte qual campo ou item a pessoa quer editar antes de mostrar essas opções. Convide a pessoa a alterar um ou vários campos na mesma solicitação e use o formulário visual quando disponível. O total é recalculado pelos itens; pagamentos existentes são preservados. Alterações exigem prévia e confirmação explícita.',
     requestBody: {
       type: 'object',
       required: ['orderNumber'],

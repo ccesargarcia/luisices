@@ -1375,7 +1375,17 @@ class AiToolsExecutor {
         status: statusAliases[String(order.data.status || 'pending').toLowerCase().trim()] || 'unknown',
         version: Number.isSafeInteger(order.data.version) && order.data.version > 0 ? order.data.version : 1,
       },
-      message: 'Preencha os campos desejados. Escolha valor total ou unitário; o total unitário será calculado pelo servidor.',
+      editableOptions: [
+        'Nome e telefone do cliente',
+        'Produtos: nome, quantidade e preço unitário de cada item; adicionar ou remover itens (até 10)',
+        ...(!Array.isArray(order.data.items) || order.data.items.length === 0 ? ['Quantidade geral e valor total ou preço unitário do pedido'] : []),
+        'Prazo de entrega',
+        'Tema do pedido',
+        'Observações',
+        ...(statusAliases[String(order.data.status || 'pending').toLowerCase().trim()] === 'pending' ? ['Etapa de produção: avançar para em produção'] : []),
+        ...(statusAliases[String(order.data.status || 'pending').toLowerCase().trim()] === 'in-progress' ? ['Etapa de produção: avançar para concluído'] : []),
+      ],
+      message: 'Você pode alterar um ou vários desses campos na mesma solicitação. As alterações serão apresentadas para conferência antes de salvar; pagamentos já registrados são preservados.',
     };
   }
 
