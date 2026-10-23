@@ -75,7 +75,8 @@ service firebase.storage {
         && (request.auth.uid == userId || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'view')));
       allow create, update: if orderId != 'email_draft' && isActiveUser()
         && (request.auth.uid == userId || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && (hasPerm(getEmployeePermissions().orders, 'create') || hasPerm(getEmployeePermissions().orders, 'edit'))))
-        && request.resource.size < 100 * 1024 * 1024;
+        && request.resource.size < 100 * 1024 * 1024
+        && (request.resource.contentType.matches('image/(jpeg|png|webp|gif)') || request.resource.contentType == 'application/pdf');
       allow delete: if orderId != 'email_draft' && isActiveUser()
         && (request.auth.uid == userId || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'delete')));
     }

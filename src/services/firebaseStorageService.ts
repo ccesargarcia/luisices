@@ -8,6 +8,7 @@
 import {
   ref,
   uploadBytes,
+  uploadBytesResumable,
   getDownloadURL,
   deleteObject,
   UploadMetadata,
@@ -216,9 +217,11 @@ export class FirebaseStorageService {
   async uploadOrderAttachment(
     file: File,
     userId: string,
-    orderId: string
+    orderId: string,
+    onProgress?: (progress: number) => void,
   ): Promise<OrderAttachment> {
     const isPdf = file.type === 'application/pdf';
+    onProgress?.(0);
     
     // Se for imagem, otimiza para WebP antes de salvar
     const fileToUpload = isPdf
@@ -229,6 +232,7 @@ export class FirebaseStorageService {
     if (fileToUpload.size > maxSize) {
       throw new Error('Arquivo muito grande. Máximo: 100MB');
     }
+    onProgress?.(5);
 
     const currentUid = auth.currentUser?.uid || userId;
     const timestamp = Date.now();
@@ -249,13 +253,25 @@ export class FirebaseStorageService {
       },
     };
 
-    await uploadBytes(storageRef, fileToUpload, metadata);
+    const uploadTask = uploadBytesResumable(storageRef, fileToUpload, metadata);
+    await new Promise<void>((resolve, reject) => {
+      uploadTask.on(
+        'state_changed',
+        snapshot => {
+          const ratio = snapshot.totalBytes > 0 ? snapshot.bytesTransferred / snapshot.totalBytes : 0;
+          onProgress?.(5 + Math.round(ratio * 90));
+        },
+        reject,
+        resolve,
+      );
+    });
     const rawUrl = await getDownloadURL(storageRef);
     const url = orderId === 'email_draft' ? rawUrl : toCdnUrl(rawUrl);
 
     // Gerar e fazer upload da thumbnail para imagens
     let thumbnailUrl: string | undefined;
     if (!isPdf && (fileToUpload.type?.startsWith('image/') || file.type?.startsWith('image/'))) {
+      onProgress?.(95);
       try {
         const thumbBlob = await this.generateThumbnail(fileToUpload);
         if (thumbBlob) {
@@ -269,6 +285,8 @@ export class FirebaseStorageService {
         console.warn('[StorageService] Não foi possível gerar thumbnail para anexo:', err);
       }
     }
+
+    onProgress?.(100);
 
     return { url, thumbnail: thumbnailUrl, name: file.name, isPdf };
   }

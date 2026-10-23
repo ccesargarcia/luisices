@@ -344,7 +344,11 @@ const deleteOrderTrackingLink = onCall({ cors: true, maxInstances: 10 }, async (
 
 /** Retorna somente dados próprios para acompanhamento público; nunca expõe dados financeiros/contato. */
 const getPublicOrderTracking = onCall({ cors: true, maxInstances: 20 }, async (request) => {
-  const ip = request.rawRequest?.ip || request.rawRequest?.headers?.['x-forwarded-for']?.split(',')?.[0]?.trim() || 'unknown';
+  const ip =
+    request.rawRequest?.headers?.['cf-connecting-ip'] ||
+    request.rawRequest?.headers?.['x-real-ip'] ||
+    request.rawRequest?.ip ||
+    'unknown';
   try {
     await publicOrderTrackingLimiter.consume(ip);
   } catch {
@@ -442,8 +446,9 @@ async function handleSubmitPublicCatalogOrder(request, dependencies = {}) {
   const timestamp = dependencies.Timestamp || Timestamp;
   // 1. Rate Limiting por IP para conter abusos e automações não autorizadas
   const clientIp =
+    request.rawRequest?.headers?.['cf-connecting-ip'] ||
+    request.rawRequest?.headers?.['x-real-ip'] ||
     request.rawRequest?.ip ||
-    request.rawRequest?.headers?.['x-forwarded-for']?.split(',')?.[0]?.trim() ||
     'public_visitor';
 
   try {

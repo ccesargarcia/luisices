@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogBody, DialogFooter } from './ui/dialog';
 import { Button } from './ui/button';
+import { Progress } from './ui/progress';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
@@ -84,6 +85,7 @@ export function NewOrderDialog({
   const [pendingGallery] = useState<{ file: File; title: string }[]>([]);
   const [localAttachments, setLocalAttachments] = useState<OrderAttachment[]>([]);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [attachmentUploadProgress, setAttachmentUploadProgress] = useState(0);
 
   const [galleryItems, setGalleryItems] = useState<import('../types').GalleryItem[]>([]);
   const [galleryBrowserOpen, setGalleryBrowserOpen] = useState(false);
@@ -444,9 +446,18 @@ export function NewOrderDialog({
 
       if (pendingFiles.length > 0) {
         setIsUploadingAttachment(true);
+        setAttachmentUploadProgress(0);
         try {
-          for (const file of pendingFiles) {
-            const attachment = await firebaseStorageService.uploadOrderAttachment(file, user.uid, createdOrder.id);
+          for (let index = 0; index < pendingFiles.length; index++) {
+            const file = pendingFiles[index];
+            const attachment = await firebaseStorageService.uploadOrderAttachment(
+              file,
+              user.uid,
+              createdOrder.id,
+              progress => setAttachmentUploadProgress(
+                Math.round(((index + progress / 100) / pendingFiles.length) * 100),
+              ),
+            );
             await firebaseOrderService.addAttachment(createdOrder.id, attachment);
             if (!attachment.isPdf && (customerId || formData.customerName)) {
               try {
@@ -464,8 +475,10 @@ export function NewOrderDialog({
           }
         } catch (attachErr) {
           console.error('Erro ao enviar anexos:', attachErr);
+          toast.error('Pedido criado, mas não foi possível enviar todos os anexos. Reabra o pedido e tente novamente.');
         } finally {
           setIsUploadingAttachment(false);
+          setAttachmentUploadProgress(0);
         }
       }
 
@@ -739,24 +752,33 @@ export function NewOrderDialog({
           />
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <Label className="flex items-center gap-1.5">
                 <Paperclip className="size-3.5" /> Anexos
               </Label>
-              <label className="cursor-pointer">
-                <input
-                  type="file"
-                  className="sr-only"
-                  accept="image/*,.pdf"
-                  onChange={handleAttachmentSelect}
-                  disabled={isUploadingAttachment}
-                />
-                <span className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors">
-                  <Upload className="size-3.5" />
-                  Adicionar arquivo
-                </span>
-              </label>
+              <Button asChild variant="outline" size="sm" disabled={isUploadingAttachment} className="shrink-0 whitespace-nowrap">
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    className="sr-only"
+                    accept="image/*,.pdf"
+                    onChange={handleAttachmentSelect}
+                    disabled={isUploadingAttachment}
+                  />
+                  <Upload className="size-4" />
+                  {isUploadingAttachment ? 'Enviando...' : 'Adicionar arquivo'}
+                </label>
+              </Button>
             </div>
+            {isUploadingAttachment && (
+              <div className="space-y-1.5" role="status" aria-live="polite">
+                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>Preparando e enviando arquivos</span>
+                  <span>{attachmentUploadProgress}%</span>
+                </div>
+                <Progress value={attachmentUploadProgress} aria-label="Progresso do envio dos anexos" />
+              </div>
+            )}
             {localAttachments.length > 0 ? (
               <div className="grid grid-cols-3 gap-2">
                 {localAttachments.map((att, idx) => (
@@ -777,7 +799,8 @@ export function NewOrderDialog({
                     <button
                       type="button"
                       onClick={() => handleRemoveLocalAttachment(idx)}
-                      className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full size-5 items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity flex"
+                      aria-label={`Remover anexo ${att.name || idx + 1}`}
+                      className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full size-5 items-center justify-center text-xs opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex"
                     >
                       ×
                     </button>

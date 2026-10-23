@@ -4,7 +4,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Order, OrderItem, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile, canAccessArchivedOrders, canAccessEmails } from '../types';
-import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore, Mail, Loader2, Link2, Link2Off } from 'lucide-react';
+import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore, Mail, Loader2, Link2, Link2Off, MoreHorizontal } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
@@ -26,6 +26,14 @@ import { OrderEditForm, ProductItem, OrderEditState } from './orders/OrderEditFo
 import { OrderAttachmentsSection } from './orders/OrderAttachmentsSection';
 import { OrderGallerySection } from './orders/OrderGallerySection';
 import { Input } from './ui/input';
+import { Progress } from './ui/progress';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 
 interface OrderDetailsDialogProps {
   order: Order | null;
@@ -70,6 +78,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   const [isArchiving, setIsArchiving] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [attachmentUploadProgress, setAttachmentUploadProgress] = useState(0);
   const [localAttachments, setLocalAttachments] = useState<import('../types').OrderAttachment[]>([]);
   const [customerGallery, setCustomerGallery] = useState<GalleryItem[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
@@ -609,6 +618,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
     const file = e.target.files?.[0];
     if (!file || !order || !user) return;
     setIsUploadingAttachment(true);
+    setAttachmentUploadProgress(0);
     const previewUrl = URL.createObjectURL(file);
     const optimistic: import('../types').OrderAttachment = {
       url: previewUrl,
@@ -618,7 +628,12 @@ Equipe ${settings?.businessName || 'Luisices'}`;
     };
     setLocalAttachments(prev => [...prev, optimistic]);
     try {
-      const attachment = await firebaseStorageService.uploadOrderAttachment(file, user.uid, order.id);
+      const attachment = await firebaseStorageService.uploadOrderAttachment(
+        file,
+        user.uid,
+        order.id,
+        setAttachmentUploadProgress,
+      );
       await firebaseOrderService.addAttachment(order.id, attachment);
       setLocalAttachments(prev => prev.map(a => a.url === previewUrl ? attachment : a));
       URL.revokeObjectURL(previewUrl);
@@ -643,6 +658,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       toast.error(error.message || 'Erro ao enviar arquivo');
     } finally {
       setIsUploadingAttachment(false);
+      setAttachmentUploadProgress(0);
       e.target.value = '';
     }
   };
@@ -673,7 +689,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                     size="sm"
                     variant="outline"
                     onClick={() => exportOrderPDF(effectiveOrder || order, settings?.businessName)}
-                    className="shrink-0 gap-2"
+                    className="hidden shrink-0 gap-2 sm:inline-flex"
                   >
                     <Download className="size-4" />
                     PDF
@@ -683,7 +699,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                       size="sm"
                       variant="outline"
                       onClick={() => setEmailDialogOpen(true)}
-                      className="shrink-0 gap-2"
+                      className="hidden shrink-0 gap-2 sm:inline-flex"
                       title="Enviar detalhes por e-mail"
                     >
                       <Mail className="size-4 text-primary" />
@@ -708,7 +724,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                       variant="outline"
                       onClick={handleDuplicate}
                       disabled={isDuplicating}
-                      className="shrink-0 gap-2"
+                      className="hidden shrink-0 gap-2 sm:inline-flex"
                     >
                       <Copy className="size-4" />
                       {isDuplicating ? 'Duplicando...' : 'Duplicar'}
@@ -731,7 +747,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                       variant="outline"
                       onClick={handleToggleArchive}
                       disabled={isArchiving}
-                      className="shrink-0 gap-1.5"
+                      className="hidden shrink-0 gap-1.5 sm:inline-flex"
                       title={order.isArchived ? 'Desarquivar este pedido' : 'Arquivar este pedido'}
                     >
                       {order.isArchived ? (
@@ -748,6 +764,46 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                     </Button>
                   )}
                 </>
+              )}
+              {!isEditing && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0 sm:hidden"
+                      aria-label="Mais ações do pedido"
+                      title="Mais ações do pedido"
+                    >
+                      <MoreHorizontal className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem onSelect={() => exportOrderPDF(effectiveOrder || order, settings?.businessName)}>
+                      <Download className="size-4" /> Exportar PDF
+                    </DropdownMenuItem>
+                    {hasPermission(p => canAccessEmails(p, 'create')) && (
+                      <DropdownMenuItem onSelect={() => setEmailDialogOpen(true)}>
+                        <Mail className="size-4" /> Enviar por e-mail
+                      </DropdownMenuItem>
+                    )}
+                    {hasPermission(p => p.orders?.create ?? false) && (
+                      <DropdownMenuItem disabled={isDuplicating} onSelect={handleDuplicate}>
+                        <Copy className="size-4" /> {isDuplicating ? 'Duplicando...' : 'Duplicar pedido'}
+                      </DropdownMenuItem>
+                    )}
+                    {((order.isArchived && canUnarchive) || (!order.isArchived && canArchive)) && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem disabled={isArchiving} onSelect={handleToggleArchive}>
+                          {order.isArchived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
+                          {isArchiving ? 'Atualizando...' : order.isArchived ? 'Desarquivar pedido' : 'Arquivar pedido'}
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
               {order.isArchived && (
                 <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700 flex items-center gap-1 font-medium">
@@ -835,6 +891,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                 attachments={localAttachments}
                 canEdit={hasPermission(p => p.orders?.edit ?? false)}
                 isUploading={isUploadingAttachment}
+                uploadProgress={attachmentUploadProgress}
                 onUploadAttachment={handleUploadAttachment}
                 onRemoveAttachment={handleRemoveAttachment}
               />

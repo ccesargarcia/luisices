@@ -2,11 +2,14 @@ import React from 'react';
 import { SafeAnchor, SafeImg } from '../SafeMedia';
 import { Paperclip, Upload, ImageIcon, ExternalLink } from 'lucide-react';
 import { OrderAttachment } from '../../types';
+import { Button } from '../ui/button';
+import { Progress } from '../ui/progress';
 
 interface OrderAttachmentsSectionProps {
   attachments: OrderAttachment[];
   canEdit: boolean;
   isUploading: boolean;
+  uploadProgress: number;
   onUploadAttachment: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   onRemoveAttachment: (url: string) => Promise<void>;
 }
@@ -15,31 +18,44 @@ export function OrderAttachmentsSection({
   attachments,
   canEdit,
   isUploading,
+  uploadProgress,
   onUploadAttachment,
   onRemoveAttachment,
 }: OrderAttachmentsSectionProps) {
   return (
     <div className="border-t pt-4">
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-medium text-sm flex items-center gap-2">
           <Paperclip className="size-4" /> Anexos
         </h3>
         {canEdit && (
-          <label className="cursor-pointer">
-            <input
-              type="file"
-              className="sr-only"
-              accept="image/*,.pdf"
-              onChange={onUploadAttachment}
-              disabled={isUploading}
-            />
-            <span className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors">
-              <Upload className="size-3.5" />
-              {isUploading ? 'Enviando...' : 'Enviar arquivo'}
-            </span>
-          </label>
+          <Button asChild variant="outline" size="sm" disabled={isUploading} className="shrink-0 whitespace-nowrap">
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                className="sr-only"
+                accept="image/*,.pdf"
+                onChange={onUploadAttachment}
+                disabled={isUploading}
+              />
+              <span className="inline-flex items-center gap-1.5">
+                <Upload className="size-3.5" />
+                {isUploading ? 'Enviando...' : 'Enviar arquivo'}
+              </span>
+            </label>
+          </Button>
         )}
       </div>
+
+      {isUploading && (
+        <div className="mb-3 space-y-1.5" role="status" aria-live="polite">
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>Preparando e enviando arquivo</span>
+            <span>{uploadProgress}%</span>
+          </div>
+          <Progress value={uploadProgress} aria-label="Progresso do envio do anexo" />
+        </div>
+      )}
 
       {attachments.length > 0 ? (
         <div className="grid grid-cols-3 gap-2">
@@ -72,7 +88,8 @@ export function OrderAttachmentsSection({
                 <button
                   type="button"
                   onClick={() => onRemoveAttachment(att.url)}
-                  className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full size-5 items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity flex"
+                  aria-label={`Remover anexo ${att.name || idx + 1}`}
+                  className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full size-5 items-center justify-center text-xs opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex"
                 >
                   ×
                 </button>
