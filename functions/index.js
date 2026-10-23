@@ -54,7 +54,6 @@ module.exports = {
   evolutionWhatsAppWebhook: whatsappFunctions.evolutionWhatsAppWebhook,
 
   // ─── Pedidos e Vitrine Pública ─────────────────────────────────────────────
-  syncAllOrdersToAiView: orderFunctions.syncAllOrdersToAiView,
   submitPublicCatalogOrder: orderFunctions.submitPublicCatalogOrder,
   getPublicCatalogProducts: orderFunctions.getPublicCatalogProducts,
   createOrderTrackingLink: orderFunctions.createOrderTrackingLink,

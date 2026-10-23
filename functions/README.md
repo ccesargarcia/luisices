@@ -26,7 +26,7 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 | Acesso e sessões | `getUserAccountMetadata`, `registerDeviceSession`, `revokeAllSessions`, `revokeDeviceSession`, `repairUserClaims` |
 | E-mail | `sendCustomEmail`, `getEmailUsage`, `resendReceivingWebhook`, `cleanupEmailDrafts` |
 | WhatsApp | `sendWhatsAppDirectMessage`, `deleteWhatsAppMessage`, `syncWhatsAppChatMessages`, `getWhatsAppInstanceStatus`, `markWhatsAppChatRead`, `ensureWhatsAppConversation`, `evolutionWhatsAppWebhook` |
-| Loja/pedidos | `submitPublicCatalogOrder`, `getPublicCatalogProducts`, `syncAllOrdersToAiView` |
+| Loja/pedidos | `submitPublicCatalogOrder`, `getPublicCatalogProducts` |
 | Acompanhamento público | `createOrderTrackingLink`, `listOrderTrackingLinks`, `revokeOrderTrackingLink`, `revokeOrderTrackingLinkById`, `deleteOrderTrackingLink`, `deleteOrderTrackingLinksBatch`, `getPublicOrderTracking` |
 | IA | `aiAgentChat`, `getAiUsage`, `enrichGalleryItemWithAi`, `enrichStoreProductWithAi` |
 | Alexa | `alexaWebhook`, `approveAlexaPairing`, `setAlexaPermission`, `revokeAlexaBinding`, `toggleGlobalAlexaIntegration`, `getAlexaIntegrationStatus`, `approveAlexaDraft`, `cancelAlexaDraft` |
@@ -35,7 +35,7 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 
 `calculateSuperfreteShipping` e `createSuperfreteLabel` são exportadas apenas no projeto `luisices-dev` e no emulador; não fazem parte do deploy de produção.
 
-`syncAllOrdersToAiView` é compatibilidade legada sem sincronização de dados. `cleanupEmailDrafts` é agendada. Webhooks têm validações próprias; não são chamadas de interface equivalentes aos callables autenticados.
+`cleanupEmailDrafts` é agendada. Webhooks têm validações próprias; não são chamadas de interface equivalentes aos callables autenticados.
 
 ## Contratos relevantes
 

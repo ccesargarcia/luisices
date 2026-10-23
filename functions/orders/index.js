@@ -83,17 +83,6 @@ function decryptTrackingToken(value) {
   ]).toString('utf8');
 }
 
-/**
- * Sincronização legado mantida para compatibilidade retroativa com clientes antigos.
- */
-const syncAllOrdersToAiView = onCall(async () => {
-  return {
-    success: true,
-    count: 0,
-    message: 'A sincronização agora é nativa e em tempo real em memória.',
-  };
-});
-
 /** Gera um link secreto de acompanhamento quando o pedido ainda não tem link ativo. */
 const createOrderTrackingLink = onCall({ cors: true, maxInstances: 10, memory: '512MiB', secrets: [ORDER_TRACKING_ENCRYPTION_KEY] }, async (request) => {
   const uid = request.auth?.uid;
@@ -802,7 +791,6 @@ if (isDevOrEmulator) {
 }
 
 module.exports = {
-  syncAllOrdersToAiView,
   submitPublicCatalogOrder,
   getPublicCatalogProducts,
   createOrderTrackingLink,

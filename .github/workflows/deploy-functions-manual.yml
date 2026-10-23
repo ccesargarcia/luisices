@@ -26,7 +26,8 @@ on:
           - 'all'
           - 'alexaWebhook,approveAlexaPairing,setAlexaPermission,revokeAlexaBinding,toggleGlobalAlexaIntegration,getAlexaIntegrationStatus,approveAlexaDraft,cancelAlexaDraft'
           - 'sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,markWhatsAppChatRead,ensureWhatsAppConversation'
-          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,syncAllOrdersToAiView,submitPublicCatalogOrder,getPublicCatalogProducts,calculateSuperfreteShipping,createSuperfreteLabel,galleryMedia'
+          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,submitPublicCatalogOrder,getPublicCatalogProducts,calculateSuperfreteShipping,createSuperfreteLabel,galleryMedia'
+          - 'createOrderTrackingLink,listOrderTrackingLinks,revokeOrderTrackingLink,revokeOrderTrackingLinkById,deleteOrderTrackingLink,deleteOrderTrackingLinksBatch,getPublicOrderTracking'
           - 'cleanupEmailDrafts,resendReceivingWebhook,sendCustomEmail,getEmailUsage'
           - 'updateUser,recordUserPasswordChange,completeUserInvitation,createUserInvitation,createUser,getUserAccountMetadata,deleteUser,revokeAllSessions,repairUserClaims,registerDeviceSession,revokeDeviceSession,sendAdminPasswordReset,sendPasswordResetEmail,sendVerificationEmail,validateUserInvitation'
           - 'getMcpSettingsStatus,createMcpApiKey,toggleMcpApiKey,revokeMcpApiKey,toggleGlobalMcp,setUserMcpEligibility,chatGptToolsEndpoint'
@@ -209,17 +210,19 @@ jobs:
           if [ "$DEPLOY_TARGET" = "functions" ]; then
             if ! firebase deploy --only functions --project luisices-dev --non-interactive --force; then
               echo "⚠️ Deploy em lote geral atingiu timeout ou limite de concorrência. Executando deploy particionado por módulos..."
-              echo "📦 1/5: WhatsApp..."
+              echo "📦 1/7: WhatsApp..."
               firebase deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project luisices-dev --non-interactive --force
-              echo "📦 2/5: IA e Pedidos..."
-              firebase deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia" --project luisices-dev --non-interactive --force
-              echo "📦 3/5: E-mails..."
+              echo "📦 2/7: IA e Pedidos..."
+              firebase deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia" --project luisices-dev --non-interactive --force
+              echo "📦 3/7: Acompanhamento..."
+              firebase deploy --only "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking" --project luisices-dev --non-interactive --force
+              echo "📦 4/7: E-mails..."
               firebase deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project luisices-dev --non-interactive --force
-              echo "📦 4/5: Alexa..."
+              echo "📦 5/7: Alexa..."
               firebase deploy --only "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook" --project luisices-dev --non-interactive --force
-              echo "📦 5/6: Usuários e Autenticação..."
+              echo "📦 6/7: Usuários e Autenticação..."
               firebase deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation" --project luisices-dev --non-interactive --force
-              echo "📦 6/6: MCP & ChatGPT Actions..."
+              echo "📦 7/7: MCP & ChatGPT Actions..."
               firebase deploy --only "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint" --project luisices-dev --non-interactive --force
             fi
           else
@@ -428,17 +431,19 @@ jobs:
           if [ "$DEPLOY_TARGET" = "functions" ]; then
             if ! firebase deploy --only functions --project papelaria-dashboard --non-interactive --force; then
               echo "⚠️ Deploy em lote geral atingiu timeout ou limite de concorrência. Executando deploy particionado por módulos..."
-              echo "📦 1/5: WhatsApp..."
+              echo "📦 1/7: WhatsApp..."
               firebase deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project papelaria-dashboard --non-interactive --force
-              echo "📦 2/5: IA e Pedidos..."
-              firebase deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:galleryMedia" --project papelaria-dashboard --non-interactive --force
-              echo "📦 3/5: E-mails..."
+              echo "📦 2/7: IA e Pedidos..."
+              firebase deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:galleryMedia" --project papelaria-dashboard --non-interactive --force
+              echo "📦 3/7: Acompanhamento..."
+              firebase deploy --only "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking" --project papelaria-dashboard --non-interactive --force
+              echo "📦 4/7: E-mails..."
               firebase deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project papelaria-dashboard --non-interactive --force
-              echo "📦 4/5: Alexa..."
+              echo "📦 5/7: Alexa..."
               firebase deploy --only "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook" --project papelaria-dashboard --non-interactive --force
-              echo "📦 5/6: Usuários e Autenticação..."
+              echo "📦 6/7: Usuários e Autenticação..."
               firebase deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation" --project papelaria-dashboard --non-interactive --force
-              echo "📦 6/6: MCP & ChatGPT Actions..."
+              echo "📦 7/7: MCP & ChatGPT Actions..."
               firebase deploy --only "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint" --project papelaria-dashboard --non-interactive --force
             fi
           else
