@@ -211,13 +211,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           doc(db, 'userProfiles', u.uid),
           { includeMetadataChanges: true },
           async (snap) => {
-            const isServerSnapshot = !snap.metadata.fromCache;
+            // Não liberar as rotas nem as consultas de pedidos com um perfil
+            // possivelmente desatualizado do cache local. A confirmação do servidor
+            // também evita decisões de revogação baseadas em dados antigos.
+            if (snap.metadata.fromCache) return;
 
             if (!snap.exists()) {
-              // Aguarda a confirmação do servidor antes de concluir que o perfil
-              // foi removido; uma ausência no cache local pode estar desatualizada.
-              if (!isServerSnapshot) return;
-
               // Se a conta autenticou com sucesso mas o documento userProfiles ainda não existe,
               // inicializa perfil administrativo resiliente em memória para não bloquear o acesso
               const fallback: UserProfile = {
@@ -238,7 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const data = snap.data() as UserProfile;
 
             // Se o administrador desativar a conta, efetua logout imediatamente
-            if (isServerSnapshot && data.active === false) {
+            if (data.active === false) {
               toast.error('Sua conta foi desativada pelo administrador.');
               handleLogout(true, u.uid);
               setLoading(false);
@@ -246,29 +245,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             // Se o token for anterior à última revogação no servidor, encerra a sessão
-            if (isServerSnapshot) {
-              try {
-                const idTokenResult = await u.getIdTokenResult();
-                const authTime = Math.floor(new Date(idTokenResult.authTime).getTime() / 1000);
-                if (!isLoggingInRef.current && data.tokensValidAfterTime && authTime <= data.tokensValidAfterTime) {
-                  toast.error('Esta sessão foi revogada remotamente.');
-                  handleLogout(true, u.uid);
-                  setLoading(false);
-                  return;
-                }
-
-                // Só repara claims com base em um perfil confirmado pelo servidor.
-                if (idTokenResult.claims.role !== data.role || idTokenResult.claims.active !== true) {
-                  try {
-                    const repair = await repairClaimsIfNeeded(u, data);
-                    if (!repair.synced) console.warn('[AuthContext] Claims ainda pendentes:', repair.status);
-                  } catch (repairErr) {
-                    console.warn('[AuthContext] Falha ao acionar reparo administrativo de claims:', repairErr);
-                  }
-                }
-              } catch (claimErr) {
-                console.warn('[AuthContext] Falha ao verificar/atualizar claims do token:', claimErr);
+            try {
+              const idTokenResult = await u.getIdTokenResult();
+              const authTime = Math.floor(new Date(idTokenResult.authTime).getTime() / 1000);
+              if (!isLoggingInRef.current && data.tokensValidAfterTime && authTime <= data.tokensValidAfterTime) {
+                toast.error('Esta sessão foi revogada remotamente.');
+                handleLogout(true, u.uid);
+                setLoading(false);
+                return;
               }
+
+              // Só repara claims com base em um perfil confirmado pelo servidor.
+              if (idTokenResult.claims.role !== data.role || idTokenResult.claims.active !== true) {
+                try {
+                  const repair = await repairClaimsIfNeeded(u, data);
+                  if (!repair.synced) console.warn('[AuthContext] Claims ainda pendentes:', repair.status);
+                } catch (repairErr) {
+                  console.warn('[AuthContext] Falha ao acionar reparo administrativo de claims:', repairErr);
+                }
+              }
+            } catch (claimErr) {
+              console.warn('[AuthContext] Falha ao verificar/atualizar claims do token:', claimErr);
             }
 
             const fallbackPermissions = data.role === 'admin'
