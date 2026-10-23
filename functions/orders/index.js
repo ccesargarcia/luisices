@@ -95,7 +95,7 @@ const syncAllOrdersToAiView = onCall(async () => {
 });
 
 /** Gera um link secreto de acompanhamento quando o pedido ainda não tem link ativo. */
-const createOrderTrackingLink = onCall({ cors: true, maxInstances: 10, secrets: [ORDER_TRACKING_ENCRYPTION_KEY] }, async (request) => {
+const createOrderTrackingLink = onCall({ cors: true, maxInstances: 10, memory: '512MiB', secrets: [ORDER_TRACKING_ENCRYPTION_KEY] }, async (request) => {
   const uid = request.auth?.uid;
   const orderId = request.data?.orderId;
   if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para gerar o link.');
@@ -170,7 +170,7 @@ const createOrderTrackingLink = onCall({ cors: true, maxInstances: 10, secrets: 
 });
 
 /** Lista links criados pelo usuário ou todos para administradores. Os tokens só saem por callable autenticada. */
-const listOrderTrackingLinks = onCall({ cors: true, maxInstances: 10, secrets: [ORDER_TRACKING_ENCRYPTION_KEY] }, async (request) => {
+const listOrderTrackingLinks = onCall({ cors: true, maxInstances: 10, memory: '512MiB', secrets: [ORDER_TRACKING_ENCRYPTION_KEY] }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para consultar os links.');
   const profileSnap = await getFirestore().doc(`userProfiles/${uid}`).get();
@@ -303,7 +303,7 @@ const revokeOrderTrackingLinkById = onCall({ cors: true, maxInstances: 10 }, asy
 });
 
 /** Remove um link do histórico; se ainda estiver ativo, invalida-o antes da exclusão. */
-const deleteOrderTrackingLink = onCall({ cors: true, maxInstances: 10 }, async (request) => {
+const deleteOrderTrackingLink = onCall({ cors: true, maxInstances: 10, memory: '512MiB' }, async (request) => {
   const uid = request.auth?.uid;
   const linkId = request.data?.linkId;
   if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para excluir o link.');
@@ -343,8 +343,81 @@ const deleteOrderTrackingLink = onCall({ cors: true, maxInstances: 10 }, async (
   });
 });
 
+/** Remove múltiplos links do histórico em lote (até 100 por chamada). */
+const deleteOrderTrackingLinksBatch = onCall({ cors: true, maxInstances: 10, memory: '512MiB' }, async (request) => {
+  const uid = request.auth?.uid;
+  const rawIds = request.data?.linkIds;
+  if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para excluir links.');
+  if (!Array.isArray(rawIds) || rawIds.length === 0 || rawIds.length > 100) {
+    throw new HttpsError('invalid-argument', 'Envie entre 1 e 100 identificadores de link.');
+  }
+  const linkIds = [...new Set(rawIds.filter((id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id)))];
+  if (linkIds.length === 0) {
+    throw new HttpsError('invalid-argument', 'Nenhum link válido informado.');
+  }
+
+  const db = getFirestore();
+  const profileSnap = await db.doc(`userProfiles/${uid}`).get();
+  const profile = profileSnap.data() || {};
+  const isAdmin = profileSnap.exists && profile.role === 'admin' && profile.active !== false;
+  const canViewOrders = isAdmin || profile.permissions?.orders === true || profile.permissions?.orders?.view === true;
+  if (!profileSnap.exists || profile.active === false || !canViewOrders) {
+    throw new HttpsError('permission-denied', 'Você não tem permissão para excluir links de pedidos.');
+  }
+
+  const linkRefs = linkIds.map((id) => db.doc(`orderTrackingLinks/${id}`));
+  const linkSnaps = await db.getAll(...linkRefs);
+
+  const validLinkSnaps = linkSnaps.filter((snap) => {
+    if (!snap.exists) return false;
+    const data = snap.data() || {};
+    return isAdmin || data.createdByUid === uid;
+  });
+
+  if (validLinkSnaps.length === 0) {
+    return { success: true, deletedCount: 0 };
+  }
+
+  const orderIdsToFetch = [...new Set(
+    validLinkSnaps
+      .map((s) => s.data()?.orderId)
+      .filter((id) => typeof id === 'string' && id.length > 0)
+  )];
+
+  const orderSnaps = orderIdsToFetch.length > 0
+    ? await db.getAll(...orderIdsToFetch.map((id) => db.doc(`orders/${id}`)))
+    : [];
+
+  const ordersById = new Map();
+  for (const snap of orderSnaps) {
+    if (snap.exists) ordersById.set(snap.id, snap);
+  }
+
+  const batch = db.batch();
+  let deletedCount = 0;
+
+  for (const linkSnap of validLinkSnaps) {
+    const linkData = linkSnap.data() || {};
+    const linkId = linkSnap.id;
+    const orderSnap = linkData.orderId ? ordersById.get(linkData.orderId) : null;
+
+    if (orderSnap && orderSnap.data()?.publicTrackingLinkId === linkId) {
+      batch.update(orderSnap.ref, {
+        publicTrackingHash: FieldValue.delete(),
+        publicTrackingExpiresAt: FieldValue.delete(),
+        publicTrackingLinkId: FieldValue.delete(),
+      });
+    }
+    batch.delete(linkSnap.ref);
+    deletedCount++;
+  }
+
+  await batch.commit();
+  return { success: true, deletedCount };
+});
+
 /** Retorna somente dados próprios para acompanhamento público; nunca expõe dados financeiros/contato. */
-const getPublicOrderTracking = onCall({ cors: true, maxInstances: 20 }, async (request) => {
+const getPublicOrderTracking = onCall({ cors: true, maxInstances: 20, memory: '512MiB' }, async (request) => {
   const ip = getTrustedClientIp(request.rawRequest);
   try {
     await publicOrderTrackingLimiter.consume(ip);
@@ -737,6 +810,7 @@ module.exports = {
   revokeOrderTrackingLink,
   revokeOrderTrackingLinkById,
   deleteOrderTrackingLink,
+  deleteOrderTrackingLinksBatch,
   getPublicOrderTracking,
   handleSubmitPublicCatalogOrder,
   calculateSuperfreteShipping,

@@ -95,6 +95,7 @@ export function OrderCard({ order, trackingUrl, onClick, isSelected = false, onT
   const createTrackingLink = async (expirationDays: 7 | 30 | 90 | null) => {
     if (creatingTrackingLink) return;
     setCreatingTrackingLink(true);
+    const toastId = toast.loading('Gerando link seguro de acompanhamento...');
     try {
       const result = await orderTrackingService.createLink(order.id, expirationDays);
       const base = import.meta.env.BASE_URL || '/';
@@ -102,16 +103,16 @@ export function OrderCard({ order, trackingUrl, onClick, isSelected = false, onT
       setGeneratedTrackingUrl(url);
       try {
         await navigator.clipboard.writeText(url);
-        toast.success('Link criado e copiado para compartilhar com o cliente.');
+        toast.success('Link criado e copiado para compartilhar com o cliente.', { id: toastId });
       } catch {
-        toast.info('Link criado. Consulte “Links de acompanhamento” para copiá-lo.');
+        toast.info('Link criado. Consulte “Links de acompanhamento” para copiá-lo.', { id: toastId });
       }
     } catch (error) {
       console.error('Erro ao gerar link de acompanhamento pelo card:', error);
       const code = (error as { code?: string })?.code;
       toast.error(code === 'functions/already-exists' || code === 'already-exists'
         ? 'Este pedido já tem um link ativo. Revogue o link atual antes de criar outro.'
-        : 'Não foi possível gerar o link de acompanhamento.');
+        : 'Não foi possível gerar o link de acompanhamento.', { id: toastId });
     } finally {
       setCreatingTrackingLink(false);
     }

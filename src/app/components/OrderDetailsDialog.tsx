@@ -188,6 +188,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
   const handleCreateTrackingLink = async () => {
     if (!order || creatingTrackingLink) return;
     setCreatingTrackingLink(true);
+    const toastId = toast.loading('Gerando link seguro de acompanhamento...');
     try {
       const expirationDays = trackingExpiration === 'never' ? null : Number(trackingExpiration) as 7 | 30 | 90;
       const link = await orderTrackingService.createLink(order.id, expirationDays);
@@ -200,16 +201,16 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       setTrackingLinkActive(true);
       try {
         await navigator.clipboard.writeText(url);
-        toast.success('Link copiado. Envie para o cliente acompanhar o pedido.');
+        toast.success('Link copiado. Envie para o cliente acompanhar o pedido.', { id: toastId });
       } catch {
-        toast.info('Link criado. Copie o endereço exibido abaixo.');
+        toast.info('Link criado. Copie o endereço exibido abaixo.', { id: toastId });
       }
     } catch (error) {
       console.error('Erro ao gerar link de acompanhamento:', error);
       const code = (error as { code?: string })?.code;
       toast.error(code === 'functions/already-exists' || code === 'already-exists'
         ? 'Este pedido já tem um link ativo. Revogue-o antes de criar outro.'
-        : 'Não foi possível gerar o link de acompanhamento.');
+        : 'Não foi possível gerar o link de acompanhamento.', { id: toastId });
     } finally {
       setCreatingTrackingLink(false);
     }

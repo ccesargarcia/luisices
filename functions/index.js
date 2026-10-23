@@ -62,6 +62,7 @@ module.exports = {
   revokeOrderTrackingLink: orderFunctions.revokeOrderTrackingLink,
   revokeOrderTrackingLinkById: orderFunctions.revokeOrderTrackingLinkById,
   deleteOrderTrackingLink: orderFunctions.deleteOrderTrackingLink,
+  deleteOrderTrackingLinksBatch: orderFunctions.deleteOrderTrackingLinksBatch,
   getPublicOrderTracking: orderFunctions.getPublicOrderTracking,
 
   // ─── Inteligência Artificial (Google Gemini) ────────────────────────────────

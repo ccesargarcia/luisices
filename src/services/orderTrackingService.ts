@@ -56,6 +56,25 @@ export const orderTrackingService = {
     await callable({ linkId });
   },
 
+  async deleteLinksBatch(linkIds: string[]): Promise<{ success: boolean; deletedCount: number }> {
+    if (!linkIds || linkIds.length === 0) return { success: true, deletedCount: 0 };
+    try {
+      const callable = httpsCallable<{ linkIds: string[] }, { success: boolean; deletedCount: number }>(
+        functions,
+        'deleteOrderTrackingLinksBatch'
+      );
+      const result = await callable({ linkIds });
+      return result.data;
+    } catch (error: any) {
+      if (error?.code === 'functions/not-found' || error?.code === 'not-found') {
+        const results = await Promise.allSettled(linkIds.map(id => this.deleteLink(id)));
+        const deletedCount = results.filter(r => r.status === 'fulfilled').length;
+        return { success: true, deletedCount };
+      }
+      throw error;
+    }
+  },
+
   async listLinks(cursor: string | null = null): Promise<{ links: OrderTrackingLinkRecord[]; nextCursor: string | null }> {
     const callable = httpsCallable<
       { cursor: string | null; pageSize: number },
