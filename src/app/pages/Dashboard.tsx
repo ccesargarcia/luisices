@@ -1226,6 +1226,13 @@ export function Dashboard() {
 
       <OrderDetailsDialog
         order={selectedOrder}
+        trackingUrl={selectedOrder ? trackingLinksByOrderId[selectedOrder.id] : undefined}
+        onTrackingLinkChanged={(orderId, url) => setTrackingLinksByOrderId(current => {
+          const next = { ...current };
+          if (url) next[orderId] = url;
+          else delete next[orderId];
+          return next;
+        })}
         open={detailsOpen}
         onOpenChange={(open) => {
           setDetailsOpen(open);

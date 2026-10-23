@@ -7,6 +7,13 @@ compatibility_flags = ["nodejs_compat"]
 ENVIRONMENT = "production"
 BACKEND_ORIGIN = "https://us-central1-papelaria-dashboard.cloudfunctions.net"
 
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+  [observability.logs]
+  invocation_logs = false
+
 [env.production]
 name = "functions-prod"
 routes = [
@@ -16,6 +23,21 @@ routes = [
 ENVIRONMENT = "production"
 BACKEND_ORIGIN = "https://us-central1-papelaria-dashboard.cloudfunctions.net"
 
+  [env.production.observability]
+  enabled = true
+  head_sampling_rate = 1
+
+    [env.production.observability.logs]
+    invocation_logs = false
+
+[[env.production.ratelimits]]
+name = "PUBLIC_ORDER_TRACKING_LIMITER"
+namespace_id = "6634920187"
+
+  [env.production.ratelimits.simple]
+  limit = 30
+  period = 60
+
 [env.dev]
 name = "functions-dev"
 routes = [
@@ -24,3 +46,18 @@ routes = [
 [env.dev.vars]
 ENVIRONMENT = "dev"
 BACKEND_ORIGIN = "https://us-central1-luisices-dev.cloudfunctions.net"
+
+  [env.dev.observability]
+  enabled = true
+  head_sampling_rate = 1
+
+    [env.dev.observability.logs]
+    invocation_logs = false
+
+[[env.dev.ratelimits]]
+name = "PUBLIC_ORDER_TRACKING_LIMITER"
+namespace_id = "6634920188"
+
+  [env.dev.ratelimits.simple]
+  limit = 30
+  period = 60

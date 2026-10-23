@@ -101,17 +101,23 @@ jobs:
           RESEND_WEBHOOK_SECRET: ${{ secrets.DEV_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.DEV_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.dev_gemini || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
+          ORIGIN_SECRET: ${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
           SUPERFRETE_SANDBOX_TOKEN: ${{ secrets.SUPERFRETE_SANDBOX_TOKEN }}
           ORDER_TRACKING_ENCRYPTION_KEY: ${{ secrets.DEV_ORDER_TRACKING_ENCRYPTION_KEY }}
           GCLOUD_PROJECT: luisices-dev
         run: |
-          trap 'rm -f functions/.env.luisices-dev "$HOME/order_tracking_encryption_key.txt"' EXIT
+          trap 'rm -f functions/.env.luisices-dev "$HOME/order_tracking_encryption_key.txt" "$HOME/origin_secret.txt"' EXIT
           if [ -n "$SENTRY_DSN" ]; then
             printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=development\n' "$SENTRY_DSN" > functions/.env.luisices-dev
           fi
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           firebase use luisices-dev --project luisices-dev --non-interactive
+
+          if [ -z "$ORIGIN_SECRET" ]; then
+            echo "❌ DEV_ORIGIN_SECRET / ORIGIN_SECRET é obrigatório para proteger as funções callable."
+            exit 1
+          fi
 
           # Atualiza segredos no Secret Manager apenas se explicitamente solicitado
           if [ "${{ inputs.update_secrets }}" = "true" ]; then
@@ -142,10 +148,8 @@ jobs:
               echo "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" > "$HOME/alexa_hmac.txt"
               firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
             fi
-            if [ -n "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ]; then
-              echo "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" > "$HOME/origin_secret.txt"
-              firebase functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force || true
-            fi
+            printf '%s' "$ORIGIN_SECRET" > "$HOME/origin_secret.txt"
+            firebase functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force
           fi
 
           if ! firebase functions:secrets:get ORDER_TRACKING_ENCRYPTION_KEY --project luisices-dev --non-interactive > /dev/null 2>&1; then
@@ -165,10 +169,10 @@ jobs:
           fi
 
           # Garante que ORIGIN_SECRET existe no Secret Manager de Dev antes do deploy se secret disponível
-          if [ -n "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ] && ! firebase functions:secrets:get ORIGIN_SECRET --project luisices-dev --non-interactive > /dev/null 2>&1; then
+          if ! firebase functions:secrets:get ORIGIN_SECRET --project luisices-dev --non-interactive > /dev/null 2>&1; then
             echo "🔐 Inicializando ORIGIN_SECRET no Secret Manager (Dev)..."
-            echo "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" > "$HOME/origin_secret.txt"
-            firebase functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force || true
+            printf '%s' "$ORIGIN_SECRET" > "$HOME/origin_secret.txt"
+            firebase functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force
           fi
 
           # Determina se deve publicar regras e índices
@@ -239,7 +243,7 @@ jobs:
           ALEXA_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID || secrets.ALEXA_PROD_SKILL_ID || secrets.ALEXA_SKILL_ID }}
           ORDER_TRACKING_ENCRYPTION_KEY: ${{ secrets.PROD_ORDER_TRACKING_ENCRYPTION_KEY }}
         run: |
-          trap 'rm -f functions/.env.papelaria-dashboard "$HOME/order_tracking_encryption_key.txt"' EXIT
+          trap 'rm -f functions/.env.papelaria-dashboard "$HOME/order_tracking_encryption_key.txt" "$HOME/origin_secret_prod.txt"' EXIT
           if [ -n "$SENTRY_DSN" ]; then
             printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=production\n' "$SENTRY_DSN" > functions/.env.papelaria-dashboard
           fi
@@ -251,6 +255,11 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           firebase use papelaria-dashboard --project papelaria-dashboard --non-interactive
 
+          if [ -z "$ORIGIN_SECRET" ]; then
+            echo "❌ PROD_ORIGIN_SECRET / ORIGIN_SECRET é obrigatório para proteger as funções callable."
+            exit 1
+          fi
+
           node <<'NODE'
           const checks = [
             { name: 'FIREBASE_SERVICE_ACCOUNT_PROD', val: process.env.FIREBASE_SERVICE_ACCOUNT, required: true },
@@ -258,7 +267,7 @@ jobs:
             { name: 'PROD_RESEND_WEBHOOK_SECRET / RESEND_WEBHOOK_SECRET', val: process.env.RESEND_WEBHOOK_SECRET, required: false },
             { name: 'PROD_EVOLUTION_API_KEY / EVOLUTION_API_KEY', val: process.env.EVOLUTION_API_KEY, required: true },
             { name: 'PROD_GEMINI / PROD_GEMINI_API_KEY / GEMINI_API_KEY', val: process.env.GEMINI_API_KEY, required: true },
-            { name: 'PROD_ORIGIN_SECRET / ORIGIN_SECRET', val: process.env.ORIGIN_SECRET, required: false },
+            { name: 'PROD_ORIGIN_SECRET / ORIGIN_SECRET', val: process.env.ORIGIN_SECRET, required: true },
             { name: 'PROD_ALEXA_IDENTITY_HMAC_KEY / ALEXA_IDENTITY_HMAC_KEY', val: process.env.ALEXA_HMAC, required: false },
             { name: 'PROD_ALEXA_SKILL_ID / ALEXA_PROD_SKILL_ID', val: process.env.ALEXA_SKILL_ID, required: false }
           ];
@@ -269,7 +278,9 @@ jobs:
           for (const item of checks) {
             const hasVal = typeof item.val === 'string' && item.val.trim().length > 0;
             if (hasVal) {
-              const preview = item.val.length > 8
+              const preview = item.name.includes('ORIGIN_SECRET')
+                ? `(${item.val.length} chars; valor oculto)`
+                : item.val.length > 8
                 ? `${item.val.substring(0, 14)}...${item.val.substring(item.val.length - 4)} (${item.val.length} chars)`
                 : `(${item.val.length} chars)`;
               console.log(`✅ ${item.name.padEnd(52)}: PRESENTE ${preview}`);
@@ -313,8 +324,8 @@ jobs:
               firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project papelaria-dashboard --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
             fi
             if [ -n "$ORIGIN_SECRET" ]; then
-              echo "$ORIGIN_SECRET" > "$HOME/origin_secret_prod.txt"
-              firebase functions:secrets:set ORIGIN_SECRET --project papelaria-dashboard --data-file "$HOME/origin_secret_prod.txt" --non-interactive --force || true
+              printf '%s' "$ORIGIN_SECRET" > "$HOME/origin_secret_prod.txt"
+              firebase functions:secrets:set ORIGIN_SECRET --project papelaria-dashboard --data-file "$HOME/origin_secret_prod.txt" --non-interactive --force
             fi
           fi
 
@@ -334,10 +345,10 @@ jobs:
             firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project papelaria-dashboard --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
           fi
 
-          if [ -n "$ORIGIN_SECRET" ] && ! firebase functions:secrets:get ORIGIN_SECRET --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
+          if ! firebase functions:secrets:get ORIGIN_SECRET --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
             echo "🔐 Inicializando ORIGIN_SECRET no Secret Manager (Prod)..."
-            echo "$ORIGIN_SECRET" > "$HOME/origin_secret_prod.txt"
-            firebase functions:secrets:set ORIGIN_SECRET --project papelaria-dashboard --data-file "$HOME/origin_secret_prod.txt" --non-interactive --force || true
+            printf '%s' "$ORIGIN_SECRET" > "$HOME/origin_secret_prod.txt"
+            firebase functions:secrets:set ORIGIN_SECRET --project papelaria-dashboard --data-file "$HOME/origin_secret_prod.txt" --non-interactive --force
           fi
 
           if [ -n "$GEMINI_API_KEY" ] && ! firebase functions:secrets:get GEMINI_API_KEY --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then

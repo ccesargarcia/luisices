@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { AlertCircle, Check, Clock3, Loader2, PackageCheck, PackageSearch, Truck } from 'lucide-react';
 import { orderTrackingService, type PublicOrderTracking as TrackingData } from '../../services/orderTrackingService';
+import { DEFAULT_ORDER_TRACKING_TEMPLATE } from '../../services/firebaseSettingsService';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 
@@ -48,40 +49,49 @@ export function PublicOrderTracking() {
     { label: 'Em produção', icon: Clock3 },
     { label: 'Concluído', icon: PackageCheck },
   ];
+  const template = { ...DEFAULT_ORDER_TRACKING_TEMPLATE, brandName: '', logoUrl: '', ...data.trackingTemplate };
+  const radius = template.layout === 'soft' ? '1.75rem' : template.layout === 'editorial' ? '0.35rem' : '1rem';
+  const title = template.title || 'Acompanhe seu pedido';
+  const backgroundStyle = { backgroundColor: template.backgroundColor || undefined, color: template.textColor || undefined };
+  const surfaceStyle = { backgroundColor: template.surfaceColor || undefined, color: template.textColor || undefined };
+  const primaryStyle = { backgroundColor: template.primaryColor || undefined };
 
   return (
-    <main className="min-h-screen bg-muted/30 px-4 py-10 sm:py-16">
-      <Card className="mx-auto w-full max-w-2xl rounded-2xl border-border">
-        <CardHeader className="border-b bg-primary px-6 py-7 text-primary-foreground sm:px-9">
-          <CardDescription className="text-primary-foreground/80">Acompanhamento do pedido</CardDescription>
-          <CardTitle className="mt-1 text-2xl font-bold">{data.orderNumber ? `Pedido ${data.orderNumber}` : 'Seu pedido'}</CardTitle>
+    <main className="min-h-screen bg-muted/30 px-4 py-10 text-foreground sm:py-16" style={backgroundStyle}>
+      <Card className="mx-auto w-full max-w-2xl overflow-hidden border-border bg-card text-card-foreground shadow-sm" style={{ ...surfaceStyle, borderRadius: radius }}>
+        <CardHeader className="border-b px-6 py-7 sm:px-9 bg-primary text-primary-foreground" style={primaryStyle}>
+          {template.showLogo && template.logoUrl && <img src={template.logoUrl} alt={template.brandName || 'Logo'} className="mb-4 max-h-12 max-w-40 object-contain" />}
+          {template.brandName && <CardDescription className="text-primary-foreground/80">{template.brandName}</CardDescription>}
+          <CardDescription className="text-primary-foreground/80">{title}</CardDescription>
+          {template.subtitle && <p className="mt-1 text-sm text-primary-foreground/80">{template.subtitle}</p>}
+          <CardTitle className="mt-2 text-2xl font-bold">{data.orderNumber ? `Pedido ${data.orderNumber}` : 'Seu pedido'}</CardTitle>
           <Badge variant="outline" className="mt-2 border-primary-foreground/30 bg-primary-foreground/10 text-primary-foreground">{STATUS_LABELS[data.status]}</Badge>
         </CardHeader>
         <CardContent className="space-y-8 px-6 py-6 sm:px-9">
           {data.status === 'cancelled' ? (
             <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Este pedido foi cancelado. Fale com o ateliê se precisar de ajuda.</div>
-          ) : (
+          ) : template.showProgress ? (
             <div className="grid grid-cols-3">
               {steps.map(({ label, icon: Icon }, index) => {
                 const complete = index <= progress;
                 return <div key={label} className="relative flex flex-col items-center text-center">
-                  {index > 0 && <span className={`absolute right-1/2 top-5 h-0.5 w-full ${index <= progress ? 'bg-primary' : 'bg-border'}`} />}
-                  <span className={`relative z-10 grid size-10 place-items-center rounded-full border ${complete ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground'}`}>
+                  {index > 0 && <span className={`absolute right-1/2 top-5 h-0.5 w-full ${index <= progress ? 'bg-primary' : 'bg-border'}`} style={index <= progress && template.primaryColor ? { backgroundColor: template.primaryColor } : undefined} />}
+                  <span className={`relative z-10 grid size-10 place-items-center rounded-full border ${complete ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground'}`} style={complete && template.primaryColor ? { borderColor: template.primaryColor, backgroundColor: template.primaryColor } : undefined}>
                     {index < progress ? <Check className="size-4" /> : <Icon className="size-4" />}
                   </span>
-                  <span className={`mt-2 text-xs sm:text-sm ${complete ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>{label}</span>
+                  <span className={`mt-2 text-xs sm:text-sm ${complete ? 'font-semibold' : 'opacity-65'}`}>{label}</span>
                 </div>;
               })}
             </div>
-          )}
+          ) : null}
 
-          <div className="grid gap-4 rounded-xl border p-4 sm:grid-cols-2 sm:p-5">
-            <div><p className="text-xs font-medium uppercase text-muted-foreground">Item</p><p className="mt-1 font-semibold">{data.productName}</p></div>
-            <div><p className="text-xs font-medium uppercase text-muted-foreground">Quantidade</p><p className="mt-1 font-semibold">{data.quantity}</p></div>
-            <div><p className="text-xs font-medium uppercase text-muted-foreground">Previsão de entrega</p><p className="mt-1 font-semibold">{dateLabel(data.deliveryDate)}</p></div>
-            {data.shippingTrackingNumber && <div><p className="text-xs font-medium uppercase text-muted-foreground">Código de rastreio</p><p className="mt-1 flex items-center gap-2 font-semibold"><Truck className="size-4" />{data.shippingTrackingNumber}</p></div>}
+          <div className="grid gap-4 rounded-xl border p-4 sm:grid-cols-2 sm:p-5" style={{ borderRadius: radius }}>
+            {template.showProduct && <div><p className="text-xs font-medium uppercase opacity-60">{template.productLabel}</p><p className="mt-1 font-semibold">{data.productName}</p></div>}
+            {template.showQuantity && <div><p className="text-xs font-medium uppercase opacity-60">{template.quantityLabel}</p><p className="mt-1 font-semibold">{data.quantity}</p></div>}
+            {template.showDeliveryDate && <div><p className="text-xs font-medium uppercase opacity-60">{template.deliveryLabel}</p><p className="mt-1 font-semibold">{dateLabel(data.deliveryDate)}</p></div>}
+            {template.showTrackingCode && data.shippingTrackingNumber && <div><p className="text-xs font-medium uppercase opacity-60">{template.trackingLabel}</p><p className="mt-1 flex items-center gap-2 font-semibold"><Truck className="size-4" />{data.shippingTrackingNumber}</p></div>}
           </div>
-          <p className="text-center text-xs text-muted-foreground">As informações são atualizadas pelo ateliê. Se tiver dúvidas, entre em contato por onde fez o pedido.</p>
+          {template.footerText && <p className="text-center text-xs opacity-70">{template.footerText}</p>}
         </CardContent>
       </Card>
     </main>

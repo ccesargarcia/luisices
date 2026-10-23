@@ -35,6 +35,25 @@ const handler = {
 
     const url = new URL(request.url);
 
+    // Protege a consulta pública do pedido antes de encaminhar ao Firebase.
+    // Limite de 30 chamadas por minuto por IP, separado por ambiente.
+    if (url.pathname === '/getPublicOrderTracking' && request.method === 'POST' && env.PUBLIC_ORDER_TRACKING_LIMITER) {
+      const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
+      const { success } = await env.PUBLIC_ORDER_TRACKING_LIMITER.limit({ key: clientIp });
+      if (!success) {
+        console.warn('rate_limit_triggered', { route: 'getPublicOrderTracking', environment: env.ENVIRONMENT || 'unknown' });
+        return new Response(JSON.stringify({
+          error: {
+            status: 'RESOURCE_EXHAUSTED',
+            message: 'Muitas consultas em sequência. Aguarde um pouco e tente novamente.',
+          },
+        }), {
+          status: 429,
+          headers: { ...CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+        });
+      }
+    }
+
     // Healthcheck do Gateway (apenas para GET e HEAD)
     if ((url.pathname === '/' || url.pathname === '') && (request.method === 'GET' || request.method === 'HEAD')) {
       return new Response('Luisices API Gateway Online', {

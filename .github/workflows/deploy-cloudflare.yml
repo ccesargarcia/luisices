@@ -8,6 +8,7 @@ on:
     paths:
       - 'cloudflare/**'
       - 'scripts/ensure-mcp-cache-bypass.mjs'
+      - 'scripts/ensure-order-tracking-rate-limit.mjs'
       - 'scripts/purge-cloudflare-cache.mjs'
       - '.github/workflows/deploy-cloudflare.yml'
 
@@ -58,7 +59,7 @@ jobs:
         run: |
           if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
             echo "❌ ERRO: Secret CLOUDFLARE_API_TOKEN não configurado no repositório."
-            echo "ℹ️ Obtenha seu token em: Cloudflare Dashboard > My Profile > API Tokens (com permissão Workers Scripts:Edit e Zone:Edit)."
+            echo "ℹ️ Configure um token com Workers Scripts:Edit, Zone:Read e Zone WAF:Edit/Rulesets:Edit."
             exit 1
           fi
           echo "✅ Secret CLOUDFLARE_API_TOKEN presente."
@@ -67,6 +68,11 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: node scripts/ensure-mcp-cache-bypass.mjs
+
+      - name: Configurar rate limit WAF para acompanhamento público
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/ensure-order-tracking-rate-limit.mjs
 
       - name: Aplicar Ajustes de Conformidade & WAF (Desativar BIC / Erro 1010, SSL Strict, DKIM, VPN DNS)
         env:

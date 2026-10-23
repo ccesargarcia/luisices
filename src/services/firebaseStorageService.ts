@@ -95,9 +95,17 @@ export class FirebaseStorageService {
   async uploadImage(
     file: File,
     userId: string,
-    folder: 'avatar' | 'logo' | 'banner' | 'catalog-logo' | 'catalog-banner' | 'catalog-header' | 'catalog-about'
+    folder: 'avatar' | 'logo' | 'tracking-logo' | 'banner' | 'catalog-logo' | 'catalog-banner' | 'catalog-header' | 'catalog-about'
   ): Promise<string> {
     const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
+    if (folder === 'tracking-logo') {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+        throw new Error('Formato não suportado. A logo do acompanhamento deve ser JPG, PNG ou WebP.');
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        throw new Error('A logo do acompanhamento deve ter no máximo 5 MB.');
+      }
+    }
     if (!allowedImageTypes.includes(file.type)) {
       throw new Error('Formato não suportado. Envie uma imagem JPG, PNG ou WebP.');
     }
@@ -106,13 +114,15 @@ export class FirebaseStorageService {
     const maxDimension =
       folder === 'banner' || folder === 'catalog-banner' || folder === 'catalog-header' || folder === 'catalog-about'
         ? 2560
-        : folder === 'avatar' || folder === 'logo' || folder === 'catalog-logo'
+        : folder === 'avatar' || folder === 'logo' || folder === 'tracking-logo' || folder === 'catalog-logo'
         ? 1000
         : 1920;
 
     const optimizedFile = await optimizeImageToWebP(file, {
       maxDimension,
       quality: 0.88,
+      fallbackOnError: folder !== 'tracking-logo',
+      forceResize: folder === 'tracking-logo',
     });
 
     // Validar tamanho (máximo 5MB)

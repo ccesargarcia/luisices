@@ -46,8 +46,41 @@ export interface InstitutionalCustomSection {
   content: string;
 }
 
+export interface OrderTrackingTemplate {
+  layout: 'classic' | 'editorial' | 'soft';
+  brandName: string;
+  logoUrl: string;
+  title: string;
+  subtitle: string;
+  footerText: string;
+  backgroundColor: string;
+  surfaceColor: string;
+  primaryColor: string;
+  textColor: string;
+  showLogo: boolean;
+  showProgress: boolean;
+  showProduct: boolean;
+  showQuantity: boolean;
+  showDeliveryDate: boolean;
+  showTrackingCode: boolean;
+  productLabel: string;
+  quantityLabel: string;
+  deliveryLabel: string;
+  trackingLabel: string;
+}
+
+export const DEFAULT_ORDER_TRACKING_TEMPLATE: OrderTrackingTemplate = {
+  layout: 'classic', brandName: '', logoUrl: '', title: 'Acompanhe seu pedido',
+  subtitle: 'Veja as atualizações do seu pedido por aqui.', footerText: 'Dúvidas? Fale com a nossa equipe.',
+  backgroundColor: '', surfaceColor: '', primaryColor: '', textColor: '',
+  showLogo: true, showProgress: true, showProduct: true, showQuantity: true,
+  showDeliveryDate: true, showTrackingCode: true, productLabel: 'Item', quantityLabel: 'Quantidade',
+  deliveryLabel: 'Previsão de entrega', trackingLabel: 'Código de rastreio',
+};
+
 export interface UserSettings {
   userId: string;
+  orderTrackingTemplate?: Partial<OrderTrackingTemplate>;
 
   // Personalização visual
   avatar?: string; // URL da imagem

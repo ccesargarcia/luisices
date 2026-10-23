@@ -104,6 +104,12 @@ export function useUserSettings() {
     }
   };
 
+  // Logo exclusiva da página pública de acompanhamento; não altera a logo do painel.
+  const uploadOrderTrackingLogo = async (file: File): Promise<string> => {
+    if (!user) throw new Error('Usuário não autenticado');
+    return firebaseStorageService.uploadImage(file, user.uid, 'tracking-logo');
+  };
+
   // Upload de logo exclusivo do catálogo / lojinha pública online
   const uploadCatalogLogo = async (file: File, previousLogoUrl?: string): Promise<string> => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -431,6 +437,7 @@ export function useUserSettings() {
     toggleStorePublished,
     uploadAvatar,
     uploadLogo,
+    uploadOrderTrackingLogo,
     uploadCatalogLogo,
     uploadCatalogBanner,
     uploadCatalogBannerImage,

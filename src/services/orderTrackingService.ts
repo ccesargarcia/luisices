@@ -1,5 +1,6 @@
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../lib/firebase';
+import type { OrderTrackingTemplate } from './firebaseSettingsService';
 
 export interface PublicOrderTracking {
   orderNumber: string;
@@ -10,6 +11,7 @@ export interface PublicOrderTracking {
   updatedAt: string;
   shippingStatus: string;
   shippingTrackingNumber: string;
+  trackingTemplate?: Partial<OrderTrackingTemplate>;
 }
 
 export interface OrderTrackingLinkResult {
@@ -42,6 +44,16 @@ export const orderTrackingService = {
   async revokeLink(orderId: string): Promise<void> {
     const callable = httpsCallable<{ orderId: string }, { success: boolean; revoked: boolean }>(functions, 'revokeOrderTrackingLink');
     await callable({ orderId });
+  },
+
+  async revokeLinkById(linkId: string): Promise<void> {
+    const callable = httpsCallable<{ linkId: string }, { success: boolean; revoked: boolean }>(functions, 'revokeOrderTrackingLinkById');
+    await callable({ linkId });
+  },
+
+  async deleteLink(linkId: string): Promise<void> {
+    const callable = httpsCallable<{ linkId: string }, { success: boolean; deleted: boolean }>(functions, 'deleteOrderTrackingLink');
+    await callable({ linkId });
   },
 
   async listLinks(cursor: string | null = null): Promise<{ links: OrderTrackingLinkRecord[]; nextCursor: string | null }> {

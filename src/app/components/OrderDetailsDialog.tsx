@@ -35,6 +35,8 @@ interface OrderDetailsDialogProps {
   onDeleteOrder?: (orderId: string) => void;
   onToggleArchive?: (orderId: string, archive: boolean) => void;
   onOrderUpdated?: (order: Order) => void;
+  trackingUrl?: string;
+  onTrackingLinkChanged?: (orderId: string, url: string | null) => void;
 }
 
 const statusColors = {
@@ -51,7 +53,7 @@ const statusLabels = {
   cancelled: 'Cancelado',
 };
 
-export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder, onToggleArchive, onOrderUpdated }: OrderDetailsDialogProps) {
+export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder, onToggleArchive, onOrderUpdated, trackingUrl, onTrackingLinkChanged }: OrderDetailsDialogProps) {
   const { user, userProfile, isAdmin, hasPermission } = useAuth();
   const { settings } = useUserSettings();
   const { teamMembers } = useOrders();
@@ -59,6 +61,9 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
 
   const canArchive = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'create');
   const canUnarchive = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'edit');
+  const canShareTracking = Boolean(order && !order.isArchived && ['pending', 'in-progress'].includes(order.status)
+    && (isAdmin || (hasPermission(p => p.orders?.view ?? false)
+      && (order.userId === user?.uid || order.assignedTo === user?.uid))));
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
@@ -182,6 +187,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       const base = import.meta.env.BASE_URL || '/';
       const url = new URL(`${base.replace(/\/$/, '')}/acompanhar/${token}`, window.location.origin).toString();
       setGeneratedTrackingUrl(url);
+      onTrackingLinkChanged?.(order.id, url);
       setTrackingLinkActive(true);
       try {
         await navigator.clipboard.writeText(url);
@@ -191,7 +197,10 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       }
     } catch (error) {
       console.error('Erro ao gerar link de acompanhamento:', error);
-      toast.error('Não foi possível gerar o link de acompanhamento.');
+      const code = (error as { code?: string })?.code;
+      toast.error(code === 'functions/already-exists' || code === 'already-exists'
+        ? 'Este pedido já tem um link ativo. Revogue-o antes de criar outro.'
+        : 'Não foi possível gerar o link de acompanhamento.');
     } finally {
       setCreatingTrackingLink(false);
     }
@@ -205,6 +214,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       setTrackingLinkActive(false);
       setGeneratedTrackingUrl('');
       setGeneratedTrackingExpiresAt(undefined);
+      onTrackingLinkChanged?.(order.id, null);
       toast.success('Link de acompanhamento desativado.');
     } catch (error) {
       console.error('Erro ao desativar link de acompanhamento:', error);
@@ -671,7 +681,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                       E-mail
                     </Button>
                   )}
-                  {!order.isArchived && order.status !== 'cancelled' && (
+                  {canShareTracking && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -902,44 +912,47 @@ Equipe ${settings?.businessName || 'Luisices'}`;
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
                 <p className="font-medium text-foreground">Há um link ativo para este pedido.</p>
                 <p className="mt-1 text-muted-foreground">{trackingExpiryLabel}</p>
-                <p className="mt-1 text-muted-foreground">Gerar outro link invalida o anterior. Você também pode desativar o acesso quando quiser.</p>
+                <p className="mt-1 text-muted-foreground">Para criar outro link, primeiro revogue este. O pedido mantém somente um link ativo por vez.</p>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">Escolha por quanto tempo o link ficará disponível. A validade é verificada pelo servidor.</p>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Escolha por quanto tempo o link ficará disponível. A validade é verificada pelo servidor.</p>
+                <label className="text-sm font-medium" htmlFor="tracking-expiration">Validade do link</label>
+                <Select value={trackingExpiration} onValueChange={setTrackingExpiration}>
+                  <SelectTrigger id="tracking-expiration"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="7">7 dias</SelectItem>
+                    <SelectItem value="30">30 dias</SelectItem>
+                    <SelectItem value="90">90 dias</SelectItem>
+                    <SelectItem value="never">Sem expiração</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Depois de revogar um link, você poderá criar outro.</p>
+              </div>
             )}
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="tracking-expiration">Validade do link</label>
-              <Select value={trackingExpiration} onValueChange={setTrackingExpiration}>
-                <SelectTrigger id="tracking-expiration"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="7">7 dias</SelectItem>
-                  <SelectItem value="30">30 dias</SelectItem>
-                  <SelectItem value="90">90 dias</SelectItem>
-                  <SelectItem value="never">Sem expiração</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">A qualquer momento, você pode renovar o link ou desativá-lo.</p>
-            </div>
-
-            {generatedTrackingUrl && (
+            {(generatedTrackingUrl || trackingUrl) && (
               <div className="space-y-2">
                 <label className="text-sm font-medium" htmlFor="generated-tracking-url">Link criado</label>
-                <Input id="generated-tracking-url" readOnly value={generatedTrackingUrl} onFocus={event => event.currentTarget.select()} />
+                <Input id="generated-tracking-url" readOnly value={generatedTrackingUrl || trackingUrl} onFocus={event => event.currentTarget.select()} />
               </div>
             )}
           </div>
           <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-between">
             {trackingLinkActive ? (
-              <Button variant="destructive" onClick={handleRevokeTrackingLink} disabled={revokingTrackingLink} className="gap-2">
-                {revokingTrackingLink ? <Loader2 className="size-4 animate-spin" /> : <Link2Off className="size-4" />}
-                Desativar link
+              <div className="flex flex-wrap gap-2">
+                {(generatedTrackingUrl || trackingUrl) && <Button variant="outline" onClick={() => void navigator.clipboard.writeText(generatedTrackingUrl || trackingUrl || '').then(() => toast.success('Link copiado.')).catch(() => toast.error('Não foi possível copiar o link.'))} className="gap-2"><Copy className="size-4" />Copiar link</Button>}
+                <Button variant="destructive" onClick={handleRevokeTrackingLink} disabled={revokingTrackingLink} className="gap-2">
+                  {revokingTrackingLink ? <Loader2 className="size-4 animate-spin" /> : <Link2Off className="size-4" />}
+                  Desativar link
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={handleCreateTrackingLink} disabled={creatingTrackingLink} className="gap-2">
+                {creatingTrackingLink ? <Loader2 className="size-4 animate-spin" /> : <Copy className="size-4" />}
+                {creatingTrackingLink ? 'Criando…' : 'Criar e copiar link'}
               </Button>
-            ) : <span />}
-            <Button onClick={handleCreateTrackingLink} disabled={creatingTrackingLink} className="gap-2">
-              {creatingTrackingLink ? <Loader2 className="size-4 animate-spin" /> : <Copy className="size-4" />}
-              {creatingTrackingLink ? 'Criando…' : trackingLinkActive ? 'Renovar e copiar link' : 'Criar e copiar link'}
-            </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

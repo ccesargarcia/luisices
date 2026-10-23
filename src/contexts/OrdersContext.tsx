@@ -228,6 +228,12 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           ? data.archivedAt.toDate().toISOString()
           : data.archivedAt,
         archivedBy: data.archivedBy,
+        hasPublicTracking: Boolean(data.publicTrackingHash)
+          && (data.publicTrackingExpiresAt === null
+            || (typeof data.publicTrackingExpiresAt === 'string' && Date.parse(data.publicTrackingExpiresAt) > Date.now())),
+        publicTrackingExpiresAt: typeof data.publicTrackingExpiresAt === 'string' || data.publicTrackingExpiresAt === null
+          ? data.publicTrackingExpiresAt
+          : undefined,
       } as Order;
     });
 

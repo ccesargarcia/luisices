@@ -566,7 +566,9 @@ jobs:
           for (const item of checks) {
             const hasVal = typeof item.val === 'string' && item.val.trim().length > 0;
             if (hasVal) {
-              const preview = item.val.length > 8
+              const preview = item.name.includes('ORIGIN_SECRET')
+                ? `(${item.val.length} chars; valor oculto)`
+                : item.val.length > 8
                 ? `${item.val.substring(0, 14)}...${item.val.substring(item.val.length - 4)} (${item.val.length} chars)`
                 : `(${item.val.length} chars)`;
               console.log(`✅ ${item.name.padEnd(44)}: PRESENTE ${preview}`);

@@ -22,6 +22,8 @@ export interface OptimizeImageOptions {
    * Padrão: true
    */
   fallbackOnError?: boolean;
+  /** Garante que a imagem convertida seja usada mesmo quando o WebP resultante ficar maior. */
+  forceResize?: boolean;
 }
 
 /**
@@ -36,6 +38,7 @@ export async function optimizeImageToWebP(
     maxDimension = 2048,
     quality = 0.85,
     fallbackOnError = true,
+    forceResize = false,
   } = options;
 
   // Preservar arquivos que não são imagens (ex: PDF de pedidos) ou formatos vetoriais/animados
@@ -63,7 +66,7 @@ export async function optimizeImageToWebP(
     }
 
     // Se por algum motivo o WebP gerado for maior que o original (ex: ícone minúsculo de 2KB), manter o original
-    if (optimizedBlob.size >= file.size && file.type === 'image/webp') {
+    if (!forceResize && optimizedBlob.size >= file.size && file.type === 'image/webp') {
       return file;
     }
 

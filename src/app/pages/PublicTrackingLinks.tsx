@@ -1,10 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Copy, ExternalLink, Link2, Loader2, RefreshCw } from 'lucide-react';
+import { Ban, Copy, ExternalLink, Link2, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { orderTrackingService, type OrderTrackingLinkRecord } from '../../services/orderTrackingService';
 import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
 
 function publicUrl(token: string) {
   const base = import.meta.env.BASE_URL || '/';
@@ -13,7 +23,10 @@ function publicUrl(token: string) {
 
 function linkStatus(link: OrderTrackingLinkRecord): 'Ativo' | 'Expirado' | 'Revogado' {
   if (link.revokedAt) return 'Revogado';
-  if (link.expiresAt && Date.parse(link.expiresAt) <= Date.now()) return 'Expirado';
+  if (link.expiresAt !== null) {
+    const expiry = Date.parse(link.expiresAt || '');
+    if (!Number.isFinite(expiry) || expiry <= Date.now()) return 'Expirado';
+  }
   return 'Ativo';
 }
 
@@ -23,6 +36,8 @@ export function PublicTrackingLinks() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
+  const [pendingAction, setPendingAction] = useState<{ link: OrderTrackingLinkRecord; action: 'revoke' | 'delete' } | null>(null);
+  const [processingLinkId, setProcessingLinkId] = useState<string | null>(null);
 
   const loadLinks = useCallback(async (cursor: string | null, append: boolean) => {
     append ? setLoadingMore(true) : setLoading(true);
@@ -55,12 +70,37 @@ export function PublicTrackingLinks() {
     }
   };
 
+  const confirmLinkAction = async () => {
+    if (!pendingAction || processingLinkId) return;
+    const { link, action } = pendingAction;
+    setProcessingLinkId(link.id);
+    try {
+      if (action === 'revoke') {
+        await orderTrackingService.revokeLinkById(link.id);
+        setLinks(current => current.map(item => item.id === link.id
+          ? { ...item, revokedAt: new Date().toISOString() }
+          : item));
+        toast.success('Acesso ao link revogado.');
+      } else {
+        await orderTrackingService.deleteLink(link.id);
+        setLinks(current => current.filter(item => item.id !== link.id));
+        toast.success('Link removido do histórico.');
+      }
+      setPendingAction(null);
+    } catch (err) {
+      console.error(`Falha ao ${action === 'revoke' ? 'revogar' : 'excluir'} link de acompanhamento:`, err);
+      toast.error(`Não foi possível ${action === 'revoke' ? 'revogar' : 'excluir'} este link.`);
+    } finally {
+      setProcessingLinkId(null);
+    }
+  };
+
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 p-4 sm:p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Links de acompanhamento</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Consulte e copie os links compartilhados com seus clientes.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Consulte, copie, revogue ou remova links compartilhados com seus clientes.</p>
         </div>
         <Button variant="outline" onClick={() => void loadLinks(null, false)} disabled={loading} className="gap-2">
           {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
@@ -113,7 +153,7 @@ export function PublicTrackingLinks() {
                   </div>
                   {url && <p className="truncate rounded-md bg-muted/50 px-2 py-1.5 font-mono text-[11px] text-muted-foreground" title={url}>{url}</p>}
                   {!url && <p className="text-xs text-muted-foreground">Link criado antes do histórico seguro. Ele não pode ser recuperado; gere outro pelo pedido.</p>}
-                  <div className="flex justify-end gap-2">
+                  <div className="flex flex-wrap justify-end gap-2">
                     {url && status === 'Ativo' && (
                       <Button size="sm" variant="outline" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')} className="gap-1.5">
                         <ExternalLink className="size-3.5" /> Abrir
@@ -121,6 +161,26 @@ export function PublicTrackingLinks() {
                     )}
                     <Button size="sm" variant="outline" onClick={() => void copyLink(link)} disabled={!url} className="gap-1.5">
                       <Copy className="size-3.5" /> Copiar link
+                    </Button>
+                    {status === 'Ativo' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={processingLinkId === link.id}
+                        onClick={() => setPendingAction({ link, action: 'revoke' })}
+                        className="gap-1.5 text-amber-700 hover:text-amber-800 dark:text-amber-400"
+                      >
+                        <Ban className="size-3.5" /> Revogar
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={processingLinkId === link.id}
+                      onClick={() => setPendingAction({ link, action: 'delete' })}
+                      className="gap-1.5"
+                    >
+                      <Trash2 className="size-3.5" /> Excluir
                     </Button>
                   </div>
                 </CardContent>
@@ -138,6 +198,32 @@ export function PublicTrackingLinks() {
           </Button>
         </div>
       )}
+
+      <AlertDialog open={Boolean(pendingAction)} onOpenChange={open => { if (!open && !processingLinkId) setPendingAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{pendingAction?.action === 'revoke' ? 'Revogar este link?' : 'Excluir este link?'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingAction?.action === 'revoke'
+                ? 'O cliente perderá o acesso ao acompanhamento por este link imediatamente. O registro continuará no histórico.'
+                : 'O registro será removido do histórico. Se o link ainda estiver ativo, o acesso público também será revogado.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(processingLinkId)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={Boolean(processingLinkId)}
+              onClick={event => { event.preventDefault(); void confirmLinkAction(); }}
+              className={pendingAction?.action === 'delete' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''}
+            >
+              {processingLinkId
+                ? <Loader2 className="mr-2 size-4 animate-spin" />
+                : pendingAction?.action === 'delete' ? <Trash2 className="mr-2 size-4" /> : <Ban className="mr-2 size-4" />}
+              {pendingAction?.action === 'revoke' ? 'Revogar link' : 'Excluir link'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }

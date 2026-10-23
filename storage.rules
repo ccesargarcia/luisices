@@ -91,12 +91,13 @@ service firebase.storage {
 
     // Imagens de perfil, logo e banner do usuário: leitura pública, edição restrita ao dono/admin
     match /users/{userId}/{folder}/{fileName} {
-      allow read: if folder in ['avatar', 'logo', 'banner', 'products', 'customers', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about'];
-      allow create, update: if folder in ['avatar', 'logo', 'banner', 'products', 'customers', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
+      allow read: if folder in ['avatar', 'logo', 'tracking-logo', 'banner', 'products', 'customers', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about'];
+      allow create, update: if folder in ['avatar', 'logo', 'tracking-logo', 'banner', 'products', 'customers', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
         && isActiveUser() && (request.auth.uid == userId || isAdmin())
         && request.resource.size < 5 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
-      allow delete: if folder in ['avatar', 'logo', 'banner', 'products', 'customers', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about'] && isActiveUser() && (request.auth.uid == userId || isAdmin());
+        && request.resource.contentType.matches('image/.*')
+        && (folder != 'tracking-logo' || request.resource.contentType.matches('image/(jpeg|png|webp)'));
+      allow delete: if folder in ['avatar', 'logo', 'tracking-logo', 'banner', 'products', 'customers', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about'] && isActiveUser() && (request.auth.uid == userId || isAdmin());
     }
 
     // Imagens e banners públicos da loja / catálogo: leitura pública, edição protegida

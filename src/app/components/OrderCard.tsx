@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
-import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2, Users, Mic, Bot, AlertCircle, Link2, Loader2 } from 'lucide-react';
+import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2, Users, Mic, Bot, AlertCircle, Link2, Loader2, Copy } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { openWhatsAppForOrder } from '../utils/whatsapp';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -49,17 +49,22 @@ export function OrderCard({ order, trackingUrl, onClick, isSelected = false, onT
   const { user, isAdmin, hasPermission } = useAuth();
   const [creatingTrackingLink, setCreatingTrackingLink] = useState(false);
   const [generatedTrackingUrl, setGeneratedTrackingUrl] = useState('');
-  const [trackingLinkActive, setTrackingLinkActive] = useState(Boolean(order.hasPublicTracking));
+  const trackingLinkActive = Boolean(order.hasPublicTracking || trackingUrl || generatedTrackingUrl);
   const compact = settings?.compactCards ?? false;
   const isShared = order.userId && order.userId !== user?.uid;
   const canShareTracking = isAdmin || (
     hasPermission(p => p.orders?.view ?? false)
     && (order.userId === user?.uid || order.assignedTo === user?.uid)
   );
+  const currentTrackingUrl = generatedTrackingUrl || trackingUrl || '';
 
   useEffect(() => {
-    setTrackingLinkActive(Boolean(order.hasPublicTracking));
+    if (!order.hasPublicTracking) setGeneratedTrackingUrl('');
   }, [order.id, order.hasPublicTracking]);
+
+  useEffect(() => {
+    if (trackingUrl) setGeneratedTrackingUrl(trackingUrl);
+  }, [trackingUrl]);
 
   const handleSelectToggle = (event: React.MouseEvent | React.KeyboardEvent) => {
     event.stopPropagation();
@@ -95,59 +100,57 @@ export function OrderCard({ order, trackingUrl, onClick, isSelected = false, onT
       const base = import.meta.env.BASE_URL || '/';
       const url = new URL(`${base.replace(/\/$/, '')}/acompanhar/${result.token}`, window.location.origin).toString();
       setGeneratedTrackingUrl(url);
-      setTrackingLinkActive(true);
       try {
         await navigator.clipboard.writeText(url);
-        toast.success(trackingLinkActive
-          ? 'Novo link copiado. O link anterior foi desativado.'
-          : 'Link criado e copiado para compartilhar com o cliente.');
+        toast.success('Link criado e copiado para compartilhar com o cliente.');
       } catch {
-        toast.info('Link criado. Selecione e copie o endereço exibido no card.');
+        toast.info('Link criado. Consulte “Links de acompanhamento” para copiá-lo.');
       }
     } catch (error) {
       console.error('Erro ao gerar link de acompanhamento pelo card:', error);
-      toast.error('Não foi possível gerar o link de acompanhamento.');
+      const code = (error as { code?: string })?.code;
+      toast.error(code === 'functions/already-exists' || code === 'already-exists'
+        ? 'Este pedido já tem um link ativo. Revogue o link atual antes de criar outro.'
+        : 'Não foi possível gerar o link de acompanhamento.');
     } finally {
       setCreatingTrackingLink(false);
     }
   };
 
-  const trackingControl = canShareTracking && !order.isArchived && order.status !== 'cancelled' ? (
+  const trackingControl = canShareTracking && !order.isArchived && ['pending', 'in-progress'].includes(order.status) ? (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5" onClick={event => event.stopPropagation()}>
-      {trackingLinkActive && (
-        <Badge variant="outline" className="gap-1 text-[10px] text-primary border-primary/30 bg-primary/5">
-          <Link2 className="size-3" />
-          Link ativo{order.publicTrackingExpiresAt ? ` · até ${formatDateShort(order.publicTrackingExpiresAt)}` : ' · sem expiração'}
-        </Badge>
-      )}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button type="button" size="sm" variant="outline" disabled={creatingTrackingLink} className="h-7 gap-1 px-2 text-[11px]">
-            {creatingTrackingLink ? <Loader2 className="size-3.5 animate-spin" /> : <Link2 className="size-3.5" />}
-            {trackingLinkActive ? 'Gerar novo link' : 'Compartilhar link'}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" onClick={event => event.stopPropagation()}>
-          <DropdownMenuItem onSelect={() => void createTrackingLink(7)}>Gerar link por 7 dias</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => void createTrackingLink(30)}>Gerar link por 30 dias</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => void createTrackingLink(90)}>Gerar link por 90 dias</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => void createTrackingLink(null)}>Gerar link sem expiração</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      {(generatedTrackingUrl || trackingUrl) && (
-        <button
+      {trackingLinkActive ? (
+        <Button
           type="button"
-          className="min-w-0 basis-full truncate text-left text-[10px] text-muted-foreground hover:text-foreground"
-          title={generatedTrackingUrl || trackingUrl}
-          aria-label="Copiar link de acompanhamento"
+          size="sm"
+          variant="secondary"
+          disabled={!currentTrackingUrl || creatingTrackingLink}
+          title={currentTrackingUrl ? 'Copiar o link de acompanhamento já criado' : 'Carregando o link de acompanhamento'}
           onClick={() => {
-            void navigator.clipboard.writeText(generatedTrackingUrl || trackingUrl || '')
+            void navigator.clipboard.writeText(currentTrackingUrl)
               .then(() => toast.success('Link copiado.'))
               .catch(() => toast.error('Não foi possível copiar o link.'));
           }}
+          className="h-7 gap-1 px-2 text-[11px]"
         >
-          {generatedTrackingUrl || trackingUrl}
-        </button>
+          {creatingTrackingLink ? <Loader2 className="size-3.5 animate-spin" /> : <Copy className="size-3.5" />}
+          Copiar link gerado
+        </Button>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" size="sm" variant="outline" disabled={creatingTrackingLink} className="h-7 gap-1 px-2 text-[11px]">
+              {creatingTrackingLink ? <Loader2 className="size-3.5 animate-spin" /> : <Link2 className="size-3.5" />}
+              Compartilhar link
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" onClick={event => event.stopPropagation()}>
+            <DropdownMenuItem onSelect={() => void createTrackingLink(7)}>Compartilhar por 7 dias</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void createTrackingLink(30)}>Compartilhar por 30 dias</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void createTrackingLink(90)}>Compartilhar por 90 dias</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void createTrackingLink(null)}>Compartilhar sem expiração</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
     </div>
   ) : null;
