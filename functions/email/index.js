@@ -202,7 +202,11 @@ const sendCustomEmail = onCall(
       };
 
       if (preparedAttachments.length) {
-        payload.attachments = preparedAttachments.map(({ filename, content }) => ({ filename, content }));
+        payload.attachments = preparedAttachments.map(({ filename, content, contentType }) => ({
+          filename,
+          content,
+          contentType,
+        }));
       }
 
       if (html) payload.html = html;
@@ -253,7 +257,7 @@ const sendCustomEmail = onCall(
         status: 'sent',
         senderUid: request.auth.uid,
         senderEmail: request.auth.token.email || '',
-        attachments: preparedAttachments.map(({ filename }) => ({ filename })),
+        attachments: preparedAttachments.map(({ filename, contentType }) => ({ filename, contentType })),
         sentAt: new Date().toISOString(),
         createdAt: FieldValue.serverTimestamp(),
       };
