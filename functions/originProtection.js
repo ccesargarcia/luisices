@@ -32,7 +32,11 @@ function getOriginSecretValue() {
  * @returns {{ allowed: boolean, error?: string, statusCode?: number }}
  */
 function validateOriginSecret(req) {
-  const isTestOrLocal = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
+  // Chamadas diretas do navegador para o emulador não passam pelo Worker da Cloudflare.
+  // Em produção, manter a validação mesmo quando NODE_ENV está definido como test.
+  if (process.env.FUNCTIONS_EMULATOR === 'true') return { allowed: true };
+
+  const isTestOrLocal = process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
   const secret = getOriginSecretValue();
 
   if (!secret) {
