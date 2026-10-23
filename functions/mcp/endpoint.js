@@ -639,9 +639,9 @@ const chatGptToolsEndpoint = onRequest(
         if (!authResult.success) return res.status(authResult.status || 401).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32001, message: authResult.message || 'Autenticação necessária.' } });
         const scopes = authResult.keyData.scopes || [];
         const resources = scopes.includes('*') || scopes.includes('orders:update') ? [{
-          uri: 'ui://luisices/order-edit/v1.html',
+          uri: 'ui://luisices/order-edit/v2.html',
           name: 'Formulário de edição de pedido',
-          description: 'Formulário para editar dados e valores do pedido.',
+          description: 'Formulário interativo para revisar o pedido, editar produtos, quantidades e preços unitários e conferir o total antes de salvar.',
           mimeType: 'text/html;profile=mcp-app',
         }] : [];
         return res.status(200).json({ jsonrpc: '2.0', id: rpcId, result: { resources } });
@@ -654,7 +654,7 @@ const chatGptToolsEndpoint = onRequest(
         if (!scopes.includes('*') && !scopes.includes('orders:update')) {
           return res.status(200).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32003, message: 'Permissão negada para carregar o formulário de edição.' } });
         }
-        if (params.uri !== 'ui://luisices/order-edit/v1.html') {
+        if (params.uri !== 'ui://luisices/order-edit/v2.html') {
           return res.status(200).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32602, message: 'Recurso MCP não encontrado.' } });
         }
         const { ORDER_EDIT_WIDGET_HTML } = require('./orderEditWidget');

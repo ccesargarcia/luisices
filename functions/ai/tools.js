@@ -1363,7 +1363,9 @@ class AiToolsExecutor {
           existingIndex,
           name: String(item.name || item.productName || '').slice(0, 200),
           quantity: Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
-          unitPrice: Number.isFinite(Number(item.unitPrice)) ? Number(item.unitPrice) : (Number(item.quantity) > 0 ? Number(item.price || 0) / Number(item.quantity) : Number(item.price || 0)),
+          unitPrice: item.unitPrice !== null && item.unitPrice !== undefined && item.unitPrice !== '' && Number.isFinite(Number(item.unitPrice))
+            ? Number(item.unitPrice)
+            : (Number(item.quantity) > 0 ? Number(item.price || 0) / Number(item.quantity) : Number(item.price || 0)),
         })) : [],
         quantity: Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
         totalPrice: Number(order.data.price ?? order.data.totalPrice ?? order.data.payment?.totalAmount ?? 0),
@@ -1519,7 +1521,7 @@ class AiToolsExecutor {
           const sourceIndex = itemSourceIndexes[index];
           const before = sourceIndex === null ? null : currentItems[sourceIndex];
           const beforeQuantity = Number(before?.quantity) || 1;
-          const beforeUnitPrice = Number.isFinite(Number(before?.unitPrice))
+          const beforeUnitPrice = before?.unitPrice !== null && before?.unitPrice !== undefined && Number.isFinite(Number(before.unitPrice))
             ? Number(before.unitPrice)
             : Number(before?.price || 0) / beforeQuantity;
           const same = before && before.name === after.name && beforeQuantity === after.quantity && Math.round(beforeUnitPrice * 100) === Math.round(after.unitPrice * 100);
