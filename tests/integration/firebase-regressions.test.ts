@@ -435,6 +435,49 @@ describe('Pausar e retomar vendas', () => {
     await assertPermissionDenied(() => firebaseSettingsService.updateStoreFeatureFlags('limited', { enableOnlineOrders: false }));
     expect((await getDoc(doc(client.db, 'users/limited/settings/profile'))).data()?.featureFlags.enableOnlineOrders).toBe(true);
   });
+
+  it('não altera configuração privada se a publicação pública for negada', async () => {
+    await seed('userProfiles/limited', {
+      ...profile('limited', 'funcionario'),
+      permissions: { store: false, settings: false },
+    });
+    await seed('users/limited/settings/profile', { storePublished: true, storeUnpublishMessage: 'Atendimento normal' });
+    await seed('storeSettings/public', { storePublished: true, storeUnpublishMessage: 'Atendimento normal' });
+    asUser('limited');
+
+    await assertPermissionDenied(() => firebaseSettingsService.toggleStorePublished('limited', false, 'Pausa'));
+    expect((await getDoc(doc(client.db, 'users/limited/settings/profile'))).data()).toMatchObject({
+      storePublished: true,
+      storeUnpublishMessage: 'Atendimento normal',
+    });
+    expect((await getDoc(doc(client.db, 'storeSettings/public'))).data()).toMatchObject({
+      storePublished: true,
+      storeUnpublishMessage: 'Atendimento normal',
+    });
+  });
+
+  it('reseta configurações privadas e remove personalizações e aliases públicos no mesmo lote', async () => {
+    await seed('users/admin/settings/profile', {
+      userId: 'admin', storePublished: false, catalogStoreName: 'Nome antigo', catalogLogo: 'logo-antiga',
+    });
+    await seed('storeSettings/public', {
+      storePublished: false, catalogStoreName: 'Nome antigo', businessName: 'Nome antigo',
+      catalogLogo: 'logo-antiga', logo: 'logo-antiga', banner: 'banner-antigo',
+      featureFlags: { enableOnlineOrders: false },
+    });
+    asUser('admin');
+
+    await firebaseSettingsService.resetToDefaults('admin');
+
+    expect((await getDoc(doc(client.db, 'users/admin/settings/profile'))).data()).toMatchObject({ userId: 'admin' });
+    expect((await getDoc(doc(client.db, 'users/admin/settings/profile'))).data()).not.toHaveProperty('catalogLogo');
+    expect((await getDoc(doc(client.db, 'storeSettings/public'))).data()).toMatchObject({ storePublished: true });
+    expect((await getDoc(doc(client.db, 'storeSettings/public'))).data()).not.toHaveProperty('catalogStoreName');
+    expect((await getDoc(doc(client.db, 'storeSettings/public'))).data()).not.toHaveProperty('businessName');
+    expect((await getDoc(doc(client.db, 'storeSettings/public'))).data()).not.toHaveProperty('logo');
+    expect((await getDoc(doc(client.db, 'storeSettings/public'))).data()).not.toHaveProperty('banner');
+    expect((await getDoc(doc(client.db, 'storeSettings/public'))).data()).not.toHaveProperty('featureFlags');
+  });
 });
 
 describe('Reverificação e Correções Críticas (R1, R2, R3, R11)', () => {

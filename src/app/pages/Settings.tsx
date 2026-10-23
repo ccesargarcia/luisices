@@ -409,6 +409,9 @@ export function Settings() {
 
     try {
       await resetToDefaults();
+      setTheme('system');
+      setSelectedColorTheme('default');
+      applyColorTheme('default');
       setBusinessInfo({
         businessName: '',
         businessPhone: '',
