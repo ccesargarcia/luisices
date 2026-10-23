@@ -59,6 +59,30 @@ describe('backend MCP authorization', () => {
     expect(updateQuoteStatus).not.toHaveBeenCalled();
   });
 
+  it('does not update a quote unless confirmation is explicitly true', async () => {
+    const updateQuoteStatus = vi.fn();
+    const tools = new AiToolsExecutor({ updateQuoteStatus });
+
+    const preview = await tools.executeUpdateQuoteStatus({
+      quoteNumber: 'ORC-0002', status: 'approved',
+    }, { uid: 'user-1', permissions: { quotes: { edit: true } } });
+
+    expect(preview).toMatchObject({ preview: true, quoteNumber: 'ORC-0002', status: 'approved' });
+    expect(updateQuoteStatus).not.toHaveBeenCalled();
+  });
+
+  it('routes quote reads through the initialized repository instance', async () => {
+    const getQuotes = vi.fn().mockResolvedValue([]);
+    const tools = new AiToolsExecutor({ getQuotes });
+
+    await expect(tools.executeQueryQuotes({}, { uid: 'user-1' })).resolves.toMatchObject({
+      success: true,
+      totalCount: 0,
+      quotes: [],
+    });
+    expect(getQuotes).toHaveBeenCalledWith({ uid: 'user-1' }, { limit: 20 });
+  });
+
   it('requires orders:create before approving a quote with conversion enabled', async () => {
     const updateQuoteStatus = vi.fn();
     const tools = new AiToolsExecutor({ updateQuoteStatus });

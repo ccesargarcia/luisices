@@ -2410,7 +2410,7 @@ class AiToolsExecutor {
   }
 
   async executeListSupplies(args = {}, scope) {
-    const supplies = await this.repositories.getSupplies(scope);
+    const supplies = await this.repos.getSupplies(scope);
     const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
     let filtered = supplies;
     if (searchTerm) {
@@ -2427,7 +2427,7 @@ class AiToolsExecutor {
   }
 
   async executeListPricingModels(args = {}, scope) {
-    const recipes = await this.repositories.getPricingRecipes(scope, { limit: args.limit || 20 });
+    const recipes = await this.repos.getPricingRecipes(scope, { limit: args.limit || 20 });
     const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
     let filtered = recipes;
     if (searchTerm) {
@@ -2442,7 +2442,7 @@ class AiToolsExecutor {
   }
 
   async executeGetPricingModel(args = {}, scope) {
-    const model = await this.repositories.getPricingRecipeById(scope, args.modelId);
+    const model = await this.repos.getPricingRecipeById(scope, args.modelId);
     if (!model) {
       const err = new Error('Modelo de precificação não encontrado.');
       err.code = 'not-found';
@@ -2467,7 +2467,7 @@ class AiToolsExecutor {
       };
     }
 
-    const saved = await this.repositories.savePricingRecipe(scope, args);
+    const saved = await this.repos.savePricingRecipe(scope, args);
     return {
       success: true,
       modelId: saved.id,
@@ -2477,7 +2477,7 @@ class AiToolsExecutor {
   }
 
   async executeQueryQuotes(args = {}, scope) {
-    const quotes = await this.repositories.getQuotes(scope, { limit: args.limit || 20 });
+    const quotes = await this.repos.getQuotes(scope, { limit: args.limit || 20 });
     const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
     const statusFilter = String(args.status || 'all').toLowerCase();
 
@@ -2509,7 +2509,7 @@ class AiToolsExecutor {
       };
     }
 
-    const quote = await this.repositories.createQuote(scope, args);
+    const quote = await this.repos.createQuote(scope, args);
     return {
       success: true,
       quoteId: quote.id,
@@ -2522,7 +2522,7 @@ class AiToolsExecutor {
 
   async executeUpdateQuoteStatus(args = {}, scope) {
     requireMcpModulePermission(scope, 'quotes', 'edit', 'atualizar orçamentos');
-    if (args.confirmed === false) {
+    if (!isConfirmed(args.confirmed)) {
       return {
         success: true,
         preview: true,
@@ -2539,11 +2539,11 @@ class AiToolsExecutor {
       throw error;
     }
 
-    const updated = await this.repositories.updateQuoteStatus(scope, args.quoteNumber, args.status);
+    const updated = await this.repos.updateQuoteStatus(scope, args.quoteNumber, args.status);
     let orderCreated = null;
 
     if (args.status === 'approved' && args.convertToOrder) {
-      const quotes = await this.repositories.getQuotes(scope, { limit: 10 });
+      const quotes = await this.repos.getQuotes(scope, { limit: 10 });
       const targetQuote = quotes.find((q) => q.id === updated.id || q.quoteNumber === updated.quoteNumber);
       if (targetQuote) {
         orderCreated = await this.executeCreateOrder({
@@ -2573,7 +2573,7 @@ class AiToolsExecutor {
   }
 
   async executeListStoreProducts(args = {}, scope) {
-    const products = await this.repositories.getStoreProducts();
+    const products = await this.repos.getStoreProducts();
     const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
     let filtered = products;
     if (searchTerm) {

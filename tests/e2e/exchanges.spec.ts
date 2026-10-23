@@ -30,10 +30,13 @@ test.describe('Permutas', () => {
     await dialog.getByPlaceholder('0,00').first().fill('120,00');
     await dialog.locator('#deliveryDate').fill(new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10));
     await dialog.getByRole('switch').click();
-    await expect(dialog.getByLabel('Item recebido 1')).toBeVisible();
-    await dialog.getByLabel('Item recebido 1').fill(receivedName);
-    await dialog.getByLabel('Quantidade recebida 1').fill('2');
-    await dialog.getByLabel('Valor estimado 1').fill('25,00');
+    const receivedItem = dialog.locator('input[aria-label="Item recebido 1"]:visible').first();
+    const receivedQuantity = dialog.locator('input[aria-label="Quantidade recebida 1"]:visible').first();
+    const receivedValue = dialog.locator('input[aria-label="Valor estimado 1"]:visible').first();
+    await expect(receivedItem).toBeVisible();
+    await receivedItem.fill(receivedName);
+    await receivedQuantity.fill('2');
+    await receivedValue.fill('25,00');
     await dialog.locator('button[type="submit"]').click();
     await expect(dialog).not.toBeVisible({ timeout: 20000 });
 
