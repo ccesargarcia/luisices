@@ -1359,6 +1359,12 @@ class AiToolsExecutor {
         customerName: order.data.customerName || '',
         customerPhone: order.data.customerPhone || '',
         productName: order.data.productName || '',
+        items: Array.isArray(order.data.items) ? order.data.items.map((item, existingIndex) => ({
+          existingIndex,
+          name: String(item.name || item.productName || '').slice(0, 200),
+          quantity: Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+          unitPrice: Number.isFinite(Number(item.unitPrice)) ? Number(item.unitPrice) : (Number(item.quantity) > 0 ? Number(item.price || 0) / Number(item.quantity) : Number(item.price || 0)),
+        })) : [],
         quantity: Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
         totalPrice: Number(order.data.price ?? order.data.totalPrice ?? order.data.payment?.totalAmount ?? 0),
         deliveryDate: order.data.deliveryDate || '',
@@ -1405,7 +1411,59 @@ class AiToolsExecutor {
       error.code = 'invalid-argument';
       throw error;
     }
-    const requestedPrice = args.totalPrice !== undefined ? args.totalPrice : args.unitPrice;
+    if (args.items !== undefined && (args.totalPrice !== undefined || args.unitPrice !== undefined || args.quantity !== undefined)) {
+      const error = new Error('Ao editar os itens, não informe também quantidade geral, totalPrice ou unitPrice. A quantidade e o total serão calculados pelos itens.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    let requestedPrice = args.totalPrice !== undefined ? args.totalPrice : args.unitPrice;
+    let itemSourceIndexes = null;
+    let itemChanges = null;
+    if (args.items !== undefined) {
+      if (!Array.isArray(args.items) || args.items.length < 1 || args.items.length > 10) {
+        const error = new Error('Informe de 1 a 10 itens para o pedido.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
+      let totalCents = 0;
+      let totalQuantity = 0;
+      const usedSourceIndexes = new Set();
+      itemSourceIndexes = [];
+      updates.items = args.items.map((item) => {
+        const name = typeof item?.name === 'string' ? item.name.trim() : '';
+        const quantity = Number(item?.quantity);
+        const unitPrice = item?.unitPrice;
+        const existingIndex = item?.existingIndex;
+        if (!name || name.length > 200 || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000 || typeof unitPrice !== 'number' || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1000000) {
+          const error = new Error('Cada item precisa de nome, quantidade inteira entre 1 e 10000 e preço unitário válido de até R$ 1.000.000,00.');
+          error.code = 'invalid-argument';
+          throw error;
+        }
+        if (existingIndex !== undefined && (!Number.isSafeInteger(existingIndex) || existingIndex < 0 || existingIndex > 49 || usedSourceIndexes.has(existingIndex))) {
+          const error = new Error('O índice de um item existente é inválido ou foi repetido. Consulte novamente os itens do pedido.');
+          error.code = 'invalid-argument';
+          throw error;
+        }
+        if (existingIndex !== undefined) usedSourceIndexes.add(existingIndex);
+        itemSourceIndexes.push(existingIndex ?? null);
+        const unitCents = Math.round(unitPrice * 100);
+        const lineCents = unitCents * quantity;
+        totalCents += lineCents;
+        totalQuantity += quantity;
+        if (!Number.isSafeInteger(totalCents) || totalCents > 1000000000 || totalQuantity > 100000) {
+          const error = new Error('O total ou a quantidade somada dos itens excede o limite permitido.');
+          error.code = 'invalid-argument';
+          throw error;
+        }
+        return { name, quantity, unitPrice: unitCents / 100, price: lineCents / 100 };
+      });
+      updates.quantity = totalQuantity;
+      updates.productName = updates.items
+        .map((item) => item.quantity > 1 ? `${item.name} (${item.quantity}x)` : item.name)
+        .join(', ')
+        .slice(0, 300);
+      requestedPrice = totalCents / 100;
+    }
     if (requestedPrice !== undefined) {
       if (typeof requestedPrice !== 'number' || !Number.isFinite(requestedPrice) || requestedPrice < 0) {
         const error = new Error('O valor informado deve ser um número não negativo em reais.');
@@ -1413,7 +1471,7 @@ class AiToolsExecutor {
         throw error;
       }
       const cents = Math.round(requestedPrice * 100);
-      const maxCents = args.totalPrice !== undefined ? 1000000000 : 100000000;
+      const maxCents = args.totalPrice !== undefined || args.items !== undefined ? 1000000000 : 100000000;
       if (!Number.isSafeInteger(cents) || cents > maxCents) {
         const error = new Error('O valor informado excede o limite permitido.');
         error.code = 'invalid-argument';
@@ -1438,6 +1496,50 @@ class AiToolsExecutor {
       const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
       error.code = 'not-found';
       throw error;
+    }
+    if (itemSourceIndexes) {
+      const currentItems = Array.isArray(order.data.items) ? order.data.items : [];
+      const staleIndex = itemSourceIndexes.find((index) => index !== null && index >= currentItems.length);
+      if (staleIndex !== undefined) {
+        const error = new Error('Os itens do pedido mudaram desde a consulta. Carregue novamente antes de editar.');
+        error.code = 'failed-precondition';
+        throw error;
+      }
+      const retainedIndexes = new Set(itemSourceIndexes.filter((index) => index !== null));
+      updates.items = updates.items.map((item, index) => {
+        const sourceIndex = itemSourceIndexes[index];
+        if (sourceIndex === null) return item;
+        const preservedItemData = Object.fromEntries(
+          Object.entries(currentItems[sourceIndex] || {}).filter(([key]) => key !== 'existingIndex')
+        );
+        return { ...preservedItemData, ...item };
+      });
+      itemChanges = {
+        changed: updates.items.map((after, index) => {
+          const sourceIndex = itemSourceIndexes[index];
+          const before = sourceIndex === null ? null : currentItems[sourceIndex];
+          const beforeQuantity = Number(before?.quantity) || 1;
+          const beforeUnitPrice = Number.isFinite(Number(before?.unitPrice))
+            ? Number(before.unitPrice)
+            : Number(before?.price || 0) / beforeQuantity;
+          const same = before && before.name === after.name && beforeQuantity === after.quantity && Math.round(beforeUnitPrice * 100) === Math.round(after.unitPrice * 100);
+          const metadataPreserved = Boolean(before && Object.keys(before).some((key) => !['name', 'quantity', 'unitPrice', 'price', 'existingIndex'].includes(key)));
+          return {
+            action: before ? (same ? 'unchanged' : 'updated') : 'added',
+            metadataPreserved,
+            ...(before ? { before: { name: before.name || before.productName || '', quantity: beforeQuantity, unitPrice: Math.round(beforeUnitPrice * 100) / 100, subtotal: Number(before.price ?? beforeQuantity * beforeUnitPrice) } } : {}),
+            after: { name: after.name, quantity: after.quantity, unitPrice: after.unitPrice, subtotal: after.price },
+          };
+        }),
+        removed: currentItems
+          .map((item, index) => ({ item, index }))
+          .filter(({ index }) => !retainedIndexes.has(index))
+          .map(({ item }) => {
+            const quantity = Number(item.quantity) || 1;
+            const unitPrice = Number(item.unitPrice) || 0;
+            return { name: item.name || item.productName || '', quantity, unitPrice, subtotal: Number(item.price ?? quantity * unitPrice) };
+          }),
+      };
     }
     if (requestedPrice !== undefined && args.unitPrice !== undefined) {
       const quantity = updates.quantity ?? (Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1);
@@ -1464,15 +1566,22 @@ class AiToolsExecutor {
       throw error;
     }
 
+    const previewChanges = { ...updates };
+    if (Array.isArray(updates.items)) {
+      previewChanges.items = updates.items.map(({ name, quantity, unitPrice, price }) => ({ name, quantity, unitPrice, price }));
+    }
     const summary = {
       orderNumber: order.data.orderNumber || identifier,
       customerName: order.data.customerName || '',
-      changes: updates,
+      changes: previewChanges,
+      ...(itemChanges ? { itemChanges } : {}),
       ...(requestedPrice !== undefined ? {
         pricing: {
-          mode: args.unitPrice !== undefined ? 'unit' : 'total',
-          unitPrice: args.unitPrice !== undefined ? Math.round(Number(args.unitPrice) * 100) / 100 : Math.round((updates.price / (updates.quantity ?? (Number(order.data.quantity) || 1))) * 100) / 100,
+          mode: args.items !== undefined ? 'items' : args.unitPrice !== undefined ? 'unit' : 'total',
           totalPrice: updates.price,
+          ...(args.items !== undefined ? { items: updates.items.map(({ name, quantity, unitPrice, price }) => ({ name, quantity, unitPrice, price })) } : {
+            unitPrice: args.unitPrice !== undefined ? Math.round(Number(args.unitPrice) * 100) / 100 : Math.round((updates.price / (updates.quantity ?? (Number(order.data.quantity) || 1))) * 100) / 100,
+          }),
         },
       } : {}),
       version,
@@ -1531,7 +1640,7 @@ class AiToolsExecutor {
       transaction.update(orderRef, orderUpdates);
       if (saleSnap.exists) {
         const saleUpdates = { updatedAt: now };
-        for (const field of ['customerName', 'customerPhone', 'productName', 'quantity', 'deliveryDate']) {
+        for (const field of ['customerName', 'customerPhone', 'productName', 'quantity', 'deliveryDate', 'items']) {
           if (updates[field] !== undefined) saleUpdates[field] = updates[field];
         }
         if (requestedPrice !== undefined) {
@@ -1554,6 +1663,7 @@ class AiToolsExecutor {
           customerPhone: updates.customerPhone ?? current.customerPhone ?? null,
           productName: updates.productName ?? current.productName ?? 'Produto',
           quantity: updates.quantity ?? current.quantity ?? 1,
+          items: updates.items ?? current.items ?? [],
           amount: updates.price,
           paymentStatus: payment.status,
           paidAmount: payment.paidAmount,

@@ -403,7 +403,7 @@ const TOOLS_METADATA = [
     name: 'update_order',
     scope: 'orders:update',
     summary: 'Editar um Pedido Existente',
-    description: 'Mostra uma prévia das alterações. Só grave após apresentar as mudanças e receber confirmação explícita; preserve os mesmos dados caso precise repetir a chamada. Pode alterar dados operacionais e valor total ou unitário; o preço unitário é multiplicado pela quantidade final. Não registra nem altera pagamentos recebidos. Não mencione controles internos de concorrência ou de repetição.',
+    description: 'Mostra uma prévia das alterações. Só grave após apresentar as mudanças e receber confirmação explícita; preserve os mesmos dados caso precise repetir a chamada. Pode alterar dados operacionais, valor total ou unitário do pedido, ou substituir os itens com seus preços unitários; nesse caso o total e a quantidade são recalculados. Não registra nem altera pagamentos recebidos. Não mencione controles internos de concorrência ou de repetição.',
     requestBody: {
       type: 'object',
       required: ['orderNumber'],
@@ -415,6 +415,22 @@ const TOOLS_METADATA = [
         quantity: { type: 'integer', minimum: 1, maximum: 10000, description: 'Nova quantidade.' },
         totalPrice: moneyInput('Novo valor total do pedido em reais. Informe este campo OU unitPrice, nunca ambos.', { minimum: 0, maximum: 10000000 }),
         unitPrice: moneyInput('Novo valor por unidade em reais. O backend calcula o total multiplicando pela quantidade final do pedido. Informe este campo OU totalPrice, nunca ambos.', { minimum: 0, maximum: 1000000 }),
+        items: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 10,
+          description: 'Substitui os itens do pedido (até 10, como no formulário do sistema). Cada item aceita nome, quantidade de até 10000 e preço unitário em reais; a quantidade geral é a soma das quantidades dos itens e o total é a soma dos subtotais. Para editar um item existente, preserve em silêncio seu existingIndex retornado pelo formulário. Não combine com quantidade geral, totalPrice ou unitPrice.',
+          items: {
+            type: 'object',
+            required: ['name', 'quantity', 'unitPrice'],
+            properties: {
+              name: { type: 'string', minLength: 1, maxLength: 200 },
+              quantity: { type: 'integer', minimum: 1, maximum: 10000 },
+              unitPrice: moneyInput('Preço unitário deste item em reais.', { minimum: 0, maximum: 1000000 }),
+              existingIndex: { type: 'integer', minimum: 0, maximum: 49, description: 'Campo interno: índice do item carregado por get_order_edit_form. Preserve ao editar um item existente; omita para item novo.' },
+            },
+          },
+        },
         deliveryDate: { type: 'string', description: 'Novo prazo no formato AAAA-MM-DD ou DD/MM/AAAA.' },
         theme: { type: 'string', maxLength: 200, description: 'Novo tema do pedido.' },
         notes: { type: 'string', maxLength: 1000, description: 'Novas observações de produção.' },
