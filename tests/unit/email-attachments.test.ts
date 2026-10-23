@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import { describe, it, expect, vi } from 'vitest';
+import { deflateSync } from 'node:zlib';
 const require = createRequire(import.meta.url);
 const {
   prepareAttachments,
@@ -7,32 +8,83 @@ const {
   MAX_ATTACHMENT_BYTES,
   detectBufferMime,
   resolveSafeAttachmentFilename,
-  ALLOWED_ATTACHMENT_MIMES,
-  CANONICAL_EXTENSIONS,
 } = require('../../functions/email/attachments.js');
 
 const bucketName = 'luisices-dev.firebasestorage.app';
 const url = (path: string, bucket = bucketName) => `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(path)}?alt=media&token=not-authority`;
 
-// Buffers estruturalmente válidos para testes
-const VALID_PDF = Buffer.from('%PDF-1.4\n%âãÏÓ\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF');
-const VALID_PNG = Buffer.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-  0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-]);
-const VALID_JPEG = Buffer.from([
-  0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46,
-  0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
-]);
-const VALID_WEBP = Buffer.from([
-  0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00,
-  0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20,
-]);
-const VALID_GIF = Buffer.from([
-  0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00,
-  0x01, 0x00, 0x80, 0x00, 0x00, 0xff,
-]);
+// Fixtures completas o bastante para verificar a estrutura dos formatos aceitos.
+function crc32(buffer: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+function pngChunk(type: string, data: Buffer): Buffer {
+  const body = Buffer.concat([Buffer.from(type), data]);
+  const chunk = Buffer.alloc(4);
+  chunk.writeUInt32BE(data.length);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body));
+  return Buffer.concat([chunk, body, crc]);
+}
+function makePng(): Buffer {
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(1, 0);
+  ihdr.writeUInt32BE(1, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+  const pixels = deflateSync(Buffer.from([0, 0xff, 0, 0, 0xff]));
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', ihdr), pngChunk('IDAT', pixels), pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+function jpegSegment(marker: number, data: Buffer): Buffer {
+  const length = Buffer.alloc(2);
+  length.writeUInt16BE(data.length + 2);
+  return Buffer.concat([Buffer.from([0xff, marker]), length, data]);
+}
+function makeJpeg(): Buffer {
+  const app0 = Buffer.from('JFIF\0\x01\x01\0\0\x01\0\x01\0\0', 'binary');
+  const frame = Buffer.from([8, 0, 1, 0, 1, 1, 1, 0x11, 0]);
+  const scan = Buffer.from([1, 1, 0, 0, 63, 0]);
+  return Buffer.concat([
+    Buffer.from([0xff, 0xd8]), jpegSegment(0xe0, app0), jpegSegment(0xc0, frame),
+    jpegSegment(0xda, scan), Buffer.from([0x00, 0xff, 0xd9]),
+  ]);
+}
+function makeGif(): Buffer {
+  return Buffer.concat([
+    Buffer.from('GIF89a'), Buffer.from([1, 0, 1, 0, 0x80, 0, 0]),
+    Buffer.from([0, 0, 0, 0xff, 0xff, 0xff]),
+    Buffer.from([0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x44, 0x01, 0, 0x3b]),
+  ]);
+}
+function makeWebp(): Buffer {
+  const frame = Buffer.from([0, 0, 0, 0x9d, 0x01, 0x2a, 1, 0, 1, 0]);
+  const size = Buffer.alloc(4);
+  size.writeUInt32LE(4 + 8 + frame.length);
+  const chunkSize = Buffer.alloc(4);
+  chunkSize.writeUInt32LE(frame.length);
+  return Buffer.concat([Buffer.from('RIFF'), size, Buffer.from('WEBPVP8 '), chunkSize, frame]);
+}
+function makePdf(): Buffer {
+  let pdf = '%PDF-1.4\n';
+  const objectOffset = Buffer.byteLength(pdf);
+  pdf += '1 0 obj\n<< /Type /Catalog >>\nendobj\n';
+  const xrefOffset = Buffer.byteLength(pdf);
+  pdf += `xref\n0 2\n0000000000 65535 f \n${String(objectOffset).padStart(10, '0')} 00000 n \n`;
+  pdf += `trailer\n<< /Size 2 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(pdf, 'latin1');
+}
+const VALID_PDF = makePdf();
+const VALID_PNG = makePng();
+const VALID_JPEG = makeJpeg();
+const VALID_WEBP = makeWebp();
+const VALID_GIF = makeGif();
 
 function fixture(buffer = VALID_PDF) {
   const download = vi.fn().mockResolvedValue([buffer]);
@@ -191,6 +243,18 @@ describe('detectBufferMime (validação estrutural de assinaturas no servidor)',
   it('detecta GIF com assinatura GIF89a', () => {
     const res = detectBufferMime(VALID_GIF);
     expect(res).toEqual({ ok: true, mime: 'image/gif', extension: 'gif' });
+  });
+
+  it('rejeita arquivos que só imitam o prefixo conhecido, sem estrutura completa', () => {
+    const forgedPdf = Buffer.alloc(64, 0x41);
+    Buffer.from('%PDF-1.4').copy(forgedPdf);
+    const forgedPng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, ...new Array(48).fill(0)]);
+    const forgedJpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, ...new Array(48).fill(0)]);
+    const forgedWebp = Buffer.from('RIFF\x24\x00\x00\x00WEBPVP8 ' + 'x'.repeat(40), 'binary');
+    const forgedGif = Buffer.from('GIF89a\x01\x00\x01\x00\x80\x00\x00' + 'x'.repeat(30), 'binary');
+    for (const forged of [forgedPdf, forgedPng, forgedJpeg, forgedWebp, forgedGif]) {
+      expect(detectBufferMime(forged).ok).toBe(false);
+    }
   });
 
   it('rejeita HTML ou texto simples disfarçado', () => {

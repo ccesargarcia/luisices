@@ -23,7 +23,6 @@ export type AllowedStorageMime =
   | 'image/png'
   | 'image/webp'
   | 'image/gif'
-  | 'image/svg+xml'
   | 'application/pdf';
 
 export interface FileSignatureValidationResult {
@@ -32,100 +31,136 @@ export interface FileSignatureValidationResult {
   error?: string;
 }
 
+const MAX_IMAGE_PIXELS = 40_000_000;
+
+async function decodeRasterImage(file: File | Blob): Promise<boolean> {
+  if (typeof createImageBitmap === 'function') {
+    const bitmap = await createImageBitmap(file);
+    try {
+      return bitmap.width > 0 && bitmap.height > 0 && bitmap.width * bitmap.height <= MAX_IMAGE_PIXELS;
+    } finally {
+      bitmap.close();
+    }
+  }
+
+  // Navegadores antigos: usa o decoder nativo de imagem do elemento Image.
+  if (typeof Image !== 'undefined' && typeof URL.createObjectURL === 'function') {
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      return await new Promise<boolean>((resolve) => {
+        const image = new Image();
+        image.onload = () => resolve(image.naturalWidth > 0 && image.naturalHeight > 0
+          && image.naturalWidth * image.naturalHeight <= MAX_IMAGE_PIXELS);
+        image.onerror = () => resolve(false);
+        image.src = objectUrl;
+      });
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
+
+  // Se não houver decoder nativo, falha fechado: a assinatura sozinha não prova que a imagem decodifica.
+  return false;
+}
+
 /**
- * Validação rigorosa de assinatura binária (magic bytes) no client-side antes do upload.
- * Impede que arquivos maliciosos (scripts, executáveis, HTML disfarçado) sejam enviados
- * mesmo quando o cabeçalho HTTP ou a extensão do arquivo tiverem sido forjados.
+ * Verifica o formato real antes de qualquer gravação no Firebase Storage.
+ * Imagens raster também são decodificadas pelo navegador; SVG foi removido da allowlist
+ * porque regras do Storage validam metadados, não conseguem sanitizar XML ativo.
  */
 export async function validateFileSignature(
   file: File | Blob,
   allowedMimes?: AllowedStorageMime[]
 ): Promise<FileSignatureValidationResult> {
-  if (!file || file.size < 4) {
-    return { valid: false, detectedMime: null, error: 'Arquivo inválido ou vazio.' };
+  if (!file || file.size < 14) {
+    return { valid: false, detectedMime: null, error: 'Arquivo vazio, truncado ou inválido.' };
   }
 
-  // Lê os primeiros 16 bytes para análise de magic numbers
-  const headerSlice = file.slice(0, 16);
-  const buffer = await headerSlice.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-
+  const bytes = new Uint8Array(await file.slice(0, 32).arrayBuffer());
   let detectedMime: AllowedStorageMime | null = null;
 
-  // PNG: 89 50 4E 47
-  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
-    detectedMime = 'image/png';
-  }
-  // JPEG / JPG: FF D8 FF
-  else if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
-    detectedMime = 'image/jpeg';
-  }
-  // GIF: 47 49 46 38 ('GIF8')
-  else if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
-    detectedMime = 'image/gif';
-  }
-  // PDF: 25 50 44 46 ('%PDF')
-  else if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
-    detectedMime = 'application/pdf';
-  }
-  // WebP: RIFF (52 49 46 46) em 0..3 e WEBP (57 45 42 50) em 8..11
-  else if (
-    bytes.length >= 12 &&
-    bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
-    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
-  ) {
-    detectedMime = 'image/webp';
-  }
-  // SVG: verificação textual com bloqueio de Stored XSS
-  else if (file.type === 'image/svg+xml') {
-    const textSlice = file.slice(0, 1024);
-    const text = await textSlice.text();
-    const clean = text.replace(/^\uFEFF/, '').trim();
-    if (clean.startsWith('<?xml') || clean.startsWith('<svg') || /<svg[\s>]/i.test(clean)) {
-      if (/<script[\s>]/i.test(text) || /javascript:/i.test(text) || /on\w+\s*=/i.test(text)) {
-        return {
-          valid: false,
-          detectedMime: null,
-          error: 'Arquivo SVG contém scripts ou manipuladores de eventos proibidos.',
-        };
-      }
-      detectedMime = 'image/svg+xml';
+  const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  if (pngSignature.every((byte, index) => bytes[index] === byte)) {
+    if (file.size < 33 || bytes[8] !== 0 || bytes[9] !== 0 || bytes[10] !== 0 || bytes[11] !== 13
+      || bytes[12] !== 0x49 || bytes[13] !== 0x48 || bytes[14] !== 0x44 || bytes[15] !== 0x52) {
+      return { valid: false, detectedMime: null, error: 'Imagem PNG incompleta ou inválida.' };
     }
+    detectedMime = 'image/png';
+  } else if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    const marker = bytes[3];
+    const segmentLength = (bytes[4] << 8) | bytes[5];
+    if (!((marker >= 0xe0 && marker <= 0xef) || marker === 0xdb
+      || (marker >= 0xc0 && marker <= 0xc3) || marker === 0xfe)
+      || segmentLength < 2 || segmentLength + 4 > file.size) {
+      return { valid: false, detectedMime: null, error: 'Imagem JPEG incompleta ou inválida.' };
+    }
+    detectedMime = 'image/jpeg';
+  } else if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38
+    && (bytes[4] === 0x37 || bytes[4] === 0x39) && bytes[5] === 0x61) {
+    const view = new DataView(await file.slice(0, 13).arrayBuffer());
+    const width = view.getUint16(6, true);
+    const height = view.getUint16(8, true);
+    if (!width || !height || width * height > MAX_IMAGE_PIXELS) {
+      return { valid: false, detectedMime: null, error: 'Imagem GIF incompleta ou inválida.' };
+    }
+    detectedMime = 'image/gif';
+  } else if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) {
+    const view = new DataView(await file.slice(0, 16).arrayBuffer());
+    if (view.getUint32(4, true) + 8 !== file.size
+      || !['VP8 ', 'VP8L', 'VP8X'].includes(String.fromCharCode(...bytes.slice(12, 16)))) {
+      return { valid: false, detectedMime: null, error: 'Imagem WebP incompleta ou inválida.' };
+    }
+    detectedMime = 'image/webp';
+  } else if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44
+    && bytes[3] === 0x46 && bytes[4] === 0x2d) {
+    const header = new TextDecoder().decode(await file.slice(0, 16).arrayBuffer());
+    const tail = new TextDecoder().decode(await file.slice(Math.max(0, file.size - 4096)).arrayBuffer());
+    if (!/^%PDF-(?:1\.[0-7]|2\.0)(?:\r?\n|\r)/.test(header) || !/%%EOF[\x00\x09\x0a\x0c\x0d\x20]*$/.test(tail)) {
+      return { valid: false, detectedMime: null, error: 'Documento PDF incompleto ou inválido.' };
+    }
+    detectedMime = 'application/pdf';
   }
 
   if (!detectedMime) {
-    return {
-      valid: false,
-      detectedMime: null,
-      error: 'Assinatura binária do arquivo (magic bytes) desconhecida ou formato não suportado.',
-    };
+    return { valid: false, detectedMime: null, error: 'Formato não suportado. Envie JPEG, PNG, WebP, GIF ou PDF.' };
+  }
+  if (allowedMimes?.length && !allowedMimes.includes(detectedMime)) {
+    return { valid: false, detectedMime, error: `Formato detectado (${detectedMime}) não é permitido nesta operação.` };
+  }
+  if (file.type && file.type !== detectedMime && !(file.type === 'image/jpg' && detectedMime === 'image/jpeg')) {
+    return { valid: false, detectedMime, error: `Tipo informado (${file.type}) não corresponde ao conteúdo (${detectedMime}).` };
   }
 
-  if (allowedMimes && allowedMimes.length > 0) {
-    if (!allowedMimes.includes(detectedMime)) {
-      return {
-        valid: false,
-        detectedMime,
-        error: `Tipo de arquivo detectado (${detectedMime}) não é permitido nesta operação.`,
-      };
+  if (detectedMime.startsWith('image/')) {
+    try {
+      if (!await decodeRasterImage(file)) {
+        return { valid: false, detectedMime, error: 'A imagem está corrompida ou não pode ser decodificada.' };
+      }
+    } catch {
+      return { valid: false, detectedMime, error: 'A imagem está corrompida ou não pode ser decodificada.' };
     }
   }
-
-  if (file.type && file.type !== detectedMime) {
-    const isBothJpeg = (file.type === 'image/jpeg' || file.type === 'image/jpg') && detectedMime === 'image/jpeg';
-    if (!isBothJpeg) {
-      return {
-        valid: false,
-        detectedMime,
-        error: `Inconsistência de arquivo: declarado como "${file.type}", mas conteúdo real é "${detectedMime}".`,
-      };
-    }
-  }
-
   return { valid: true, detectedMime };
 }
 
 export class FirebaseStorageService {
+  /** Central gate for every client-side Storage write in this service. */
+  private async uploadValidatedBytes(
+    storageRef: ReturnType<typeof ref>,
+    file: Blob,
+    metadata: UploadMetadata | undefined,
+    allowedMimes: AllowedStorageMime[],
+  ): Promise<void> {
+    const validation = await validateFileSignature(file, allowedMimes);
+    if (!validation.valid || !validation.detectedMime) {
+      throw new Error(validation.error || 'Arquivo inválido ou não permitido.');
+    }
+    await uploadBytes(storageRef, file, {
+      ...metadata,
+      contentType: validation.detectedMime,
+    });
+  }
   /**
    * Upload de foto de cliente (otimizada em WebP)
    */
@@ -141,10 +176,9 @@ export class FirebaseStorageService {
     const ext = optimizedFile.name.split('.').pop() || 'webp';
     const fileName = `customer_${customerId}_${timestamp}.${ext}`;
     const storageRef = ref(storage, `users/${userId}/customers/${fileName}`);
-    await uploadBytes(storageRef, optimizedFile, {
-      contentType: optimizedFile.type,
+    await this.uploadValidatedBytes(storageRef, optimizedFile, {
       customMetadata: { uploadedAt: new Date().toISOString() },
-    });
+    }, ['image/jpeg', 'image/png', 'image/webp']);
     return toPublicCdnUrl(storageRef.fullPath);
   }
 
@@ -163,10 +197,9 @@ export class FirebaseStorageService {
     const ext = optimizedFile.name.split('.').pop() || 'webp';
     const fileName = `product_${productId}_${timestamp}.${ext}`;
     const storageRef = ref(storage, `users/${userId}/products/${fileName}`);
-    await uploadBytes(storageRef, optimizedFile, {
-      contentType: optimizedFile.type,
+    await this.uploadValidatedBytes(storageRef, optimizedFile, {
       customMetadata: { uploadedAt: new Date().toISOString() },
-    });
+    }, ['image/jpeg', 'image/png', 'image/webp']);
     return toPublicCdnUrl(storageRef.fullPath);
   }
 
@@ -186,13 +219,12 @@ export class FirebaseStorageService {
     const fileName = `store_product_${productId}_${timestamp}.${ext}`;
     const storageRef = ref(storage, `store/products/${fileName}`);
     const currentUid = auth.currentUser?.uid || '';
-    await uploadBytes(storageRef, optimizedFile, {
-      contentType: optimizedFile.type,
+    await this.uploadValidatedBytes(storageRef, optimizedFile, {
       customMetadata: {
         uploadedAt: new Date().toISOString(),
         userId: currentUid,
       },
-    });
+    }, ['image/jpeg', 'image/png', 'image/webp']);
     return toPublicCdnUrl(storageRef.fullPath);
   }
 
@@ -210,7 +242,7 @@ export class FirebaseStorageService {
   ): Promise<string> {
     const allowedImageTypes: AllowedStorageMime[] = folder === 'tracking-logo'
       ? ['image/jpeg', 'image/png', 'image/webp']
-      : ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
+      : ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
     if (folder === 'tracking-logo' && file.size > 5 * 1024 * 1024) {
       throw new Error('A logo do acompanhamento deve ter no máximo 5 MB.');
@@ -262,7 +294,14 @@ export class FirebaseStorageService {
     };
 
     // Upload
-    await uploadBytes(storageRef, optimizedFile, metadata);
+    await this.uploadValidatedBytes(
+      storageRef,
+      optimizedFile,
+      metadata,
+      folder === 'tracking-logo'
+        ? ['image/jpeg', 'image/png', 'image/webp']
+        : ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+    );
 
     // Obter URL pública
     return toPublicCdnUrl(storageRef.fullPath);
@@ -285,10 +324,9 @@ export class FirebaseStorageService {
     const ext = optimizedFile.name.split('.').pop() || 'webp';
     const fileName = `gallery_${itemId}_${timestamp}.${ext}`;
     const storageRef = ref(storage, `users/${userId}/gallery/${fileName}`);
-    await uploadBytes(storageRef, optimizedFile, {
-      contentType: optimizedFile.type,
+    await this.uploadValidatedBytes(storageRef, optimizedFile, {
       customMetadata: { uploadedAt: new Date().toISOString() },
-    });
+    }, ['image/jpeg', 'image/png', 'image/webp']);
     // A galeria é privada: persistimos somente o caminho, nunca uma URL/token.
     return storageRef.fullPath;
   }
@@ -374,6 +412,14 @@ export class FirebaseStorageService {
       },
     };
 
+    const finalAllowedMimes: AllowedStorageMime[] = isPdf
+      ? ['application/pdf']
+      : ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    const finalValidation = await validateFileSignature(fileToUpload, finalAllowedMimes);
+    if (!finalValidation.valid || !finalValidation.detectedMime) {
+      throw new Error(finalValidation.error || 'Arquivo inválido ou não permitido.');
+    }
+    metadata.contentType = finalValidation.detectedMime;
     const uploadTask = uploadBytesResumable(storageRef, fileToUpload, metadata);
     await new Promise<void>((resolve, reject) => {
       uploadTask.on(
@@ -398,7 +444,7 @@ export class FirebaseStorageService {
         if (thumbBlob) {
           const thumbPath = `users/${currentUid}/orders/${orderId}/thumbnails/${timestamp}_thumb_${safeName.replace(/\.[^.]+$/, '')}.webp`;
           const thumbRef = ref(storage, thumbPath);
-          await uploadBytes(thumbRef, thumbBlob, { contentType: 'image/webp' });
+          await this.uploadValidatedBytes(thumbRef, thumbBlob, undefined, ['image/webp']);
           const rawThumbnail = await getDownloadURL(thumbRef);
           thumbnailUrl = orderId === 'email_draft' ? rawThumbnail : toCdnUrl(rawThumbnail);
         }

@@ -190,7 +190,7 @@ jobs:
             fi
           fi
 
-          # Implanta só os exports da SuperFrete quando esse for o único arquivo de Functions alterado.
+          # Determinar escopo de functions alteradas (seletivo por módulo para evitar gargalo do Cloud Build)
           FUNCTIONS_SCOPE=none
           if [ "$DEPLOY_FUNCTIONS" = "true" ]; then
             FUNCTIONS_SCOPE=all
@@ -198,6 +198,11 @@ jobs:
               CHANGED_FUNCTION_FILES=$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA" -- functions/)
               if [ "$CHANGED_FUNCTION_FILES" = "functions/orders/superfrete.js" ]; then
                 FUNCTIONS_SCOPE=superfrete
+              elif ! echo "$CHANGED_FUNCTION_FILES" | grep -qvE '^functions/(email|whatsapp|alexa|users|mcp)/'; then
+                MODULES=$(echo "$CHANGED_FUNCTION_FILES" | sed -E 's|^functions/([^/]+)/.*|\1|' | sort -u)
+                if [ $(echo "$MODULES" | wc -l) -eq 1 ]; then
+                  FUNCTIONS_SCOPE="$MODULES"
+                fi
               fi
             fi
           fi
@@ -633,17 +638,45 @@ jobs:
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
 
+          deploy_chunk() {
+            local label="$1"
+            local targets="$2"
+            echo "📦 Deploying $label: $targets"
+            if ! npx --yes firebase-tools@15.32.1 deploy --only "$targets" --project luisices-dev --non-interactive; then
+              echo "⚠️ Falha temporária em $label. Aguardando 25s para esvaziar fila de workers do Cloud Build e tentando novamente..."
+              sleep 25
+              npx --yes firebase-tools@15.32.1 deploy --only "$targets" --project luisices-dev --non-interactive
+            fi
+          }
+
           if [ "$FUNCTIONS_DEPLOY_SCOPE" = "superfrete" ]; then
             echo "🚚 Deploy seletivo das Functions da SuperFrete..."
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:calculateSuperfreteShipping,functions:createSuperfreteLabel" --project luisices-dev --non-interactive
+            deploy_chunk "SuperFrete" "functions:calculateSuperfreteShipping,functions:createSuperfreteLabel"
+          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "email" ]; then
+            echo "📧 Deploy seletivo das Functions de E-mail..."
+            deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
+          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "whatsapp" ]; then
+            echo "💬 Deploy seletivo das Functions do WhatsApp..."
+            deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
+          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "alexa" ]; then
+            echo "🗣️ Deploy seletivo das Functions da Alexa..."
+            deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
+          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "users" ]; then
+            echo "👥 Deploy seletivo das Functions de Usuários..."
+            deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
+          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "mcp" ]; then
+            echo "🤖 Deploy seletivo das Functions do MCP..."
+            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint"
           elif ! npx --yes firebase-tools@15.32.1 deploy --only functions --project luisices-dev --non-interactive; then
-            echo "⚠️ Deploy em lote geral atingiu limite de concorrência. Executando deploy particionado por módulos..."
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project luisices-dev --non-interactive
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia" --project luisices-dev --non-interactive
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project luisices-dev --non-interactive
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook" --project luisices-dev --non-interactive
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession" --project luisices-dev --non-interactive
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint" --project luisices-dev --non-interactive
+            echo "⚠️ Deploy em lote geral atingiu limite de concorrência. Aguardando 20s para drenagem de workers..."
+            sleep 20
+            echo "Executando deploy particionado resiliente por módulos..."
+            deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
+            deploy_chunk "IA e Pedidos" "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia"
+            deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
+            deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
+            deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
+            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint"
           fi
 
           echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Dev)..."

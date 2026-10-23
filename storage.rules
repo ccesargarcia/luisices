@@ -88,7 +88,7 @@ service firebase.storage {
       allow read: if isActiveUser() && (request.auth.uid == userId || canViewGallery());
       allow create, update: if isActiveUser() && (request.auth.uid == userId || isAdmin() || (isActiveEmployee() && ('gallery' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().gallery, 'create')))
         && request.resource.size < 15 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
       allow delete: if isActiveUser() && (request.auth.uid == userId || isAdmin() || (isActiveEmployee() && ('gallery' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().gallery, 'delete')));
     }
 
@@ -98,7 +98,7 @@ service firebase.storage {
       allow create, update: if folder in ['avatar', 'logo', 'tracking-logo', 'banner', 'products', 'customers', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
         && isActiveUser() && (request.auth.uid == userId || isAdmin())
         && request.resource.size < 5 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*')
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif)')
         && (folder != 'tracking-logo' || request.resource.contentType.matches('image/(jpeg|png|webp)'));
       allow delete: if folder in ['avatar', 'logo', 'tracking-logo', 'banner', 'products', 'customers', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about'] && isActiveUser() && (request.auth.uid == userId || isAdmin());
     }
@@ -106,15 +106,18 @@ service firebase.storage {
     // Imagens e banners públicos da loja / catálogo: leitura pública, edição protegida
     match /store/{folder}/{fileName} {
       allow read: if true;
-      allow create: if isActiveUser()
+      allow create: if folder in ['products', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
+        && isActiveUser()
         && request.resource.size < 5 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*')
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif)')
         && (isAdmin() || (request.resource.metadata != null && request.resource.metadata.userId == request.auth.uid));
-      allow update: if isActiveUser()
+      allow update: if folder in ['products', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
+        && isActiveUser()
         && request.resource.size < 5 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*')
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif)')
         && (isAdmin() || (resource.metadata != null && resource.metadata.userId == request.auth.uid && request.resource.metadata != null && request.resource.metadata.userId == request.auth.uid));
-      allow delete: if isActiveUser()
+      allow delete: if folder in ['products', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
+        && isActiveUser()
         && (isAdmin() || (resource.metadata != null && resource.metadata.userId == request.auth.uid));
     }
 

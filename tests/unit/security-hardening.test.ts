@@ -228,126 +228,72 @@ describe('Hardening de Rate Limit e Proteção de Origem', () => {
 });
 
 describe('Hardening de Storage: Validação de Magic Bytes / Assinatura de Arquivos', () => {
-  it('reconhece e valida assinaturas de imagens legítimas (PNG, JPEG, WebP, GIF)', async () => {
-    // PNG magic bytes: 0x89 0x50 0x4E 0x47
-    const pngFile = new File(
-      [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52])],
-      'foto.png',
-      { type: 'image/png' }
-    );
-    const pngResult = await validateFileSignature(pngFile);
-    expect(pngResult.valid).toBe(true);
-    expect(pngResult.detectedMime).toBe('image/png');
+  afterEach(() => vi.unstubAllGlobals());
+  it('reconhece cabeçalhos completos dos formatos aceitos', async () => {
+    vi.stubGlobal('createImageBitmap', async () => ({ width: 1, height: 1, close() {} }));
+    const png = new Uint8Array(33);
+    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+    png[19] = 1; png[23] = 1; png[24] = 8; png[25] = 6;
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, ...new Array(14).fill(0)]);
+    const webp = new Uint8Array(30);
+    webp.set([0x52, 0x49, 0x46, 0x46, 22, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20]);
+    const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0, 1, 0, 0x80, 0, 0, 0xff]);
 
-    // JPEG magic bytes: 0xFF 0xD8 0xFF
-    const jpegFile = new File(
-      [new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01])],
-      'foto.jpg',
-      { type: 'image/jpeg' }
-    );
-    const jpegResult = await validateFileSignature(jpegFile);
-    expect(jpegResult.valid).toBe(true);
-    expect(jpegResult.detectedMime).toBe('image/jpeg');
-
-    // WebP magic bytes: RIFF....WEBP
-    const webpFile = new File(
-      [new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20])],
-      'foto.webp',
-      { type: 'image/webp' }
-    );
-    const webpResult = await validateFileSignature(webpFile);
-    expect(webpResult.valid).toBe(true);
-    expect(webpResult.detectedMime).toBe('image/webp');
-
-    // GIF magic bytes: GIF89a
-    const gifFile = new File(
-      [new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00, 0xff, 0xff, 0xff])],
-      'animacao.gif',
-      { type: 'image/gif' }
-    );
-    const gifResult = await validateFileSignature(gifFile);
-    expect(gifResult.valid).toBe(true);
-    expect(gifResult.detectedMime).toBe('image/gif');
+    for (const [bytes, name, type] of [
+      [png, 'foto.png', 'image/png'],
+      [jpeg, 'foto.jpg', 'image/jpeg'],
+      [webp, 'foto.webp', 'image/webp'],
+      [gif, 'animacao.gif', 'image/gif'],
+    ] as const) {
+      const result = await validateFileSignature(new File([bytes], name, { type }));
+      expect(result.valid).toBe(true);
+      expect(result.detectedMime).toBe(type);
+    }
   });
 
-  it('reconhece e valida assinatura de PDF legítimo', async () => {
-    // PDF magic bytes: %PDF
-    const pdfFile = new File(
-      [new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 0x0a, 0x25, 0xd0, 0xd4, 0xc5, 0xd8, 0x0a, 0x34])],
-      'pedido.pdf',
-      { type: 'application/pdf' }
-    );
-    const pdfResult = await validateFileSignature(pdfFile);
-    expect(pdfResult.valid).toBe(true);
-    expect(pdfResult.detectedMime).toBe('application/pdf');
-  });
-
-  it('rejeita arquivo malicioso com extensão e MIME forjados para PDF', async () => {
-    // Texto / HTML disfarçado de PDF
-    const fakePdfFile = new File(
-      [new TextEncoder().encode('<html><body><script>alert(1)</script></body></html>')],
-      'pedido_falso.pdf',
-      { type: 'application/pdf' }
-    );
-
-    const result = await validateFileSignature(fakePdfFile);
-    expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/Assinatura binária do arquivo.*desconhecida/i);
-  });
-
-  it('rejeita executável disfarçado de imagem PNG', async () => {
-    // Cabeçalho de executável DOS/PE: 'MZ' (0x4D 0x5A)
-    const fakeImageFile = new File(
-      [new Uint8Array([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xff, 0xff, 0x00, 0x00])],
-      'avatar_virus.png',
-      { type: 'image/png' }
-    );
-
-    const result = await validateFileSignature(fakeImageFile);
-    expect(result.valid).toBe(false);
-  });
-
-  it('detecta inconsistência de MIME quando os bytes são de um formato e os metadados declaram outro', async () => {
-    // Arquivo tem bytes reais de JPEG, mas declara ser PNG nos metadados
-    const mismatchedFile = new File(
-      [new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01])],
-      'foto_confusa.png',
-      { type: 'image/png' }
-    );
-
-    const result = await validateFileSignature(mismatchedFile);
-    expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/Inconsistência de arquivo.*declarado como "image\/png".*image\/jpeg/i);
-  });
-
-  it('bloqueia SVG contendo scripts maliciosos (Stored XSS)', async () => {
-    const maliciousSvg = new File(
-      [new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.cookie)</script></svg>')],
-      'logo.svg',
-      { type: 'image/svg+xml' }
-    );
-
-    const result = await validateFileSignature(maliciousSvg, ['image/svg+xml']);
-    expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/scripts ou manipuladores de eventos proibidos/i);
-  });
-
-  it('permite SVG limpo e bem formatado', async () => {
-    const cleanSvg = new File(
-      [new TextEncoder().encode('<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40" fill="red" /></svg>')],
-      'logo.svg',
-      { type: 'image/svg+xml' }
-    );
-
-    const result = await validateFileSignature(cleanSvg, ['image/svg+xml']);
+  it('reconhece PDF com cabeçalho de versão e marcador final', async () => {
+    const pdfBytes = new TextEncoder().encode(`%PDF-1.4\n${' '.repeat(20)}%%EOF\n`);
+    const result = await validateFileSignature(new File([pdfBytes], 'pedido.pdf', { type: 'application/pdf' }));
     expect(result.valid).toBe(true);
-    expect(result.detectedMime).toBe('image/svg+xml');
+    expect(result.detectedMime).toBe('application/pdf');
   });
 
-  it('rejeita arquivos vazios ou truncados menores que 4 bytes', async () => {
-    const tinyFile = new File([new Uint8Array([0x01, 0x02])], 'tiny.bin', { type: 'image/png' });
-    const result = await validateFileSignature(tinyFile);
+  it('rejeita MIME divergente, executável renomeado e assinatura truncada', async () => {
+    const executable = new File(
+      [new Uint8Array([0x4d, 0x5a, 0x90, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0xff, 0xff, 0, 0])],
+      'malware.png', { type: 'image/png' },
+    );
+    expect((await validateFileSignature(executable)).valid).toBe(false);
+
+    const truncatedPng = new File(
+      [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52])],
+      'truncado.png', { type: 'image/png' },
+    );
+    expect((await validateFileSignature(truncatedPng)).valid).toBe(false);
+
+    const mismatched = new File(
+      [new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, ...new Array(14).fill(0)])],
+      'jpeg-renomeado.png', { type: 'image/png' },
+    );
+    const result = await validateFileSignature(mismatched);
     expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/Arquivo inválido ou vazio/i);
+    expect(result.error).toMatch(/não corresponde ao conteúdo/i);
+  });
+
+  it('rejeita SVG ativo e também SVG aparentemente limpo porque não é formato de upload permitido', async () => {
+    for (const svg of [
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+      '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" /></svg>',
+    ]) {
+      const result = await validateFileSignature(
+        new File([new TextEncoder().encode(svg)], 'logo.svg', { type: 'image/svg+xml' }),
+      );
+      expect(result.valid).toBe(false);
+    }
+  });
+
+  it('rejeita arquivos vazios', async () => {
+    const result = await validateFileSignature(new File([new Uint8Array([1, 2])], 'empty.png', { type: 'image/png' }));
+    expect(result.valid).toBe(false);
   });
 });

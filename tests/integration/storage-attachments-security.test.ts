@@ -32,6 +32,33 @@ beforeEach(async () => {
   });
 });
 
+describe('Allowlist de MIME nas demais rotas de upload do Storage', () => {
+  it('bloqueia tipos não permitidos em pastas de imagem do usuário e da loja', async () => {
+    const ownerStorage = env.authenticatedContext('owner').storage();
+
+    await assertFails(uploadBytes(
+      ref(ownerStorage as any, 'users/owner/logo/logo.svg'),
+      new TextEncoder().encode('<svg/>'),
+      { contentType: 'image/svg+xml' },
+    ));
+    await assertFails(uploadBytes(
+      ref(ownerStorage as any, 'users/owner/gallery/payload.svg'),
+      new TextEncoder().encode('<svg/>'),
+      { contentType: 'image/svg+xml' },
+    ));
+    await assertFails(uploadBytes(
+      ref(ownerStorage as any, 'store/products/payload.svg'),
+      new TextEncoder().encode('<svg/>'),
+      { contentType: 'image/svg+xml', customMetadata: { userId: 'owner' } },
+    ));
+    await assertFails(uploadBytes(
+      ref(ownerStorage as any, 'users/owner/logo/payload.bin'),
+      new Uint8Array([0x4d, 0x5a, 1, 2]),
+      { contentType: 'application/x-msdownload' },
+    ));
+  });
+});
+
 describe('Hardening de Storage: validação de contentType em anexos de pedidos', () => {
   it('permite upload de imagens seguras (JPEG, PNG, WebP) e PDFs em pedidos', async () => {
     const ownerStorage = env.authenticatedContext('owner').storage();
