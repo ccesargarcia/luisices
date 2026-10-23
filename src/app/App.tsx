@@ -1,5 +1,5 @@
 import { RouterProvider } from 'react-router';
-import { router, isCatalogSubdomain } from './routes';
+import { router, isStoreRoute } from './routes';
 import { AuthProvider } from '../contexts/AuthContext';
 import { ThemeProvider } from './components/common/ThemeProvider';
 import { Toaster } from './components/ui/sonner';
@@ -7,9 +7,8 @@ import { Toaster } from './components/ui/sonner';
 const THEME_OPTIONS = ['light', 'dark', 'system', 'deep-ocean', 'forest-glow', 'sunset-amber'];
 
 function App() {
-  // Se for vitrine pública por subdomínio ou ?view=loja, opera em isolamento total
-  // sem carregar providers administrativos ou listeners de sessão do Firestore
-  if (isCatalogSubdomain) {
+  // A vitrine pública não deve carregar providers administrativos nem listeners de sessão.
+  if (isStoreRoute()) {
     return (
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem themes={THEME_OPTIONS}>
         <RouterProvider router={router} />
