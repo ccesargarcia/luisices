@@ -23,7 +23,6 @@ const desiredRule = {
     requests_per_period: 5,
     mitigation_timeout: 10,
   },
-  logging: { enabled: true },
   enabled: true,
 };
 
