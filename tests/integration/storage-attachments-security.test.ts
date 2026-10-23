@@ -24,7 +24,10 @@ beforeEach(async () => {
     await context.firestore().doc('userProfiles/owner').set({
       role: 'user',
       active: true,
-      permissions: { orders: { create: true, edit: true, view: true, delete: true } },
+      permissions: {
+        orders: { create: true, edit: true, view: true, delete: true },
+        emails: { create: true, view: true },
+      },
     });
   });
 });
@@ -84,6 +87,20 @@ describe('Hardening de Storage: validação de contentType em anexos de pedidos'
       ref(ownerStorage as any, 'users/owner/orders/order-123/backdoor.sh'),
       new TextEncoder().encode('#!/bin/bash\necho hacked'),
       { contentType: 'application/x-sh' },
+    ));
+
+    // 4. Bloqueia executáveis e HTML em rascunhos de e-mail (email_draft)
+    await assertFails(uploadBytes(
+      ref(ownerStorage as any, 'users/owner/orders/email_draft/malicious.exe'),
+      new Uint8Array([0x4d, 0x5a, 1, 2]),
+      { contentType: 'application/x-msdownload' },
+    ));
+
+    // 5. Permite PDF e imagens em rascunhos de e-mail (email_draft)
+    await assertSucceeds(uploadBytes(
+      ref(ownerStorage as any, 'users/owner/orders/email_draft/anexo.pdf'),
+      new Uint8Array([1, 2, 3]),
+      { contentType: 'application/pdf' },
     ));
   });
 });

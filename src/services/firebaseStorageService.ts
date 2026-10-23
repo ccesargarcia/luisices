@@ -18,15 +18,123 @@ import type { OrderAttachment } from '../app/types';
 import { optimizeImageToWebP } from '../app/utils/imageOptimizer';
 import { toCdnUrl, toPublicCdnUrl } from '../app/utils/cdnUtils';
 
+export type AllowedStorageMime =
+  | 'image/jpeg'
+  | 'image/png'
+  | 'image/webp'
+  | 'image/gif'
+  | 'image/svg+xml'
+  | 'application/pdf';
+
+export interface FileSignatureValidationResult {
+  valid: boolean;
+  detectedMime: AllowedStorageMime | null;
+  error?: string;
+}
+
+/**
+ * Validação rigorosa de assinatura binária (magic bytes) no client-side antes do upload.
+ * Impede que arquivos maliciosos (scripts, executáveis, HTML disfarçado) sejam enviados
+ * mesmo quando o cabeçalho HTTP ou a extensão do arquivo tiverem sido forjados.
+ */
+export async function validateFileSignature(
+  file: File | Blob,
+  allowedMimes?: AllowedStorageMime[]
+): Promise<FileSignatureValidationResult> {
+  if (!file || file.size < 4) {
+    return { valid: false, detectedMime: null, error: 'Arquivo inválido ou vazio.' };
+  }
+
+  // Lê os primeiros 16 bytes para análise de magic numbers
+  const headerSlice = file.slice(0, 16);
+  const buffer = await headerSlice.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+
+  let detectedMime: AllowedStorageMime | null = null;
+
+  // PNG: 89 50 4E 47
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    detectedMime = 'image/png';
+  }
+  // JPEG / JPG: FF D8 FF
+  else if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    detectedMime = 'image/jpeg';
+  }
+  // GIF: 47 49 46 38 ('GIF8')
+  else if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
+    detectedMime = 'image/gif';
+  }
+  // PDF: 25 50 44 46 ('%PDF')
+  else if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
+    detectedMime = 'application/pdf';
+  }
+  // WebP: RIFF (52 49 46 46) em 0..3 e WEBP (57 45 42 50) em 8..11
+  else if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  ) {
+    detectedMime = 'image/webp';
+  }
+  // SVG: verificação textual com bloqueio de Stored XSS
+  else if (file.type === 'image/svg+xml') {
+    const textSlice = file.slice(0, 1024);
+    const text = await textSlice.text();
+    const clean = text.replace(/^\uFEFF/, '').trim();
+    if (clean.startsWith('<?xml') || clean.startsWith('<svg') || /<svg[\s>]/i.test(clean)) {
+      if (/<script[\s>]/i.test(text) || /javascript:/i.test(text) || /on\w+\s*=/i.test(text)) {
+        return {
+          valid: false,
+          detectedMime: null,
+          error: 'Arquivo SVG contém scripts ou manipuladores de eventos proibidos.',
+        };
+      }
+      detectedMime = 'image/svg+xml';
+    }
+  }
+
+  if (!detectedMime) {
+    return {
+      valid: false,
+      detectedMime: null,
+      error: 'Assinatura binária do arquivo (magic bytes) desconhecida ou formato não suportado.',
+    };
+  }
+
+  if (allowedMimes && allowedMimes.length > 0) {
+    if (!allowedMimes.includes(detectedMime)) {
+      return {
+        valid: false,
+        detectedMime,
+        error: `Tipo de arquivo detectado (${detectedMime}) não é permitido nesta operação.`,
+      };
+    }
+  }
+
+  if (file.type && file.type !== detectedMime) {
+    const isBothJpeg = (file.type === 'image/jpeg' || file.type === 'image/jpg') && detectedMime === 'image/jpeg';
+    if (!isBothJpeg) {
+      return {
+        valid: false,
+        detectedMime,
+        error: `Inconsistência de arquivo: declarado como "${file.type}", mas conteúdo real é "${detectedMime}".`,
+      };
+    }
+  }
+
+  return { valid: true, detectedMime };
+}
+
 export class FirebaseStorageService {
   /**
    * Upload de foto de cliente (otimizada em WebP)
    */
   async uploadCustomerPhoto(file: File, userId: string, customerId: string): Promise<string> {
-    if (!file.type.startsWith('image/')) throw new Error('Arquivo deve ser uma imagem');
+    const validation = await validateFileSignature(file, ['image/jpeg', 'image/png', 'image/webp']);
+    if (!validation.valid) throw new Error(validation.error || 'Arquivo deve ser uma imagem válida (JPEG, PNG ou WebP).');
 
     // Otimiza para WebP com resolução máxima de 1200px (excelente para avatares e fichas de cliente)
-    const optimizedFile = await optimizeImageToWebP(file, { maxDimension: 1200, quality: 0.85 });
+    const optimizedFile = await optimizeImageToWebP(file, { maxDimension: 1200, quality: 0.85, fallbackOnError: false });
     if (optimizedFile.size > 5 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 5MB');
 
     const timestamp = Date.now();
@@ -44,10 +152,11 @@ export class FirebaseStorageService {
    * Upload de foto de produto (otimizada em WebP)
    */
   async uploadProductPhoto(file: File, userId: string, productId: string): Promise<string> {
-    if (!file.type.startsWith('image/')) throw new Error('Arquivo deve ser uma imagem');
+    const validation = await validateFileSignature(file, ['image/jpeg', 'image/png', 'image/webp']);
+    if (!validation.valid) throw new Error(validation.error || 'Arquivo deve ser uma imagem válida (JPEG, PNG ou WebP).');
 
     // Otimiza para WebP em resolução Full HD (1920px) para alta fidelidade e rápida renderização
-    const optimizedFile = await optimizeImageToWebP(file, { maxDimension: 1920, quality: 0.85 });
+    const optimizedFile = await optimizeImageToWebP(file, { maxDimension: 1920, quality: 0.85, fallbackOnError: false });
     if (optimizedFile.size > 5 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 5MB');
 
     const timestamp = Date.now();
@@ -65,10 +174,11 @@ export class FirebaseStorageService {
    * Upload de foto de produto da vitrine da lojinha pública (otimizada em WebP)
    */
   async uploadStoreProductPhoto(file: File, productId: string): Promise<string> {
-    if (!file.type.startsWith('image/')) throw new Error('Arquivo deve ser uma imagem');
+    const validation = await validateFileSignature(file, ['image/jpeg', 'image/png', 'image/webp']);
+    if (!validation.valid) throw new Error(validation.error || 'Arquivo deve ser uma imagem válida (JPEG, PNG ou WebP).');
 
     // Otimiza para WebP garantindo carregamento instantâneo para clientes no mobile
-    const optimizedFile = await optimizeImageToWebP(file, { maxDimension: 1920, quality: 0.85 });
+    const optimizedFile = await optimizeImageToWebP(file, { maxDimension: 1920, quality: 0.85, fallbackOnError: false });
     if (optimizedFile.size > 5 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 5MB');
 
     const timestamp = Date.now();
@@ -98,17 +208,17 @@ export class FirebaseStorageService {
     userId: string,
     folder: 'avatar' | 'logo' | 'tracking-logo' | 'banner' | 'catalog-logo' | 'catalog-banner' | 'catalog-header' | 'catalog-about'
   ): Promise<string> {
-    const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
-    if (folder === 'tracking-logo') {
-      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-        throw new Error('Formato não suportado. A logo do acompanhamento deve ser JPG, PNG ou WebP.');
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        throw new Error('A logo do acompanhamento deve ter no máximo 5 MB.');
-      }
+    const allowedImageTypes: AllowedStorageMime[] = folder === 'tracking-logo'
+      ? ['image/jpeg', 'image/png', 'image/webp']
+      : ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
+
+    if (folder === 'tracking-logo' && file.size > 5 * 1024 * 1024) {
+      throw new Error('A logo do acompanhamento deve ter no máximo 5 MB.');
     }
-    if (!allowedImageTypes.includes(file.type)) {
-      throw new Error('Formato não suportado. Envie uma imagem JPG, PNG ou WebP.');
+
+    const validation = await validateFileSignature(file, allowedImageTypes);
+    if (!validation.valid) {
+      throw new Error(validation.error || 'Formato não suportado. Envie uma imagem JPG, PNG ou WebP.');
     }
 
     // Definir resolução máxima ideal dependendo do tipo de imagem
@@ -122,7 +232,7 @@ export class FirebaseStorageService {
     const optimizedFile = await optimizeImageToWebP(file, {
       maxDimension,
       quality: 0.88,
-      fallbackOnError: folder !== 'tracking-logo',
+      fallbackOnError: false,
       forceResize: folder === 'tracking-logo',
     });
 
@@ -162,13 +272,13 @@ export class FirebaseStorageService {
    * Upload de imagem da galeria de artes (otimizada em WebP, máx 2048px)
    */
   async uploadGalleryImage(file: File, userId: string, itemId: string): Promise<string> {
-    const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!allowedImageTypes.includes(file.type)) {
-      throw new Error('Formato não suportado. Envie uma imagem JPG, PNG ou WebP.');
+    const validation = await validateFileSignature(file, ['image/jpeg', 'image/png', 'image/webp']);
+    if (!validation.valid) {
+      throw new Error(validation.error || 'Formato não suportado. Envie uma imagem JPG, PNG ou WebP.');
     }
 
     // Otimiza galeria para WebP 2048px com alta qualidade para zoom de artes
-    const optimizedFile = await optimizeImageToWebP(file, { maxDimension: 2048, quality: 0.88 });
+    const optimizedFile = await optimizeImageToWebP(file, { maxDimension: 2048, quality: 0.88, fallbackOnError: false });
     if (optimizedFile.size > 15 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 15MB');
 
     const timestamp = Date.now();
@@ -220,13 +330,24 @@ export class FirebaseStorageService {
     orderId: string,
     onProgress?: (progress: number) => void,
   ): Promise<OrderAttachment> {
-    const isPdf = file.type === 'application/pdf';
+    const validation = await validateFileSignature(file, [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+      'application/pdf',
+    ]);
+    if (!validation.valid) {
+      throw new Error(validation.error || 'Arquivo com formato ou conteúdo inválido.');
+    }
+
+    const isPdf = validation.detectedMime === 'application/pdf';
     onProgress?.(0);
     
-    // Se for imagem, otimiza para WebP antes de salvar
+    // Se for imagem, otimiza para WebP antes de salvar (sem fallback silencioso para arquivos corrompidos)
     const fileToUpload = isPdf
       ? file
-      : await optimizeImageToWebP(file, { maxDimension: 2048, quality: 0.85 });
+      : await optimizeImageToWebP(file, { maxDimension: 2048, quality: 0.85, fallbackOnError: false });
 
     const maxSize = 100 * 1024 * 1024; // 100MB
     if (fileToUpload.size > maxSize) {

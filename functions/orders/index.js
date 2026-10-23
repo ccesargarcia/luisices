@@ -8,6 +8,7 @@ const { onCall } = require('../common/sentryFunctions');
 const { ORDER_TRACKING_ENCRYPTION_KEY } = require('../common/secrets');
 const crypto = require('crypto');
 const { publicCatalogOrderLimiter, publicOrderTrackingLimiter } = require('../common/rateLimiters');
+const { getTrustedClientIp } = require('../originProtection');
 
 let publicCatalogCache = { expiresAt: 0, products: null };
 
@@ -344,11 +345,7 @@ const deleteOrderTrackingLink = onCall({ cors: true, maxInstances: 10 }, async (
 
 /** Retorna somente dados próprios para acompanhamento público; nunca expõe dados financeiros/contato. */
 const getPublicOrderTracking = onCall({ cors: true, maxInstances: 20 }, async (request) => {
-  const ip =
-    request.rawRequest?.headers?.['cf-connecting-ip'] ||
-    request.rawRequest?.headers?.['x-real-ip'] ||
-    request.rawRequest?.ip ||
-    'unknown';
+  const ip = getTrustedClientIp(request.rawRequest);
   try {
     await publicOrderTrackingLimiter.consume(ip);
   } catch {
@@ -444,12 +441,9 @@ async function handleSubmitPublicCatalogOrder(request, dependencies = {}) {
   const limiter = dependencies.publicCatalogOrderLimiter || publicCatalogOrderLimiter;
   const firestore = dependencies.getFirestore || getFirestore;
   const timestamp = dependencies.Timestamp || Timestamp;
+  const getClientIp = dependencies.getTrustedClientIp || getTrustedClientIp;
   // 1. Rate Limiting por IP para conter abusos e automações não autorizadas
-  const clientIp =
-    request.rawRequest?.headers?.['cf-connecting-ip'] ||
-    request.rawRequest?.headers?.['x-real-ip'] ||
-    request.rawRequest?.ip ||
-    'public_visitor';
+  const clientIp = getClientIp(request.rawRequest);
 
   try {
     await limiter.consume(clientIp);
