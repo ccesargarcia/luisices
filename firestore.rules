@@ -180,7 +180,9 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/customers/$(data.customerId)).data.userId == data.userId
         ))
         && isValidOrderItemsField(data)
-        && (data.get('payment', null) == null || isConsistentOrderPayment(data.payment, data.price));
+        && (data.get('isExchange', false) is bool)
+        && (data.get('isExchange', false) != true || isValidExchangeItems(data))
+        && (data.get('payment', null) == null || isConsistentOrderPayment(data.payment, data.get('isExchange', false) ? 0 : data.price));
     }
 
     // Tag names are trimmed before submission; reject NUL in either field.
@@ -367,6 +369,11 @@ service cloud.firestore {
           : status == 'pending' && paid == 0);
     }
 
+    function isValidExchangeItems(data) {
+      let items = data.get('exchangeItems', []);
+      return items is list && items.size() <= 10;
+    }
+
     function isValidOrder(data, changed) {
       return (!changed.hasAny(['price']) || (data.price is number && data.price >= 0 && data.price <= 1000000))
         && (!changed.hasAny(['quantity']) || (data.quantity is int && data.quantity > 0 && data.quantity <= 10000))
@@ -387,7 +394,7 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/customers/$(data.customerId)).data.userId == data.userId))
         && ((!changed.hasAny(['items', 'pricingMode', 'unitPrice']) && (data.get('items', null) == null || !changed.hasAny(['price', 'quantity'])))
           || isValidOrderItemsField(data))
-        && (!changed.hasAny(['price', 'payment']) || data.get('payment', null) == null || isConsistentOrderPayment(data.payment, data.price));
+        && (!changed.hasAny(['price', 'payment', 'isExchange']) || data.get('payment', null) == null || isConsistentOrderPayment(data.payment, data.get('isExchange', false) ? 0 : data.price));
     }
 
     function isAllowedOrderUpdate(previous, next) {

@@ -97,6 +97,43 @@ beforeEach(async () => {
 });
 
 describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () => {
+  describe('Permutas', () => {
+    it('aceita permuta sem cobrança com itens recebidos válidos', async () => {
+      const ownerDb = dbFor('owner');
+      await assertSucceeds(setDoc(doc(ownerDb, 'orders/exchange-valid'), {
+        ...baseOrder,
+        isExchange: true,
+        exchangeItems: [{ name: 'Divulgação', quantity: 1, value: 150 }],
+        payment: { status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0, method: null },
+      }));
+    });
+
+    it('rejeita permuta com mais de dez itens recebidos', async () => {
+      const ownerDb = dbFor('owner');
+      const exchange = {
+        ...baseOrder,
+        isExchange: true,
+        payment: { status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0, method: null },
+      };
+      await assertFails(setDoc(doc(ownerDb, 'orders/exchange-too-many'), {
+        ...exchange, exchangeItems: Array.from({ length: 11 }, (_, index) => ({ name: `Item ${index}`, quantity: 1, value: 1 })),
+      }));
+    });
+
+    it('permite converter um pedido em permuta somente com pagamento zerado', async () => {
+      const ownerDb = dbFor('owner');
+      await assertSucceeds(updateOrder(ownerDb, 'orders/order-1', {
+        isExchange: true,
+        exchangeItems: [{ name: 'Divulgação', quantity: 1, value: 150 }],
+        payment: { status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0, method: null },
+      }));
+      await assertFails(updateOrder(ownerDb, 'orders/order-1', {
+        isExchange: true,
+        payment: baseOrder.payment,
+      }, 3));
+    });
+  });
+
   describe('1. Autorização e Controle de Acesso', () => {
     it('permite que o proprietário autorizado crie e edite o pedido', async () => {
       const ownerDb = dbFor('owner');

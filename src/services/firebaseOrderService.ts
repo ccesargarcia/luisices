@@ -215,6 +215,18 @@ export class FirebaseOrderService {
     if (data.tags != null && (!Array.isArray(data.tags) || data.tags.length > MAX_ORDER_TAGS)) {
       throw new Error(`Um pedido pode ter no máximo ${MAX_ORDER_TAGS} etiquetas.`);
     }
+    if (data.exchangeItems != null) {
+      if (!Array.isArray(data.exchangeItems) || data.exchangeItems.length > 10) {
+        throw new Error('Uma permuta pode ter no máximo 10 itens recebidos.');
+      }
+      for (const item of data.exchangeItems) {
+        if (!item || typeof item.name !== 'string' || !item.name.trim() || item.name.trim().length > 200 ||
+            !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 10000 ||
+            (item.value != null && (typeof item.value !== 'number' || !Number.isFinite(item.value) || item.value < 0 || item.value > 1000000))) {
+          throw new Error('Confira os itens recebidos: nome, quantidade e valor precisam ser válidos.');
+        }
+      }
+    }
     if (data.customerName !== undefined) {
       if (!data.customerName || typeof data.customerName !== 'string' || !data.customerName.trim()) {
         throw new Error('Nome do cliente é obrigatório.');
@@ -258,8 +270,8 @@ export class FirebaseOrderService {
     // Sanitize payment object: replace undefined with null so Firestore doesn't reject it
     let payment = null;
     if (orderData.payment) {
-      const totalAmount = price;
-      const rawPaidAmount = this.ensurePositive(orderData.payment.paidAmount);
+      const totalAmount = orderData.isExchange ? 0 : price;
+      const rawPaidAmount = orderData.isExchange ? 0 : this.ensurePositive(orderData.payment.paidAmount);
       // Regra estrita do Firestore (firestore.rules:344): 0 <= paidAmount <= price
       const paidAmount = Math.min(rawPaidAmount, totalAmount);
       const remainingAmount = this.ensurePositive(
@@ -420,7 +432,7 @@ export class FirebaseOrderService {
     });
 
     // Atualizar estatísticas do cliente de forma centralizada (pedidos manuais, orçamentos, lojinha pública, etc.)
-    if (orderData.customerId) {
+    if (orderData.customerId && !orderData.isExchange) {
       try {
         const orderAmount = Number(orderData.price || orderData.payment?.totalAmount || 0);
         await firebaseCustomerService.incrementCustomerStats(orderData.customerId, orderAmount);
@@ -745,6 +757,7 @@ export class FirebaseOrderService {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
+    const customerStatsReconciliation: { value: { customerId: string; amount: number; toExchange: boolean } | null } = { value: null };
     await runTransaction(db, async (transaction) => {
       // 1. TODAS as leituras antes de qualquer escrita (exigência estrita do Firestore)
       const orderSnap = await transaction.get(orderRef);
@@ -862,6 +875,14 @@ export class FirebaseOrderService {
         }
       });
 
+      const remainsExchange = Boolean(cleanUpdates.isExchange ?? orderData.isExchange);
+      if (remainsExchange && (cleanUpdates.isExchange === true || cleanUpdates.payment)) {
+        cleanUpdates.payment = {
+          status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0,
+          method: null, paymentDate: null, notes: null, history: null,
+        };
+      }
+
       // Se apenas o preço foi alterado e o pedido já possui payment, sincronizar totalAmount, remainingAmount e status
       if (cleanUpdates.price !== undefined && !cleanUpdates.payment && orderData.payment) {
         const totalAmount = cleanUpdates.price;
@@ -930,7 +951,11 @@ export class FirebaseOrderService {
 
       if (saleSnap.exists()) {
         const salePayload: any = { updatedAt: now };
-        if (cleanUpdates.price !== undefined) salePayload.amount = cleanUpdates.price;
+        if (cleanUpdates.price !== undefined || cleanUpdates.isExchange !== undefined) {
+          const exchange = cleanUpdates.isExchange ?? orderData.isExchange;
+          salePayload.amount = exchange ? 0 : (cleanUpdates.price ?? orderData.price ?? 0);
+        }
+        if (cleanUpdates.isExchange !== undefined) salePayload.isExchange = Boolean(cleanUpdates.isExchange);
         if (cleanUpdates.status !== undefined) salePayload.status = cleanUpdates.status;
         if (cleanUpdates.customerName !== undefined) salePayload.customerName = cleanUpdates.customerName;
         if (cleanUpdates.customerPhone !== undefined) salePayload.customerPhone = cleanUpdates.customerPhone;
@@ -954,7 +979,33 @@ export class FirebaseOrderService {
           isDeletedFromOrders: orderData.deletedAt != null,
         });
       }
+
+      // Customer aggregates exclude exchanges. Reconcile only when the exchange
+      // classification changes; normal price edits retain existing behavior.
+      if (cleanUpdates.isExchange !== undefined && Boolean(cleanUpdates.isExchange) !== Boolean(orderData.isExchange)) {
+        const customerId = cleanUpdates.customerId ?? orderData.customerId;
+        if (customerId) {
+          customerStatsReconciliation.value = {
+            customerId,
+            amount: Number(cleanUpdates.price ?? orderData.price ?? 0),
+            toExchange: Boolean(cleanUpdates.isExchange),
+          };
+        }
+      }
     });
+
+    if (customerStatsReconciliation.value) {
+      const reconciliation = customerStatsReconciliation.value;
+      try {
+        if (reconciliation.toExchange) {
+          await firebaseCustomerService.decrementCustomerStats(reconciliation.customerId, reconciliation.amount);
+        } else {
+          await firebaseCustomerService.incrementCustomerStats(reconciliation.customerId, reconciliation.amount);
+        }
+      } catch (err) {
+        console.warn('[firebaseOrderService] Não foi possível reconciliar estatísticas da permuta:', err);
+      }
+    }
   }
 
   /**

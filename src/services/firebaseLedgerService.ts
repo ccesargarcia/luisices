@@ -66,8 +66,8 @@ export const firebaseLedgerService = {
       ? (typeof order.createdAt === 'string' ? order.createdAt : new Date().toISOString())
       : new Date().toISOString();
 
-    const price = typeof order.price === 'number' && !isNaN(order.price) ? Math.max(0, order.price) : 0;
-    const paidAmount = order.payment?.paidAmount && !isNaN(order.payment.paidAmount)
+    const price = order.isExchange ? 0 : (typeof order.price === 'number' && !isNaN(order.price) ? Math.max(0, order.price) : 0);
+    const paidAmount = !order.isExchange && order.payment?.paidAmount && !isNaN(order.payment.paidAmount)
       ? Math.max(0, order.payment.paidAmount)
       : 0;
 
@@ -84,6 +84,7 @@ export const firebaseLedgerService = {
       productName: order.productName || 'Produto',
       quantity: order.quantity && order.quantity > 0 ? order.quantity : 1,
       amount: price,
+      isExchange: Boolean(order.isExchange),
       paymentStatus: order.payment?.status || 'pending',
       paidAmount,
       paymentMethod: order.payment?.method || null,
@@ -229,8 +230,9 @@ export const firebaseLedgerService = {
           ? raw.createdAt.toDate().toISOString()
           : (typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString());
 
-        const price = typeof raw.price === 'number' && !isNaN(raw.price) ? Math.max(0, raw.price) : 0;
-        const paidAmount = raw.payment?.paidAmount && !isNaN(raw.payment.paidAmount)
+        const isExchange = Boolean(raw.isExchange);
+        const price = !isExchange && typeof raw.price === 'number' && !isNaN(raw.price) ? Math.max(0, raw.price) : 0;
+        const paidAmount = !isExchange && raw.payment?.paidAmount && !isNaN(raw.payment.paidAmount)
           ? Math.max(0, raw.payment.paidAmount)
           : 0;
 
@@ -247,6 +249,7 @@ export const firebaseLedgerService = {
           productName: raw.productName || 'Produto',
           quantity: raw.quantity && raw.quantity > 0 ? raw.quantity : 1,
           amount: price,
+          isExchange,
           paymentStatus: raw.payment?.status || 'pending',
           paidAmount,
           paymentMethod: raw.payment?.method || null,

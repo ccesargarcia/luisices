@@ -504,7 +504,16 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         ? null
         : (existingPayment?.paymentDate || (isFirstPaymentRegistration ? new Date().toISOString() : null));
 
-      const paymentData: any = {
+      const paymentData: any = editData.isExchange ? {
+        status: 'paid',
+        method: null,
+        totalAmount: 0,
+        paidAmount: 0,
+        remainingAmount: 0,
+        paymentDate: null,
+        notes: null,
+        history: null,
+      } : {
         status: resolvedPaymentStatus,
         method: editData.paymentMethod || existingPayment?.method || null,
         totalAmount: price,

@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { formatCurrency } from '../utils/currency';
-import { parseLocalDate } from '../utils/date';
 import { Order } from '../types';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -32,6 +31,7 @@ import { openWhatsAppForExchange, generateExchangeSummaryMessage, openWhatsApp }
 import { PaginationControls } from '../components/common/PaginationControls';
 import { toast } from 'sonner';
 import { OrderStatus } from '../types';
+import { csvCell, escapeHtml, formatExchangeItems, getExchangeItemsValue, isExchangeDateInRange } from '../utils/exchanges';
 
 type Period = 'all' | 'month' | 'quarter' | 'year';
 
@@ -66,6 +66,7 @@ function getPeriodStart(period: Period): Date | null {
   const days = { month: 30, quarter: 90, year: 365 };
   const d = new Date(now);
   d.setDate(now.getDate() - days[period]);
+  d.setHours(0, 0, 0, 0);
   return d;
 }
 
@@ -114,7 +115,7 @@ export function Exchanges() {
       .filter(o => statusFilter === 'all' || o.status === statusFilter)
       .filter(o => {
         if (!periodStart) return true;
-        return parseLocalDate(o.deliveryDate) >= periodStart;
+        return isExchangeDateInRange(o.deliveryDate, periodStart);
       })
       .filter(o => {
         if (!search.trim()) return true;
@@ -153,8 +154,7 @@ export function Exchanges() {
 
   const stats = useMemo(() => {
     const totalDelivered = exchangeOrders.reduce((s, o) => s + (o.price || 0), 0);
-    const totalReceived = exchangeOrders.reduce((s, o) =>
-      s + (o.exchangeItems?.reduce((si, i) => si + (i.value || 0) * i.quantity, 0) || 0), 0);
+    const totalReceived = exchangeOrders.reduce((s, o) => s + getExchangeItemsValue(o.exchangeItems), 0);
     return {
       count: exchangeOrders.length,
       totalDelivered,
@@ -203,7 +203,7 @@ export function Exchanges() {
     pw.document.write(`
       <!DOCTYPE html><html lang="pt-BR"><head>
       <meta charset="UTF-8" />
-      <title>Permuta — ${order.customerName}</title>
+      <title>Permuta — ${escapeHtml(order.customerName)}</title>
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: Arial, sans-serif; font-size: 13px; color: #111; padding: 32px; max-width: 600px; margin: auto; }
@@ -218,17 +218,18 @@ export function Exchanges() {
         @media print { body { padding: 16px; } }
       </style></head><body>
       <h1>🔄 Comprovante de Permuta</h1>
-      <div class="meta">${businessName} — ${now}</div>
+      <div class="meta">${escapeHtml(businessName)} — ${now}</div>
       <div class="row">
-        <div><div class="label">Cliente</div><div class="value">${order.customerName}</div><div style="color:#666;font-size:11px">${order.customerPhone}</div></div>
+        <div><div class="label">Cliente</div><div class="value">${escapeHtml(order.customerName)}</div><div style="color:#666;font-size:11px">${escapeHtml(order.customerPhone)}</div></div>
         <div><div class="label">Data de entrega</div><div class="value">${formatDateBR(order.deliveryDate)}</div></div>
       </div>
       <div class="row">
-        <div><div class="label">Produto</div><div class="value">${order.productName}</div></div>
+        <div><div class="label">Produto</div><div class="value">${escapeHtml(order.productName)}</div></div>
         <div><div class="label">Custo</div><div class="value">R$ ${(order.price || 0).toFixed(2).replace('.', ',')}</div></div>
       </div>
-      ${order.exchangeNotes ? `<div class="section"><div class="label">Observações</div><div class="notes">${order.exchangeNotes}</div></div>` : ''}
-      <div class="footer">${businessName} • Documento gerado automaticamente</div>
+      ${order.exchangeItems?.length ? `<div class="section"><div class="label">Itens recebidos</div><div class="notes">${escapeHtml(formatExchangeItems(order.exchangeItems, formatCurrency)).replace(/\n/g, '<br>')}</div></div>` : ''}
+      ${order.exchangeNotes ? `<div class="section"><div class="label">Observações</div><div class="notes">${escapeHtml(order.exchangeNotes)}</div></div>` : ''}
+      <div class="footer">${escapeHtml(businessName)} • Documento gerado automaticamente</div>
       </body></html>`);
     pw.document.close();
     pw.focus();
@@ -245,6 +246,8 @@ export function Exchanges() {
       'Produto',
       'Custo (R$)',
       'Status',
+      'Itens recebidos',
+      'Valor recebido (R$)',
       'Observações',
     ];
 
@@ -257,8 +260,10 @@ export function Exchanges() {
         o.productName,
         (o.price || 0).toFixed(2),
         STATUS_LABELS[o.status],
+        formatExchangeItems(o.exchangeItems, value => value.toFixed(2)),
+        getExchangeItemsValue(o.exchangeItems).toFixed(2),
         o.exchangeNotes || '',
-      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+      ].map(csvCell).join(',');
     });
 
     const csv = [header.join(','), ...rows].join('\n');
@@ -287,7 +292,7 @@ export function Exchanges() {
       <html lang="pt-BR">
       <head>
         <meta charset="UTF-8" />
-        <title>Relatório de Permutas — ${businessName}</title>
+        <title>Relatório de Permutas — ${escapeHtml(businessName)}</title>
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { font-family: Arial, sans-serif; font-size: 12px; color: #111; padding: 24px; }
@@ -317,7 +322,7 @@ export function Exchanges() {
       </head>
       <body>
         <h1>📋 Relatório de Permutas</h1>
-        <div class="meta">${businessName} — Gerado em ${now} • Período: ${PERIOD_LABELS[period]}</div>
+        <div class="meta">${escapeHtml(businessName)} — Gerado em ${now} • Período: ${PERIOD_LABELS[period]}</div>
 
         <div class="stats">
           <div class="stat">
@@ -354,20 +359,24 @@ export function Exchanges() {
           <tbody>
             ${exchangeOrders.map(o => {
               const statusClass = { pending: 'pending', 'in-progress': 'progress', completed: 'completed', cancelled: 'cancelled' }[o.status];
-              const notes = o.exchangeNotes ? `<div class="items-list" style="margin-top:4px;font-style:italic">${o.exchangeNotes}</div>` : '';
+              const items = o.exchangeItems?.length ? `<div class="items-list">Recebido: ${escapeHtml(formatExchangeItems(o.exchangeItems, formatCurrency)).replace(/\n/g, '<br>')}</div>` : '';
+              const notes = o.exchangeNotes ? `<div class="items-list" style="margin-top:4px;font-style:italic">${escapeHtml(o.exchangeNotes)}</div>` : '';
+              const receivedValue = getExchangeItemsValue(o.exchangeItems);
+              const balance = receivedValue - (o.price || 0);
               return `
                 <tr>
-                  <td>${formatDateBR(o.deliveryDate)}</td>
-                  <td><strong>${o.customerName}</strong><br><span style="color:#666;font-size:10px">${o.customerPhone}</span></td>
-                  <td>${o.productName}${notes}</td>
+                  <td>${escapeHtml(formatDateBR(o.deliveryDate))}</td>
+                  <td><strong>${escapeHtml(o.customerName)}</strong><br><span style="color:#666;font-size:10px">${escapeHtml(o.customerPhone)}</span></td>
+                  <td>${escapeHtml(o.productName)}${items}${notes}</td>
                   <td style="text-align:right">${formatCurrency(o.price || 0)}</td>
+                  <td style="text-align:right" class="${balance >= 0 ? 'positive' : 'negative'}">${balance >= 0 ? '+' : ''}${formatCurrency(balance)}</td>
                   <td><span class="badge badge-${statusClass}">${STATUS_LABELS[o.status]}</span></td>
                 </tr>`;
             }).join('')}
           </tbody>
         </table>
 
-        <div class="footer">${businessName} • Relatório gerado automaticamente pelo sistema de gestão</div>
+        <div class="footer">${escapeHtml(businessName)} • Relatório gerado automaticamente pelo sistema de gestão</div>
       </body>
       </html>
     `);
@@ -613,7 +622,7 @@ export function Exchanges() {
                         </tr>
                         {/* Individual order rows */}
                         {group.orders.map(order => {
-                          const receivedValue = order.exchangeItems?.reduce((s, i) => s + (i.value || 0) * i.quantity, 0) || 0;
+                          const receivedValue = getExchangeItemsValue(order.exchangeItems);
                           const balance = receivedValue - (order.price || 0);
                           return (
                             <tr
@@ -712,7 +721,7 @@ export function Exchanges() {
                     </div>
                     {/* Individual order cards */}
                     {group.orders.map(order => {
-                      const receivedValue = order.exchangeItems?.reduce((s, i) => s + (i.value || 0) * i.quantity, 0) || 0;
+                      const receivedValue = getExchangeItemsValue(order.exchangeItems);
                       const balance = receivedValue - (order.price || 0);
                       const expanded = expandedRows.has(order.id);
                       return (

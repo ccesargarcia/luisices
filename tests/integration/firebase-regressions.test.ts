@@ -286,6 +286,27 @@ describe('Storage', () => {
 });
 
 describe('Pedidos e ledger atômicos', () => {
+  it('cria permuta com pagamento e faturamento zero sem alterar estatísticas monetárias do cliente', async () => {
+    await seed('customers/customer-exchange', {
+      userId: 'owner', name: 'Cliente Permuta', phone: '11999999999', totalOrders: 0, totalSpent: 0,
+    });
+
+    const created = await firebaseOrderService.createOrder({
+      ...order,
+      customerId: 'customer-exchange',
+      isExchange: true,
+      exchangeItems: [{ name: 'Divulgação', quantity: 2, value: 25 }],
+      payment: { status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0, method: null },
+    });
+
+    expect(created.payment).toMatchObject({ totalAmount: 0, paidAmount: 0, remainingAmount: 0, status: 'paid' });
+    expect(created.exchangeItems).toEqual([{ name: 'Divulgação', quantity: 2, value: 25 }]);
+    const sale = await getDoc(doc(client.db, 'salesLedger', created.id));
+    expect(sale.data()).toMatchObject({ amount: 0, paidAmount: 0, isExchange: true });
+    const customer = await getDoc(doc(client.db, 'customers', 'customer-exchange'));
+    expect(customer.data()).toMatchObject({ totalOrders: 0, totalSpent: 0 });
+  });
+
   it('cria pedido normal preservando pagamento e workflow e gravando a venda', async () => {
     const created = await firebaseOrderService.createOrder({
       ...order, status: 'pending', payment: { status: 'partial', totalAmount: 100, paidAmount: 20, remainingAmount: 80 },

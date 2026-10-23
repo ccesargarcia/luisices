@@ -6,7 +6,7 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Plus, Loader2, Repeat2, Paperclip, Upload, ImageIcon, ExternalLink } from 'lucide-react';
-import { OrderStatus, PaymentStatus, PaymentMethod, Customer, Tag, OrderAttachment, Product } from '../types';
+import { OrderStatus, PaymentStatus, PaymentMethod, Customer, Tag, OrderAttachment, Product, ExchangeItem } from '../types';
 import { TagInput } from './TagInput';
 import { TAG_COLORS } from '../utils/tagColors';
 import { Switch } from './ui/switch';
@@ -78,6 +78,7 @@ export function NewOrderDialog({
     cardColor: '',
   });
   const [products, setProducts] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
+  const [exchangeItems, setExchangeItems] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [pendingGallery] = useState<{ file: File; title: string }[]>([]);
@@ -126,6 +127,7 @@ export function NewOrderDialog({
       cardColor: '',
     });
     setProducts([{ name: '', quantity: '1', unitPrice: '' }]);
+    setExchangeItems([{ name: '', quantity: '1', unitPrice: '' }]);
     setTags([]);
     setPendingFiles([]);
     setLocalAttachments([]);
@@ -278,6 +280,19 @@ export function NewOrderDialog({
       toast.error(`O valor pago deve estar entre R$ 0,00 e ${formatCurrency(totalAmount)}.`);
       return;
     }
+    if (formData.isExchange) {
+      const enteredItems = exchangeItems.filter(item => item.name.trim() || item.unitPrice.trim() || item.quantity !== '1');
+      const hasInvalidItem = enteredItems.some(item => {
+        const quantity = Number(item.quantity);
+        const value = item.unitPrice.trim() ? parseDecimalMoneyInput(item.unitPrice) : null;
+        return !item.name.trim() || item.name.trim().length > 200 || !Number.isInteger(quantity) || quantity < 1 || quantity > 10000 ||
+          (item.unitPrice.trim() && (value === null || value < 0 || value > 1000000));
+      });
+      if (enteredItems.length > 10 || hasInvalidItem) {
+        toast.error('Confira os itens recebidos: informe um nome, quantidade inteira e valor válido.');
+        return;
+      }
+    }
 
     setLoading(true);
 
@@ -394,6 +409,13 @@ export function NewOrderDialog({
         cardColor: formData.cardColor || undefined,
         isExchange: formData.isExchange || undefined,
         exchangeNotes: formData.exchangeNotes || undefined,
+        exchangeItems: formData.isExchange
+          ? exchangeItems.filter(item => item.name.trim()).map(item => ({
+              name: item.name.trim(),
+              quantity: Math.max(1, parseInt(item.quantity, 10) || 1),
+              value: item.unitPrice.trim() ? (parseDecimalMoneyInput(item.unitPrice) ?? undefined) : undefined,
+            } as ExchangeItem))
+          : undefined,
         payment: formData.isExchange ? {
           status: 'paid' as PaymentStatus,
           totalAmount: 0,
@@ -638,6 +660,33 @@ export function NewOrderDialog({
               onCheckedChange={v => setFormData({ ...formData, isExchange: v, paidAmount: v ? '0' : '' })}
             />
           </div>
+
+          {formData.isExchange && (
+            <div className="space-y-2 rounded-lg border border-primary/20 bg-muted/30 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <Label>O que você recebe</Label>
+                  <p className="text-xs text-muted-foreground">Registre os itens e o valor estimado da parceria.</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" disabled={exchangeItems.length >= 10}
+                  onClick={() => setExchangeItems(items => [...items, { name: '', quantity: '1', unitPrice: '' }])}>
+                  <Plus className="size-3.5" /> Item
+                </Button>
+              </div>
+              {exchangeItems.map((item, index) => (
+                <div key={index} className="grid grid-cols-[1fr_64px_100px_32px] gap-2">
+                  <Input aria-label={`Item recebido ${index + 1}`} placeholder="Item recebido" value={item.name}
+                    onChange={event => setExchangeItems(items => items.map((entry, i) => i === index ? { ...entry, name: event.target.value } : entry))} />
+                  <Input aria-label={`Quantidade recebida ${index + 1}`} type="number" min="1" max="10000" step="1" value={item.quantity}
+                    onChange={event => setExchangeItems(items => items.map((entry, i) => i === index ? { ...entry, quantity: event.target.value } : entry))} />
+                  <Input aria-label={`Valor estimado ${index + 1}`} inputMode="decimal" placeholder="Valor (R$)" value={item.unitPrice}
+                    onChange={event => setExchangeItems(items => items.map((entry, i) => i === index ? { ...entry, unitPrice: event.target.value.replace(/[^0-9.,]/g, '') } : entry))} />
+                  <Button type="button" variant="ghost" size="icon" aria-label={`Remover item recebido ${index + 1}`} disabled={exchangeItems.length === 1}
+                    onClick={() => setExchangeItems(items => items.filter((_, i) => i !== index))}>×</Button>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="tags">Tags</Label>

@@ -806,6 +806,7 @@ export interface SaleRecord {
   productName: string;
   quantity: number;
   amount: number; // Valor monetário total
+  isExchange?: boolean; // Permuta não representa faturamento monetário
   paymentStatus: PaymentStatus;
   paidAmount: number;
   paymentMethod?: PaymentMethod | null;

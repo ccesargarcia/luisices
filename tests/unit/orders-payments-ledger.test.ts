@@ -43,6 +43,7 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 import { firebaseOrderService } from '../../src/services/firebaseOrderService';
+import { firebaseLedgerService } from '../../src/services/firebaseLedgerService';
 
 describe('Etapa 4: Pedidos, Pagamentos e Financeiro (Achados 5, 6 e 7)', () => {
   beforeEach(() => {
@@ -325,6 +326,65 @@ describe('Etapa 4: Pedidos, Pagamentos e Financeiro (Achados 5, 6 e 7)', () => {
       expect(orderUpdateArgs.payment.paidAmount).toBe(40);
       expect(orderUpdateArgs.payment.remainingAmount).toBe(120);
       expect(orderUpdateArgs.payment.status).toBe('partial');
+    });
+  });
+
+  describe('Permutas: consistência financeira', () => {
+    it('não contabiliza permuta como faturamento nem valor pago no livro de vendas', () => {
+      const record = firebaseLedgerService.mapOrderToSaleRecord({
+        id: 'exchange-1', userId: 'user-1', price: 180, isExchange: true,
+        payment: { status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0 } as any,
+      });
+      expect(record).toMatchObject({ amount: 0, paidAmount: 0, isExchange: true });
+    });
+
+    it('zera pagamento e lançamento financeiro ao converter pedido em permuta', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1', version: 1, price: 80, customerName: 'Cliente',
+          payment: { status: 'partial', totalAmount: 80, paidAmount: 20, remainingAmount: 60, method: 'pix' },
+        }),
+      });
+      mockSaleGet.mockReturnValue({ exists: () => true, data: () => ({ userId: 'user-1', amount: 80 }) });
+
+      await firebaseOrderService.updateOrder('order-exchange', { isExchange: true });
+
+      const orderPatch = mockTransactionUpdate.mock.calls[0][1];
+      const salePatch = mockTransactionUpdate.mock.calls[1][1];
+      expect(orderPatch.payment).toMatchObject({
+        status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0,
+        method: null, paymentDate: null, history: null,
+      });
+      expect(salePatch).toMatchObject({ amount: 0, isExchange: true, paidAmount: 0 });
+    });
+
+    it('restaura o valor financeiro ao remover a classificação de permuta', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1', version: 1, price: 80, isExchange: true,
+          payment: { status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0, method: null },
+        }),
+      });
+      mockSaleGet.mockReturnValue({ exists: () => true, data: () => ({ userId: 'user-1', amount: 0 }) });
+
+      await firebaseOrderService.updateOrder('order-exchange', {
+        isExchange: false,
+        payment: { status: 'pending', totalAmount: 80, paidAmount: 0, remainingAmount: 80 } as any,
+      });
+
+      const orderPatch = mockTransactionUpdate.mock.calls[0][1];
+      const salePatch = mockTransactionUpdate.mock.calls[1][1];
+      expect(orderPatch.payment).toMatchObject({ totalAmount: 80, paidAmount: 0, remainingAmount: 80, status: 'pending' });
+      expect(salePatch).toMatchObject({ amount: 80, isExchange: false });
+    });
+
+    it('rejeita itens recebidos inválidos antes de gravar', async () => {
+      await expect(firebaseOrderService.updateOrder('order-exchange', {
+        exchangeItems: [{ name: ' ', quantity: 0, value: -2 } as any],
+      })).rejects.toThrow(/itens recebidos/i);
+      expect(mockTransactionUpdate).not.toHaveBeenCalled();
     });
   });
 });
