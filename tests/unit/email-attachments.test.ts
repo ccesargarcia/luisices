@@ -5,8 +5,9 @@ const { prepareAttachments, attachmentPath, MAX_ATTACHMENT_BYTES } = require('..
 const bucketName = 'luisices-dev.firebasestorage.app';
 const url = (path: string, bucket = bucketName) => `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(path)}?alt=media&token=not-authority`;
 function fixture() {
-  const download = vi.fn().mockResolvedValue([Buffer.from('PDF')]);
-  const getMetadata = vi.fn().mockResolvedValue([{ size: '3', generation: '123' }]);
+  const validPdfBuffer = Buffer.from('%PDF-1.4 mock content');
+  const download = vi.fn().mockResolvedValue([validPdfBuffer]);
+  const getMetadata = vi.fn().mockResolvedValue([{ size: String(validPdfBuffer.length), generation: '123' }]);
   const bucket = { name: bucketName, file: vi.fn(() => ({ getMetadata, download })) };
   const get = vi.fn().mockResolvedValue({ exists: false });
   const db = { doc: vi.fn(() => ({ get })) };
@@ -17,7 +18,7 @@ describe('anexos privados enviados pelo backend', () => {
     const f = fixture();
     const path = 'users/owner/orders/email_draft/file.pdf';
     expect(await prepareAttachments({ ...f, attachments: [{ name: 'file.pdf', url: url(path) }] }))
-      .toEqual([{ filename: 'file.pdf', path, content: Buffer.from('PDF').toString('base64') }]);
+      .toEqual([{ filename: 'file.pdf', path, content: Buffer.from('%PDF-1.4 mock content').toString('base64') }]);
     expect(f.bucket.file).toHaveBeenCalledWith(path, { generation: '123' });
   });
   it('não aceita token ou CDN como autorização para ler rascunho de outro usuário', async () => {
@@ -43,6 +44,14 @@ describe('anexos privados enviados pelo backend', () => {
     f.get.mockResolvedValue({ exists: true, data: () => ({ assignedTo: 'employee' }) });
     const attachments = [{ name: 'x', url: url('users/other/orders/order-1/x') }];
     await expect(prepareAttachments({ ...f, attachments, uid: 'employee', profile: { role: 'funcionario', permissions: { orders: { view: true } } } })).resolves.toHaveLength(1);
+  });
+  it('valida magic bytes no backend e rejeita anexos com assinatura inválida ou executáveis', async () => {
+    const f = fixture();
+    f.download.mockResolvedValue([Buffer.from('MZ\x90\x00executable content')]);
+    await expect(prepareAttachments({
+      ...f,
+      attachments: [{ name: 'malware.pdf', url: url('users/owner/orders/email_draft/malware.pdf') }],
+    })).rejects.toThrow(/formato binário não suportado ou inválido/i);
   });
   it('aceita apenas a CDN do ambiente correto', () => {
     expect(attachmentPath('https://cdn-dev.luisices.com.br/users/owner/emails/a.pdf', bucketName, 'luisices-dev')).toBe('users/owner/emails/a.pdf');

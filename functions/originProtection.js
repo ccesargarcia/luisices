@@ -135,8 +135,14 @@ function getTrustedClientIp(rawRequest) {
 
   // Se a requisição não comprovou origem pela Cloudflare (ex: chamada direta, token ausente ou inválido),
   // NUNCA confiar em cabeçalhos enviados pelo cliente (cf-connecting-ip, x-real-ip, x-forwarded-for).
-  // Usar exclusivamente o IP do socket TCP gerenciado pela infraestrutura.
-  const directIp = rawRequest.ip || rawRequest.socket?.remoteAddress;
+  // Priorizar estritamente o endereço de socket TCP direto (socket.remoteAddress), que é imune a spoofing via HTTP headers.
+  // rawRequest.ip só é utilizado como fallback secundário (ex.: em mocks de testes unitários onde socket não foi instanciado).
+  const socketIp = rawRequest.socket?.remoteAddress;
+  if (typeof socketIp === 'string' && socketIp.trim()) {
+    return socketIp.trim();
+  }
+
+  const directIp = rawRequest.ip;
   if (typeof directIp === 'string' && directIp.trim()) {
     return directIp.trim();
   }

@@ -130,15 +130,18 @@ describe('Hardening de Rate Limit e Proteção de Origem', () => {
     expect(getTrustedClientIp(cfRequest as any)).toBe('198.51.100.50');
   });
 
-  it('getTrustedClientIp rejeita cf-connecting-ip forjado em chamadas diretas sem token de origem', () => {
+  it('getTrustedClientIp rejeita cf-connecting-ip forjado em chamadas diretas e prioriza socket.remoteAddress sobre headers/req.ip', () => {
     const maliciousDirectRequest = {
       headers: {
         'cf-connecting-ip': '1.1.1.1', // Atacante tentando burlar o limitador
         'x-forwarded-for': '2.2.2.2',
       },
-      ip: '203.0.113.195', // IP real da conexão de rede
+      socket: {
+        remoteAddress: '203.0.113.195', // IP direto do socket TCP (imune a headers)
+      },
+      ip: '2.2.2.2', // O Express poderia avaliar req.ip com base no cabeçalho x-forwarded-for
     };
-    // Sem o x-origin-secret válido, ignora headers forjados e usa estritamente o IP de conexão real
+    // Sem o x-origin-secret válido, ignora headers forjados e usa estritamente o socket real
     expect(getTrustedClientIp(maliciousDirectRequest as any)).toBe('203.0.113.195');
   });
 
