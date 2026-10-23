@@ -836,7 +836,13 @@ service cloud.firestore {
 
     // Regras para catálogo de produtos da lojinha pública (storeProducts)
     match /storeProducts/{productId} {
-      allow read: if true;
+      // A vitrine pública recebe apenas os campos liberados por getPublicCatalogProducts.
+      // Documentos internos podem conter userId e internalProductId.
+      allow read: if isActiveUser() && (
+        isAdmin()
+        || hasPerm(getEmployeePermissions().get('storeProducts', false), 'view')
+        || getEmployeePermissions().get('store', false) == true
+      );
 
       // Criação permitida para administradores ou usuários ativos com permissão de criação em loja
       allow create: if isActiveUser() && (

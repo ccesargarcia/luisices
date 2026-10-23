@@ -389,11 +389,12 @@ jobs:
 
   deploy-frontend:
     name: 🎨 Build e Deploy Frontend (Dev)
-    needs: [detect-changes, e2e-tests]
+    needs: [detect-changes, e2e-tests, deploy]
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
       (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
+      (needs.deploy.result == 'success' || needs.deploy.result == 'skipped') &&
       needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -476,14 +477,14 @@ jobs:
           npx --yes firebase-tools@15.32.1 deploy --only hosting --project luisices-dev --non-interactive
 
   deploy:
-    name: 🚀 Deploy Rules e Functions (Dev)
+    name: 🚀 Deploy Firebase Functions (Dev)
     needs: [detect-changes, e2e-tests, functions-validation]
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
       (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
       (needs.functions-validation.result == 'success' || needs.functions-validation.result == 'skipped') &&
-      (needs.detect-changes.outputs.functions == 'true' || needs.detect-changes.outputs.rules == 'true' || needs.detect-changes.outputs.mcp_metadata == 'true')
+      (needs.detect-changes.outputs.functions == 'true' || needs.detect-changes.outputs.mcp_metadata == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -587,19 +588,6 @@ jobs:
           }
           NODE
 
-      # --- ETAPAS DE REGRAS (FIRESTORE & STORAGE) ---
-      - name: Deploy Firestore & Storage Rules (Dev)
-        if: needs.detect-changes.outputs.rules == 'true'
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
-        run: |
-          echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
-          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
-          if ! npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,firestore:indexes,database,storage --project luisices-dev --non-interactive; then
-            echo "⚠️ Deploy com database falhou (possível ausência da instância RTDB em dev). Tentando deploy de Firestore e Storage..."
-            npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,firestore:indexes,storage --project luisices-dev --non-interactive
-          fi
-
       # --- ETAPAS DAS CLOUD FUNCTIONS ---
       - name: Instalar dependências de Functions
         if: needs.detect-changes.outputs.functions == 'true'
@@ -651,7 +639,7 @@ jobs:
           elif ! npx --yes firebase-tools@15.32.1 deploy --only functions --project luisices-dev --non-interactive; then
             echo "⚠️ Deploy em lote geral atingiu limite de concorrência. Executando deploy particionado por módulos..."
             npx --yes firebase-tools@15.32.1 deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project luisices-dev --non-interactive
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia" --project luisices-dev --non-interactive
+            npx --yes firebase-tools@15.32.1 deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia" --project luisices-dev --non-interactive
             npx --yes firebase-tools@15.32.1 deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project luisices-dev --non-interactive
             npx --yes firebase-tools@15.32.1 deploy --only "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook" --project luisices-dev --non-interactive
             npx --yes firebase-tools@15.32.1 deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession" --project luisices-dev --non-interactive
@@ -668,3 +656,36 @@ jobs:
         run: |
           echo "🧹 Alterações detectadas em rotas/schemas do MCP. Purgando cache da borda na Cloudflare (Dev)..."
           node scripts/purge-cloudflare-cache.mjs dev
+
+  deploy-rules:
+    name: 🔐 Deploy Firestore e Storage Rules (Dev)
+    needs: [detect-changes, e2e-tests, functions-validation, deploy, deploy-frontend]
+    if: |
+      always() &&
+      needs.detect-changes.result == 'success' &&
+      needs.detect-changes.outputs.rules == 'true' &&
+      (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
+      (needs.functions-validation.result == 'success' || needs.functions-validation.result == 'skipped') &&
+      (needs.deploy.result == 'success' || needs.deploy.result == 'skipped') &&
+      (needs.deploy-frontend.result == 'success' || needs.deploy-frontend.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Deploy Firestore & Storage Rules (Dev)
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+        run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
+          if ! npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,firestore:indexes,database,storage --project luisices-dev --non-interactive; then
+            echo "⚠️ Deploy com database falhou (possível ausência da instância RTDB em dev). Tentando deploy de Firestore e Storage..."
+            npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,firestore:indexes,storage --project luisices-dev --non-interactive
+          fi

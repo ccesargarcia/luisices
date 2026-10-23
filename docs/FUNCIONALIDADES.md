@@ -1,6 +1,6 @@
 # Funcionalidades e jornadas do Luisices
 
-Revisado em **10/10/2026**, com base na `develop` (`b2b6ef9`). Este guia descreve o código atual. Disponibilidade depende de permissões, configuração das integrações e publicação no ambiente.
+Revisado em **22/10/2026**, com base no código da branch `develop`. Este guia descreve o código atual. Disponibilidade depende de permissões, configuração das integrações e publicação no ambiente.
 
 ## Mapa do produto
 
@@ -73,7 +73,7 @@ Fontes: [Quotes](../src/app/pages/Quotes.tsx), [Pricing](../src/app/pages/Pricin
 
 ## Loja pública
 
-Vitrine com produtos, imagens, opções comerciais, personalização e envio de encomendas. O envio público passa por `submitPublicCatalogOrder`; a tela de gestão trata a conversão em pedido interno.
+Vitrine com produtos, imagens, opções comerciais, personalização e envio de encomendas. O catálogo público recebe campos liberados pelo backend; produtos ocultos e metadados internos não são expostos. O envio passa por `submitPublicCatalogOrder`, que revalida disponibilidade, preço e pedido mínimo; a tela de gestão trata a conversão em pedido interno.
 
 O enriquecimento visual por IA sugere textos e campos do produto. Prazo, preço, disponibilidade e selos comerciais precisam de conferência humana; uma fotografia não comprova estoque, prazo de fabricação ou popularidade.
 
@@ -113,9 +113,9 @@ O Copiloto tem nove ferramentas de consulta/preparação; enriquecimento de imag
 
 Alexa é uma integração independente, com pareamento, autorização e modos de confirmação por voz ou aprovação no app. A configuração atual estabelece 15 minutos para rascunhos iniciais e 5 minutos para códigos de pareamento. No modo `app_approval`, o diálogo renova a validade para 24 horas ao encaminhar para o aplicativo; o encaminhamento de segurança após falhas de voz mantém a validade inicial. O prompt diferencia essas condições a partir de constantes compartilhadas. Consulte a interface e a configuração do ambiente; não aplicar a janela de convites de usuários a rascunhos Alexa.
 
-**Estado desta entrega:** contratos implementados e validados localmente, ainda sem publicação em DEV. Histórico por cliente, consulta de orçamentos, estoque e planejamento semanal no chat continuam propostos.
+Links públicos de acompanhamento de pedidos podem ser criados, listados, copiados, revogados e excluídos conforme o estado do pedido e a autorização do usuário. A configuração do template e da identidade visual pertence às configurações da loja; o acesso público é servido por endpoint próprio. A disponibilidade depende da publicação das Functions e do secret `ORDER_TRACKING_ENCRYPTION_KEY` no ambiente.
 
-Fontes: [constantes compartilhadas](../functions/alexa/constants.js), [configuração Alexa](../functions/alexa/config.js), [diálogo](../functions/alexa/dialog.js).
+Fontes: [constantes compartilhadas](../functions/alexa/constants.js), [configuração Alexa](../functions/alexa/config.js), [diálogo](../functions/alexa/dialog.js), [Functions de acompanhamento](../functions/orders/index.js).
 
 ## Mobile e instalação
 

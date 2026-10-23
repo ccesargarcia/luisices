@@ -35,7 +35,7 @@ import {
   generateProductInquiryWhatsAppMessage,
   generateBespokeConsultationWhatsAppMessage,
 } from '../utils/whatsapp';
-import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
 import { CatalogFloatingWhatsApp } from '../components/catalog/CatalogFloatingWhatsApp';
@@ -371,6 +371,7 @@ export function PublicCatalog() {
       return parsed.map((item: any, idx: number) => ({
         ...item,
         id: item.id || `cart-${idx}-${Date.now()}-${secureRandomId()}`,
+        quantity: Math.min(100, Math.max(1, Math.floor(Number(item.quantity) || 1))),
       }));
     } catch {
       return [];
@@ -379,7 +380,9 @@ export function PublicCatalog() {
 
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [selectedProductPreview, setSelectedProductPreview] = useState<CatalogProduct | null>(null);
-  const [customerNotes, setCustomerNotes] = useState<string>('');
+  const [customerNotes, setCustomerNotes] = useState<string>(() => {
+    try { return sessionStorage.getItem('luisices_catalog_customer_notes') || ''; } catch { return ''; }
+  });
   const [previewCustomName, setPreviewCustomName] = useState<string>('');
   const [submittedOrderInfo, setSubmittedOrderInfo] = useState<{ orderCode: string; whatsappUrl: string } | null>(null);
   const [submittingOrder, setSubmittingOrder] = useState<boolean>(false);
@@ -459,6 +462,13 @@ export function PublicCatalog() {
       localStorage.setItem('luisices_catalog_cart', JSON.stringify(cart));
     } catch {}
   }, [cart]);
+
+  useEffect(() => {
+    try {
+      if (customerNotes) sessionStorage.setItem('luisices_catalog_customer_notes', customerNotes);
+      else sessionStorage.removeItem('luisices_catalog_customer_notes');
+    } catch {}
+  }, [customerNotes]);
 
   // Carregar configurações públicas da loja com cache local inteligente
   useEffect(() => {
@@ -654,7 +664,7 @@ export function PublicCatalog() {
     };
   }, []);
 
-  // Carregar produtos da vitrine via getDocs pontual com cache para visitantes
+  // Carregar apenas a projeção pública filtrada pelo backend.
   useEffect(() => {
     let isMounted = true;
 
@@ -717,10 +727,10 @@ export function PublicCatalog() {
       });
     };
 
-    getDocs(collection(db, 'storeProducts'))
-      .then((snap) => {
+    firebaseCatalogOrderService.getPublicCatalogProducts()
+      .then((publicProducts) => {
         if (!isMounted) return;
-        processProducts(snap.docs.map((d) => ({ id: d.id, data: () => d.data() })));
+        processProducts(publicProducts.map((product) => ({ id: product.id, data: () => product })));
       })
       .catch((err) => {
         console.warn('Erro ao carregar produtos da vitrine pública:', err);
@@ -918,7 +928,7 @@ export function PublicCatalog() {
       );
       if (existingIndex > -1) {
         return prev.map((item, idx) =>
-          idx === existingIndex ? { ...item, quantity: item.quantity + quantity } : item
+          idx === existingIndex ? { ...item, quantity: Math.min(100, item.quantity + quantity) } : item
         );
       }
       const newItemId = `item-${Date.now()}-${secureRandomId()}`;
@@ -932,7 +942,7 @@ export function PublicCatalog() {
         .map((item) => {
           if (item.id === cartItemId) {
             const newQ = item.quantity + delta;
-            return newQ > 0 ? { ...item, quantity: newQ } : null;
+            return newQ > 100 ? { ...item, quantity: 100 } : newQ > 0 ? { ...item, quantity: newQ } : null;
           }
           return item;
         })
@@ -960,9 +970,18 @@ export function PublicCatalog() {
     window.open(url, '_blank', 'noopener,noreferrer');
   }, [businessInfo.whatsapp, businessInfo.name, isAllCategories, selectedCategories]);
 
-  const [checkoutIdempotencyKey, setCheckoutIdempotencyKey] = useState<string>(
-    () => `pub_${Date.now()}_${secureRandomId()}`
-  );
+  const getCheckoutIdempotencyKey = (fingerprint: string): string => {
+    const storageKey = 'luisices_catalog_checkout_attempt';
+    try {
+      const stored = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+      if (stored?.fingerprint === fingerprint && typeof stored.key === 'string') return stored.key;
+      const key = `pub_${Date.now()}_${secureRandomId()}`;
+      sessionStorage.setItem(storageKey, JSON.stringify({ fingerprint, key }));
+      return key;
+    } catch {
+      return `pub_${Date.now()}_${secureRandomId()}`;
+    }
+  };
 
   // Envio de Pedido no WhatsApp com Deep Link formatado e registro no histórico
   const handleSendToWhatsApp = async () => {
@@ -978,9 +997,17 @@ export function PublicCatalog() {
 
     // Registrar no histórico de pedidos do Firestore via Cloud Function confiável
     try {
+      const checkoutFingerprint = JSON.stringify({
+        items: cart.map((item) => ({
+          productId: item.product.id,
+          quantity: item.quantity,
+          customName: (item.customName || '').trim(),
+        })),
+        customerNotes: customerNotes.trim(),
+      });
       const receipt = await firebaseCatalogOrderService.createCatalogOrder({
         orderCode: '',
-        idempotencyKey: checkoutIdempotencyKey,
+        idempotencyKey: getCheckoutIdempotencyKey(checkoutFingerprint),
         customerNotes: customerNotes.trim() || undefined,
         items: cart.map((item) => {
           const itemData: any = {
@@ -1045,8 +1072,6 @@ export function PublicCatalog() {
         toast.info('Clique no botão abaixo para abrir a conversa no WhatsApp.', { duration: 4000 });
       }
 
-      // Resetar chave de idempotência para o próximo pedido
-      setCheckoutIdempotencyKey(`pub_${Date.now()}_${secureRandomId()}`);
     } catch (err: any) {
       console.error('Erro ao registrar pedido:', err);
       const errorMsg = err?.message || 'Erro ao registrar o pedido. Por favor, revise seu carrinho.';
@@ -2594,6 +2619,8 @@ export function PublicCatalog() {
             setCustomerNotes('');
             setIsCartOpen(false);
             setSubmittedOrderInfo(null);
+            try { sessionStorage.removeItem('luisices_catalog_checkout_attempt'); } catch {}
+            try { sessionStorage.removeItem('luisices_catalog_customer_notes'); } catch {}
           }}
         />
 

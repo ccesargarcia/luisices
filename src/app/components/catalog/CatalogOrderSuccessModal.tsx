@@ -46,7 +46,7 @@ export function CatalogOrderSuccessModal({
             Pedido Enviado com Sucesso!
           </h3>
           <p className="text-xs sm:text-sm text-stone-500 dark:text-stone-400 leading-relaxed">
-            Seu pedido foi registrado em nosso ateliê e a conversa foi iniciada no WhatsApp. Nossa equipe já tem acesso à sua seleção de itens!
+            Seu pedido foi registrado em nosso ateliê. Abra o WhatsApp para enviar a mensagem com os itens e continuar o atendimento.
           </p>
         </div>
 

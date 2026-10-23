@@ -8,6 +8,12 @@ O registro começou em 12/10/2026 com as entregas recentes verificadas em produ�
 
 ### Alterado
 
+- Links públicos de acompanhamento agora têm ciclo de vida gerenciado por pedido, com listagem, cópia, revogação e exclusão; endpoints e limites de publicação estão documentados no backend.
+- Fortalecidas as validações de pedidos, pagamentos, etiquetas e conversão de orçamentos, com ajustes correspondentes nas regras do Firestore e na integração com o emulador.
+- Unificados cálculos de preços e pagamentos entre as telas, orçamento e backend, preservando centavos e registrando ajustes de pagamento no histórico.
+- Melhoradas as respostas do Copiloto e a entrada de valores monetários locais pela integração MCP.
+- Endurecida a proteção dos endpoints de acompanhamento público com secret de criptografia e regra de rate limit WAF.
+- O checkout da loja valida o pedido mínimo e calcula valores em centavos no backend; a vitrine recebe apenas campos públicos e os limites de quantidade ficam consistentes entre tela e servidor.
 - Atualizados os guias de CI e testes para refletir a execução atual com emuladores e a seleção de fluxos no GitHub Actions.
 - O deploy de produção ignora alterações isoladas em arquivos Markdown e texto na raiz do repositório.
 

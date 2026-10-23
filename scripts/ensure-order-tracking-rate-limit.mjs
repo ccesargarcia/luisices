@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * Creates or updates the Cloudflare zone WAF rate limit for public order tracking.
- * The rule is intentionally limited to the callable endpoint path.
+ * Creates or updates Cloudflare zone WAF rate limits for public tracking and catalog callables.
  */
 import dotenv from 'dotenv';
 
@@ -10,21 +9,47 @@ dotenv.config();
 
 const apiToken = process.env.CLOUDFLARE_API_TOKEN;
 const baseUrl = 'https://api.cloudflare.com/client/v4';
-const endpointPath = '/getPublicOrderTracking';
-const stableRef = 'luisices_public_tracking_rate_limit';
-const desiredRule = {
-  ref: stableRef,
-  description: 'Luisices: limite de consultas públicas de acompanhamento de pedidos',
-  expression: `http.request.uri.path eq "${endpointPath}"`,
-  action: 'block',
-  ratelimit: {
-    characteristics: ['cf.colo.id', 'ip.src'],
-    period: 10,
-    requests_per_period: 5,
-    mitigation_timeout: 10,
+const desiredRules = [
+  {
+    ref: 'luisices_public_tracking_rate_limit',
+    description: 'Luisices: limite de consultas públicas de acompanhamento de pedidos',
+    expression: 'http.request.uri.path eq "/getPublicOrderTracking"',
+    action: 'block',
+    ratelimit: {
+      characteristics: ['cf.colo.id', 'ip.src'],
+      period: 10,
+      requests_per_period: 5,
+      mitigation_timeout: 10,
+    },
+    enabled: true,
   },
-  enabled: true,
-};
+  {
+    ref: 'luisices_public_catalog_read_rate_limit',
+    description: 'Luisices: limite de leitura do catálogo público',
+    expression: 'http.request.uri.path eq "/getPublicCatalogProducts"',
+    action: 'block',
+    ratelimit: {
+      characteristics: ['cf.colo.id', 'ip.src'],
+      period: 60,
+      requests_per_period: 30,
+      mitigation_timeout: 60,
+    },
+    enabled: true,
+  },
+  {
+    ref: 'luisices_public_catalog_checkout_rate_limit',
+    description: 'Luisices: limite de criação de pedidos da loja pública',
+    expression: 'http.request.uri.path eq "/submitPublicCatalogOrder"',
+    action: 'block',
+    ratelimit: {
+      characteristics: ['cf.colo.id', 'ip.src'],
+      period: 600,
+      requests_per_period: 10,
+      mitigation_timeout: 900,
+    },
+    enabled: true,
+  },
+];
 
 if (!apiToken) {
   console.error('CLOUDFLARE_API_TOKEN não está configurado.');
@@ -58,7 +83,7 @@ async function getZone() {
   return zone;
 }
 
-async function ensureZoneRule(zone) {
+async function ensureZoneRules(zone) {
   let entrypoint;
   try {
     entrypoint = await request(`/zones/${zone.id}/rulesets/phases/http_ratelimit/entrypoint`);
@@ -74,46 +99,48 @@ async function ensureZoneRule(zone) {
         description: 'Rate limiting de consultas públicas do Luisices',
         kind: 'zone',
         phase: 'http_ratelimit',
-        rules: [desiredRule],
+        rules: desiredRules,
       },
     });
-    console.log('Regra WAF de acompanhamento criada no ruleset de zona.');
+    console.log('Regras WAF para acompanhamento e loja pública criadas no ruleset de zona.');
     return;
   }
 
-  const current = entrypoint.rules.find((rule) => rule.ref === stableRef || rule.expression === desiredRule.expression);
-  if (!current) {
-    await request(`/zones/${zone.id}/rulesets/${entrypoint.id}/rules`, {
-      method: 'POST',
+  for (const desiredRule of desiredRules) {
+    const current = entrypoint.rules.find((rule) => rule.ref === desiredRule.ref || rule.expression === desiredRule.expression);
+    if (!current) {
+      await request(`/zones/${zone.id}/rulesets/${entrypoint.id}/rules`, {
+        method: 'POST',
+        body: desiredRule,
+      });
+      console.log(`Regra WAF adicionada: ${desiredRule.ref}`);
+      continue;
+    }
+
+    const sameConfig = current.enabled === true
+      && current.action === desiredRule.action
+      && current.expression === desiredRule.expression
+      && current.ratelimit?.period === desiredRule.ratelimit.period
+      && current.ratelimit?.requests_per_period === desiredRule.ratelimit.requests_per_period
+      && current.ratelimit?.mitigation_timeout === desiredRule.ratelimit.mitigation_timeout
+      && current.ratelimit?.characteristics?.includes('ip.src')
+      && current.ratelimit?.characteristics?.includes('cf.colo.id');
+    if (sameConfig) {
+      console.log(`Regra WAF ativa e atualizada: ${current.id}`);
+      continue;
+    }
+
+    await request(`/zones/${zone.id}/rulesets/${entrypoint.id}/rules/${current.id}`, {
+      method: 'PUT',
       body: desiredRule,
     });
-    console.log('Regra WAF de acompanhamento adicionada ao ruleset existente.');
-    return;
+    console.log(`Regra WAF ajustada: ${desiredRule.ref}`);
   }
-
-  const sameConfig = current.enabled === true
-    && current.action === desiredRule.action
-    && current.expression === desiredRule.expression
-    && current.ratelimit?.period === desiredRule.ratelimit.period
-    && current.ratelimit?.requests_per_period === desiredRule.ratelimit.requests_per_period
-    && current.ratelimit?.mitigation_timeout === desiredRule.ratelimit.mitigation_timeout
-    && current.ratelimit?.characteristics?.includes('ip.src')
-    && current.ratelimit?.characteristics?.includes('cf.colo.id');
-  if (sameConfig) {
-    console.log(`Regra WAF ativa e atualizada: ${current.id}`);
-    return;
-  }
-
-  await request(`/zones/${zone.id}/rulesets/${entrypoint.id}/rules/${current.id}`, {
-    method: 'PUT',
-    body: desiredRule,
-  });
-  console.log(`Regra WAF ajustada para 5 requisições/10 s: ${current.id}`);
 }
 
 try {
   const zone = await getZone();
-  await ensureZoneRule(zone);
+  await ensureZoneRules(zone);
 } catch (error) {
   console.error(`Não foi possível configurar o rate limit WAF: ${error.message}`);
   process.exitCode = 1;
