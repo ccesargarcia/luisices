@@ -959,6 +959,12 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
     if (deviceSnap.exists) {
       // Dispositivo existente: atualiza sem consultar toda a coleção (Otimização C1)
       const existingData = deviceSnap.data();
+      // Revogação individual é permanente para este identificador. Um heartbeat
+      // concorrente ou um cliente antigo não pode reativá-lo; um novo login usa
+      // outro deviceId e segue pelo fluxo de novo dispositivo abaixo.
+      if (existingData.status === 'revoked') {
+        throw new HttpsError('permission-denied', 'Sessão deste dispositivo revogada. Faça login novamente.');
+      }
       if (existingData.ip === ip && existingData.location) {
         locationString = existingData.location;
       } else if (resolvedLocationString) {

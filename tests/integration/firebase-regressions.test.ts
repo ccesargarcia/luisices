@@ -63,6 +63,19 @@ beforeEach(async () => {
 });
 
 describe('Perfis e desativação', () => {
+  it('não permite que UID novo leia perfil antigo mesmo quando o e-mail coincide', async () => {
+    await seed('userProfiles/old-admin', {
+      ...profile('old-admin', 'admin'),
+      email: 'reused@example.test',
+    });
+    const replacementAccount = env.authenticatedContext('new-account', {
+      email: 'reused@example.test',
+      email_verified: true,
+    }).firestore();
+
+    await assertPermissionDenied(() => getDoc(doc(replacementAccount as any, 'userProfiles/old-admin')));
+  });
+
   it('impede criação direta de perfil, mas permite atualização de dados próprios', async () => {
     const db = dbFor('new-user');
     // Usuário comum não pode criar o próprio perfil diretamente no Firestore

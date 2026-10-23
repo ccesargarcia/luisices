@@ -33,9 +33,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading]         = useState(true);
   const currentUidRef                 = useRef<string | null>(null);
   const isLoggingInRef                = useRef<boolean>(false);
+  const authTransitionRef              = useRef(0);
+  const [listenerGeneration, setListenerGeneration] = useState(0);
   const presence = usePresence(user);
 
   const handleLogout = useCallback(async (clearReg = false, uUid?: string) => {
+    authTransitionRef.current += 1;
     currentUidRef.current = null;
     try {
       if (presence.setOffline) {
@@ -66,20 +69,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserProfile(null);
   }, [presence, user]);
 
-  const loadProfile = useCallback(async (u: User) => {
-    const profile = await firebaseUserService.getUserProfile(
-      u.uid,
-      u.email ?? undefined,
-      u.displayName ?? undefined,
-    );
-    setUserProfile(profile);
-
-    // Set analytics user properties
-    if (profile) {
-      setUserAnalytics(u.uid, profile.role);
-    }
-  }, []);
-
   useEffect(() => {
     let profileUnsub: (() => void) | null = null;
     let deviceUnsub: (() => void) | null = null;
@@ -92,6 +81,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const transition = ++authTransitionRef.current;
+      const isCurrentTransition = () => authTransitionRef.current === transition;
       currentUidRef.current = u?.uid || null;
 
       if (profileUnsub) {
@@ -112,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           // Garante que o token de autenticação está válido antes de conectar os listeners do Firestore
           await u.getIdToken();
+          if (!isCurrentTransition()) return;
           
           let deviceId = localStorage.getItem('luisices_device_id');
 
@@ -121,12 +113,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
 
           const syncDeviceSession = async () => {
+            if (!isCurrentTransition()) return;
             const devId = localStorage.getItem('luisices_device_id') || deviceId;
             if (!devId) return;
             try {
               await firebaseUserService.registerDeviceSession(devId, navigator.userAgent);
+              if (!isCurrentTransition()) return;
               localStorage.setItem('luisices_device_last_reg', String(Date.now()));
             } catch (err: any) {
+              if (!isCurrentTransition()) return;
               console.warn('[AuthContext] Erro ao sincronizar sessão do dispositivo:', err);
               if (String(err?.message || '').toLowerCase().includes('revogada') && !isLoggingInRef.current) {
                 toast.error('Esta sessão foi revogada remotamente.');
@@ -159,6 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             doc(db, 'userProfiles', u.uid, 'devices', deviceId),
             { includeMetadataChanges: true },
             (snap) => {
+              if (!isCurrentTransition()) return;
               // O cache persistente pode conter estado antigo (por exemplo, status
               // "revoked"). Só uma resposta do servidor pode encerrar esta sessão.
               if (snap.metadata.fromCache) return;
@@ -203,6 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           };
 
         } catch (tokenErr) {
+          if (!isCurrentTransition()) return;
           console.warn('[AuthContext] Falha ao renovar token de autenticação inicial (possível offline):', tokenErr);
         }
 
@@ -211,30 +208,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           doc(db, 'userProfiles', u.uid),
           { includeMetadataChanges: true },
           async (snap) => {
+            if (!isCurrentTransition()) return;
             // Não liberar as rotas nem as consultas de pedidos com um perfil
             // possivelmente desatualizado do cache local. A confirmação do servidor
             // também evita decisões de revogação baseadas em dados antigos.
             if (snap.metadata.fromCache) return;
 
             if (!snap.exists()) {
-              // Se a conta autenticou com sucesso mas o documento userProfiles ainda não existe,
-              // inicializa perfil administrativo resiliente em memória para não bloquear o acesso
-              const fallback: UserProfile = {
-                uid: u.uid,
-                email: u.email || '',
-                displayName: u.displayName || u.email?.split('@')[0] || 'Administrador',
-                role: 'admin',
-                permissions: ADMIN_PERMISSIONS,
-                active: true,
-                createdAt: new Date().toISOString(),
-                createdBy: u.uid,
-              };
-              setUserProfile((prev) => prev ?? fallback);
+              setUserProfile(null);
               setLoading(false);
+              toast.error('O perfil desta conta não existe. Entre em contato com o administrador.');
+              await handleLogout(true, u.uid);
               return;
             }
 
             const data = snap.data() as UserProfile;
+            if (data.uid && data.uid !== u.uid) {
+              console.error('[AuthContext] UID do perfil diverge da conta autenticada:', {
+                authenticatedUid: u.uid,
+                profileUid: data.uid,
+              });
+              setUserProfile(null);
+              setLoading(false);
+              toast.error('Os dados desta conta estão inconsistentes. Entre em contato com o administrador.');
+              await handleLogout(true, u.uid);
+              return;
+            }
 
             // Se o administrador desativar a conta, efetua logout imediatamente
             if (data.active === false) {
@@ -247,6 +246,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Se o token for anterior à última revogação no servidor, encerra a sessão
             try {
               const idTokenResult = await u.getIdTokenResult();
+              if (!isCurrentTransition()) return;
               const authTime = Math.floor(new Date(idTokenResult.authTime).getTime() / 1000);
               if (!isLoggingInRef.current && data.tokensValidAfterTime && authTime <= data.tokensValidAfterTime) {
                 toast.error('Esta sessão foi revogada remotamente.');
@@ -259,14 +259,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               if (idTokenResult.claims.role !== data.role || idTokenResult.claims.active !== true) {
                 try {
                   const repair = await repairClaimsIfNeeded(u, data);
+                  if (!isCurrentTransition()) return;
                   if (!repair.synced) console.warn('[AuthContext] Claims ainda pendentes:', repair.status);
                 } catch (repairErr) {
                   console.warn('[AuthContext] Falha ao acionar reparo administrativo de claims:', repairErr);
                 }
               }
             } catch (claimErr) {
+              if (!isCurrentTransition()) return;
               console.warn('[AuthContext] Falha ao verificar/atualizar claims do token:', claimErr);
             }
+            if (!isCurrentTransition()) return;
 
             const fallbackPermissions = data.role === 'admin'
               ? ADMIN_PERMISSIONS
@@ -307,6 +310,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             const profile: UserProfile = {
               ...data,
+              uid: u.uid,
               active: true,
               permissions,
             };
@@ -316,6 +320,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setLoading(false);
           },
           (err) => {
+            if (!isCurrentTransition()) return;
             console.error('[AuthContext] Falha ao acompanhar o perfil do usuário no Firestore:', {
               code: err?.code,
               message: err?.message || String(err),
@@ -335,11 +340,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => {
+      authTransitionRef.current += 1;
+      currentUidRef.current = null;
       if (profileUnsub) profileUnsub();
       if (deviceUnsub) deviceUnsub();
       authUnsubscribe();
     };
-  }, []);
+  }, [listenerGeneration]);
 
   const login = async (email: string, password: string) => {
     isLoggingInRef.current = true;
@@ -385,21 +392,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!profile) {
-        // Se a conta autenticou com sucesso no Firebase Auth mas o documento userProfiles ainda não existe,
-        // inicializa perfil administrativo resiliente em memória para permitir o acesso e navegação imediata
         console.warn('[AuthContext] Perfil não encontrado no Firestore para UID:', user.uid);
-        const fallbackProfile: UserProfile = {
-          uid: user.uid,
-          email: user.email || email,
-          displayName: user.displayName || user.email?.split('@')[0] || 'Administrador',
-          role: 'admin',
-          permissions: ADMIN_PERMISSIONS,
-          active: true,
-          createdAt: new Date().toISOString(),
-          createdBy: user.uid,
-        };
-        setUserProfile(fallbackProfile);
-        profile = fallbackProfile;
+        await handleLogout(true, user.uid);
+        throw new Error('Perfil da conta não encontrado. Entre em contato com o administrador.');
       }
 
       if (profile.active === false) {
@@ -443,7 +438,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshUserProfile = async () => {
-    if (user) await loadProfile(user);
+    if (!user) return;
+    setLoading(true);
+    setUserProfile(null);
+    setListenerGeneration((generation) => generation + 1);
   };
 
   const hasPermission = useCallback(
