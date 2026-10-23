@@ -112,7 +112,7 @@ async function ensureZoneRules(zone) {
     }
 
     await request(`/zones/${zone.id}/rulesets/${entrypoint.id}/rules/${current.id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: desiredRule,
     });
     console.log(`Regra WAF ajustada: ${desiredRule.ref}`);
