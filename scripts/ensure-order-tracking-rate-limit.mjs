@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * Creates or updates Cloudflare zone WAF rate limits for public tracking and catalog callables.
+ * Creates or updates the Cloudflare zone WAF rate limit for public tracking and catalog callables.
+ * The current zone plan allows one rule in the http_ratelimit phase, so the public endpoints
+ * share a conservative limit instead of creating one rule per endpoint.
  */
 import dotenv from 'dotenv';
 
@@ -9,47 +11,19 @@ dotenv.config();
 
 const apiToken = process.env.CLOUDFLARE_API_TOKEN;
 const baseUrl = 'https://api.cloudflare.com/client/v4';
-const desiredRules = [
-  {
-    ref: 'luisices_public_tracking_rate_limit',
-    description: 'Luisices: limite de consultas públicas de acompanhamento de pedidos',
-    expression: 'http.request.uri.path eq "/getPublicOrderTracking"',
-    action: 'block',
-    ratelimit: {
-      characteristics: ['cf.colo.id', 'ip.src'],
-      period: 10,
-      requests_per_period: 5,
-      mitigation_timeout: 10,
-    },
-    enabled: true,
+const desiredRules = [{
+  ref: 'luisices_public_endpoints_rate_limit',
+  description: 'Luisices: limite de requisições públicas de acompanhamento e loja',
+  expression: 'http.request.uri.path in {"/getPublicOrderTracking" "/getPublicCatalogProducts" "/submitPublicCatalogOrder"}',
+  action: 'block',
+  ratelimit: {
+    characteristics: ['cf.colo.id', 'ip.src'],
+    period: 10,
+    requests_per_period: 5,
+    mitigation_timeout: 10,
   },
-  {
-    ref: 'luisices_public_catalog_read_rate_limit',
-    description: 'Luisices: limite de leitura do catálogo público',
-    expression: 'http.request.uri.path eq "/getPublicCatalogProducts"',
-    action: 'block',
-    ratelimit: {
-      characteristics: ['cf.colo.id', 'ip.src'],
-      period: 60,
-      requests_per_period: 30,
-      mitigation_timeout: 60,
-    },
-    enabled: true,
-  },
-  {
-    ref: 'luisices_public_catalog_checkout_rate_limit',
-    description: 'Luisices: limite de criação de pedidos da loja pública',
-    expression: 'http.request.uri.path eq "/submitPublicCatalogOrder"',
-    action: 'block',
-    ratelimit: {
-      characteristics: ['cf.colo.id', 'ip.src'],
-      period: 600,
-      requests_per_period: 10,
-      mitigation_timeout: 900,
-    },
-    enabled: true,
-  },
-];
+  enabled: true,
+}];
 
 if (!apiToken) {
   console.error('CLOUDFLARE_API_TOKEN não está configurado.');
@@ -107,7 +81,14 @@ async function ensureZoneRules(zone) {
   }
 
   for (const desiredRule of desiredRules) {
-    const current = entrypoint.rules.find((rule) => rule.ref === desiredRule.ref || rule.expression === desiredRule.expression);
+    const legacyRefs = [
+      'luisices_public_tracking_rate_limit',
+      'luisices_public_catalog_read_rate_limit',
+      'luisices_public_catalog_checkout_rate_limit',
+    ];
+    const current = entrypoint.rules.find((rule) => rule.ref === desiredRule.ref
+      || legacyRefs.includes(rule.ref)
+      || rule.expression === desiredRule.expression);
     if (!current) {
       await request(`/zones/${zone.id}/rulesets/${entrypoint.id}/rules`, {
         method: 'POST',
