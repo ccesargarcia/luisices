@@ -113,7 +113,8 @@ async function ensureZoneRules(zone) {
 
     await request(`/zones/${zone.id}/rulesets/${entrypoint.id}/rules/${current.id}`, {
       method: 'PATCH',
-      body: desiredRule,
+      // Cloudflare treats `ref` as the rule's stable identifier after creation.
+      body: { ...desiredRule, ref: current.ref },
     });
     console.log(`Regra WAF ajustada: ${desiredRule.ref}`);
   }
