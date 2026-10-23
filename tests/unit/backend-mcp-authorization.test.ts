@@ -83,6 +83,26 @@ describe('backend MCP authorization', () => {
     expect(getQuotes).toHaveBeenCalledWith({ uid: 'user-1' }, { limit: 20 });
   });
 
+  it('does not expose a collaborator email through customer search', async () => {
+    const tools = new AiToolsExecutor({
+      getScopedCustomers: vi.fn().mockResolvedValue({ customers: [] }),
+      getTeamMembers: vi.fn().mockResolvedValue([{
+        uid: 'creator-1', name: 'Colaborador', email: 'colaborador@example.com',
+      }]),
+      getScopedOrders: vi.fn().mockResolvedValue([{
+        userId: 'caller-1', createdBy: 'creator-1', createdByName: 'Colaborador',
+        customerName: 'Cliente', customerPhone: '11999990000', totalPrice: 100,
+      }]),
+    });
+
+    const result = await tools.executeQueryCustomers({ searchTerm: 'Colaborador' }, {
+      uid: 'caller-1', isEmployee: true, active: true,
+    });
+
+    expect(result.collaboratorFound).toEqual({ name: 'Colaborador' });
+    expect(result.collaboratorFound).not.toHaveProperty('email');
+  });
+
   it('requires orders:create before approving a quote with conversion enabled', async () => {
     const updateQuoteStatus = vi.fn();
     const tools = new AiToolsExecutor({ updateQuoteStatus });
