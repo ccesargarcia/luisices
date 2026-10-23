@@ -13,14 +13,15 @@ const apiToken = process.env.CLOUDFLARE_API_TOKEN;
 const baseUrl = 'https://api.cloudflare.com/client/v4';
 const desiredRules = [{
   ref: 'luisices_public_endpoints_rate_limit',
-  description: 'Luisices: limite de requisições públicas de acompanhamento e loja (30 por minuto)',
+  description: 'Luisices: limite de requisições públicas de acompanhamento e loja (30 por 10 segundos)',
   expression: 'http.request.uri.path in {"/getPublicOrderTracking" "/getPublicCatalogProducts" "/submitPublicCatalogOrder"}',
   action: 'block',
   ratelimit: {
     characteristics: ['cf.colo.id', 'ip.src'],
-    period: 60,
+    // The Cloudflare zone plan only supports a 10 second period for this phase.
+    period: 10,
     requests_per_period: 30,
-    mitigation_timeout: 60,
+    mitigation_timeout: 10,
   },
   enabled: true,
 }];
