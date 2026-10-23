@@ -4,7 +4,7 @@
 
 const { BUSINESS_TIMEZONE, TOOL_LIMITS } = require('./config');
 const { calculateRecipePricing, calculateHourlyRate, DEFAULT_PRICING_SETTINGS } = require('./pricing/pricingCalculator');
-const { filterOrdersByScope } = require('./authorization');
+const { sanitizeCollaboratorInfo, filterOrdersByScope } = require('./authorization');
 const { resolvePaymentAmounts, sumPaymentCents } = require('./financialMath');
 
 function getBusinessDate(date = new Date()) {
@@ -801,10 +801,8 @@ class AiToolsExecutor {
               totalFiltered: derivedCustomers.length,
               isFiltered: true,
               hasMore: derivedCustomers.length > limit,
-              // customers:read must not disclose employee contact details;
-              // team:read is a separate administrative permission.
               collaboratorFound: matchedMember
-                ? { name: matchedMember.name || 'Colaborador' }
+                ? sanitizeCollaboratorInfo(matchedMember, scope)
                 : { identifier: term },
             };
           }
