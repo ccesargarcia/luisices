@@ -27,32 +27,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function isStoreRoute(): boolean {
-  if (typeof window === 'undefined') return false;
-  const host = window.location.hostname.toLowerCase();
-  const view = (new URLSearchParams(window.location.search).get('view') || '').toLowerCase();
-  const isCatalogSubdomain =
-    host.startsWith('loja.') ||
-    host.startsWith('lojinha.') ||
-    host.startsWith('catalogo.') ||
-    host.startsWith('catalog.') ||
-    ['loja', 'lojinha', 'catalog', 'catalogo'].includes(view);
-
-  if (isCatalogSubdomain) return true;
-
-  const path = window.location.pathname.toLowerCase();
-  return (
-    path === '/loja' ||
-    path.startsWith('/loja/') ||
-    path === '/lojinha' ||
-    path.startsWith('/lojinha/') ||
-    path === '/catalogo' ||
-    path.startsWith('/catalogo/') ||
-    path === '/catalog' ||
-    path.startsWith('/catalog/')
-  );
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]               = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -181,37 +155,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           let initialCheckCompleted = false;
           let deviceWasConfirmedInDb = false;
 
-          const snapUnsub = onSnapshot(doc(db, 'userProfiles', u.uid, 'devices', deviceId), (snap) => {
-            if (snap.exists()) {
-              const data = snap.data();
-              if (data?.status === 'revoked') {
-                if (!isLoggingInRef.current) {
+          const snapUnsub = onSnapshot(
+            doc(db, 'userProfiles', u.uid, 'devices', deviceId),
+            { includeMetadataChanges: true },
+            (snap) => {
+              // O cache persistente pode conter estado antigo (por exemplo, status
+              // "revoked"). Só uma resposta do servidor pode encerrar esta sessão.
+              if (snap.metadata.fromCache) return;
+
+              if (snap.exists()) {
+                const data = snap.data();
+                if (data?.status === 'revoked') {
+                  if (!isLoggingInRef.current) {
+                    toast.error('Esta sessão foi revogada remotamente.');
+                    localStorage.removeItem('luisices_device_id');
+                    localStorage.removeItem('luisices_device_last_reg');
+                    handleLogout(true, u.uid);
+                  }
+                  return;
+                }
+                deviceWasConfirmedInDb = true;
+                initialCheckCompleted = true;
+              } else {
+                // Só encerra a sessão se o dispositivo já estava previamente confirmado no Firestore e foi deletado ativamente por revogação.
+                if (deviceWasConfirmedInDb && !isLoggingInRef.current) {
                   toast.error('Esta sessão foi revogada remotamente.');
                   localStorage.removeItem('luisices_device_id');
                   localStorage.removeItem('luisices_device_last_reg');
                   handleLogout(true, u.uid);
+                } else if (!initialCheckCompleted) {
+                  initialCheckCompleted = true;
+                  syncDeviceSession();
                 }
-                return;
               }
-              deviceWasConfirmedInDb = true;
-              initialCheckCompleted = true;
-            } else {
-              // Só encerra a sessão se o dispositivo já estava previamente confirmado no Firestore e foi deletado ativamente por revogação
-              if (deviceWasConfirmedInDb && !isLoggingInRef.current) {
-                toast.error('Esta sessão foi revogada remotamente.');
-                localStorage.removeItem('luisices_device_id');
-                localStorage.removeItem('luisices_device_last_reg');
-                handleLogout(true, u.uid);
-              } else if (!initialCheckCompleted) {
-                initialCheckCompleted = true;
-                syncDeviceSession();
-              }
+            }, (err) => {
+              console.warn('[AuthContext] Falha ao verificar sessão do dispositivo:', {
+                code: err?.code,
+                message: err?.message || String(err),
+              });
             }
-          }, (err) => {
-            if (err?.code !== 'permission-denied' && !String(err?.message).includes('insufficient permissions')) {
-              console.warn('[AuthContext] Aviso ao escutar dispositivo:', err);
-            }
-          });
+          );
 
           deviceUnsub = () => {
             snapUnsub();
@@ -226,8 +209,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Assina atualizações em tempo real do perfil do usuário diretamente
         profileUnsub = onSnapshot(
           doc(db, 'userProfiles', u.uid),
+          { includeMetadataChanges: true },
           async (snap) => {
+            const isServerSnapshot = !snap.metadata.fromCache;
+
             if (!snap.exists()) {
+              // Aguarda a confirmação do servidor antes de concluir que o perfil
+              // foi removido; uma ausência no cache local pode estar desatualizada.
+              if (!isServerSnapshot) return;
+
               // Se a conta autenticou com sucesso mas o documento userProfiles ainda não existe,
               // inicializa perfil administrativo resiliente em memória para não bloquear o acesso
               const fallback: UserProfile = {
@@ -248,7 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const data = snap.data() as UserProfile;
 
             // Se o administrador desativar a conta, efetua logout imediatamente
-            if (data.active === false) {
+            if (isServerSnapshot && data.active === false) {
               toast.error('Sua conta foi desativada pelo administrador.');
               handleLogout(true, u.uid);
               setLoading(false);
@@ -256,27 +246,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             // Se o token for anterior à última revogação no servidor, encerra a sessão
-            try {
-              const idTokenResult = await u.getIdTokenResult();
-              const authTime = Math.floor(new Date(idTokenResult.authTime).getTime() / 1000);
-              if (!isLoggingInRef.current && data.tokensValidAfterTime && authTime <= data.tokensValidAfterTime) {
-                toast.error('Esta sessão foi revogada remotamente.');
-                handleLogout(true, u.uid);
-                setLoading(false);
-                return;
-              }
-
-              // Auto-recuperação de claims: sincroniza se divergir do perfil do Firestore
-              if (idTokenResult.claims.role !== data.role || idTokenResult.claims.active !== true) {
-                try {
-                  const repair = await repairClaimsIfNeeded(u, data);
-                  if (!repair.synced) console.warn('[AuthContext] Claims ainda pendentes:', repair.status);
-                } catch (repairErr) {
-                  console.warn('[AuthContext] Falha ao acionar reparo administrativo de claims:', repairErr);
+            if (isServerSnapshot) {
+              try {
+                const idTokenResult = await u.getIdTokenResult();
+                const authTime = Math.floor(new Date(idTokenResult.authTime).getTime() / 1000);
+                if (!isLoggingInRef.current && data.tokensValidAfterTime && authTime <= data.tokensValidAfterTime) {
+                  toast.error('Esta sessão foi revogada remotamente.');
+                  handleLogout(true, u.uid);
+                  setLoading(false);
+                  return;
                 }
+
+                // Só repara claims com base em um perfil confirmado pelo servidor.
+                if (idTokenResult.claims.role !== data.role || idTokenResult.claims.active !== true) {
+                  try {
+                    const repair = await repairClaimsIfNeeded(u, data);
+                    if (!repair.synced) console.warn('[AuthContext] Claims ainda pendentes:', repair.status);
+                  } catch (repairErr) {
+                    console.warn('[AuthContext] Falha ao acionar reparo administrativo de claims:', repairErr);
+                  }
+                }
+              } catch (claimErr) {
+                console.warn('[AuthContext] Falha ao verificar/atualizar claims do token:', claimErr);
               }
-            } catch (claimErr) {
-              console.warn('[AuthContext] Falha ao verificar/atualizar claims do token:', claimErr);
             }
 
             const fallbackPermissions = data.role === 'admin'
@@ -327,12 +319,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setLoading(false);
           },
           (err) => {
-            if (!isStoreRoute() && err?.code !== 'permission-denied' && !String(err?.message).includes('insufficient permissions')) {
-              console.warn('[AuthContext] Aviso ao escutar perfil do usuário no Firestore:', err?.message || err);
-            }
-            // Falha ao validar o perfil deve bloquear o acesso até que a identidade
-            // seja confirmada novamente; nunca assumir um perfil ativo por fallback.
-            setUserProfile(null);
+            console.error('[AuthContext] Falha ao acompanhar o perfil do usuário no Firestore:', {
+              code: err?.code,
+              message: err?.message || String(err),
+            });
+            // Uma falha temporária de leitura não significa que o Firebase encerrou
+            // a sessão. Preserve um perfil já confirmado para evitar redirecionamento
+            // falso para /login; se ainda não houver perfil, ProtectedRoute permite
+            // uma nova tentativa sem descartar a identidade autenticada.
+            setUserProfile((current) => current?.uid === u.uid ? current : null);
             setLoading(false);
           }
         );
