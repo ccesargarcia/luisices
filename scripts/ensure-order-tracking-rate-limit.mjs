@@ -2,7 +2,7 @@
 /**
  * Creates or updates the Cloudflare zone WAF rate limit for public tracking and catalog callables.
  * The current zone plan allows one rule in the http_ratelimit phase, so the public endpoints
- * share a conservative limit instead of creating one rule per endpoint.
+ * share a limit. Checkout has a stricter IP-based limit in the backend.
  */
 import dotenv from 'dotenv';
 
@@ -13,14 +13,14 @@ const apiToken = process.env.CLOUDFLARE_API_TOKEN;
 const baseUrl = 'https://api.cloudflare.com/client/v4';
 const desiredRules = [{
   ref: 'luisices_public_endpoints_rate_limit',
-  description: 'Luisices: limite de requisições públicas de acompanhamento e loja',
+  description: 'Luisices: limite de requisições públicas de acompanhamento e loja (30 por minuto)',
   expression: 'http.request.uri.path in {"/getPublicOrderTracking" "/getPublicCatalogProducts" "/submitPublicCatalogOrder"}',
   action: 'block',
   ratelimit: {
     characteristics: ['cf.colo.id', 'ip.src'],
-    period: 10,
-    requests_per_period: 5,
-    mitigation_timeout: 10,
+    period: 60,
+    requests_per_period: 30,
+    mitigation_timeout: 60,
   },
   enabled: true,
 }];
@@ -100,6 +100,7 @@ async function ensureZoneRules(zone) {
 
     const sameConfig = current.enabled === true
       && current.action === desiredRule.action
+      && current.description === desiredRule.description
       && current.expression === desiredRule.expression
       && current.ratelimit?.period === desiredRule.ratelimit.period
       && current.ratelimit?.requests_per_period === desiredRule.ratelimit.requests_per_period

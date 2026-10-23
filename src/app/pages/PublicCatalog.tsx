@@ -75,6 +75,38 @@ export interface CatalogProduct {
   createdAt?: string;
 }
 
+const CATALOG_PRODUCTS_CACHE_KEY = 'luisices_public_catalog_products_v1';
+const CATALOG_PRODUCTS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
+function readCachedCatalogProducts(): CatalogProduct[] {
+  try {
+    const raw = localStorage.getItem(CATALOG_PRODUCTS_CACHE_KEY);
+    if (!raw) return [];
+
+    const cached = JSON.parse(raw);
+    if (
+      !cached ||
+      !Number.isFinite(cached.savedAt) ||
+      Date.now() - cached.savedAt > CATALOG_PRODUCTS_CACHE_TTL_MS ||
+      !Array.isArray(cached.products)
+    ) {
+      localStorage.removeItem(CATALOG_PRODUCTS_CACHE_KEY);
+      return [];
+    }
+
+    return cached.products.filter((product: CatalogProduct) =>
+      product &&
+      typeof product.id === 'string' &&
+      typeof product.name === 'string' &&
+      typeof product.category === 'string' &&
+      Number.isFinite(product.price) &&
+      typeof product.imageUrl === 'string'
+    );
+  } catch {
+    return [];
+  }
+}
+
 export interface CartItem {
   id: string;
   product: CatalogProduct;
@@ -187,8 +219,9 @@ export function PublicCatalog() {
   }, [isCategoryDropdownOpen, isBottomSheetOpen]);
 
   // Produtos reais carregados em tempo real via Firestore (IndexedDB nativo do SDK)
-  const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [products, setProducts] = useState<CatalogProduct[]>(readCachedCatalogProducts);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [catalogLoadError, setCatalogLoadError] = useState(false);
 
   // Limpeza de caches obsoletos de produtos no localStorage
   useEffect(() => {
@@ -709,6 +742,13 @@ export function PublicCatalog() {
       if (!isMounted) return;
       setProducts(storeList);
       setLoadingProducts(false);
+      setCatalogLoadError(false);
+      try {
+        localStorage.setItem(CATALOG_PRODUCTS_CACHE_KEY, JSON.stringify({
+          savedAt: Date.now(),
+          products: storeList,
+        }));
+      } catch {}
 
       // Sincronizar carrinho: atualizar dados/preços vigentes e remover itens que foram excluídos da vitrine
       setCart((prevCart) => {
@@ -734,7 +774,10 @@ export function PublicCatalog() {
       })
       .catch((err) => {
         console.warn('Erro ao carregar produtos da vitrine pública:', err);
-        if (isMounted) setLoadingProducts(false);
+        if (isMounted) {
+          setCatalogLoadError(true);
+          setLoadingProducts(false);
+        }
       });
 
     return () => {
@@ -1808,6 +1851,11 @@ export function PublicCatalog() {
               ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8'
               : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 lg:gap-6'
           }>
+            {catalogLoadError && products.length > 0 && (
+              <div className="col-span-full rounded-xl border border-amber-300/70 bg-amber-50/90 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-100" role="status">
+                Exibindo os produtos carregados anteriormente. Aguarde alguns instantes e atualize a página para tentar novamente.
+              </div>
+            )}
             {loadingProducts && products.length === 0 ? (
               Array.from({ length: 8 }).map((_, i) => (
                 <div
@@ -2028,10 +2076,16 @@ export function PublicCatalog() {
             <div className="text-center py-16 text-[#504444] dark:text-[#c9c0b8] bg-white/40 dark:bg-[#1f191b]/50 rounded-3xl p-8 border border-white/50 max-w-lg mx-auto">
               <Search size={32} className="mx-auto text-stone-400 mb-2 opacity-50" />
               <p className="text-sm font-semibold">
-                {products.length === 0 ? 'Nenhum produto cadastrado no catálogo ainda.' : 'Nenhum produto encontrado para sua busca.'}
+                {catalogLoadError && products.length === 0
+                  ? 'Não foi possível carregar o catálogo agora.'
+                  : products.length === 0
+                    ? 'Nenhum produto cadastrado no catálogo ainda.'
+                    : 'Nenhum produto encontrado para sua busca.'}
               </p>
               <p className="text-xs text-stone-400 mt-1">
-                {products.length === 0
+                {catalogLoadError && products.length === 0
+                  ? 'A conexão pode estar temporariamente limitada. Aguarde um pouco e atualize a página.'
+                  : products.length === 0
                   ? 'Os produtos marcados como públicos no painel aparecerão aqui.'
                   : 'Tente buscar por outros termos ou selecione "Todos os produtos".'}
               </p>
