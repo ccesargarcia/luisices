@@ -227,6 +227,45 @@ export class FirebaseOrderService {
         }
       }
     }
+    if (data.items != null) {
+      if (!Array.isArray(data.items)) {
+        throw new Error('A lista de produtos do pedido é inválida.');
+      }
+      const items = data.items.filter(item => String(item?.name || '').trim());
+      if (items.length > 10) {
+        throw new Error('O pedido não pode ter mais de 10 produtos.');
+      }
+      let itemsQuantity = 0;
+      let itemsPrice = 0;
+      for (const item of items) {
+        const name = String(item?.name || '').trim();
+        const quantity = typeof item?.quantity === 'number' ? item.quantity : Number(item?.quantity);
+        const rawUnitPrice = typeof item?.unitPrice === 'number'
+          ? item.unitPrice
+          : typeof item?.unitPrice === 'string'
+            ? parseDecimalMoneyInput(item.unitPrice)
+            : null;
+        if (!name || name.length > 300 || !Number.isInteger(quantity) || quantity < 1 || quantity > 10000 ||
+            rawUnitPrice === null || !Number.isFinite(rawUnitPrice) || rawUnitPrice < 0 || rawUnitPrice > 1000000) {
+          throw new Error('Confira cada produto: nome, quantidade inteira e valor unitário precisam ser válidos.');
+        }
+        const unitPrice = this.ensurePositive(rawUnitPrice);
+        const linePrice = typeof item.price === 'number' && Number.isFinite(item.price)
+          ? this.ensurePositive(item.price)
+          : Number((quantity * unitPrice).toFixed(2));
+        if (linePrice > 1000000 || Math.abs(linePrice - quantity * unitPrice) >= 0.05) {
+          throw new Error(`O subtotal do produto "${name}" não corresponde à quantidade e ao valor unitário.`);
+        }
+        itemsQuantity += quantity;
+        itemsPrice = Math.round((itemsPrice + linePrice) * 100) / 100;
+      }
+      if (items.length > 0 && data.quantity !== undefined && itemsQuantity !== data.quantity) {
+        throw new Error('A quantidade total não corresponde à soma das quantidades dos produtos.');
+      }
+      if (items.length > 0 && data.price !== undefined && Math.abs(itemsPrice - data.price) >= 0.05) {
+        throw new Error('O valor total não corresponde à soma dos subtotais dos produtos.');
+      }
+    }
     if (data.customerName !== undefined) {
       if (!data.customerName || typeof data.customerName !== 'string' || !data.customerName.trim()) {
         throw new Error('Nome do cliente é obrigatório.');
@@ -244,13 +283,35 @@ export class FirebaseOrderService {
       }
     }
     if (data.quantity !== undefined) {
-      if (typeof data.quantity !== 'number' || data.quantity <= 0) {
-        throw new Error('A quantidade deve ser um número maior que zero.');
+      if (typeof data.quantity !== 'number' || !Number.isInteger(data.quantity) || data.quantity < 1 || data.quantity > 10000) {
+        throw new Error('A quantidade deve ser um número inteiro entre 1 e 10.000.');
       }
     }
     if (data.price !== undefined) {
-      if (typeof data.price !== 'number' || data.price < 0 || isNaN(data.price)) {
-        throw new Error('O preço não pode ser negativo.');
+      if (typeof data.price !== 'number' || !Number.isFinite(data.price) || data.price < 0 || data.price > 1000000) {
+        throw new Error('O valor do pedido deve estar entre R$ 0,00 e R$ 1.000.000,00.');
+      }
+    }
+    if (data.unitPrice != null && (typeof data.unitPrice !== 'number' || !Number.isFinite(data.unitPrice) || data.unitPrice < 0 || data.unitPrice > 1000000)) {
+      throw new Error('O valor unitário deve estar entre R$ 0,00 e R$ 1.000.000,00.');
+    }
+    if (data.pricingMode != null && !['unit', 'total', 'items'].includes(data.pricingMode)) {
+      throw new Error('O tipo de precificação do pedido é inválido.');
+    }
+    if (data.customerPhone != null && (typeof data.customerPhone !== 'string' || data.customerPhone.length > 50)) {
+      throw new Error('O telefone do cliente deve ter no máximo 50 caracteres.');
+    }
+    if (data.notes != null && (typeof data.notes !== 'string' || data.notes.length > 1000)) {
+      throw new Error('As observações devem ter no máximo 1.000 caracteres.');
+    }
+    if (data.deliveryDate !== undefined && (typeof data.deliveryDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(data.deliveryDate))) {
+      throw new Error('Informe uma data de entrega válida.');
+    }
+    if (typeof data.deliveryDate === 'string') {
+      const parsedDeliveryDate = new Date(`${data.deliveryDate}T00:00:00.000Z`);
+      if (Number.isNaN(parsedDeliveryDate.getTime()) ||
+          parsedDeliveryDate.toISOString().slice(0, 10) !== data.deliveryDate) {
+        throw new Error('Informe uma data de entrega válida.');
       }
     }
     if (data.status !== undefined) {
@@ -951,6 +1012,11 @@ export class FirebaseOrderService {
 
       if (saleSnap.exists()) {
         const salePayload: any = { updatedAt: now };
+        // Reparar registros financeiros legados que não acompanharam a atribuição do pedido.
+        if (orderData.assignedTo && !saleSnap.data().assignedTo) {
+          salePayload.assignedTo = orderData.assignedTo;
+          salePayload.assignedToName = orderData.assignedToName || null;
+        }
         if (cleanUpdates.price !== undefined || cleanUpdates.isExchange !== undefined) {
           const exchange = cleanUpdates.isExchange ?? orderData.isExchange;
           salePayload.amount = exchange ? 0 : (cleanUpdates.price ?? orderData.price ?? 0);
@@ -1291,21 +1357,11 @@ export class FirebaseOrderService {
           });
         } else {
           // Reconstrução contábil caso o registro de faturamento não exista (pedido legado)
+          const fullOrder = { ...this.mapOrderDoc(orderSnap), ...updates };
+          const saleRecord = firebaseLedgerService.mapOrderToSaleRecord(fullOrder as Order, userId);
           transaction.set(saleRef, {
-            orderId,
-            orderNumber: data.orderNumber || null,
-            customerName: data.customerName || '',
-            customerPhone: data.customerPhone || null,
-            amount: data.price || 0,
-            paidAmount: data.payment?.paidAmount || (data.payment?.status === 'paid' ? data.price : 0),
-            status: updates.status,
-            date: (data.createdAt && typeof data.createdAt.toDate === 'function')
-              ? data.createdAt.toDate().toISOString().split('T')[0]
-              : (typeof data.createdAt === 'string' ? data.createdAt.split('T')[0] : now.split('T')[0]),
-            userId: data.userId || userId,
-            assignedTo: data.assignedTo || null,
-            createdAt: data.createdAt || now,
-            updatedAt: now,
+            ...saleRecord,
+            isDeletedFromOrders: data.deletedAt != null,
           });
         }
       }

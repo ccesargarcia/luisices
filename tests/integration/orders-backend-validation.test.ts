@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, beforeEach, afterAll, describe, it, expect } from 'vitest';
 import { initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, setDoc, updateDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, getDoc, runTransaction, Timestamp } from 'firebase/firestore';
 
 let env: RulesTestEnvironment;
 const dbFor = (uid: string) => env.authenticatedContext(uid).firestore();
@@ -77,6 +77,24 @@ beforeEach(async () => {
       role: 'funcionario',
       active: true,
       permissions: { orders: { view: true, edit: false, delete: false } },
+    });
+    await fs.doc('userProfiles/emp-no-view').set({
+      role: 'funcionario',
+      active: true,
+      permissions: { orders: { view: false, edit: true, delete: false } },
+    });
+    await fs.doc('userProfiles/emp-delete-only').set({
+      role: 'funcionario',
+      active: true,
+      permissions: { orders: { view: true, edit: false, delete: true } },
+    });
+    await fs.doc('userProfiles/emp-archived-delete-only').set({
+      role: 'funcionario',
+      active: true,
+      permissions: {
+        orders: { view: true, edit: false, delete: false },
+        archivedOrders: { view: true, create: false, edit: false, delete: true },
+      },
     });
     await fs.doc('userProfiles/admin').set({
       role: 'admin',
@@ -843,6 +861,363 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
           }],
         }, 2)
       );
+    });
+  });
+
+  describe('4. Permissões transacionais entre pedidos atribuídos e salesLedger legado', () => {
+    it('edita pedido atribuído, repara salesLedger legado e conclui com pagamento preservado', async () => {
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('salesLedger/order-1').set({
+          id: 'order-1',
+          orderId: 'order-1',
+          orderNumber: baseOrder.orderNumber,
+          userId: 'owner',
+          customerName: baseOrder.customerName,
+          customerPhone: baseOrder.customerPhone,
+          productName: baseOrder.productName,
+          quantity: 2,
+          amount: 200,
+          isExchange: false,
+          paymentStatus: 'partial',
+          paidAmount: 50,
+          paymentMethod: 'pix',
+          date: '2026-10-24',
+          deliveryDate: baseOrder.deliveryDate,
+          status: 'pending',
+          createdAt: '2026-10-24T12:00:00.000Z',
+          updatedAt: '2026-10-24T12:00:00.000Z',
+        });
+      });
+
+      const employeeDb = dbFor('emp-assigned');
+      await assertSucceeds(runTransaction(employeeDb, async (transaction) => {
+        const orderRef = doc(employeeDb, 'orders/order-1');
+        const saleRef = doc(employeeDb, 'salesLedger/order-1');
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+
+        transaction.update(orderRef, {
+          productName: 'Convite Luxo e envelope',
+          quantity: 3,
+          price: 300,
+          pricingMode: 'items',
+          items: [
+            { name: 'Convite Luxo', quantity: 2, unitPrice: 100, price: 200 },
+            { name: 'Envelope', quantity: 1, unitPrice: 100, price: 100 },
+          ],
+          payment: {
+            status: 'partial', method: 'pix', totalAmount: 300,
+            paidAmount: 75, remainingAmount: 225,
+          },
+          version: 2,
+          updatedAt: '2026-10-24T13:00:00.000Z',
+        });
+        transaction.update(saleRef, {
+          productName: 'Convite Luxo e envelope',
+          quantity: 3,
+          amount: 300,
+          paymentStatus: 'partial',
+          paidAmount: 75,
+          paymentMethod: 'pix',
+          assignedTo: 'emp-assigned',
+          assignedToName: null,
+          updatedAt: '2026-10-24T13:00:00.000Z',
+        });
+      }));
+
+      await assertSucceeds(runTransaction(employeeDb, async (transaction) => {
+        const orderRef = doc(employeeDb, 'orders/order-1');
+        const saleRef = doc(employeeDb, 'salesLedger/order-1');
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+        transaction.update(orderRef, {
+          status: 'completed',
+          version: 3,
+          updatedAt: '2026-10-24T14:00:00.000Z',
+        });
+        transaction.update(saleRef, {
+          status: 'completed',
+          updatedAt: '2026-10-24T14:00:00.000Z',
+        });
+      }));
+
+      const savedOrder = await getDoc(doc(employeeDb, 'orders/order-1'));
+      const savedLedger = await getDoc(doc(employeeDb, 'salesLedger/order-1'));
+      expect(savedOrder.data()?.status).toBe('completed');
+      expect(savedOrder.data()?.payment.paidAmount).toBe(75);
+      expect(savedLedger.data()?.assignedTo).toBe('emp-assigned');
+      expect(savedLedger.data()?.amount).toBe(300);
+      expect(savedLedger.data()?.paidAmount).toBe(75);
+      expect(savedLedger.data()?.status).toBe('completed');
+    });
+
+    it('permite recriar o salesLedger ausente ao atualizar um pedido atribuído na produção', async () => {
+      const createdAt = '2026-10-24T12:00:00.000Z';
+      const orderId = 'order-without-ledger';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedToName: 'Funcionário responsável',
+          createdAt,
+          version: 1,
+        });
+      });
+
+      const employeeDb = dbFor('emp-assigned');
+      await assertSucceeds(runTransaction(employeeDb, async (transaction) => {
+        const orderRef = doc(employeeDb, `orders/${orderId}`);
+        const saleRef = doc(employeeDb, `salesLedger/${orderId}`);
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+        transaction.update(orderRef, {
+          status: 'in-progress',
+          version: 2,
+          updatedAt: '2026-10-24T13:00:00.000Z',
+        });
+        transaction.set(saleRef, {
+          id: orderId,
+          orderId,
+          orderNumber: baseOrder.orderNumber,
+          userId: 'owner',
+          assignedTo: 'emp-assigned',
+          assignedToName: 'Funcionário responsável',
+          customerId: null,
+          customerName: baseOrder.customerName,
+          customerPhone: baseOrder.customerPhone,
+          productName: baseOrder.productName,
+          quantity: baseOrder.quantity,
+          amount: baseOrder.price,
+          isExchange: false,
+          paymentStatus: 'partial',
+          paidAmount: 50,
+          paymentMethod: 'pix',
+          date: createdAt,
+          deliveryDate: baseOrder.deliveryDate,
+          status: 'in-progress',
+          isDeletedFromOrders: false,
+          notes: baseOrder.notes,
+          tags: null,
+          createdAt,
+          updatedAt: '2026-10-24T13:00:00.000Z',
+        });
+      }));
+
+      const savedLedger = await getDoc(doc(employeeDb, `salesLedger/${orderId}`));
+      expect(savedLedger.data()?.status).toBe('in-progress');
+      expect(savedLedger.data()?.assignedTo).toBe('emp-assigned');
+      expect(savedLedger.data()?.amount).toBe(baseOrder.price);
+    });
+
+    it('rejeita recriação de salesLedger com valor diferente do pedido vinculado', async () => {
+      const orderId = 'order-with-forged-ledger';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedToName: 'Funcionário responsável',
+          createdAt: '2026-10-24T12:00:00.000Z',
+          version: 1,
+        });
+      });
+
+      const employeeDb = dbFor('emp-assigned');
+      await assertFails(runTransaction(employeeDb, async (transaction) => {
+        const orderRef = doc(employeeDb, `orders/${orderId}`);
+        const saleRef = doc(employeeDb, `salesLedger/${orderId}`);
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+        transaction.update(orderRef, {
+          status: 'in-progress',
+          version: 2,
+          updatedAt: '2026-10-24T13:00:00.000Z',
+        });
+        transaction.set(saleRef, {
+          id: orderId,
+          orderId,
+          userId: 'owner',
+          assignedTo: 'emp-assigned',
+          assignedToName: 'Funcionário responsável',
+          customerId: null,
+          orderNumber: baseOrder.orderNumber,
+          customerName: baseOrder.customerName,
+          customerPhone: baseOrder.customerPhone,
+          productName: baseOrder.productName,
+          quantity: baseOrder.quantity,
+          amount: baseOrder.price + 1,
+          isExchange: false,
+          paymentStatus: 'partial',
+          paidAmount: 50,
+          paymentMethod: 'pix',
+          date: '2026-10-24T12:00:00.000Z',
+          deliveryDate: baseOrder.deliveryDate,
+          status: 'in-progress',
+          isDeletedFromOrders: false,
+          notes: baseOrder.notes,
+          tags: null,
+          createdAt: '2026-10-24T12:00:00.000Z',
+          updatedAt: '2026-10-24T13:00:00.000Z',
+        });
+      }));
+    });
+
+    it('nega leitura e edição do ledger legado para funcionário não atribuído', async () => {
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('salesLedger/order-1').set({
+          id: 'order-1',
+          orderId: 'order-1',
+          orderNumber: baseOrder.orderNumber,
+          userId: 'owner',
+          customerName: baseOrder.customerName,
+          productName: baseOrder.productName,
+          quantity: 2,
+          amount: 200,
+          paymentStatus: 'partial',
+          paidAmount: 50,
+          status: 'pending',
+        });
+      });
+
+      const unassignedDb = dbFor('emp-unassigned');
+      const saleRef = doc(unassignedDb, 'salesLedger/order-1');
+      await assertFails(getDoc(saleRef));
+      await assertFails(updateDoc(saleRef, { amount: 201 }));
+    });
+
+    it('impede funcionário autorizado a editar o pedido de alterar o valor do ledger isoladamente', async () => {
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('salesLedger/order-1').set({
+          id: 'order-1',
+          orderId: 'order-1',
+          userId: 'owner',
+          assignedTo: 'emp-assigned',
+          amount: 200,
+          quantity: 2,
+          status: 'pending',
+        });
+      });
+
+      const employeeDb = dbFor('emp-assigned');
+      await assertFails(updateDoc(doc(employeeDb, 'salesLedger/order-1'), { amount: 1 }));
+    });
+
+    it('permite leitura ao funcionário atribuído, mas nega edição sem a permissão orders.edit', async () => {
+      const orderId = 'order-assigned-without-edit';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-no-edit',
+          version: 1,
+        });
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          orderNumber: baseOrder.orderNumber,
+          userId: 'owner',
+          assignedTo: 'emp-no-edit',
+          customerName: baseOrder.customerName,
+          productName: baseOrder.productName,
+          quantity: 2,
+          amount: 200,
+          paymentStatus: 'partial',
+          paidAmount: 50,
+          status: 'pending',
+        });
+      });
+
+      const readOnlyEmployeeDb = dbFor('emp-no-edit');
+      const orderRef = doc(readOnlyEmployeeDb, `orders/${orderId}`);
+      const saleRef = doc(readOnlyEmployeeDb, `salesLedger/${orderId}`);
+      await assertSucceeds(getDoc(orderRef));
+      await assertSucceeds(getDoc(saleRef));
+      await assertFails(updateDoc(saleRef, { amount: 201 }));
+      await assertFails(updateOrder(readOnlyEmployeeDb, `orders/${orderId}`, {
+        notes: 'Tentativa sem permissão de edição',
+      }));
+    });
+
+    it('nega leitura do pedido e do ledger ao funcionário atribuído sem orders.view', async () => {
+      const orderId = 'order-assigned-without-view';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-no-view',
+          version: 1,
+        });
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          userId: 'owner',
+          assignedTo: 'emp-no-view',
+          amount: 200,
+          quantity: 2,
+          status: 'pending',
+        });
+      });
+
+      const employeeDb = dbFor('emp-no-view');
+      await assertFails(getDoc(doc(employeeDb, `orders/${orderId}`)));
+      await assertFails(getDoc(doc(employeeDb, `salesLedger/${orderId}`)));
+    });
+
+    it('permite exclusão lógica a funcionário com delete mesmo sem orders.edit e sincroniza ledger legado', async () => {
+      const orderId = 'order-delete-only';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-delete-only',
+          version: 1,
+        });
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          userId: 'owner',
+          amount: baseOrder.price,
+          quantity: baseOrder.quantity,
+          status: baseOrder.status,
+        });
+      });
+
+      const employeeDb = dbFor('emp-delete-only');
+      const orderRef = doc(employeeDb, `orders/${orderId}`);
+      const saleRef = doc(employeeDb, `salesLedger/${orderId}`);
+      await assertSucceeds(updateOrder(employeeDb, `orders/${orderId}`, {
+        deletedAt: Timestamp.now(),
+        updatedAt: '2026-10-24T14:00:00.000Z',
+      }));
+      await assertSucceeds(updateDoc(saleRef, {
+        isDeletedFromOrders: true,
+        updatedAt: '2026-10-24T14:00:01.000Z',
+      }));
+
+      const savedOrder = await getDoc(orderRef);
+      const savedLedger = await getDoc(saleRef);
+      expect(savedOrder.data()?.deletedAt).toBeTruthy();
+      expect(savedLedger.data()?.isDeletedFromOrders).toBe(true);
+    });
+
+    it('usa archivedOrders.delete para exclusão lógica de pedido arquivado', async () => {
+      const orderId = 'archived-order-delete-only';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-archived-delete-only',
+          isArchived: true,
+          version: 1,
+        });
+      });
+
+      const employeeDb = dbFor('emp-archived-delete-only');
+      await assertSucceeds(updateOrder(employeeDb, `orders/${orderId}`, {
+        deletedAt: Timestamp.now(),
+        updatedAt: '2026-10-24T14:00:00.000Z',
+      }));
+    });
+
+    it('nega exclusão lógica quando funcionário atribuído não tem permissão delete', async () => {
+      const employeeDb = dbFor('emp-assigned');
+      await assertFails(updateOrder(employeeDb, 'orders/order-1', {
+        deletedAt: Timestamp.now(),
+        updatedAt: '2026-10-24T14:00:00.000Z',
+      }));
     });
   });
 });

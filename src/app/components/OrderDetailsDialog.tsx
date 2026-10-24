@@ -419,6 +419,26 @@ Equipe ${settings?.businessName || 'Luisices'}`;
   const handleSaveEdit = async () => {
     setIsSaving(true);
     try {
+      const validProducts = editProducts.filter(p => p.name.trim());
+      if (validProducts.length === 0) {
+        toast.error('Informe pelo menos um produto para o pedido.');
+        return;
+      }
+      if (validProducts.length > 10) {
+        toast.error('O pedido não pode ter mais de 10 produtos.');
+        return;
+      }
+      const productQuantities = validProducts.map(p => Number(p.quantity));
+      if (productQuantities.some(quantity => !Number.isInteger(quantity) || quantity < 1 || quantity > 10000)) {
+        toast.error('A quantidade de cada produto deve ser um número inteiro entre 1 e 10.000.');
+        return;
+      }
+      const totalQuantity = productQuantities.reduce((sum, quantity) => sum + quantity, 0);
+      if (totalQuantity > 10000) {
+        toast.error('A quantidade total do pedido não pode ultrapassar 10.000 itens.');
+        return;
+      }
+
       const parsedPaidAmount = parseDecimalMoneyInput(String(editData.paidAmount || '0'));
       if (parsedPaidAmount === null) {
         toast.error('Informe um valor pago válido, com até duas casas decimais.');
@@ -430,21 +450,19 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       }
       const paidAmt = parsedPaidAmount;
       const price = totalPrice > 0 ? totalPrice : order.price;
+      if (price > 1000000) {
+        toast.error('O valor total do pedido não pode ultrapassar R$ 1.000.000,00.');
+        return;
+      }
       if (paidAmt > price) {
         toast.error('O valor pago não pode ser maior que o total do pedido.');
         return;
       }
       const remainingAmount = price - paidAmt;
 
-      const validProducts = editProducts.filter(p => p.name.trim());
-      if (validProducts.length > 10) {
-        toast.error('O pedido não pode ter mais de 10 produtos.');
-        return;
-      }
       const productName = validProducts
         .map(p => parseInt(p.quantity) > 1 ? `${p.name.trim()} (${p.quantity}x)` : p.name.trim())
         .join(', ');
-      const totalQuantity = validProducts.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
 
       const allHaveExplicitUnitPrice = validProducts.length > 0 && validProducts.every(p => {
         return p.unitPrice.trim() !== '' && parseDecimalMoneyInput(p.unitPrice) !== null;

@@ -118,26 +118,37 @@ service cloud.firestore {
         );
     }
 
-    function canUpdateOrder(previous, changed) {
+    function hasOrderDeletePermission(profile, previous) {
+      let permissions = profile.get('permissions', {});
+      let ordersPermission = permissions.get('orders', false);
+      let archivedPermission = permissions.get('archivedOrders', null);
+      let deletePermission = previous.get('isArchived', false) == true
+        ? (archivedPermission == null ? ordersPermission : archivedPermission)
+        : ordersPermission;
+      return hasPerm(deletePermission, 'delete');
+    }
+
+    function canUpdateOrder(previous, next, changed) {
       let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
       let role = profile.get('role', '');
+      let isSoftDelete = changed.hasAny(['deletedAt']);
+      let isOnlySoftDelete = changed.hasOnly(['deletedAt', 'updatedAt', 'version']);
       return isActiveProfile(profile)
         && (
           role == 'admin'
           || (
             previous.userId == request.auth.uid
-            && hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
-            && (!changed.hasAny(['deletedAt'])
-              || hasPerm(profile.get('permissions', {}).get('orders', false), 'delete')
-              || hasPerm(profile.get('permissions', {}).get('archivedOrders', false), 'create'))
+            && (isSoftDelete
+              ? (isOnlySoftDelete && next.get('deletedAt', null) != null && hasOrderDeletePermission(profile, previous))
+              : hasPerm(profile.get('permissions', {}).get('orders', false), 'edit'))
           )
           || (
             role == 'funcionario'
             && previous.get('assignedTo', '') == request.auth.uid
-            && hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
             && !changed.hasAny(['assignedTo'])
-            && (!changed.hasAny(['deletedAt'])
-              || hasPerm(profile.get('permissions', {}).get('orders', false), 'delete'))
+            && (isSoftDelete
+              ? (isOnlySoftDelete && next.get('deletedAt', null) != null && hasOrderDeletePermission(profile, previous))
+              : hasPerm(profile.get('permissions', {}).get('orders', false), 'edit'))
           )
         );
     }
@@ -399,7 +410,7 @@ service cloud.firestore {
 
     function isAllowedOrderUpdate(previous, next) {
       let changed = next.diff(previous).affectedKeys();
-      return canUpdateOrder(previous, changed)
+      return canUpdateOrder(previous, next, changed)
         && changed.hasOnly([
           'customerName', 'customerPhone', 'customerId', 'productName',
           'quantity', 'price', 'pricingMode', 'unitPrice', 'items', 'status',
@@ -540,36 +551,150 @@ service cloud.firestore {
 
     // Regras para histórico financeiro de vendas (salesLedger)
     match /salesLedger/{saleId} {
+      // Registros antigos podem não ter recebido assignedTo quando o pedido foi atribuído.
+      // Nesses casos, a atribuição do pedido vinculado continua sendo a fonte de permissão.
+      function ledgerValueOr(value, fallback) {
+        return value == null || value == '' ? fallback : value;
+      }
+
+      function canReadThroughAssignedOrder() {
+        let orderPath = /databases/$(database)/documents/orders/$(saleId);
+        return request.auth != null
+          && exists(orderPath)
+          && get(orderPath).data.get('userId', null) == resource.data.get('userId', null)
+          && isAssignedEmployee(get(orderPath).data.get('assignedTo', ''))
+          && userHasPerm('orders', 'view');
+      }
+
+      function canUpdateThroughAssignedOrder() {
+        let orderPath = /databases/$(database)/documents/orders/$(saleId);
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return request.auth != null
+          && exists(orderPath)
+          && get(orderPath).data.get('userId', null) == resource.data.get('userId', null)
+          && (
+            isAssignedEmployeeEditor(get(orderPath).data.get('assignedTo', ''))
+            || (changed.hasOnly(['isDeletedFromOrders', 'updatedAt'])
+              && get(orderPath).data.get('deletedAt', null) != null
+              && isAssignedEmployee(get(orderPath).data.get('assignedTo', ''))
+              && hasOrderDeletePermission(
+                get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data,
+                get(orderPath).data
+              ))
+          )
+          && request.resource.data.get('userId', null) == resource.data.get('userId', null)
+          && (
+            (request.resource.data.get('assignedTo', null) == resource.data.get('assignedTo', null)
+              && request.resource.data.get('assignedToName', null) == resource.data.get('assignedToName', null))
+            || (resource.data.get('assignedTo', null) in [null, '']
+              && request.resource.data.get('assignedTo', null) == getAfter(orderPath).data.get('assignedTo', null)
+              && request.resource.data.get('assignedToName', null) == getAfter(orderPath).data.get('assignedToName', null))
+          )
+          && changed.hasOnly([
+            'amount', 'isExchange', 'status', 'customerName', 'customerPhone',
+            'customerId', 'productName', 'quantity', 'deliveryDate',
+            'paymentStatus', 'paidAmount', 'paymentMethod', 'assignedTo',
+            'assignedToName', 'isDeletedFromOrders', 'updatedAt'
+          ])
+          && (!changed.hasAny(['amount']) || request.resource.data.amount == (
+            getAfter(orderPath).data.get('isExchange', false)
+              ? 0
+              : getAfter(orderPath).data.get('price', 0)
+          ))
+          && (!changed.hasAny(['isExchange']) || request.resource.data.isExchange == getAfter(orderPath).data.get('isExchange', false))
+          && (!changed.hasAny(['status']) || request.resource.data.status == getAfter(orderPath).data.get('status', null))
+          && (!changed.hasAny(['customerName']) || request.resource.data.customerName == getAfter(orderPath).data.get('customerName', null))
+          && (!changed.hasAny(['customerPhone']) || request.resource.data.get('customerPhone', null) == getAfter(orderPath).data.get('customerPhone', null))
+          && (!changed.hasAny(['customerId']) || request.resource.data.get('customerId', null) == getAfter(orderPath).data.get('customerId', null))
+          && (!changed.hasAny(['productName']) || request.resource.data.productName == getAfter(orderPath).data.get('productName', null))
+          && (!changed.hasAny(['quantity']) || request.resource.data.quantity == getAfter(orderPath).data.get('quantity', null))
+          && (!changed.hasAny(['deliveryDate']) || request.resource.data.get('deliveryDate', null) == getAfter(orderPath).data.get('deliveryDate', null))
+          && (!changed.hasAny(['isDeletedFromOrders']) || request.resource.data.isDeletedFromOrders == (getAfter(orderPath).data.get('deletedAt', null) != null))
+          && (!changed.hasAny(['paymentStatus', 'paidAmount', 'paymentMethod']) || (
+            getAfter(orderPath).data.get('payment', null) is map
+            && (!changed.hasAny(['paymentStatus']) || request.resource.data.paymentStatus == getAfter(orderPath).data.payment.status)
+            && (!changed.hasAny(['paidAmount']) || request.resource.data.paidAmount == getAfter(orderPath).data.payment.paidAmount)
+            && (!changed.hasAny(['paymentMethod']) || request.resource.data.get('paymentMethod', null) == getAfter(orderPath).data.payment.get('method', null))
+          ));
+      }
+
+      function isSaleRecordForAssignedOrder(orderData) {
+        let payment = orderData.get('payment', null);
+        let rawPaidAmount = payment is map ? payment.get('paidAmount', 0) : 0;
+        let paidAmount = rawPaidAmount is number && rawPaidAmount > 0 ? rawPaidAmount : 0;
+        return request.resource.data.get('id', null) == saleId
+          && request.resource.data.get('orderId', null) == saleId
+          && request.resource.data.get('userId', null) == orderData.get('userId', null)
+          && request.resource.data.get('orderNumber', '') == ledgerValueOr(orderData.get('orderNumber', null), '')
+          && request.resource.data.get('assignedTo', null) == ledgerValueOr(orderData.get('assignedTo', null), null)
+          && request.resource.data.get('assignedToName', null) == ledgerValueOr(orderData.get('assignedToName', null), null)
+          && request.resource.data.get('customerId', null) == ledgerValueOr(orderData.get('customerId', null), null)
+          && request.resource.data.get('customerName', null) == orderData.get('customerName', null)
+          && request.resource.data.get('customerPhone', null) == ledgerValueOr(orderData.get('customerPhone', null), null)
+          && request.resource.data.get('productName', null) == orderData.get('productName', null)
+          && request.resource.data.get('quantity', null) == orderData.get('quantity', null)
+          && request.resource.data.get('amount', null) == (orderData.get('isExchange', false) ? 0 : orderData.get('price', 0))
+          && request.resource.data.get('isExchange', false) == orderData.get('isExchange', false)
+          && request.resource.data.get('status', null) == ledgerValueOr(orderData.get('status', null), 'pending')
+          && request.resource.data.get('deliveryDate', null) == ledgerValueOr(orderData.get('deliveryDate', null), null)
+          && request.resource.data.get('notes', null) == ledgerValueOr(orderData.get('notes', null), null)
+          && request.resource.data.get('tags', null) == orderData.get('tags', null)
+          && request.resource.data.get('isDeletedFromOrders', false) == (orderData.get('deletedAt', null) != null)
+          && request.resource.data.get('createdAt', null) == request.resource.data.get('date', null)
+          && (
+            (payment is map
+              && request.resource.data.get('paymentStatus', 'pending') == ledgerValueOr(payment.get('status', null), 'pending')
+              && request.resource.data.get('paidAmount', 0) == (orderData.get('isExchange', false) ? 0 : paidAmount)
+              && request.resource.data.get('paymentMethod', null) == ledgerValueOr(payment.get('method', null), null))
+            || (payment == null
+              && request.resource.data.get('paymentStatus', 'pending') == 'pending'
+              && request.resource.data.get('paidAmount', 0) == 0
+              && request.resource.data.get('paymentMethod', null) == null)
+          );
+      }
+
+      function canCreateThroughAssignedOrder() {
+        let orderPath = /databases/$(database)/documents/orders/$(saleId);
+        return request.auth != null
+          && exists(orderPath)
+          && isAssignedEmployeeEditor(get(orderPath).data.get('assignedTo', ''))
+          && isSaleRecordForAssignedOrder(getAfter(orderPath).data);
+      }
+
       allow read: if request.auth != null && (
         (resource != null && (
           ('userId' in resource.data && isOwner(resource.data.userId))
           || isAdmin()
-          || ('assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo))
+          || ('assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo) && userHasPerm('orders', 'view'))
         ))
+        || (resource != null && canReadThroughAssignedOrder())
         || (resource == null && (
           isAdmin()
           || (
             exists(/databases/$(database)/documents/orders/$(saleId))
             && (
-              isOwner(get(/databases/$(database)/documents/orders/$(saleId)).data.get('userId', ''))
-              || ('assignedTo' in get(/databases/$(database)/documents/orders/$(saleId)).data && isAssignedEmployee(get(/databases/$(database)/documents/orders/$(saleId)).data.assignedTo))
+              (isOwner(get(/databases/$(database)/documents/orders/$(saleId)).data.get('userId', '')) && userHasPerm('orders', 'view'))
+              || ('assignedTo' in get(/databases/$(database)/documents/orders/$(saleId)).data
+                && isAssignedEmployee(get(/databases/$(database)/documents/orders/$(saleId)).data.assignedTo)
+                && userHasPerm('orders', 'view'))
             )
           )
         ))
       );
-      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin())
-        && isValidSaleRecord(request.resource.data);
-      allow update: if (isAdmin() || (
-        resource != null
-        && 'userId' in resource.data
-        && 'userId' in request.resource.data
-        && request.resource.data.userId == resource.data.userId
-        && (isOwner(resource.data.userId) || (
-          'assignedTo' in resource.data
-          && isAssignedEmployeeEditor(resource.data.assignedTo)
-          && ('assignedTo' in request.resource.data && request.resource.data.assignedTo == resource.data.assignedTo)
-        ))
-      )) && isValidSaleRecord(request.resource.data);
+      allow create: if (
+        ('userId' in request.resource.data && isOwner(request.resource.data.userId))
+        || isAdmin()
+        || canCreateThroughAssignedOrder()
+      ) && isValidSaleRecord(request.resource.data);
+      allow update: if (
+        isAdmin()
+        || (resource != null
+          && 'userId' in resource.data
+          && 'userId' in request.resource.data
+          && request.resource.data.userId == resource.data.userId
+          && isOwner(resource.data.userId))
+        || canUpdateThroughAssignedOrder()
+      ) && isValidSaleRecord(request.resource.data);
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin();
     }

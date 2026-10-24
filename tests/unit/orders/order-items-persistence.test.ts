@@ -128,6 +128,57 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
       ]);
     });
 
+    it('preserva preços unitários diferentes em um pedido com 120 unidades e total em reais', async () => {
+      await firebaseOrderService.createOrder({
+        customerName: 'Cliente de Teste',
+        customerPhone: '11999998888',
+        productName: 'Produto A (100x), Produto B (19x), Produto C',
+        quantity: 120,
+        price: 92.19,
+        deliveryDate: '2026-11-30',
+        items: [
+          { name: 'Produto A', quantity: 100, unitPrice: 0.75, price: 75 },
+          { name: 'Produto B', quantity: 19, unitPrice: 0.85, price: 16.15 },
+          { name: 'Produto C', quantity: 1, unitPrice: 1.04, price: 1.04 },
+        ],
+      });
+
+      const savedOrder = mockTransactionSet.mock.calls.find(call => call[1]?.orderNumber)?.[1];
+      expect(savedOrder.quantity).toBe(120);
+      expect(savedOrder.price).toBe(92.19);
+      expect(savedOrder.items).toEqual([
+        { name: 'Produto A', quantity: 100, unitPrice: 0.75, price: 75 },
+        { name: 'Produto B', quantity: 19, unitPrice: 0.85, price: 16.15 },
+        { name: 'Produto C', quantity: 1, unitPrice: 1.04, price: 1.04 },
+      ]);
+      expect(savedOrder.items[0].unitPrice).not.toBe(savedOrder.items[1].unitPrice);
+      expect(savedOrder.pricingMode).toBe('items');
+    });
+
+    it('rejeita quantidade fracionária ao criar antes de gravar no Firestore', async () => {
+      await expect(firebaseOrderService.createOrder({
+        customerName: 'Cliente de Teste',
+        productName: 'Produto',
+        quantity: 1.5,
+        price: 15,
+        deliveryDate: '2026-11-30',
+      } as any)).rejects.toThrow('A quantidade deve ser um número inteiro');
+
+      expect(mockTransactionSet).not.toHaveBeenCalled();
+    });
+
+    it('rejeita uma data de entrega inexistente antes de gravar no Firestore', async () => {
+      await expect(firebaseOrderService.createOrder({
+        customerName: 'Cliente de Teste',
+        productName: 'Produto',
+        quantity: 1,
+        price: 15,
+        deliveryDate: '2026-02-31',
+      })).rejects.toThrow('Informe uma data de entrega válida');
+
+      expect(mockTransactionSet).not.toHaveBeenCalled();
+    });
+
     it('sanitiza preços unitários informados como string BRL com vírgula e descarta itens sem nome', async () => {
       const orderData = {
         customerName: 'Ana Souza',
@@ -258,6 +309,90 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
       expect(updatePayload.items[1].unitPrice).toBe(60);
     });
 
+    it('edita pedido atribuído, adiciona item e repara a atribuição ausente no salesLedger legado', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'owner-1',
+          assignedTo: 'user-1',
+          assignedToName: 'Funcionário responsável',
+          version: 1,
+          price: 75,
+          quantity: 100,
+          payment: { status: 'pending', totalAmount: 75, paidAmount: 0, remainingAmount: 75 },
+        }),
+      });
+      mockSaleGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({ userId: 'owner-1', amount: 75, paidAmount: 0 }),
+      });
+
+      await firebaseOrderService.updateOrder('assigned-legacy-order', {
+        productName: 'Produto A (100x), Produto B (19x), Produto C',
+        quantity: 120,
+        price: 92.19,
+        items: [
+          { name: 'Produto A', quantity: 100, unitPrice: 0.75, price: 75 },
+          { name: 'Produto B', quantity: 19, unitPrice: 0.85, price: 16.15 },
+          { name: 'Produto C', quantity: 1, unitPrice: 1.04, price: 1.04 },
+        ],
+        pricingMode: 'items',
+        unitPrice: null,
+        payment: { status: 'pending', paidAmount: 0, method: null } as any,
+      }, 1);
+
+      expect(mockTransactionUpdate).toHaveBeenCalledTimes(2);
+      const savedOrder = mockTransactionUpdate.mock.calls[0][1];
+      const savedLedger = mockTransactionUpdate.mock.calls[1][1];
+      expect(savedOrder.items).toHaveLength(3);
+      expect(savedOrder.quantity).toBe(120);
+      expect(savedOrder.price).toBe(92.19);
+      expect(savedLedger.assignedTo).toBe('user-1');
+      expect(savedLedger.assignedToName).toBe('Funcionário responsável');
+      expect(savedLedger.amount).toBe(92.19);
+      expect(savedLedger.quantity).toBe(120);
+    });
+
+    it('rejeita quantidade fracionária ao editar antes de iniciar a transação', async () => {
+      await expect(firebaseOrderService.updateOrder('order-invalid-items', {
+        quantity: 1.5,
+        price: 15,
+        items: [{ name: 'Produto', quantity: 1.5, unitPrice: 10, price: 15 }],
+      } as any)).rejects.toThrow('quantidade inteira');
+
+      expect(mockTransactionUpdate).not.toHaveBeenCalled();
+    });
+
+    it('rejeita soma de quantidades diferente da quantidade informada no pedido', async () => {
+      await expect(firebaseOrderService.updateOrder('order-invalid-quantity-sum', {
+        quantity: 3,
+        price: 100,
+        items: [{ name: 'Produto', quantity: 2, unitPrice: 50, price: 100 }],
+      })).rejects.toThrow('A quantidade total não corresponde à soma');
+
+      expect(mockTransactionUpdate).not.toHaveBeenCalled();
+    });
+
+    it('rejeita subtotal divergente ao editar antes de iniciar a transação', async () => {
+      await expect(firebaseOrderService.updateOrder('order-invalid-total', {
+        quantity: 2,
+        price: 100,
+        items: [{ name: 'Produto', quantity: 2, unitPrice: 50, price: 90 }],
+      })).rejects.toThrow('não corresponde à quantidade e ao valor unitário');
+
+      expect(mockTransactionUpdate).not.toHaveBeenCalled();
+    });
+
+    it('rejeita soma dos subtotais diferente do valor total do pedido', async () => {
+      await expect(firebaseOrderService.updateOrder('order-invalid-price-sum', {
+        quantity: 2,
+        price: 100,
+        items: [{ name: 'Produto', quantity: 2, unitPrice: 45, price: 90 }],
+      })).rejects.toThrow('O valor total não corresponde à soma');
+
+      expect(mockTransactionUpdate).not.toHaveBeenCalled();
+    });
+
     it('remove itens estruturados antigos no Firestore quando a edição envia items como null', async () => {
       mockOrderGet.mockReturnValue({
         exists: () => true,
@@ -293,6 +428,70 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
       // Verifica que o payload grava items: null (e não mantém os itens antigos nem envia undefined)
       expect(updatePayload).toHaveProperty('items', null);
       expect(updatePayload.pricingMode).toBe('total');
+    });
+  });
+
+  describe('Reconstrução do histórico em fluxos de produção', () => {
+    it('recria ledger ausente com o formato financeiro canônico ao concluir produção', async () => {
+      const orderId = 'legacy-production-order';
+      mockOrderGet.mockReturnValue({
+        id: orderId,
+        exists: () => true,
+        data: () => ({
+          userId: 'owner-1',
+          assignedTo: 'user-1',
+          assignedToName: 'Funcionário responsável',
+          orderNumber: '#2026-0042',
+          customerName: 'Cliente de Teste',
+          customerPhone: '11999998888',
+          productName: 'Produto antigo',
+          quantity: 2,
+          price: 200,
+          status: 'in-progress',
+          deliveryDate: '2026-11-30',
+          notes: 'Pedido legado',
+          createdAt: '2026-10-24T12:00:00.000Z',
+          payment: {
+            status: 'partial', method: 'pix', totalAmount: 200,
+            paidAmount: 50, remainingAmount: 150,
+          },
+          productionWorkflow: {
+            currentStep: 'packaging',
+            steps: {
+              design: { completed: true },
+              approval: { completed: true },
+              printing: { completed: true },
+              cutting: { completed: true },
+              assembly: { completed: true },
+              'quality-check': { completed: true },
+              packaging: { completed: false },
+            },
+            startedAt: '2026-10-24T12:00:00.000Z',
+          },
+        }),
+      });
+      mockSaleGet.mockReturnValue({ exists: () => false });
+
+      await firebaseOrderService.updateProductionStep(orderId, 'packaging', true);
+
+      const orderUpdate = mockTransactionUpdate.mock.calls[0][1];
+      const ledgerWrite = mockTransactionSet.mock.calls.find(call => call[0]?.coll === 'salesLedger')?.[1];
+      expect(orderUpdate.status).toBe('completed');
+      expect(ledgerWrite).toMatchObject({
+        id: orderId,
+        orderId,
+        userId: 'owner-1',
+        assignedTo: 'user-1',
+        assignedToName: 'Funcionário responsável',
+        amount: 200,
+        paidAmount: 50,
+        paymentStatus: 'partial',
+        paymentMethod: 'pix',
+        status: 'completed',
+        isDeletedFromOrders: false,
+      });
+      expect(ledgerWrite.date).toBe('2026-10-24T12:00:00.000Z');
+      expect(ledgerWrite.createdAt).toBe(ledgerWrite.date);
     });
   });
 
