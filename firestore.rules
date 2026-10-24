@@ -561,8 +561,13 @@ service cloud.firestore {
         let orderPath = /databases/$(database)/documents/orders/$(saleId);
         return request.auth != null
           && exists(orderPath)
-          && get(orderPath).data.get('userId', null) == resource.data.get('userId', null)
+          && get(orderPath).data.get('userId', null) is string
+          && get(orderPath).data.get('userId', '').size() > 0
           && isAssignedEmployee(get(orderPath).data.get('assignedTo', ''))
+          // Ledger legado pode não ter userId; o ID do documento ancora a leitura
+          // no pedido atribuído. Se houver proprietário, ele deve ser o mesmo do pedido.
+          && (resource.data.get('userId', null) in [null, '']
+            || resource.data.get('userId', null) == get(orderPath).data.get('userId', null))
           && userHasPerm('orders', 'view');
       }
 
@@ -571,7 +576,14 @@ service cloud.firestore {
         let changed = request.resource.data.diff(resource.data).affectedKeys();
         return request.auth != null
           && exists(orderPath)
-          && get(orderPath).data.get('userId', null) == resource.data.get('userId', null)
+          && get(orderPath).data.get('userId', null) is string
+          && get(orderPath).data.get('userId', '').size() > 0
+          && (
+            get(orderPath).data.get('userId', null) == resource.data.get('userId', null)
+            || (resource.data.get('userId', null) in [null, '']
+              && get(orderPath).data.get('userId', null) is string
+              && get(orderPath).data.get('userId', null).size() > 0)
+          )
           && (
             isAssignedEmployeeEditor(get(orderPath).data.get('assignedTo', ''))
             || (changed.hasOnly(['isDeletedFromOrders', 'updatedAt'])
@@ -582,7 +594,13 @@ service cloud.firestore {
                 get(orderPath).data
               ))
           )
-          && request.resource.data.get('userId', null) == resource.data.get('userId', null)
+          && (
+            request.resource.data.get('userId', null) == resource.data.get('userId', null)
+            || (resource.data.get('userId', null) in [null, '']
+              && request.resource.data.get('userId', null) == getAfter(orderPath).data.get('userId', null)
+              && getAfter(orderPath).data.get('userId', null) is string
+              && getAfter(orderPath).data.get('userId', null).size() > 0)
+          )
           && (
             (request.resource.data.get('assignedTo', null) == resource.data.get('assignedTo', null)
               && request.resource.data.get('assignedToName', null) == resource.data.get('assignedToName', null))
@@ -591,7 +609,7 @@ service cloud.firestore {
               && request.resource.data.get('assignedToName', null) == getAfter(orderPath).data.get('assignedToName', null))
           )
           && changed.hasOnly([
-            'amount', 'isExchange', 'status', 'customerName', 'customerPhone',
+            'userId', 'amount', 'isExchange', 'status', 'customerName', 'customerPhone',
             'customerId', 'productName', 'quantity', 'deliveryDate',
             'paymentStatus', 'paidAmount', 'paymentMethod', 'assignedTo',
             'assignedToName', 'isDeletedFromOrders', 'updatedAt'

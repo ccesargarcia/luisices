@@ -784,10 +784,19 @@ export class FirebaseOrderService {
       transaction.update(orderRef, orderUpdates);
 
       if (saleSnap.exists()) {
-        transaction.update(saleRef, {
+        const existingSale = saleSnap.data();
+        const saleUpdates: Record<string, any> = {
           status,
           updatedAt: now,
-        });
+        };
+        if (orderData.userId && !existingSale.userId) {
+          saleUpdates.userId = orderData.userId;
+        }
+        if (orderData.assignedTo && !existingSale.assignedTo) {
+          saleUpdates.assignedTo = orderData.assignedTo;
+          saleUpdates.assignedToName = orderData.assignedToName || null;
+        }
+        transaction.update(saleRef, saleUpdates);
       } else {
         const fullOrder = { ...this.mapOrderDoc(orderSnap), status };
         const saleRecord = firebaseLedgerService.mapOrderToSaleRecord(fullOrder as Order, userId);
@@ -1012,8 +1021,13 @@ export class FirebaseOrderService {
 
       if (saleSnap.exists()) {
         const salePayload: any = { updatedAt: now };
-        // Reparar registros financeiros legados que não acompanharam a atribuição do pedido.
-        if (orderData.assignedTo && !saleSnap.data().assignedTo) {
+        const existingSale = saleSnap.data();
+        // Reparar campos de vínculo legados ausentes usando como fonte o pedido
+        // que o funcionário está autorizado a editar.
+        if (orderData.userId && !existingSale.userId) {
+          salePayload.userId = orderData.userId;
+        }
+        if (orderData.assignedTo && !existingSale.assignedTo) {
           salePayload.assignedTo = orderData.assignedTo;
           salePayload.assignedToName = orderData.assignedToName || null;
         }
