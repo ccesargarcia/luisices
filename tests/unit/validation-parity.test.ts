@@ -122,11 +122,11 @@ describe('Paridade de Validação Backend & Frontend (Zero Trust)', () => {
 
       await expect(
         firebaseOrderService.createOrder({ customerName: 'Valido', productName: 'Topo', quantity: -5 })
-      ).rejects.toThrow('A quantidade deve ser um número maior que zero');
+      ).rejects.toThrow('A quantidade deve ser um número inteiro entre 1 e 10.000.');
 
       await expect(
         firebaseOrderService.createOrder({ customerName: 'Valido', productName: 'Topo', price: -50 })
-      ).rejects.toThrow('O preço não pode ser negativo');
+      ).rejects.toThrow('O valor do pedido deve estar entre R$ 0,00 e R$ 1.000.000,00.');
 
       await expect(
         firebaseOrderService.createOrder({ customerName: 'Valido', productName: 'Topo', status: 'invalid-status' as any })
