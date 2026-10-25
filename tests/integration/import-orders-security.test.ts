@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, afterAll, describe, it, expect, vi } from 'vites
 import { initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { doc, setDoc, updateDoc, getDoc, getDocs, query, where, collection } from 'firebase/firestore';
 const appClient = vi.hoisted(() => ({ db: undefined as any, auth: { currentUser: null as any } }));
-vi.mock('../../src/lib/firebase', () => ({ get db() { return appClient.db; }, auth: appClient.auth }));
+vi.mock('../../src/lib/firebase', () => ({ get db() { return appClient.db; }, auth: appClient.auth, functions: {} }));
 import { parseOrdersExcelFile, executeOrdersImport } from '../../src/app/utils/importOrdersExcel';
 import { updateReviewedImportRow, getSelectedImportRows } from '../../src/app/utils/importOrdersReview';
 let env: RulesTestEnvironment;

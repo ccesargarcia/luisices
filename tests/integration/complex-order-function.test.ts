@@ -283,9 +283,12 @@ describe('Cloud Function: atualização segura de pedidos com muitos itens', () 
     const saved = (await orderRef.get()).data();
     expect(saved?.payment.paidAmount).toBe(60);
     expect(saved?.payment.history.length).toBeLessThanOrEqual(50);
-    // O histórico consolidado soma exatamente os R$ 60 pagos
+    // O histórico consolidado soma exatamente os R$ 60 pagos e preserva a contagem de transações
     const sum = saved?.payment.history.reduce((s: number, h: any) => s + (h.amount || 0), 0);
     expect(sum).toBe(60);
+    const consolidatedEntry = saved?.payment.history.find((h: any) => h.notes?.includes('Consolidação'));
+    expect(consolidatedEntry).toBeDefined();
+    expect(consolidatedEntry.count).toBeGreaterThan(1);
     // A subcoleção contém a trilha de auditoria completa
     const events = await orderRef.collection('paymentEvents').get();
     expect(events.docs).toHaveLength(1);

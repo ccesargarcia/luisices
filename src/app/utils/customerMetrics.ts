@@ -167,9 +167,10 @@ export function getPreferredPaymentMethod(
 
   validOrders.forEach((o) => {
     if (o.payment?.history && o.payment.history.length > 0) {
-      o.payment.history.forEach((h) => {
+      o.payment.history.forEach((h: any) => {
         if (h.method && (h.amount === undefined || h.amount > 0)) {
-          methodCounts[h.method] = (methodCounts[h.method] || 0) + 1;
+          const entryCount = typeof h.count === 'number' && h.count > 0 ? h.count : 1;
+          methodCounts[h.method] = (methodCounts[h.method] || 0) + entryCount;
         }
       });
     } else {

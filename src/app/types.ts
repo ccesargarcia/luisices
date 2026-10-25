@@ -72,6 +72,7 @@ export interface PaymentHistory {
   date: string;
   method: PaymentMethod;
   notes?: string;
+  count?: number; // Contagem ponderada de transações quando consolidado
 }
 
 export interface Order {

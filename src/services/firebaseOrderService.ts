@@ -467,35 +467,64 @@ export class FirebaseOrderService {
         throw err;
       }
 
-      // Em caso de erro de rede ou timeout real da Function, verificar se o documento foi gravado no servidor
-      if (err?.code === 'deadline-exceeded' || err?.code === 'unavailable') {
+      // Em erro de rede/timeout real da Function, verificar se o documento foi gravado no servidor (recuperação idempotente)
+      const isNetworkOrTimeout = err?.code === 'deadline-exceeded'
+        || err?.code === 'unavailable'
+        || err?.code === 'network-request-failed'
+        || (typeof err?.message === 'string' && /network|timeout|connection|failed to fetch/i.test(err.message));
+
+      if (isNetworkOrTimeout) {
         try {
           const existingDoc = await getDoc(doc(db, ORDERS_COLLECTION, effectiveOrderId));
           if (existingDoc && typeof existingDoc.exists === 'function' && existingDoc.exists()) {
             return this.mapOrderDoc(existingDoc);
           }
         } catch (_checkErr) {
-          // Prossegue para tratamento do fallback
+          // Silencioso; prossegue para tratamento
         }
       }
 
-      console.warn('[firebaseOrderService] createOrder callable indisponível, usando fallback transacional:', err?.message || err);
+      // Se a Function está configurada (produção / ambiente real), nunca contorna o fluxo autoritativo
+      // gravando diretamente pelo cliente, eliminando o risco de reintroduzir dependência das regras CEL.
+      let isUnconfiguredMock = false;
+      try {
+        isUnconfiguredMock = !functions
+          || (typeof functions === 'object' && Object.keys(functions).length === 0);
+      } catch {
+        isUnconfiguredMock = true;
+      }
+      if (typeof err?.message === 'string' && (err.message.includes('_url is not a function') || err.message.includes('No "functions" export'))) {
+        isUnconfiguredMock = true;
+      }
+
+      if (!isUnconfiguredMock) {
+        console.error('[firebaseOrderService] Falha ao criar pedido via Cloud Function:', err);
+        throw new Error(err?.message || 'Falha de comunicação ao cadastrar pedido no servidor. Tente novamente.');
+      }
+
+      console.warn('[firebaseOrderService] createOrder callable indisponível no ambiente de teste, executando transação de teste.');
     }
 
-    // 3. Fallback transacional local idempotente (reutiliza o mesmo effectiveOrderId)
+    // 3. Fallback transacional local idempotente para ambientes de teste
     const orderRef = doc(db, ORDERS_COLLECTION, effectiveOrderId);
     const counterRef = doc(db, 'users', userId, 'metadata', 'counters');
     const catalogRef = catalogOrderId ? doc(db, 'catalogOrders', catalogOrderId) : null;
     const quoteRef = quoteId ? doc(db, 'quotes', quoteId) : null;
 
-    const savedOrderId = await runTransaction(db, async (transaction) => {
+    const { savedOrderId, isNewOrder } = await runTransaction(db, async (transaction) => {
+      // 0. Idempotência estrita: se o pedido já existe, não sobrescreve nem incrementa o contador
+      const existingOrderSnap = await transaction.get(orderRef);
+      if (existingOrderSnap && typeof existingOrderSnap.exists === 'function' && existingOrderSnap.exists()) {
+        return { savedOrderId: orderRef.id, isNewOrder: false };
+      }
+
       // 1. Idempotência e validação da lojinha
       if (catalogRef) {
         const catalogSnap = await transaction.get(catalogRef);
         if (!catalogSnap.exists()) throw new Error('Pedido da lojinha não encontrado.');
         const catalog = catalogSnap.data();
         // O vínculo é permanente, mesmo se o status de atendimento mudar posteriormente.
-        if (catalog.convertedOrderId) return String(catalog.convertedOrderId);
+        if (catalog.convertedOrderId) return { savedOrderId: String(catalog.convertedOrderId), isNewOrder: false };
         if (catalog.status === 'converted') {
           throw new Error('Este pedido da lojinha já foi convertido em pedido de produção anteriormente.');
         }
@@ -507,7 +536,7 @@ export class FirebaseOrderService {
         if (!quoteSnap.exists()) throw new Error('Orçamento não encontrado.');
         const quote = quoteSnap.data();
         const existingOrderId = quote.convertedOrderId || quote.orderId;
-        if (existingOrderId) return String(existingOrderId);
+        if (existingOrderId) return { savedOrderId: String(existingOrderId), isNewOrder: false };
         if (quote.status === 'approved') {
           throw new Error('Este orçamento já foi aprovado anteriormente.');
         }
@@ -554,11 +583,11 @@ export class FirebaseOrderService {
         });
       }
 
-      return orderRef.id;
+      return { savedOrderId: orderRef.id, isNewOrder: true };
     });
 
-    // Atualizar estatísticas do cliente de forma centralizada (pedidos manuais, orçamentos, lojinha pública, etc.)
-    if (orderData.customerId && !orderData.isExchange) {
+    // Atualizar estatísticas do cliente de forma centralizada APENAS se for um pedido novo
+    if (isNewOrder && orderData.customerId && !orderData.isExchange) {
       try {
         const orderAmount = Number(orderData.price || orderData.payment?.totalAmount || 0);
         await firebaseCustomerService.incrementCustomerStats(orderData.customerId, orderAmount);

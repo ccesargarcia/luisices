@@ -564,7 +564,8 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('orders', 'view'))
         || isAdmin()
-        || (resource != null && 'assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo) && userHasPerm('orders', 'view'));
+        || (resource != null && 'assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo) && userHasPerm('orders', 'view'))
+        || (resource == null && (isAdmin() || (isActiveUser() && userHasPerm('orders', 'view'))));
       allow create: if request.auth != null
         && canCreateOwnedDocument('orders', request.resource.data)
         && isValidNewOrder(request.resource.data);

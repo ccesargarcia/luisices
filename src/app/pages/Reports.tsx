@@ -381,9 +381,10 @@ export function Reports() {
           if (hAmount !== 0) {
             const m = h.method || 'other';
             const cur = payMap.get(m) ?? { total: 0, count: 0 };
+            const entryCount = typeof h.count === 'number' && h.count > 0 ? h.count : 1;
             payMap.set(m, {
               total: Math.max(0, Math.round((cur.total + hAmount) * 100) / 100),
-              count: cur.count + (hAmount > 0 ? 1 : 0),
+              count: cur.count + (hAmount > 0 ? entryCount : 0),
             });
             historySum += hAmount;
             historyAmountRemaining -= hAmount;

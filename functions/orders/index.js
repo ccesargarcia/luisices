@@ -85,14 +85,20 @@ function compressPaymentHistory(history, maxEntries = MAX_EMBEDDED_PAYMENT_HISTO
     const amount = Number(entry?.amount);
     if (!Number.isFinite(amount)) continue;
     const method = PAYMENT_METHODS.has(entry?.method) ? entry.method : 'pix';
-    methodTotals.set(method, (methodTotals.get(method) || 0) + Math.round(amount * 100));
+    const current = methodTotals.get(method) || { totalCents: 0, count: 0 };
+    const entryCount = Number(entry?.count) > 0 ? Number(entry.count) : 1;
+    methodTotals.set(method, {
+      totalCents: current.totalCents + Math.round(amount * 100),
+      count: current.count + entryCount,
+    });
   }
 
   const consolidated = [];
-  for (const [method, totalCents] of methodTotals) {
-    if (totalCents === 0) continue;
+  for (const [method, data] of methodTotals) {
+    if (data.totalCents === 0 && data.count === 0) continue;
     consolidated.push({
-      amount: totalCents / 100,
+      amount: data.totalCents / 100,
+      count: data.count,
       date: oldestDate,
       method,
       notes: `Consolidação de pagamentos anteriores (${method})`,
@@ -307,7 +313,8 @@ function assertComplexOrderData(next, isExchange) {
         || Math.abs(entry.amount * 100 - Math.round(entry.amount * 100)) > 0.001
         || typeof entry.date !== 'string' || entry.date.length > 64 || Number.isNaN(Date.parse(entry.date))
         || !PAYMENT_METHODS.has(entry.method)
-        || Object.keys(entry).some((key) => !['amount', 'date', 'method', 'notes'].includes(key))
+        || Object.keys(entry).some((key) => !['amount', 'date', 'method', 'notes', 'count'].includes(key))
+        || (entry.count != null && (!Number.isInteger(entry.count) || entry.count < 1 || entry.count > 100000))
         || (entry.notes != null && (typeof entry.notes !== 'string' || entry.notes.length > 1000))))) {
       throw new HttpsError('invalid-argument', 'Histórico de pagamento inválido.');
     }

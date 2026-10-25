@@ -168,6 +168,26 @@ describe('Inteligência Comercial: Raio X, Ticket Médio e Faixas de Clientes', 
 
       expect(getPreferredPaymentMethod(orders)).toBe('pix');
     });
+
+    it('respeita a contagem de transações agregada (count) ao identificar a forma predominante após compactação', () => {
+      const orders = [{
+        status: 'completed',
+        payment: {
+          method: 'pix',
+          history: [
+            // Entrada consolidada com 40 pagamentos via pix
+            { amount: 400, method: 'pix', count: 40 },
+            // 3 pagamentos recentes via credit
+            { amount: 50, method: 'credit' },
+            { amount: 50, method: 'credit' },
+            { amount: 50, method: 'credit' },
+          ],
+        },
+      }];
+
+      // 40 transações de pix vs 3 de credit -> pix deve vencer com folga
+      expect(getPreferredPaymentMethod(orders)).toBe('pix');
+    });
   });
 
   describe('4. Classificação por Faixas de Gasto (Tiers) Configuráveis', () => {
