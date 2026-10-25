@@ -427,13 +427,22 @@ export class FirebaseOrderService {
     this.validateOrderPayload(orderData);
     const userId = this.getCurrentUserId();
 
+    // 1. Determina antecipadamente o identificador único e determinístico do pedido.
+    // Isso garante que se a chamada falhar no retorno de rede ou cair no fallback,
+    // o mesmo ID será reutilizado, prevenindo duplicação de pedidos, vendas ou contadores.
+    const effectiveOrderId = idempotencyKey
+      || (typeof (orderData as any).id === 'string' && (orderData as any).id.trim()
+        ? (orderData as any).id.trim()
+        : doc(collection(db, ORDERS_COLLECTION)).id);
+
     const sanitizedData: Partial<Order> = {
       ...orderData,
+      id: effectiveOrderId,
       items: this.sanitizeOrderItems(orderData.items),
       exchangeItems: this.sanitizeExchangeItems(orderData.exchangeItems),
     };
 
-    // 1. Tentar criar via Cloud Function autoritativa (isolamento CEL total)
+    // 2. Tentar criar via Cloud Function autoritativa (isolamento CEL total)
     try {
       const callable = httpsCallable<{
         orderData: Partial<Order>;
@@ -448,7 +457,7 @@ export class FirebaseOrderService {
         orderData: sanitizedData,
         catalogOrderId,
         quoteId,
-        idempotencyKey,
+        idempotencyKey: effectiveOrderId,
       });
       if (response?.data?.orderId) {
         return this.getOrderById(response.data.orderId);
@@ -457,11 +466,24 @@ export class FirebaseOrderService {
       if (err?.code && ['invalid-argument', 'permission-denied', 'not-found', 'failed-precondition', 'already-exists'].includes(err.code)) {
         throw err;
       }
+
+      // Em caso de erro de rede ou timeout real da Function, verificar se o documento foi gravado no servidor
+      if (err?.code === 'deadline-exceeded' || err?.code === 'unavailable') {
+        try {
+          const existingDoc = await getDoc(doc(db, ORDERS_COLLECTION, effectiveOrderId));
+          if (existingDoc && typeof existingDoc.exists === 'function' && existingDoc.exists()) {
+            return this.mapOrderDoc(existingDoc);
+          }
+        } catch (_checkErr) {
+          // Prossegue para tratamento do fallback
+        }
+      }
+
       console.warn('[firebaseOrderService] createOrder callable indisponível, usando fallback transacional:', err?.message || err);
     }
 
-    // 2. Fallback transacional local do cliente
-    const orderRef = doc(collection(db, ORDERS_COLLECTION));
+    // 3. Fallback transacional local idempotente (reutiliza o mesmo effectiveOrderId)
+    const orderRef = doc(db, ORDERS_COLLECTION, effectiveOrderId);
     const counterRef = doc(db, 'users', userId, 'metadata', 'counters');
     const catalogRef = catalogOrderId ? doc(db, 'catalogOrders', catalogOrderId) : null;
     const quoteRef = quoteId ? doc(db, 'quotes', quoteId) : null;

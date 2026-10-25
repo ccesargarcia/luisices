@@ -131,8 +131,8 @@ describe('validação de edição complexa de pedido no servidor', () => {
       expect(result.appendedEntries[0]).toMatchObject({ amount: 30, method: 'cash' });
     });
 
-    it('limita o histórico embutido aos 50 eventos mais recentes mantendo todos os novos eventos na trilha de auditoria', () => {
-      // Cria histórico prévio com 55 entradas
+    it('consolida entradas excedentes por forma de pagamento sem perder valor nem classificação', () => {
+      // Cria histórico prévio com 55 entradas (todas pix de R$ 1)
       const existingHistory = Array.from({ length: 55 }, (_, i) => ({
         amount: 1,
         date: `2026-01-${String((i % 28) + 1).padStart(2, '0')}T00:00:00.000Z`,
@@ -151,10 +151,22 @@ describe('validação de edição complexa de pedido no servidor', () => {
       const now = '2026-01-26T00:00:00.000Z';
 
       const result = buildAuthoritativePaymentHistory(prevPayment, nextPayment, now);
-      // O documento principal recebe apenas os últimos 50 eventos
-      expect(result.history).toHaveLength(50);
+      // O documento principal permanece limitado a no máximo 50 eventos
+      expect(result.history.length).toBeLessThanOrEqual(50);
+
+      // A primeira entrada consolida os eventos mais antigos por método
+      expect(result.history[0]).toMatchObject({
+        method: 'pix',
+        notes: expect.stringContaining('Consolidação de pagamentos anteriores'),
+      });
+
+      // A soma total do histórico consolidado é 100% fiel ao novo valor pago (R$ 60)
+      const totalInHistory = result.history.reduce((sum, h) => sum + (h.amount || 0), 0);
+      expect(totalInHistory).toBe(60);
+
+      // A última entrada é a nova adição em dinheiro
       expect(result.history[result.history.length - 1]).toMatchObject({ amount: 5, method: 'cash', date: now });
-      // A lista de eventos a gravar na subcoleção contém a nova entrada completa
+      // A lista de eventos a gravar na subcoleção de auditoria contém a nova entrada completa
       expect(result.appendedEntries).toHaveLength(1);
       expect(result.appendedEntries[0]).toMatchObject({ amount: 5, method: 'cash' });
     });

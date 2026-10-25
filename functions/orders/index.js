@@ -66,6 +66,43 @@ const PAYMENT_METHODS = new Set(['pix', 'cash', 'credit', 'debit', 'transfer']);
 const MAX_EMBEDDED_PAYMENT_HISTORY = 50;
 
 /**
+ * Compacta o histórico embutido para não ultrapassar MAX_EMBEDDED_PAYMENT_HISTORY entradas,
+ * consolidando os eventos mais antigos por forma de pagamento. Isso preserva a exatidão
+ * dos relatórios e métricas que leem payment.history sem inflar o tamanho do documento Firestore.
+ */
+function compressPaymentHistory(history, maxEntries = MAX_EMBEDDED_PAYMENT_HISTORY) {
+  if (!Array.isArray(history) || history.length <= maxEntries) return history;
+
+  const maxRecent = Math.max(1, maxEntries - PAYMENT_METHODS.size);
+  const overflowCount = Math.max(0, history.length - maxRecent);
+  const overflowEntries = history.slice(0, overflowCount);
+  const recentEntries = history.slice(overflowCount);
+
+  const methodTotals = new Map();
+  const oldestDate = overflowEntries[0]?.date || new Date().toISOString();
+
+  for (const entry of overflowEntries) {
+    const amount = Number(entry?.amount);
+    if (!Number.isFinite(amount)) continue;
+    const method = PAYMENT_METHODS.has(entry?.method) ? entry.method : 'pix';
+    methodTotals.set(method, (methodTotals.get(method) || 0) + Math.round(amount * 100));
+  }
+
+  const consolidated = [];
+  for (const [method, totalCents] of methodTotals) {
+    if (totalCents === 0) continue;
+    consolidated.push({
+      amount: totalCents / 100,
+      date: oldestDate,
+      method,
+      notes: `Consolidação de pagamentos anteriores (${method})`,
+    });
+  }
+
+  return [...consolidated, ...recentEntries];
+}
+
+/**
  * Mantém o histórico financeiro anterior e cria ajustes de redução no servidor.
  * O cliente pode enviar a estrutura completa de payment, mas nunca é a fonte
  * confiável para adicionar, remover ou reescrever eventos do histórico.
@@ -110,15 +147,11 @@ function buildAuthoritativePaymentHistory(previousPayment, nextPayment, now) {
     };
     history.push(entry);
     appendedEntries.push(entry);
-    const finalHistory = history.length > MAX_EMBEDDED_PAYMENT_HISTORY
-      ? history.slice(-MAX_EMBEDDED_PAYMENT_HISTORY)
-      : history;
+    const finalHistory = compressPaymentHistory(history, MAX_EMBEDDED_PAYMENT_HISTORY);
     return { history: finalHistory, appendedEntries };
   }
   if (amountToReduceCents === 0) {
-    const finalHistory = history.length > MAX_EMBEDDED_PAYMENT_HISTORY
-      ? history.slice(-MAX_EMBEDDED_PAYMENT_HISTORY)
-      : history;
+    const finalHistory = compressPaymentHistory(history, MAX_EMBEDDED_PAYMENT_HISTORY);
     return { history: finalHistory.length ? finalHistory : null, appendedEntries };
   }
 
@@ -147,9 +180,7 @@ function buildAuthoritativePaymentHistory(previousPayment, nextPayment, now) {
     history.push(entry);
     appendedEntries.push(entry);
   }
-  const finalHistory = history.length > MAX_EMBEDDED_PAYMENT_HISTORY
-    ? history.slice(-MAX_EMBEDDED_PAYMENT_HISTORY)
-    : history;
+  const finalHistory = compressPaymentHistory(history, MAX_EMBEDDED_PAYMENT_HISTORY);
   return { history: finalHistory, appendedEntries };
 }
 
@@ -1666,6 +1697,7 @@ module.exports = {
   updateComplexOrder,
   validateComplexOrderUpdate,
   buildAuthoritativePaymentHistory,
+  compressPaymentHistory,
   handleUpdateComplexOrder,
   createOrder,
   handleCreateOrder,

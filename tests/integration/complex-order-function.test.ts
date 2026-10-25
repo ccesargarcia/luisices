@@ -239,6 +239,59 @@ describe('Cloud Function: atualização segura de pedidos com muitos itens', () 
     expect(events.docs[0].data()).toMatchObject({ type: 'payment', amount: 3, method: 'cash', actorUid: 'complex-owner' });
   });
 
+  it('consolida histórico excedente agrupando por método sem perder valores para relatórios', async () => {
+    const id = `complex-order-overflow-${Date.now()}`;
+    const orderRef = adminDb.doc(`orders/${id}`);
+    const existingHistory = Array.from({ length: 55 }, (_, i) => ({
+      amount: 1,
+      date: '2026-01-01T00:00:00.000Z',
+      method: 'pix',
+      notes: `Parcela ${i + 1}`,
+    }));
+    const initial = {
+      ...newOrder(id),
+      price: 100,
+      payment: {
+        status: 'partial',
+        method: 'pix',
+        totalAmount: 100,
+        paidAmount: 55,
+        remainingAmount: 45,
+        history: existingHistory,
+      },
+    };
+    await Promise.all([
+      orderRef.set(initial),
+      adminDb.doc('userProfiles/complex-owner').set({
+        role: 'user', active: true, permissions: { orders: { edit: true } },
+      }),
+      adminDb.doc(`salesLedger/${id}`).set({
+        id, orderId: id, userId: initial.userId, amount: 100, quantity: 1,
+        paymentStatus: 'partial', paidAmount: 55, paymentMethod: 'pix',
+      }),
+    ]);
+
+    await handleUpdateComplexOrder({
+      auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+      data: {
+        orderId: id,
+        expectedVersion: 1,
+        updates: { payment: { paidAmount: 60, method: 'cash' } },
+      },
+    }, adminDb);
+
+    const saved = (await orderRef.get()).data();
+    expect(saved?.payment.paidAmount).toBe(60);
+    expect(saved?.payment.history.length).toBeLessThanOrEqual(50);
+    // O histórico consolidado soma exatamente os R$ 60 pagos
+    const sum = saved?.payment.history.reduce((s: number, h: any) => s + (h.amount || 0), 0);
+    expect(sum).toBe(60);
+    // A subcoleção contém a trilha de auditoria completa
+    const events = await orderRef.collection('paymentEvents').get();
+    expect(events.docs).toHaveLength(1);
+    expect(events.docs[0].data()).toMatchObject({ type: 'payment', amount: 5, method: 'cash' });
+  });
+
   it('atualiza pagamento de pedido legado e estatísticas da permuta na mesma transação', async () => {
     const id = `legacy-payment-update-${Date.now()}`;
     const customerId = `customer-${id}`;
