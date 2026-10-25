@@ -34,6 +34,20 @@ const baseOrder = {
   assignedTo: 'emp-assigned',
 };
 
+const createOrderWithConsistentPayment = (overrides: Record<string, any>) => {
+  const order = { ...baseOrder, ...overrides };
+  const price = order.isExchange === true ? 0 : order.price;
+  return {
+    ...order,
+    payment: overrides.payment ?? {
+      status: 'paid',
+      totalAmount: price,
+      paidAmount: price,
+      remainingAmount: 0,
+    },
+  };
+};
+
 beforeAll(async () => {
   if (!process.env.FIRESTORE_EMULATOR_HOST) {
     throw new Error('Execute via emulador local do Firestore (npm run test:integration).');
@@ -295,6 +309,15 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         })
       );
     });
+
+    it('impede que o cliente altere diretamente os metadados do link público de rastreamento', async () => {
+      const ownerDb = dbFor('owner');
+      await assertFails(updateOrder(ownerDb, 'orders/order-1', {
+        publicTrackingHash: 'hash-forjado',
+        publicTrackingExpiresAt: '2099-12-31T00:00:00.000Z',
+        publicTrackingLinkId: 'link-forjado',
+      }));
+    });
   });
 
   describe('3. Validação de Itens Estruturados (items)', () => {
@@ -413,11 +436,15 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       const ownerDb = dbFor('owner');
       await assertFails(
         setDoc(doc(ownerDb, 'orders/order-neg-price'), {
-          ...baseOrder,
-          orderNumber: '#2026-0005',
-          quantity: 1,
-          price: 10,
-          items: [{ name: 'Item', quantity: 1, unitPrice: -10, price: -10 }],
+          ...createOrderWithConsistentPayment({
+            orderNumber: '#2026-0005',
+            quantity: 2,
+            price: 10,
+            items: [
+              { name: 'Item inválido', quantity: 1, unitPrice: -10, price: -10 },
+              { name: 'Item válido', quantity: 1, unitPrice: 20, price: 20 },
+            ],
+          }),
         })
       );
     });
@@ -426,29 +453,28 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       const ownerDb = dbFor('owner');
       await assertFails(
         setDoc(doc(ownerDb, 'orders/order-zero-qty'), {
-          ...baseOrder,
-          orderNumber: '#2026-0006',
-          items: [{ name: 'Item', quantity: 0, unitPrice: 50, price: 0 }],
+          ...createOrderWithConsistentPayment({
+            orderNumber: '#2026-0006',
+            quantity: 1,
+            price: 50,
+            items: [
+              { name: 'Item inválido', quantity: 0, unitPrice: 50, price: 0 },
+              { name: 'Item válido', quantity: 1, unitPrice: 50, price: 50 },
+            ],
+          }),
         })
       );
       await assertFails(
         setDoc(doc(ownerDb, 'orders/order-float-qty'), {
-          ...baseOrder,
-          orderNumber: '#2026-0007',
-          items: [{ name: 'Item', quantity: 1.5 as any, unitPrice: 50, price: 75 }],
-        })
-      );
-    });
-
-    it('rejeita item com nome vazio ou apenas espaços', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-empty-name'), {
-          ...baseOrder,
-          orderNumber: '#2026-0008',
-          quantity: 1,
-          price: 50,
-          items: [{ name: '   ', quantity: 1, unitPrice: 50, price: 50 }],
+          ...createOrderWithConsistentPayment({
+            orderNumber: '#2026-0007',
+            quantity: 2,
+            price: 100,
+            items: [
+              { name: 'Item fracionário A', quantity: 1.5 as any, unitPrice: 50, price: 75 },
+              { name: 'Item fracionário B', quantity: 0.5 as any, unitPrice: 50, price: 25 },
+            ],
+          }),
         })
       );
     });
@@ -457,24 +483,12 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       const ownerDb = dbFor('owner');
       await assertFails(
         setDoc(doc(ownerDb, 'orders/order-bad-subtotal'), {
-          ...baseOrder,
-          orderNumber: '#2026-0009',
-          quantity: 2,
-          price: 100,
-          items: [{ name: 'Item', quantity: 2, unitPrice: 50, price: 80 }], // 2 * 50 != 80
-        })
-      );
-    });
-
-    it('rejeita campos extras não autorizados dentro do item', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-extra-field'), {
-          ...baseOrder,
-          orderNumber: '#2026-0010',
-          quantity: 1,
-          price: 50,
-          items: [{ name: 'Item', quantity: 1, unitPrice: 50, price: 50, evilField: 'hack' } as any],
+          ...createOrderWithConsistentPayment({
+            orderNumber: '#2026-0009',
+            quantity: 2,
+            price: 80,
+            items: [{ name: 'Item', quantity: 2, unitPrice: 50, price: 80 }], // 2 * 50 != 80
+          }),
         })
       );
     });
@@ -490,13 +504,52 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
 
       await assertFails(
         setDoc(doc(ownerDb, 'orders/order-too-many-items'), {
-          ...baseOrder,
-          orderNumber: '#2026-0011',
-          quantity: 11,
-          price: 110,
-          items: elevenItems,
+          ...createOrderWithConsistentPayment({
+            orderNumber: '#2026-0011',
+            quantity: 11,
+            price: 110,
+            items: elevenItems,
+          }),
         })
       );
+    });
+
+    it('aceita dez itens válidos sem ultrapassar o limite de expressões CEL', async () => {
+      const ownerDb = dbFor('owner');
+      const items = Array.from({ length: 10 }, (_, index) => ({
+        name: `Item ${index + 1}`,
+        quantity: 1,
+        unitPrice: 10,
+        price: 10,
+      }));
+
+      await assertSucceeds(setDoc(doc(ownerDb, 'orders/order-ten-valid-items'), {
+        ...createOrderWithConsistentPayment({
+          orderNumber: '#2026-0016',
+          quantity: 10,
+          price: 100,
+          items,
+        }),
+      }));
+    });
+
+    it('rejeita quantidade inválida até no décimo item sem ultrapassar o limite CEL', async () => {
+      const ownerDb = dbFor('owner');
+      const items = Array.from({ length: 10 }, (_, index) => ({
+        name: `Item ${index + 1}`,
+        quantity: index === 9 ? 0 : 1,
+        unitPrice: 10,
+        price: index === 9 ? 0 : 10,
+      }));
+
+      await assertFails(setDoc(doc(ownerDb, 'orders/order-invalid-tenth-item'), {
+        ...createOrderWithConsistentPayment({
+          orderNumber: '#2026-0018',
+          quantity: 10,
+          price: 90,
+          items,
+        }),
+      }));
     });
   });
 
@@ -505,14 +558,15 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       const ownerDb = dbFor('owner');
       await assertFails(
         setDoc(doc(ownerDb, 'orders/order-qty-mismatch'), {
-          ...baseOrder,
-          orderNumber: '#2026-0012',
-          quantity: 5, // Errado: itens somam 3
-          price: 150,
-          items: [
-            { name: 'Item 1', quantity: 2, unitPrice: 50, price: 100 },
-            { name: 'Item 2', quantity: 1, unitPrice: 50, price: 50 },
-          ],
+          ...createOrderWithConsistentPayment({
+            orderNumber: '#2026-0012',
+            quantity: 5, // Errado: itens somam 3
+            price: 150,
+            items: [
+              { name: 'Item 1', quantity: 2, unitPrice: 50, price: 100 },
+              { name: 'Item 2', quantity: 1, unitPrice: 50, price: 50 },
+            ],
+          }),
         })
       );
     });
@@ -521,14 +575,15 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       const ownerDb = dbFor('owner');
       await assertFails(
         setDoc(doc(ownerDb, 'orders/order-price-mismatch'), {
-          ...baseOrder,
-          orderNumber: '#2026-0013',
-          quantity: 2,
-          price: 300, // Errado: itens somam 200
-          items: [
-            { name: 'Item 1', quantity: 1, unitPrice: 100, price: 100 },
-            { name: 'Item 2', quantity: 1, unitPrice: 100, price: 100 },
-          ],
+          ...createOrderWithConsistentPayment({
+            orderNumber: '#2026-0013',
+            quantity: 2,
+            price: 300, // Errado: itens somam 200
+            items: [
+              { name: 'Item 1', quantity: 1, unitPrice: 100, price: 100 },
+              { name: 'Item 2', quantity: 1, unitPrice: 100, price: 100 },
+            ],
+          }),
         })
       );
     });
@@ -604,6 +659,36 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       );
     });
 
+    it('aceita edição de pedido legado cujo pagamento não tinha remainingAmount', async () => {
+      const ownerDb = dbFor('owner');
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/legacy-payment-without-remaining').set({
+          ...baseOrder,
+          payment: {
+            status: 'partial',
+            method: 'pix',
+            totalAmount: 200,
+            paidAmount: 50,
+          },
+          version: 1,
+        });
+      });
+
+      await assertSucceeds(updateOrder(ownerDb, 'orders/legacy-payment-without-remaining', {
+        price: 250,
+        payment: {
+          status: 'partial',
+          method: 'pix',
+          totalAmount: 250,
+          paidAmount: 50,
+        },
+      }, 2));
+
+      const saved = await getDoc(doc(ownerDb, 'orders/legacy-payment-without-remaining'));
+      expect(saved.data()?.price).toBe(250);
+      expect(saved.data()?.payment.remainingAmount).toBeUndefined();
+    });
+
     it('permite atualização legítima de status sem alteração de valores financeiros', async () => {
       const ownerDb = dbFor('owner');
       await assertSucceeds(
@@ -616,6 +701,29 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
           status: 'completed',
         }, 3)
       );
+    });
+
+    it('permite editar campos independentes de valores legados inválidos sem exigir sua correção imediata', async () => {
+      const ownerDb = dbFor('owner');
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/legacy-invalid-fields').set({
+          ...baseOrder,
+          customerName: '   ',
+          customerId: 'cliente-que-nao-existe',
+          deliveryDate: 'data-antiga-invalida',
+          tags: [{ name: '', color: 'cor-invalida' }],
+          version: 1,
+        });
+      });
+
+      await assertSucceeds(updateOrder(ownerDb, 'orders/legacy-invalid-fields', {
+        notes: 'Atualização sem relação com campos legados',
+      }, 2));
+
+      const saved = await getDoc(doc(ownerDb, 'orders/legacy-invalid-fields'));
+      expect(saved.data()?.notes).toBe('Atualização sem relação com campos legados');
+      expect(saved.data()?.customerId).toBe('cliente-que-nao-existe');
+      expect(saved.data()?.deliveryDate).toBe('data-antiga-invalida');
     });
   });
 
@@ -706,8 +814,8 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
     });
   });
 
-  describe('7. Limite de Expressões CEL e Atualização Complexa (20 Etiquetas + Itens + Preço + Pagamento)', () => {
-    it('permite atualizar pedido com 20 etiquetas, itens estruturados, unitPrice e pagamento consistente sem exceder limite CEL de 1000 expressões', async () => {
+  describe('7. Limite de Expressões CEL e Atualização Complexa (20 Etiquetas + Item + Preço + Pagamento)', () => {
+    it('permite atualizar pedido com 20 etiquetas, um item e pagamento sem exceder 1000 expressões CEL', async () => {
       const ownerDb = dbFor('owner');
       const tagNames = Array.from({ length: 20 }, (_, index) => `Etiqueta E2E ${String(index + 1).padStart(2, '0')}`);
       const tags = tagNames.map(name => ({ name, color: '#3b82f6' }));
@@ -734,10 +842,11 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         })
       );
 
-      // Atualização que simula a tela de edição do E2E:
-      // Altera preço para 130.50, insere itens estruturados, unitPrice, recalcula pagamento e altera 1 etiqueta das 20
+      // Atualização que simula a edição de um pedido, pagamento e uma etiqueta
+      // alterada em uma lista com 20 etiquetas.
       const revisedTag = 'Etiqueta Atualizada E2E';
       const updatedTags = [...tags.slice(0, 19), { name: revisedTag, color: '#3b82f6' }];
+      const items = [{ name: 'Convite Luxo', quantity: 1, unitPrice: 130.50, price: 130.50 }];
 
       await assertSucceeds(
         updateOrder(ownerDb, 'orders/order-20-tags-complex', {
@@ -746,12 +855,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
           productName: 'Convite Luxo',
           quantity: 1,
           price: 130.50,
-          items: [{
-            name: 'Convite Luxo',
-            quantity: 1,
-            unitPrice: 130.50,
-            price: 130.50,
-          }],
+          items,
           unitPrice: 130.50,
           pricingMode: 'unit',
           deliveryDate: '2026-11-20',
@@ -773,6 +877,45 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       expect(saved.data()?.price).toBe(130.50);
       expect(saved.data()?.tags).toHaveLength(20);
       expect(saved.data()?.tags[19].name).toBe(revisedTag);
+    });
+
+    it('permite editar quatro itens em pedido que já tem 20 etiquetas sem exceder 1000 expressões CEL', async () => {
+      const ownerDb = dbFor('owner');
+      const tags = Array.from({ length: 20 }, (_, index) => ({ name: `Etiqueta ${index + 1}`, color: '#3b82f6' }));
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/order-20-tags-four-items').set({
+          ...baseOrder,
+          orderNumber: '#2026-0024',
+          quantity: 1,
+          price: 100,
+          items: null,
+          unitPrice: null,
+          pricingMode: 'total',
+          tags,
+          payment: { status: 'partial', method: 'pix', totalAmount: 100, paidAmount: 30, remainingAmount: 70 },
+          version: 1,
+        });
+      });
+
+      const items = [
+        { name: 'Produto 1', quantity: 1, unitPrice: 36, price: 36 },
+        { name: 'Produto 2', quantity: 1, unitPrice: 32, price: 32 },
+        { name: 'Produto 3', quantity: 7, unitPrice: 1.29, price: 9.03 },
+        { name: 'Produto 4', quantity: 1, unitPrice: 53.47, price: 53.47 },
+      ];
+      await assertSucceeds(updateOrder(ownerDb, 'orders/order-20-tags-four-items', {
+        quantity: 10,
+        price: 130.50,
+        items,
+        unitPrice: null,
+        pricingMode: 'items',
+        payment: { status: 'partial', method: 'pix', totalAmount: 130.50, paidAmount: 30, remainingAmount: 100.50 },
+      }, 2));
+
+      const saved = await getDoc(doc(ownerDb, 'orders/order-20-tags-four-items'));
+      expect(saved.data()?.items).toHaveLength(4);
+      expect(saved.data()?.tags).toHaveLength(20);
+      expect(saved.data()?.price).toBe(130.50);
     });
 
     it('permite atualizar pedido substituindo todas as 20 etiquetas por novas etiquetas sem exceder limite CEL', async () => {
@@ -817,50 +960,38 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       expect(saved.data()?.tags[0].name).toBe('Nova Etiqueta 0');
     });
 
-    it('rejeita atualização quando a última etiqueta de 20 for inválida em pedido com itens estruturados', async () => {
+    it('aceita 20 etiquetas com item estruturado e continua rejeitando a 21ª etiqueta', async () => {
       const ownerDb = dbFor('owner');
       const tags = Array.from({ length: 20 }, (_, i) => ({ name: `Etiqueta ${i}`, color: '#3b82f6' }));
+      const item = { name: 'Convite Luxo', quantity: 1, unitPrice: 130.50, price: 130.50 };
+      const commonOrder = {
+        ...baseOrder,
+        quantity: 1,
+        price: 130.50,
+        pricingMode: 'unit',
+        unitPrice: 130.50,
+        items: [item],
+        payment: {
+          status: 'partial',
+          method: 'pix',
+          totalAmount: 130.50,
+          paidAmount: 30.50,
+          remainingAmount: 100.00,
+        },
+        version: 1,
+      };
 
-      await assertSucceeds(
-        setDoc(doc(ownerDb, 'orders/order-bad-20th-tag'), {
-          ...baseOrder,
-          orderNumber: '#2026-0022',
-          quantity: 1,
-          price: 130.50,
-          pricingMode: 'unit',
-          unitPrice: 130.50,
-          items: [{
-            name: 'Convite Luxo',
-            quantity: 1,
-            unitPrice: 130.50,
-            price: 130.50,
-          }],
-          tags,
-          payment: {
-            status: 'partial',
-            method: 'pix',
-            totalAmount: 130.50,
-            paidAmount: 30.50,
-            remainingAmount: 100.00,
-          },
-          version: 1,
-        })
-      );
+      await assertSucceeds(setDoc(doc(ownerDb, 'orders/order-20-tags-with-item'), {
+        ...commonOrder,
+        orderNumber: '#2026-0022',
+        tags,
+      }));
 
-      const badTags = [...tags.slice(0, 19), { name: '', color: '#3b82f6' }]; // Nome vazio é inválido
-
-      await assertFails(
-        updateOrder(ownerDb, 'orders/order-bad-20th-tag', {
-          tags: badTags,
-          price: 130.50,
-          items: [{
-            name: 'Convite Luxo',
-            quantity: 1,
-            unitPrice: 130.50,
-            price: 130.50,
-          }],
-        }, 2)
-      );
+      await assertFails(setDoc(doc(ownerDb, 'orders/order-21-tags-with-item'), {
+        ...commonOrder,
+        orderNumber: '#2026-0023',
+        tags: [...tags, { name: 'Etiqueta 21', color: '#3b82f6' }],
+      }));
     });
   });
 

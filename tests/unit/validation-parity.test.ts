@@ -111,6 +111,18 @@ describe('Paridade de Validação Backend & Frontend (Zero Trust)', () => {
         .rejects.toThrow('Um pedido pode ter no máximo 20 etiquetas.');
     });
 
+    it('valida nome e cor das etiquetas antes de enviar ao Firestore', async () => {
+      const invalidTags = [
+        { name: '   ', color: '#123456' },
+        { name: 'Etiqueta válida', color: 'vermelho' },
+      ];
+
+      await expect(firebaseOrderService.createOrder({ tags: [invalidTags[0]] }))
+        .rejects.toThrow('Cada etiqueta precisa ter um nome válido');
+      await expect(firebaseOrderService.updateOrder('pedido-1', { tags: [invalidTags[1]] }))
+        .rejects.toThrow('Cada etiqueta precisa ter um nome válido');
+    });
+
     it('firebaseOrderService rejeita inputs inválidos antes de submeter ao Firestore', async () => {
       await expect(
         firebaseOrderService.createOrder({ customerName: '   ', price: 100 })

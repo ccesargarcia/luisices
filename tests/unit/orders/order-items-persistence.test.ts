@@ -417,14 +417,18 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
       expect(mockTransactionUpdate).not.toHaveBeenCalled();
     });
 
-    it('rejeita subtotal divergente ao editar antes de iniciar a transação', async () => {
-      await expect(firebaseOrderService.updateOrder('order-invalid-total', {
+    it('recalcula subtotal divergente a partir de quantidade e preço unitário antes de gravar', async () => {
+      await firebaseOrderService.updateOrder('order-recalculated-total', {
         quantity: 2,
         price: 100,
         items: [{ name: 'Produto', quantity: 2, unitPrice: 50, price: 90 }],
-      })).rejects.toThrow('não corresponde à quantidade e ao valor unitário');
+      });
 
-      expect(mockTransactionUpdate).not.toHaveBeenCalled();
+      expect(mockTransactionUpdate).toHaveBeenCalled();
+      const updatePayload = mockTransactionUpdate.mock.calls[0][1];
+      expect(updatePayload.items).toEqual([
+        { name: 'Produto', quantity: 2, unitPrice: 50, price: 100 },
+      ]);
     });
 
     it('rejeita soma dos subtotais diferente do valor total do pedido', async () => {

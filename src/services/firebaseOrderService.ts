@@ -199,9 +199,8 @@ export class FirebaseOrderService {
         } else if (typeof item?.unitPrice === 'string') {
           unitPrice = parseDecimalMoneyInput(item.unitPrice) ?? 0;
         }
-        let price = typeof item?.price === 'number' && Number.isFinite(item.price)
-          ? this.ensurePositive(item.price)
-          : Number((quantity * unitPrice).toFixed(2));
+        // unitPrice e quantity são a fonte canônica; nunca preserve um subtotal divergente.
+        const price = this.ensurePositive(quantity * unitPrice);
         return { name, quantity, unitPrice, price };
       })
       .filter(item => item.name.length > 0);
@@ -214,6 +213,16 @@ export class FirebaseOrderService {
   private validateOrderPayload(data: Partial<Order>): void {
     if (data.tags != null && (!Array.isArray(data.tags) || data.tags.length > MAX_ORDER_TAGS)) {
       throw new Error(`Um pedido pode ter no máximo ${MAX_ORDER_TAGS} etiquetas.`);
+    }
+    if (Array.isArray(data.tags)) {
+      for (const tag of data.tags as any[]) {
+        const name = tag?.name;
+        const color = tag?.color;
+        if (typeof name !== 'string' || !name.trim() || name !== name.trim() || name.length > 80 || name.includes('\0') ||
+            typeof color !== 'string' || !/^#(?:[a-fA-F0-9]{6}|[a-fA-F0-9]{8})$/.test(color)) {
+          throw new Error('Cada etiqueta precisa ter um nome válido e uma cor hexadecimal.');
+        }
+      }
     }
     if (data.exchangeItems != null) {
       if (!Array.isArray(data.exchangeItems) || data.exchangeItems.length > 10) {
@@ -250,11 +259,9 @@ export class FirebaseOrderService {
           throw new Error('Confira cada produto: nome, quantidade inteira e valor unitário precisam ser válidos.');
         }
         const unitPrice = this.ensurePositive(rawUnitPrice);
-        const linePrice = typeof item.price === 'number' && Number.isFinite(item.price)
-          ? this.ensurePositive(item.price)
-          : Number((quantity * unitPrice).toFixed(2));
-        if (linePrice > 1000000 || Math.abs(linePrice - quantity * unitPrice) >= 0.05) {
-          throw new Error(`O subtotal do produto "${name}" não corresponde à quantidade e ao valor unitário.`);
+        const linePrice = this.ensurePositive(quantity * unitPrice);
+        if (linePrice > 1000000) {
+          throw new Error(`O subtotal do produto "${name}" não pode ultrapassar R$ 1.000.000,00.`);
         }
         itemsQuantity += quantity;
         itemsPrice = Math.round((itemsPrice + linePrice) * 100) / 100;
