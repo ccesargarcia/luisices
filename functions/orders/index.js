@@ -217,7 +217,8 @@ function validateComplexOrderUpdate(updates, order, uid, profile) {
 /**
  * Edição de pedidos com 5–10 itens: valida fora das regras CEL e espelha o
  * ledger atomicamente. A Function repete a autorização e valida a versão para
- * não confiar nos dados ou permissões verificados pelo frontend.
+ * não confiar nos dados ou permissões verificados pelo frontend. Mantenha esta
+ * exportação nos alvos seletivos de pedidos em deploy-dev.yml.
  */
 async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
   const uid = request.auth?.uid;
