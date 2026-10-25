@@ -841,6 +841,8 @@ export class FirebaseOrderService {
     const resultingItems = Array.isArray(updates.items) ? updates.items : initialOrderData.items;
     const hadComplexItemTotals = Array.isArray(initialOrderData.items) && initialOrderData.items.length > 4;
     const hasComplexItemTotals = Array.isArray(resultingItems) && resultingItems.length > 4;
+    // Keep this threshold aligned with firestore.rules: changes to totals are
+    // blocked there when either the old or new item list has more than 4 rows.
     if (affectsItemTotals && (hadComplexItemTotals || hasComplexItemTotals)) {
       const callable = httpsCallable<{
         orderId: string;

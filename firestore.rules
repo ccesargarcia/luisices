@@ -406,6 +406,9 @@ service cloud.firestore {
     function isValidOrderChanges(previous, data, changed) {
       let items = data.get('items', null);
       let previousItems = previous.get('items', null);
+      // Large aggregate checks run in updateComplexOrder (server-side). Block
+      // direct client updates for both growing and shrinking lists so clients
+      // cannot bypass that validation by first removing items.
       let hasComplexItemList = (items is list && items.size() > 4)
         || (previousItems is list && previousItems.size() > 4);
       let usesComplexItemTotals = hasComplexItemList

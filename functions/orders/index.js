@@ -214,7 +214,11 @@ function validateComplexOrderUpdate(updates, order, uid, profile) {
   return next;
 }
 
-/** Edição de pedidos com muitos itens: valida fora das regras CEL e espelha o ledger atomicamente. */
+/**
+ * Edição de pedidos com 5–10 itens: valida fora das regras CEL e espelha o
+ * ledger atomicamente. A Function repete a autorização e valida a versão para
+ * não confiar nos dados ou permissões verificados pelo frontend.
+ */
 async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para editar pedidos.');
