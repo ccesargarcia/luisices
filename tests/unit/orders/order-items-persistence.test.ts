@@ -559,13 +559,13 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
     it('copia itens estruturados e metadados de preço unitário ao duplicar pedido', async () => {
       const duplicated = await firebaseOrderService.duplicateOrder('order-123');
 
-      expect(mockAddDoc).toHaveBeenCalled();
-      const addPayload = mockAddDoc.mock.calls[0][1];
-      expect(addPayload.items).toEqual([
+      const savedDoc = (mockAddDoc.mock.calls[0]?.[1]) || mockTransactionSet.mock.calls.find(call => call[1]?.orderNumber)?.[1];
+      expect(savedDoc).toBeDefined();
+      expect(savedDoc.items).toEqual([
         { name: 'Caderno', quantity: 2, unitPrice: 100, price: 200 },
         { name: 'Adesivo', quantity: 1, unitPrice: 50, price: 50 },
       ]);
-      expect(addPayload.pricingMode).toBe('items');
+      expect(savedDoc.pricingMode).toBe('items');
       expect(duplicated.items).toBeDefined();
     });
   });

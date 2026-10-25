@@ -423,9 +423,44 @@ export class FirebaseOrderService {
   }
 
   /** Grava contador, pedido, venda e vínculo de catálogo/orçamento em uma única transação atômica. */
-  async createOrder(orderData: Partial<Order>, catalogOrderId?: string, quoteId?: string): Promise<Order> {
+  async createOrder(orderData: Partial<Order>, catalogOrderId?: string, quoteId?: string, idempotencyKey?: string): Promise<Order> {
     this.validateOrderPayload(orderData);
     const userId = this.getCurrentUserId();
+
+    const sanitizedData: Partial<Order> = {
+      ...orderData,
+      items: this.sanitizeOrderItems(orderData.items),
+      exchangeItems: this.sanitizeExchangeItems(orderData.exchangeItems),
+    };
+
+    // 1. Tentar criar via Cloud Function autoritativa (isolamento CEL total)
+    try {
+      const callable = httpsCallable<{
+        orderData: Partial<Order>;
+        catalogOrderId?: string;
+        quoteId?: string;
+        idempotencyKey?: string;
+      }, { success: boolean; orderId: string; orderNumber: string }>(
+        functions,
+        'createOrder',
+      );
+      const response = await callable({
+        orderData: sanitizedData,
+        catalogOrderId,
+        quoteId,
+        idempotencyKey,
+      });
+      if (response?.data?.orderId) {
+        return this.getOrderById(response.data.orderId);
+      }
+    } catch (err: any) {
+      if (err?.code && ['invalid-argument', 'permission-denied', 'not-found', 'failed-precondition', 'already-exists'].includes(err.code)) {
+        throw err;
+      }
+      console.warn('[firebaseOrderService] createOrder callable indisponível, usando fallback transacional:', err?.message || err);
+    }
+
+    // 2. Fallback transacional local do cliente
     const orderRef = doc(collection(db, ORDERS_COLLECTION));
     const counterRef = doc(db, 'users', userId, 'metadata', 'counters');
     const catalogRef = catalogOrderId ? doc(db, 'catalogOrders', catalogOrderId) : null;
@@ -1130,16 +1165,10 @@ export class FirebaseOrderService {
     }
 
     const data = orderSnap.data();
-    const orderNumber = await this.generateOrderNumber(userId);
-
-    const ordersRef = collection(db, ORDERS_COLLECTION);
     const price = this.ensurePositive(data.price);
-    const newOrderRef = await addDoc(ordersRef, {
-      userId,
-      createdByName: auth.currentUser?.displayName || auth.currentUser?.email || userId,
-      orderNumber,
+    const duplicatedPayload: Partial<Order> = {
       customerName: data.customerName,
-      customerPhone: data.customerPhone,
+      customerPhone: data.customerPhone || null,
       customerId: data.customerId || null,
       productName: data.productName,
       quantity: data.quantity,
@@ -1160,17 +1189,13 @@ export class FirebaseOrderService {
         paymentDate: null,
         notes: null,
       },
-      version: 1,
-      createdAt: Timestamp.now(),
-      deletedAt: null,
-    });
+      isExchange: Boolean(data.isExchange),
+      exchangeNotes: data.exchangeNotes || null,
+      exchangeItems: data.exchangeItems || null,
+      cardColor: data.cardColor || null,
+    };
 
-    const createdOrder = await this.getOrderById(newOrderRef.id);
-    firebaseLedgerService.recordOrderSale(createdOrder, userId).catch(err => {
-      console.warn('firebaseLedgerService: erro ao gravar venda duplicada no ledger:', err);
-    });
-
-    return createdOrder;
+    return this.createOrder(duplicatedPayload);
   }
 
   /**

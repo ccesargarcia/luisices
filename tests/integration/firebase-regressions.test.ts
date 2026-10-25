@@ -7,7 +7,7 @@ import { assertPermissionDenied } from '../helpers/assertPermissionDenied';
 import { DEFAULT_USER_PERMISSIONS } from '../../src/app/types';
 import { initializeApp, deleteApp, type App } from 'firebase-admin/app';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
-import { handleUpdateComplexOrder } from '../../functions/orders/index.js';
+import { handleUpdateComplexOrder, handleCreateOrder } from '../../functions/orders/index.js';
 
 let adminApp: App;
 let adminDb: Firestore;
@@ -29,6 +29,16 @@ vi.mock('firebase/functions', () => ({
           data,
         }, adminDb);
         return { data: { success: true } };
+      };
+    }
+    if (name === 'createOrder') {
+      return async (data: any) => {
+        const uid = client.auth.currentUser?.uid || 'owner';
+        const result = await handleCreateOrder({
+          auth: { uid, token: { auth_time: 1 } },
+          data,
+        }, adminDb);
+        return { data: result };
       };
     }
     return vi.fn().mockResolvedValue({ data: { success: true } });

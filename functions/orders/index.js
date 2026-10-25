@@ -238,30 +238,7 @@ function hasOrderPermission(profile, action) {
   return permission === true || permission?.[action] === true;
 }
 
-function validateComplexOrderUpdate(updates, order, uid, profile) {
-  if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
-    throw new HttpsError('invalid-argument', 'Dados da edição inválidos.');
-  }
-  const keys = Object.keys(updates);
-  if (!keys.length || keys.some((key) => !COMPLEX_ORDER_UPDATE_FIELDS.has(key))) {
-    throw new HttpsError('invalid-argument', 'A edição contém campos não permitidos.');
-  }
-  const admin = profile.role === 'admin';
-  const owner = order.userId === uid;
-  const assignedEmployee = profile.role === 'funcionario' && order.assignedTo === uid;
-  if (profile.active === false || (!admin && !(owner || assignedEmployee))
-    || (!admin && !hasOrderPermission(profile, 'edit'))) {
-    throw new HttpsError('permission-denied', 'Você não tem permissão para editar este pedido.');
-  }
-
-  const next = { ...order, ...updates };
-  const changesItemTotals = ['items', 'price', 'quantity', 'pricingMode', 'unitPrice']
-    .some((key) => Object.prototype.hasOwnProperty.call(updates, key));
-  if (changesItemTotals && Array.isArray(next.items)) {
-    next.items = assertComplexOrderItems(next.items, next.quantity, next.price);
-  } else if (changesItemTotals && updates.items === null && Array.isArray(order.items)) {
-    throw new HttpsError('invalid-argument', 'Não é permitido remover os itens estruturados do pedido.');
-  }
+function assertComplexOrderData(next, isExchange) {
   if (typeof next.price !== 'number' || !Number.isFinite(next.price) || next.price < 0 || next.price > 1000000
     || !Number.isSafeInteger(next.quantity) || next.quantity < 1 || next.quantity > 10000) {
     throw new HttpsError('invalid-argument', 'Preço ou quantidade do pedido inválidos.');
@@ -270,7 +247,7 @@ function validateComplexOrderUpdate(updates, order, uid, profile) {
     const payment = next.payment;
     const paid = payment.paidAmount ?? 0;
     const remaining = payment.remainingAmount ?? next.price - paid;
-    const paymentTotal = next.isExchange === true ? 0 : next.price;
+    const paymentTotal = isExchange === true ? 0 : next.price;
     if (payment.totalAmount !== paymentTotal || typeof paid !== 'number' || !Number.isFinite(paid)
       || paid < 0 || paid > paymentTotal || typeof remaining !== 'number'
       || Math.abs(remaining - (paymentTotal - paid)) > 0.005
@@ -361,6 +338,33 @@ function validateComplexOrderUpdate(updates, order, uid, profile) {
     throw new HttpsError('invalid-argument', 'Cor do pedido inválida.');
   }
   return next;
+}
+
+function validateComplexOrderUpdate(updates, order, uid, profile) {
+  if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+    throw new HttpsError('invalid-argument', 'Dados da edição inválidos.');
+  }
+  const keys = Object.keys(updates);
+  if (!keys.length || keys.some((key) => !COMPLEX_ORDER_UPDATE_FIELDS.has(key))) {
+    throw new HttpsError('invalid-argument', 'A edição contém campos não permitidos.');
+  }
+  const admin = profile.role === 'admin';
+  const owner = order.userId === uid;
+  const assignedEmployee = profile.role === 'funcionario' && order.assignedTo === uid;
+  if (profile.active === false || (!admin && !(owner || assignedEmployee))
+    || (!admin && !hasOrderPermission(profile, 'edit'))) {
+    throw new HttpsError('permission-denied', 'Você não tem permissão para editar este pedido.');
+  }
+
+  const next = { ...order, ...updates };
+  const changesItemTotals = ['items', 'price', 'quantity', 'pricingMode', 'unitPrice']
+    .some((key) => Object.prototype.hasOwnProperty.call(updates, key));
+  if (changesItemTotals && Array.isArray(next.items)) {
+    next.items = assertComplexOrderItems(next.items, next.quantity, next.price);
+  } else if (changesItemTotals && updates.items === null && Array.isArray(order.items)) {
+    throw new HttpsError('invalid-argument', 'Não é permitido remover os itens estruturados do pedido.');
+  }
+  return assertComplexOrderData(next, next.isExchange);
 }
 
 /**
@@ -572,6 +576,348 @@ async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
 }
 
 const updateComplexOrder = onCall({ cors: true, maxInstances: 10 }, handleUpdateComplexOrder);
+
+/**
+ * Criação atômica de pedidos com itens, salesLedger, contadores e estatísticas de cliente.
+ * Substitui a transação iniciada pelo cliente para eliminar a dependência das regras CEL do Firestore.
+ */
+async function handleCreateOrder(request, firestore = getFirestore()) {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para criar pedidos.');
+
+  const { orderData, catalogOrderId, quoteId, idempotencyKey } = request.data || {};
+  if (!orderData || typeof orderData !== 'object' || Array.isArray(orderData)) {
+    throw new HttpsError('invalid-argument', 'Dados do pedido inválidos.');
+  }
+
+  const db = firestore;
+  const profileSnap = await db.doc(`userProfiles/${uid}`).get();
+  if (!profileSnap.exists) {
+    throw new HttpsError('permission-denied', 'Perfil de usuário não encontrado.');
+  }
+  const profile = profileSnap.data() || {};
+  if (profile.active === false) {
+    throw new HttpsError('permission-denied', 'Conta inativa.');
+  }
+  if (profile.tokensValidAfterTime && request.auth?.token?.auth_time <= profile.tokensValidAfterTime) {
+    throw new HttpsError('permission-denied', 'Sessão expirada. Faça login novamente.');
+  }
+  const admin = profile.role === 'admin';
+  if (!admin && !hasOrderPermission(profile, 'create')) {
+    throw new HttpsError('permission-denied', 'Você não tem permissão para criar pedidos.');
+  }
+
+  const now = new Date().toISOString();
+  const isExchange = Boolean(orderData.isExchange);
+  const quantity = orderData.quantity;
+  const price = typeof orderData.price === 'number' && Number.isFinite(orderData.price)
+    ? Math.round(orderData.price * 100) / 100
+    : 0;
+
+  if (!orderData.customerName || typeof orderData.customerName !== 'string' || !orderData.customerName.trim()) {
+    throw new HttpsError('invalid-argument', 'O nome do cliente é obrigatório.');
+  }
+  if (!orderData.productName || typeof orderData.productName !== 'string' || !orderData.productName.trim()) {
+    throw new HttpsError('invalid-argument', 'O nome do produto é obrigatório.');
+  }
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000) {
+    throw new HttpsError('invalid-argument', 'A quantidade deve ser um número inteiro entre 1 e 10.000.');
+  }
+  if (typeof price !== 'number' || !Number.isFinite(price) || price < 0 || price > 1000000) {
+    throw new HttpsError('invalid-argument', 'O preço deve ser um número válido de até 1.000.000.');
+  }
+  if (!orderData.deliveryDate || typeof orderData.deliveryDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(orderData.deliveryDate)) {
+    throw new HttpsError('invalid-argument', 'Data de entrega inválida.');
+  }
+
+  const items = Array.isArray(orderData.items)
+    ? assertComplexOrderItems(orderData.items, quantity, price)
+    : null;
+  const resolvedUnitPrice = typeof orderData.unitPrice === 'number' && Number.isFinite(orderData.unitPrice)
+    ? Math.max(0, Math.round(orderData.unitPrice * 100) / 100)
+    : (items && items.length === 1 ? items[0].unitPrice : null);
+  const resolvedPricingMode = orderData.pricingMode || (items && items.length > 1 ? 'items' : resolvedUnitPrice != null ? 'unit' : 'total');
+
+  // Normalização do pagamento na criação
+  const totalPaymentAmount = isExchange ? 0 : price;
+  let normalizedPayment = null;
+  let initialHistory = null;
+  let initialPaymentEvent = null;
+
+  if (orderData.payment && typeof orderData.payment === 'object') {
+    const rawPaid = Number(orderData.payment.paidAmount);
+    const paidAmount = Number.isFinite(rawPaid) ? Math.min(Math.max(0, Math.round(rawPaid * 100) / 100), totalPaymentAmount) : 0;
+    const remainingAmount = Math.round(Math.max(0, totalPaymentAmount - paidAmount) * 100) / 100;
+    const resolvedStatus = totalPaymentAmount === 0
+      ? (orderData.payment.status === 'pending' ? 'pending' : 'paid')
+      : (paidAmount >= totalPaymentAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending'));
+    const method = PAYMENT_METHODS.has(orderData.payment.method) ? orderData.payment.method : null;
+    const paymentDate = paidAmount > 0 ? (orderData.payment.paymentDate || now) : null;
+    const paymentNotes = typeof orderData.payment.notes === 'string' ? orderData.payment.notes.slice(0, 1000) : null;
+
+    if (paidAmount > 0) {
+      initialPaymentEvent = {
+        amount: paidAmount,
+        date: paymentDate,
+        method: method || 'pix',
+        notes: 'Pagamento inicial registrado',
+      };
+      initialHistory = [initialPaymentEvent];
+    }
+
+    normalizedPayment = {
+      status: resolvedStatus,
+      method,
+      totalAmount: totalPaymentAmount,
+      paidAmount,
+      remainingAmount,
+      paymentDate,
+      notes: paymentNotes,
+      history: initialHistory,
+    };
+  } else {
+    normalizedPayment = {
+      status: 'pending',
+      method: null,
+      totalAmount: totalPaymentAmount,
+      paidAmount: 0,
+      remainingAmount: totalPaymentAmount,
+      paymentDate: null,
+      notes: null,
+      history: null,
+    };
+  }
+
+  const orderToValidate = {
+    ...orderData,
+    price,
+    quantity,
+    pricingMode: resolvedPricingMode,
+    unitPrice: resolvedUnitPrice,
+    items,
+    payment: normalizedPayment,
+  };
+  assertComplexOrderData(orderToValidate, isExchange);
+
+  // Execução atômica no Firestore
+  return db.runTransaction(async (transaction) => {
+    // 1. Idempotência por identificador
+    const candidateOrderId = idempotencyKey && typeof idempotencyKey === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(idempotencyKey)
+      ? idempotencyKey
+      : null;
+    const orderRef = candidateOrderId ? db.doc(`orders/${candidateOrderId}`) : db.collection('orders').doc();
+    const orderId = orderRef.id;
+
+    if (candidateOrderId) {
+      const existingSnap = await transaction.get(orderRef);
+      if (existingSnap.exists) {
+        const existingData = existingSnap.data() || {};
+        if (existingData.userId !== uid && !admin) {
+          throw new HttpsError('permission-denied', 'Identificador de pedido já utilizado por outro usuário.');
+        }
+        return {
+          success: true,
+          orderId,
+          orderNumber: existingData.orderNumber,
+          alreadyExisted: true,
+        };
+      }
+    }
+
+    // 2. Validação e Idempotência de catálogo
+    let catalogRef = null;
+    if (catalogOrderId && typeof catalogOrderId === 'string') {
+      catalogRef = db.doc(`catalogOrders/${catalogOrderId}`);
+      const catalogSnap = await transaction.get(catalogRef);
+      if (!catalogSnap.exists) throw new HttpsError('not-found', 'Pedido da lojinha não encontrado.');
+      const catalog = catalogSnap.data() || {};
+      if (catalog.convertedOrderId) {
+        return { success: true, orderId: String(catalog.convertedOrderId), alreadyExisted: true };
+      }
+      if (catalog.status === 'converted') {
+        throw new HttpsError('failed-precondition', 'Este pedido da lojinha já foi convertido em pedido de produção anteriormente.');
+      }
+    }
+
+    // 3. Validação e Idempotência de orçamento
+    let quoteRef = null;
+    if (quoteId && typeof quoteId === 'string') {
+      quoteRef = db.doc(`quotes/${quoteId}`);
+      const quoteSnap = await transaction.get(quoteRef);
+      if (!quoteSnap.exists) throw new HttpsError('not-found', 'Orçamento não encontrado.');
+      const quote = quoteSnap.data() || {};
+      const existingOrderId = quote.convertedOrderId || quote.orderId;
+      if (existingOrderId) {
+        return { success: true, orderId: String(existingOrderId), alreadyExisted: true };
+      }
+      if (quote.status === 'approved') {
+        throw new HttpsError('failed-precondition', 'Este orçamento já foi aprovado anteriormente.');
+      }
+      if (quote.status !== 'draft' && quote.status !== 'sent') {
+        throw new HttpsError('failed-precondition', 'Apenas orçamentos em rascunho ou enviados podem ser aprovados.');
+      }
+      if (quote.validUntil) {
+        const expiration = new Date(quote.validUntil);
+        expiration.setHours(23, 59, 59, 999);
+        if (expiration < new Date()) {
+          throw new HttpsError('failed-precondition', 'Este orçamento expirou e não pode ser aprovado.');
+        }
+      }
+    }
+
+    // 4. Validação de cliente vinculado
+    let customerRef = null;
+    let customerData = null;
+    if (orderData.customerId && typeof orderData.customerId === 'string') {
+      customerRef = db.doc(`customers/${orderData.customerId}`);
+      const customerSnap = await transaction.get(customerRef);
+      if (!customerSnap.exists || customerSnap.data()?.userId !== uid) {
+        throw new HttpsError('permission-denied', 'O cliente vinculado não pertence a esta conta.');
+      }
+      customerData = customerSnap.data() || {};
+    }
+
+    // 5. Contador de pedidos
+    const counterRef = db.doc(`users/${uid}/metadata/counters`);
+    const counterSnap = await transaction.get(counterRef);
+    const nextCount = ((counterSnap.data()?.orderCounter) || 0) + 1;
+    const year = new Date().getFullYear();
+    const orderNumber = `#${year}-${String(nextCount).padStart(4, '0')}`;
+
+    // 6. Montagem dos payloads
+    const createdOrderData = {
+      userId: uid,
+      createdByName: profile.displayName || profile.email || uid,
+      orderNumber,
+      customerName: orderData.customerName.trim(),
+      customerPhone: orderData.customerPhone ?? null,
+      productName: orderData.productName.trim(),
+      quantity,
+      price,
+      pricingMode: resolvedPricingMode,
+      unitPrice: resolvedUnitPrice,
+      items,
+      status: orderData.status || 'pending',
+      deliveryDate: orderData.deliveryDate,
+      notes: orderData.notes ?? null,
+      tags: orderData.tags ?? null,
+      customerId: orderData.customerId ?? null,
+      assignedTo: orderData.assignedTo ?? null,
+      assignedToName: orderData.assignedToName ?? null,
+      assignedAt: orderData.assignedAt ?? null,
+      assignedBy: orderData.assignedBy ?? null,
+      payment: normalizedPayment,
+      isExchange,
+      exchangeNotes: orderData.exchangeNotes ?? null,
+      exchangeItems: orderData.exchangeItems ?? null,
+      cardColor: orderData.cardColor ?? null,
+      productionWorkflow: {
+        currentStep: 'design',
+        steps: {
+          design: { completed: false },
+          approval: { completed: false },
+          printing: { completed: false },
+          cutting: { completed: false },
+          assembly: { completed: false },
+          'quality-check': { completed: false },
+          packaging: { completed: false },
+        },
+        startedAt: now,
+      },
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      isArchived: Boolean(orderData.isArchived),
+      archivedAt: orderData.archivedAt ?? null,
+      archivedBy: orderData.archivedBy ?? null,
+    };
+
+    const salePayload = {
+      id: orderId,
+      orderId,
+      orderNumber,
+      userId: uid,
+      assignedTo: createdOrderData.assignedTo,
+      assignedToName: createdOrderData.assignedToName,
+      customerId: createdOrderData.customerId,
+      customerName: createdOrderData.customerName,
+      customerPhone: createdOrderData.customerPhone,
+      productName: createdOrderData.productName,
+      quantity: createdOrderData.quantity,
+      amount: createdOrderData.isExchange ? 0 : createdOrderData.price,
+      isExchange: Boolean(createdOrderData.isExchange),
+      paymentStatus: normalizedPayment?.status || 'pending',
+      paidAmount: createdOrderData.isExchange ? 0 : (normalizedPayment?.paidAmount || 0),
+      paymentMethod: normalizedPayment?.method ?? null,
+      date: now,
+      deliveryDate: createdOrderData.deliveryDate,
+      status: createdOrderData.status,
+      notes: createdOrderData.notes,
+      tags: createdOrderData.tags,
+      createdAt: now,
+      updatedAt: now,
+      isDeletedFromOrders: false,
+    };
+
+    // 7. Gravações atômicas
+    transaction.set(counterRef, { orderCounter: nextCount }, { merge: true });
+    transaction.set(orderRef, createdOrderData);
+    transaction.set(db.doc(`salesLedger/${orderId}`), salePayload);
+
+    if (initialPaymentEvent) {
+      const eventRef = orderRef.collection('paymentEvents').doc();
+      transaction.create(eventRef, {
+        type: 'payment',
+        amount: initialPaymentEvent.amount,
+        method: initialPaymentEvent.method,
+        notes: initialPaymentEvent.notes,
+        occurredAt: initialPaymentEvent.date,
+        actorUid: uid,
+        source: 'createOrder',
+        createdAt: now,
+      });
+    }
+
+    if (catalogRef) {
+      transaction.update(catalogRef, {
+        status: 'converted',
+        convertedOrderId: orderId,
+        updatedAt: now,
+      });
+    }
+
+    if (quoteRef) {
+      transaction.update(quoteRef, {
+        status: 'approved',
+        orderId,
+        orderNumber,
+        convertedOrderId: orderId,
+        convertedOrderNumber: orderNumber,
+        approvedAt: now,
+        updatedAt: now,
+      });
+    }
+
+    if (customerRef && !isExchange && customerData) {
+      const currentOrders = Number.isFinite(customerData.totalOrders) ? customerData.totalOrders : 0;
+      const currentSpent = Number.isFinite(customerData.totalSpent) ? customerData.totalSpent : 0;
+      transaction.update(customerRef, {
+        totalOrders: currentOrders + 1,
+        totalSpent: Math.round((currentSpent + price) * 100) / 100,
+      });
+    }
+
+    return {
+      success: true,
+      orderId,
+      orderNumber,
+      alreadyExisted: false,
+    };
+  });
+}
+
+const createOrder = onCall({ cors: true, maxInstances: 10 }, handleCreateOrder);
 
 function getTrackingEncryptionKey() {
   const key = Buffer.from(ORDER_TRACKING_ENCRYPTION_KEY.value() || '', 'base64');
@@ -1321,6 +1667,8 @@ module.exports = {
   validateComplexOrderUpdate,
   buildAuthoritativePaymentHistory,
   handleUpdateComplexOrder,
+  createOrder,
+  handleCreateOrder,
   calculateSuperfreteShipping,
   createSuperfreteLabel,
 };
