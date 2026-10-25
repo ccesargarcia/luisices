@@ -86,11 +86,11 @@ function compressPaymentHistory(history, maxEntries = MAX_EMBEDDED_PAYMENT_HISTO
     if (!Number.isFinite(amount)) continue;
     const method = PAYMENT_METHODS.has(entry?.method) ? entry.method : 'pix';
     const current = methodTotals.get(method) || { totalCents: 0, count: 0 };
-    // Ajustes negativos (estornos/reduções) abatem o saldo financeiro, mas não contam como transações de pagamento
-    const isPositivePayment = amount > 0;
-    const entryCount = isPositivePayment
-      ? (Number(entry?.count) > 0 ? Number(entry.count) : 1)
-      : 0;
+    // Preserva contagens já consolidadas (inclusive quando o saldo for 0 por estorno) e conta 1 para novos pagamentos positivos
+    const hasExplicitCount = Number(entry?.count) > 0;
+    const entryCount = hasExplicitCount
+      ? Number(entry.count)
+      : (amount > 0 ? 1 : 0);
     methodTotals.set(method, {
       totalCents: current.totalCents + Math.round(amount * 100),
       count: current.count + entryCount,

@@ -207,6 +207,28 @@ describe('Inteligência Comercial: Raio X, Ticket Médio e Faixas de Clientes', 
       // 30 transações históricas de pix (mesmo com saldo final zerado) vs 2 de cash -> pix deve ser a preferida
       expect(getPreferredPaymentMethod(orders)).toBe('pix');
     });
+
+    it('reconhece a forma preferida a partir de resumo recompactado com saldo zero', () => {
+      const orders = [{
+        status: 'completed',
+        payment: {
+          method: 'pix',
+          history: [
+            // Resumo recompactado de dinheiro com saldo zero mas 10 pagamentos originais
+            { amount: 0, method: 'cash', count: 10 },
+            // 5 pagamentos recentes via pix
+            { amount: 10, method: 'pix' },
+            { amount: 10, method: 'pix' },
+            { amount: 10, method: 'pix' },
+            { amount: 10, method: 'pix' },
+            { amount: 10, method: 'pix' },
+          ],
+        },
+      }];
+
+      // 10 transações em dinheiro vs 5 via pix -> dinheiro deve ser a preferida
+      expect(getPreferredPaymentMethod(orders)).toBe('cash');
+    });
   });
 
   describe('4. Classificação por Faixas de Gasto (Tiers) Configuráveis', () => {

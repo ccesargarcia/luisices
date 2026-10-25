@@ -441,6 +441,79 @@ describe('Cloud Function: atualização segura de pedidos com muitos itens', () 
     expect(consolidatedCash.count).toBe(10);
   });
 
+  it('preserva a contagem em recompactações subsequentes mesmo com amount 0', async () => {
+    const id = `complex-order-recompact-zero-${Date.now()}`;
+    const orderRef = adminDb.doc(`orders/${id}`);
+    // O pedido já possui um resumo consolidado anterior com amount 0 e count 10 (cash)
+    // mais 50 parcelas de R$ 1 cada (total 51 entradas > maxRecent)
+    const existingHistory = [
+      {
+        amount: 0,
+        count: 10,
+        date: '2026-01-01T00:00:00.000Z',
+        method: 'cash',
+        notes: 'Consolidação de pagamentos anteriores (cash)',
+      },
+      ...Array.from({ length: 50 }, (_, i) => ({
+        amount: 1,
+        date: '2026-01-02T00:00:00.000Z',
+        method: 'pix',
+        notes: `Parcela pix ${i + 1}`,
+      })),
+    ];
+    const initial = {
+      ...newOrder(id),
+      price: 100,
+      payment: {
+        status: 'partial',
+        method: 'pix',
+        totalAmount: 100,
+        paidAmount: 50,
+        remainingAmount: 50,
+        history: existingHistory,
+      },
+    };
+    await Promise.all([
+      orderRef.set(initial),
+      adminDb.doc('userProfiles/complex-owner').set({
+        role: 'user', active: true, permissions: { orders: { edit: true } },
+      }),
+      adminDb.doc(`salesLedger/${id}`).set({
+        id, orderId: id, userId: initial.userId, amount: 100, quantity: 1,
+        paymentStatus: 'partial', paidAmount: 50, paymentMethod: 'pix',
+      }),
+    ]);
+
+    // Nova atualização gerando novo evento de pagamento, forçando nova compactação onde o resumo anterior volta a cair no overflow
+    await handleUpdateComplexOrder({
+      auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+      data: {
+        orderId: id,
+        expectedVersion: 1,
+        updates: { payment: { paidAmount: 55, method: 'pix' } },
+      },
+    }, adminDb);
+
+    const saved = (await orderRef.get()).data();
+    expect(saved?.payment.paidAmount).toBe(55);
+    expect(saved?.payment.history.length).toBeLessThanOrEqual(50);
+    // A soma financeira total deve ser exatamente R$ 55
+    const sum = saved?.payment.history.reduce((s: number, h: any) => s + (h.amount || 0), 0);
+    expect(sum).toBe(55);
+    // O resumo consolidado de cash deve permanecer com amount 0 e count 10
+    const recompactedCash = saved?.payment.history.find((h: any) => h.method === 'cash' && h.notes?.includes('Consolidação'));
+    expect(recompactedCash).toBeDefined();
+    expect(recompactedCash.amount).toBe(0);
+    expect(recompactedCash.count).toBe(10);
+
+    // As entradas de Pix mantêm seus valores e contagens
+    const pixEntries = saved?.payment.history.filter((h: any) => h.method === 'pix');
+    const pixTotalAmount = pixEntries.reduce((s: number, h: any) => s + (h.amount || 0), 0);
+    expect(pixTotalAmount).toBe(55);
+    const pixTotalCount = pixEntries.reduce((s: number, h: any) => s + (typeof h.count === 'number' && h.count > 0 ? h.count : 1), 0);
+    expect(pixTotalCount).toBe(51); // 50 parcelas originais + 1 novo pagamento de R$ 5
+  });
+
   it('atualiza pagamento de pedido legado e estatísticas da permuta na mesma transação', async () => {
     const id = `legacy-payment-update-${Date.now()}`;
     const customerId = `customer-${id}`;
