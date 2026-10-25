@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, beforeEach, afterAll, describe, it, expect } from 'vitest';
 import { initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, setDoc, updateDoc, getDoc, runTransaction, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, getDoc, deleteDoc, runTransaction, Timestamp } from 'firebase/firestore';
 
 let env: RulesTestEnvironment;
 const dbFor = (uid: string) => env.authenticatedContext(uid).firestore();
@@ -108,6 +108,30 @@ beforeEach(async () => {
       permissions: {
         orders: { view: true, edit: false, delete: false },
         archivedOrders: { view: true, create: false, edit: false, delete: true },
+      },
+    });
+    await fs.doc('userProfiles/emp-archived-creator').set({
+      role: 'funcionario',
+      active: true,
+      permissions: {
+        orders: { view: true, edit: false, delete: false },
+        archivedOrders: { view: true, create: true, edit: false, delete: false },
+      },
+    });
+    await fs.doc('userProfiles/emp-archived-denied').set({
+      role: 'funcionario',
+      active: true,
+      permissions: {
+        orders: { view: true, edit: true, delete: false },
+        archivedOrders: { view: true, create: false, edit: false, delete: false },
+      },
+    });
+    await fs.doc('userProfiles/emp-archived-editor').set({
+      role: 'funcionario',
+      active: true,
+      permissions: {
+        orders: { view: true, edit: false, delete: false },
+        archivedOrders: { view: true, create: false, edit: true, delete: false },
       },
     });
     await fs.doc('userProfiles/admin').set({
@@ -1461,6 +1485,79 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         deletedAt: Timestamp.now(),
         updatedAt: '2026-10-24T14:00:00.000Z',
       }));
+    });
+
+    it('permite arquivamento por funcionário com archivedOrders.create mesmo sem orders.edit', async () => {
+      const orderId = 'order-archive-by-archivist';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-archived-creator',
+          status: 'completed',
+          version: 1,
+        });
+      });
+
+      const empDb = dbFor('emp-archived-creator');
+      await assertSucceeds(updateOrder(empDb, `orders/${orderId}`, {
+        isArchived: true,
+        archivedAt: '2026-10-25T14:00:00.000Z',
+        archivedBy: 'emp-archived-creator',
+      }));
+    });
+
+    it('bloqueia arquivamento quando archivedOrders.create é false, mesmo com orders.edit true', async () => {
+      const orderId = 'order-archive-denied';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-archived-denied',
+          status: 'completed',
+          version: 1,
+        });
+      });
+
+      const empDb = dbFor('emp-archived-denied');
+      await assertFails(updateOrder(empDb, `orders/${orderId}`, {
+        isArchived: true,
+        archivedAt: '2026-10-25T14:00:00.000Z',
+        archivedBy: 'emp-archived-denied',
+      }));
+    });
+
+    it('permite desarquivamento por funcionário com archivedOrders.edit mesmo sem orders.edit', async () => {
+      const orderId = 'order-unarchive-by-editor';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-archived-editor',
+          isArchived: true,
+          status: 'completed',
+          version: 1,
+        });
+      });
+
+      const empDb = dbFor('emp-archived-editor');
+      await assertSucceeds(updateOrder(empDb, `orders/${orderId}`, {
+        isArchived: false,
+        archivedAt: null,
+        archivedBy: null,
+      }));
+    });
+
+    it('permite exclusão física de pedido arquivado a funcionário com archivedOrders.delete', async () => {
+      const orderId = 'order-hard-delete-archived';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-archived-delete-only',
+          isArchived: true,
+          version: 1,
+        });
+      });
+
+      const empDb = dbFor('emp-archived-delete-only');
+      await assertSucceeds(deleteDoc(doc(empDb, `orders/${orderId}`)));
     });
   });
 

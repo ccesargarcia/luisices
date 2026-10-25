@@ -104,7 +104,7 @@ export interface Order {
   orderNumber?: string;
   isExchange?: boolean;    // Permuta / parceria
   exchangeNotes?: string | null;  // Detalhes da permuta
-  exchangeItems?: ExchangeItem[]; // Itens recebidos na permuta
+  exchangeItems?: ExchangeItem[] | null; // Itens recebidos na permuta
   cardColor?: string | null;      // Cor de destaque do card
   realCost?: number;       // Custo real da produção
   version?: number;        // Versão para controle de concorrência

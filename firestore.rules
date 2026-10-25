@@ -129,26 +129,43 @@ service cloud.firestore {
       return hasPerm(deletePermission, 'delete');
     }
 
+    function hasOrderArchivePermission(profile, previous, next) {
+      let permissions = profile.get('permissions', {});
+      let ordersPermission = permissions.get('orders', false);
+      let archivedPermission = permissions.get('archivedOrders', null);
+      let isArchiving = next.get('isArchived', false) == true && previous.get('isArchived', false) != true;
+      let isUnarchiving = next.get('isArchived', false) == false && previous.get('isArchived', false) == true;
+      let archivePerm = archivedPermission == null ? ordersPermission : archivedPermission;
+      return (!isArchiving || hasPerm(archivePerm, 'create') || (archivedPermission == null && hasPerm(ordersPermission, 'edit')))
+        && (!isUnarchiving || hasPerm(archivePerm, 'edit') || (archivedPermission == null && hasPerm(ordersPermission, 'edit')));
+    }
+
     function canUpdateOrder(previous, next, changed) {
       let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
       let role = profile.get('role', '');
       let isSoftDelete = changed.hasAny(['deletedAt']);
+      let isArchiveTransition = changed.hasAny(['isArchived']);
+      let hasEditPerm = hasPerm(profile.get('permissions', {}).get('orders', false), 'edit');
+      let canArchive = hasOrderArchivePermission(profile, previous, next);
+      let canDelete = hasOrderDeletePermission(profile, previous);
+      let onlyArchiveFields = changed.hasOnly(['isArchived', 'archivedAt', 'archivedBy', 'updatedAt', 'version']);
+      let canPerformUpdate = isSoftDelete
+        ? (changed.hasOnly(['deletedAt', 'updatedAt', 'version']) && next.get('deletedAt', null) != null && canDelete)
+        : (isArchiveTransition
+          ? (canArchive && (onlyArchiveFields || hasEditPerm))
+          : hasEditPerm);
       return isActiveProfile(profile)
         && (
           role == 'admin'
           || (
             previous.userId == request.auth.uid
-            && (!isSoftDelete
-              ? hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
-              : (changed.hasOnly(['deletedAt', 'updatedAt', 'version']) && next.get('deletedAt', null) != null && hasOrderDeletePermission(profile, previous)))
+            && canPerformUpdate
           )
           || (
             role == 'funcionario'
             && previous.get('assignedTo', '') == request.auth.uid
             && !changed.hasAny(['assignedTo'])
-            && (!isSoftDelete
-              ? hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
-              : (changed.hasOnly(['deletedAt', 'updatedAt', 'version']) && next.get('deletedAt', null) != null && hasOrderDeletePermission(profile, previous)))
+            && canPerformUpdate
           )
         );
     }
@@ -404,25 +421,17 @@ service cloud.firestore {
     }
 
     function isValidOrderChanges(previous, data, changed) {
-      let items = data.get('items', null);
-      // All total/item edits run through updateComplexOrder. This avoids
-      // cumulative CEL evaluation risk and blocks shrinking/removing items as
-      // an attempted bypass, regardless of the list's current size.
-      let usesOrderTotals = changed.hasAny(['items', 'price', 'quantity', 'pricingMode', 'unitPrice']);
+      let usesFinancialOrOrderTotals = changed.hasAny([
+        'items', 'price', 'quantity', 'pricingMode', 'unitPrice',
+        'payment', 'isExchange', 'customerId'
+      ]);
       return isValidOrder(data, changed)
-        // Financial, exchange and customer-link changes go through
+        // Financial, exchange, items and customer-link changes go through
         // updateComplexOrder, which validates and reconciles dependent records.
-        && !changed.hasAny(['payment', 'isExchange', 'customerId'])
+        && !usesFinancialOrOrderTotals
         && (!changed.hasAny(['tags']) || !('tags' in data) || data.tags == null || isValidOrderTagsUpdate(data.tags, previous))
         && (!changed.hasAny(['deliveryDate']) || ('deliveryDate' in data && data.deliveryDate is string
-          && data.deliveryDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && isValidCalendarDate(data.deliveryDate)))
-        && (!changed.hasAny(['customerId']) || !('customerId' in data) || data.customerId == null || (
-          data.customerId is string && data.customerId.size() > 0 && data.customerId.size() <= 128
-          && get(/databases/$(database)/documents/customers/$(data.customerId)).data.userId == data.userId))
-        && !usesOrderTotals
-        && ((!changed.hasAny(['items', 'pricingMode', 'unitPrice']) && (data.get('items', null) == null || !changed.hasAny(['price', 'quantity'])))
-          || isValidOrderItemsField(data))
-        && (!changed.hasAny(['price', 'payment', 'isExchange']) || data.get('payment', null) == null || isConsistentOrderPayment(data.payment, data.get('isExchange', false) ? 0 : data.price));
+          && data.deliveryDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && isValidCalendarDate(data.deliveryDate)));
     }
 
     function isAllowedOrderUpdate(previous, next) {
@@ -561,9 +570,18 @@ service cloud.firestore {
         && isValidNewOrder(request.resource.data);
       allow update: if request.auth != null
         && isAllowedOrderUpdate(resource.data, request.resource.data);
-      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('orders', 'delete'))
-        || isAdmin()
-        || (resource != null && 'assignedTo' in resource.data && isAssignedEmployeeDeleter(resource.data.assignedTo));
+      allow delete: if request.auth != null && (
+        isAdmin()
+        || (
+          resource != null
+          && isActiveProfile(get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
+          && hasOrderDeletePermission(get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data, resource.data)
+          && (
+            ('userId' in resource.data && isOwner(resource.data.userId))
+            || ('assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo))
+          )
+        )
+      );
 
       match /paymentEvents/{eventId} {
         function canReadOrderPaymentEvents() {

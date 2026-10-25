@@ -1210,6 +1210,7 @@ export class FirebaseOrderService {
         remainingAmount: price,
         paymentDate: null,
         notes: null,
+        history: null,
       },
       isExchange: Boolean(data.isExchange),
       exchangeNotes: data.exchangeNotes || null,
