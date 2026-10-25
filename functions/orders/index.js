@@ -650,11 +650,26 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
   }
 
   const now = new Date().toISOString();
-  const isExchange = Boolean(orderData.isExchange);
+  if (orderData.isExchange !== undefined && orderData.isExchange !== null) {
+    if (typeof orderData.isExchange !== 'boolean') {
+      throw new HttpsError('invalid-argument', 'Indicador de permuta inválido.');
+    }
+  }
+  const isExchange = orderData.isExchange === true;
+
   const quantity = orderData.quantity;
-  const price = typeof orderData.price === 'number' && Number.isFinite(orderData.price)
-    ? Math.round(orderData.price * 100) / 100
-    : 0;
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000) {
+    throw new HttpsError('invalid-argument', 'A quantidade deve ser um número inteiro entre 1 e 10.000.');
+  }
+
+  if (typeof orderData.price !== 'number' || !Number.isFinite(orderData.price) || orderData.price < 0 || orderData.price > 1000000) {
+    throw new HttpsError('invalid-argument', 'O preço deve ser um número válido de até 1.000.000.');
+  }
+  const priceCents = Math.round(orderData.price * 100);
+  if (Math.abs(orderData.price * 100 - priceCents) > 0.001) {
+    throw new HttpsError('invalid-argument', 'O preço deve usar centavos inteiros.');
+  }
+  const price = priceCents / 100;
 
   if (!orderData.customerName || typeof orderData.customerName !== 'string' || !orderData.customerName.trim()) {
     throw new HttpsError('invalid-argument', 'O nome do cliente é obrigatório.');
@@ -662,23 +677,99 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
   if (!orderData.productName || typeof orderData.productName !== 'string' || !orderData.productName.trim()) {
     throw new HttpsError('invalid-argument', 'O nome do produto é obrigatório.');
   }
-  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000) {
-    throw new HttpsError('invalid-argument', 'A quantidade deve ser um número inteiro entre 1 e 10.000.');
-  }
-  if (typeof price !== 'number' || !Number.isFinite(price) || price < 0 || price > 1000000) {
-    throw new HttpsError('invalid-argument', 'O preço deve ser um número válido de até 1.000.000.');
-  }
   if (!orderData.deliveryDate || typeof orderData.deliveryDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(orderData.deliveryDate)) {
     throw new HttpsError('invalid-argument', 'Data de entrega inválida.');
   }
 
+  if (orderData.items !== undefined && orderData.items !== null && !Array.isArray(orderData.items)) {
+    throw new HttpsError('invalid-argument', 'A lista de itens deve ser um array válido.');
+  }
   const items = Array.isArray(orderData.items)
     ? assertComplexOrderItems(orderData.items, quantity, price)
     : null;
-  const resolvedUnitPrice = typeof orderData.unitPrice === 'number' && Number.isFinite(orderData.unitPrice)
-    ? Math.max(0, Math.round(orderData.unitPrice * 100) / 100)
-    : (items && items.length === 1 ? items[0].unitPrice : null);
-  const resolvedPricingMode = orderData.pricingMode || (items && items.length > 1 ? 'items' : resolvedUnitPrice != null ? 'unit' : 'total');
+
+  if (orderData.pricingMode !== undefined && orderData.pricingMode !== null) {
+    if (typeof orderData.pricingMode !== 'string' || !['unit', 'total', 'items'].includes(orderData.pricingMode)) {
+      throw new HttpsError('invalid-argument', 'Tipo de preço inválido.');
+    }
+  }
+
+  if (orderData.unitPrice !== undefined && orderData.unitPrice !== null) {
+    if (typeof orderData.unitPrice !== 'number' || !Number.isFinite(orderData.unitPrice)
+      || orderData.unitPrice < 0 || orderData.unitPrice > 1000000) {
+      throw new HttpsError('invalid-argument', 'Preço unitário inválido.');
+    }
+    const unitPriceCents = Math.round(orderData.unitPrice * 100);
+    if (Math.abs(orderData.unitPrice * 100 - unitPriceCents) > 0.001) {
+      throw new HttpsError('invalid-argument', 'O preço unitário deve usar centavos inteiros.');
+    }
+  }
+
+  let resolvedUnitPrice = null;
+  let resolvedPricingMode = null;
+
+  if (items && items.length > 1) {
+    if (orderData.pricingMode !== undefined && orderData.pricingMode !== null && orderData.pricingMode !== 'items') {
+      throw new HttpsError('invalid-argument', 'Pedidos com múltiplos itens devem usar o tipo de preço "items".');
+    }
+    if (orderData.unitPrice !== undefined && orderData.unitPrice !== null) {
+      throw new HttpsError('invalid-argument', 'Pedidos com múltiplos itens não devem ter unitPrice no pedido.');
+    }
+    resolvedPricingMode = 'items';
+    resolvedUnitPrice = null;
+  } else if (items && items.length === 1) {
+    const itemUnitPrice = items[0].unitPrice;
+    if (orderData.unitPrice !== undefined && orderData.unitPrice !== null) {
+      if (Math.abs(orderData.unitPrice - itemUnitPrice) > 0.001) {
+        throw new HttpsError('invalid-argument', 'O preço unitário do pedido não corresponde ao item.');
+      }
+      resolvedUnitPrice = itemUnitPrice;
+    } else {
+      resolvedUnitPrice = itemUnitPrice;
+    }
+
+    if (orderData.pricingMode === 'items') {
+      resolvedPricingMode = 'items';
+      resolvedUnitPrice = orderData.unitPrice != null ? itemUnitPrice : null;
+    } else if (orderData.pricingMode === 'total') {
+      resolvedPricingMode = 'total';
+      resolvedUnitPrice = orderData.unitPrice != null ? itemUnitPrice : null;
+    } else {
+      resolvedPricingMode = 'unit';
+      resolvedUnitPrice = itemUnitPrice;
+    }
+  } else {
+    // Pedido simples sem lista de itens (items == null)
+    if (orderData.pricingMode === 'items') {
+      throw new HttpsError('invalid-argument', 'O tipo de preço "items" exige uma lista de itens estruturados.');
+    }
+    if (orderData.unitPrice !== undefined && orderData.unitPrice !== null) {
+      resolvedUnitPrice = Math.round(orderData.unitPrice * 100) / 100;
+    } else {
+      resolvedUnitPrice = null;
+    }
+
+    if (orderData.pricingMode === 'unit') {
+      if (resolvedUnitPrice === null) {
+        throw new HttpsError('invalid-argument', 'O modo de preço unitário exige o preço unitário do pedido.');
+      }
+      if (Math.abs(price - Math.round(quantity * resolvedUnitPrice * 100) / 100) > 0.05) {
+        throw new HttpsError('invalid-argument', 'O preço total não corresponde à quantidade e ao preço unitário.');
+      }
+      resolvedPricingMode = 'unit';
+    } else if (orderData.pricingMode === 'total') {
+      resolvedPricingMode = 'total';
+    } else {
+      if (resolvedUnitPrice !== null) {
+        if (Math.abs(price - Math.round(quantity * resolvedUnitPrice * 100) / 100) > 0.05) {
+          throw new HttpsError('invalid-argument', 'O preço total não corresponde à quantidade e ao preço unitário.');
+        }
+        resolvedPricingMode = 'unit';
+      } else {
+        resolvedPricingMode = 'total';
+      }
+    }
+  }
 
   // Normalização do pagamento na criação
   const totalPaymentAmount = isExchange ? 0 : price;
@@ -732,6 +823,7 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
 
   const orderToValidate = {
     ...orderData,
+    isExchange,
     price,
     quantity,
     pricingMode: resolvedPricingMode,

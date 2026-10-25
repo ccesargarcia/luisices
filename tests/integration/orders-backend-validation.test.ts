@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, beforeEach, afterAll, describe, it, expect } from 'vitest';
 import { initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, setDoc, updateDoc, getDoc, deleteDoc, runTransaction, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, getDoc, deleteDoc, runTransaction, writeBatch, Timestamp } from 'firebase/firestore';
 
 let env: RulesTestEnvironment;
 const dbFor = (uid: string) => env.authenticatedContext(uid).firestore();
@@ -34,19 +34,7 @@ const baseOrder = {
   assignedTo: 'emp-assigned',
 };
 
-const createOrderWithConsistentPayment = (overrides: Record<string, any>) => {
-  const order = { ...baseOrder, ...overrides };
-  const price = order.isExchange === true ? 0 : order.price;
-  return {
-    ...order,
-    payment: overrides.payment ?? {
-      status: 'paid',
-      totalAmount: price,
-      paidAmount: price,
-      remainingAmount: 0,
-    },
-  };
-};
+
 
 beforeAll(async () => {
   if (!process.env.FIRESTORE_EMULATOR_HOST) {
@@ -153,29 +141,55 @@ beforeEach(async () => {
 });
 
 describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () => {
-  describe('Permutas', () => {
-    it('aceita permuta sem cobrança com itens recebidos válidos', async () => {
+  describe('Bloqueio Estrito de Criação Direta pelo Cliente (allow create: if false)', () => {
+    it('bloqueia criação direta individual de pedido simples, com itens ou permuta', async () => {
       const ownerDb = dbFor('owner');
-      await assertSucceeds(setDoc(doc(ownerDb, 'orders/exchange-valid'), {
+      // Pedido simples
+      await assertFails(setDoc(doc(ownerDb, 'orders/direct-simple'), {
         ...baseOrder,
+        orderNumber: '#2026-0002',
+      }));
+      // Pedido com itens estruturados
+      await assertFails(setDoc(doc(ownerDb, 'orders/direct-items'), {
+        ...baseOrder,
+        orderNumber: '#2026-0003',
+        items: [{ name: 'Item', quantity: 1, unitPrice: 200, price: 200 }],
+      }));
+      // Pedido de permuta
+      await assertFails(setDoc(doc(ownerDb, 'orders/direct-exchange'), {
+        ...baseOrder,
+        orderNumber: '#2026-0004',
         isExchange: true,
         exchangeItems: [{ name: 'Divulgação', quantity: 1, value: 150 }],
         payment: { status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0, method: null },
       }));
     });
 
-    it('rejeita permuta com mais de dez itens recebidos', async () => {
+    it('bloqueia criação direta de pedido e salesLedger em transação pelo cliente', async () => {
       const ownerDb = dbFor('owner');
-      const exchange = {
-        ...baseOrder,
-        isExchange: true,
-        payment: { status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0, method: null },
-      };
-      await assertFails(setDoc(doc(ownerDb, 'orders/exchange-too-many'), {
-        ...exchange, exchangeItems: Array.from({ length: 11 }, (_, index) => ({ name: `Item ${index}`, quantity: 1, value: 1 })),
+      const orderId = 'order-and-ledger-atomic-create';
+      const orderRef = doc(ownerDb, `orders/${orderId}`);
+      const saleRef = doc(ownerDb, `salesLedger/${orderId}`);
+
+      await assertFails(runTransaction(ownerDb, async (transaction) => {
+        transaction.set(orderRef, { ...baseOrder, orderNumber: '#2026-0099', version: 1 });
+        transaction.set(saleRef, {
+          id: orderId, orderId, userId: 'owner', amount: 200, isExchange: false,
+          quantity: 2, paymentStatus: 'partial', paidAmount: 50, paymentMethod: 'pix',
+        });
       }));
     });
 
+    it('bloqueia criação direta de pedido em lote (writeBatch) pelo cliente', async () => {
+      const ownerDb = dbFor('owner');
+      const orderRef = doc(ownerDb, 'orders/direct-batch');
+      const batch = writeBatch(ownerDb);
+      batch.set(orderRef, { ...baseOrder, orderNumber: '#2026-0098', version: 1 });
+      await assertFails(batch.commit());
+    });
+  });
+
+  describe('Permutas', () => {
     it('bloqueia conversão direta em permuta para atualizar pagamento no backend', async () => {
       const ownerDb = dbFor('owner');
       await assertFails(updateOrder(ownerDb, 'orders/order-1', {
@@ -191,14 +205,8 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
   });
 
   describe('1. Autorização e Controle de Acesso', () => {
-    it('permite que o proprietário autorizado crie e edite o pedido', async () => {
+    it('permite que o proprietário autorizado edite o pedido', async () => {
       const ownerDb = dbFor('owner');
-      await assertSucceeds(
-        setDoc(doc(ownerDb, 'orders/order-new'), {
-          ...baseOrder,
-          orderNumber: '#2026-0002',
-        })
-      );
       await assertSucceeds(
         updateOrder(ownerDb, 'orders/order-1', {
           customerName: 'Cliente Atualizado',
@@ -345,52 +353,13 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
   });
 
   describe('3. Validação de Itens Estruturados (items)', () => {
-    it('aceita items: null na criação e na edição de pedidos sem preços unitários', async () => {
+    it('aceita edição mantendo items: null', async () => {
       const ownerDb = dbFor('owner');
-      // Criação com items: null
-      await assertSucceeds(
-        setDoc(doc(ownerDb, 'orders/order-null-items'), {
-          ...baseOrder,
-          orderNumber: '#2026-0003',
-          items: null,
-        })
-      );
       // Edição mantendo/enviando items: null
       await assertSucceeds(
         updateOrder(ownerDb, 'orders/order-1', {
           items: null,
           notes: 'Pedido legado atualizado sem itens estruturados',
-        })
-      );
-    });
-
-    it('rejeita criação com items: null quando pricingMode ou unitPrice forem inválidos', async () => {
-      const ownerDb = dbFor('owner');
-      // pricingMode inválido com items: null
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-invalid-pricing-mode'), {
-          ...baseOrder,
-          orderNumber: '#2026-0005',
-          pricingMode: 'invalid_mode',
-          items: null,
-        })
-      );
-      // unitPrice negativo com items: null
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-negative-unit-price'), {
-          ...baseOrder,
-          orderNumber: '#2026-0006',
-          unitPrice: -10,
-          items: null,
-        })
-      );
-      // unitPrice excedendo 1.000.000 com items: null
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-huge-unit-price'), {
-          ...baseOrder,
-          orderNumber: '#2026-0007',
-          unitPrice: 1000001,
-          items: null,
         })
       );
     });
@@ -453,235 +422,6 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
             paidAmount: 240,
             remainingAmount: 0,
           },
-        })
-      );
-    });
-
-    it('rejeita item com preço unitário negativo', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-neg-price'), {
-          ...createOrderWithConsistentPayment({
-            orderNumber: '#2026-0005',
-            quantity: 2,
-            price: 10,
-            items: [
-              { name: 'Item inválido', quantity: 1, unitPrice: -10, price: -10 },
-              { name: 'Item válido', quantity: 1, unitPrice: 20, price: 20 },
-            ],
-          }),
-        })
-      );
-    });
-
-    it('rejeita item com quantidade zero ou fracionária', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-zero-qty'), {
-          ...createOrderWithConsistentPayment({
-            orderNumber: '#2026-0006',
-            quantity: 1,
-            price: 50,
-            items: [
-              { name: 'Item inválido', quantity: 0, unitPrice: 50, price: 0 },
-              { name: 'Item válido', quantity: 1, unitPrice: 50, price: 50 },
-            ],
-          }),
-        })
-      );
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-float-qty'), {
-          ...createOrderWithConsistentPayment({
-            orderNumber: '#2026-0007',
-            quantity: 2,
-            price: 100,
-            items: [
-              { name: 'Item fracionário A', quantity: 1.5 as any, unitPrice: 50, price: 75 },
-              { name: 'Item fracionário B', quantity: 0.5 as any, unitPrice: 50, price: 25 },
-            ],
-          }),
-        })
-      );
-    });
-
-    it('rejeita item com subtotal inconsistente (quantity * unitPrice != price)', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-bad-subtotal'), {
-          ...createOrderWithConsistentPayment({
-            orderNumber: '#2026-0009',
-            quantity: 2,
-            price: 80,
-            items: [{ name: 'Item', quantity: 2, unitPrice: 50, price: 80 }], // 2 * 50 != 80
-          }),
-        })
-      );
-    });
-
-    it('rejeita lista acima do limite máximo de 10 itens estruturados', async () => {
-      const ownerDb = dbFor('owner');
-      const elevenItems = Array.from({ length: 11 }, (_, i) => ({
-        name: `Item ${i + 1}`,
-        quantity: 1,
-        unitPrice: 10,
-        price: 10,
-      }));
-
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-too-many-items'), {
-          ...createOrderWithConsistentPayment({
-            orderNumber: '#2026-0011',
-            quantity: 11,
-            price: 110,
-            items: elevenItems,
-          }),
-        })
-      );
-    });
-
-    it('bloqueia criação direta com dez itens para exigir a Function autoritativa', async () => {
-      const ownerDb = dbFor('owner');
-      const items = Array.from({ length: 10 }, (_, index) => ({
-        name: `Item ${index + 1}`,
-        quantity: 1,
-        unitPrice: 10,
-        price: 10,
-      }));
-
-      await assertFails(setDoc(doc(ownerDb, 'orders/order-ten-valid-items'), {
-        ...createOrderWithConsistentPayment({
-          orderNumber: '#2026-0016',
-          quantity: 10,
-          price: 100,
-          items,
-        }),
-      }));
-    });
-
-    it('rejeita quantidade inválida até no décimo item sem ultrapassar o limite CEL', async () => {
-      const ownerDb = dbFor('owner');
-      const items = Array.from({ length: 10 }, (_, index) => ({
-        name: `Item ${index + 1}`,
-        quantity: index === 9 ? 0 : 1,
-        unitPrice: 10,
-        price: index === 9 ? 0 : 10,
-      }));
-
-      await assertFails(setDoc(doc(ownerDb, 'orders/order-invalid-tenth-item'), {
-        ...createOrderWithConsistentPayment({
-          orderNumber: '#2026-0018',
-          quantity: 10,
-          price: 90,
-          items,
-        }),
-      }));
-    });
-  });
-
-  describe('4. Consistência Agregada (Pedido vs Itens)', () => {
-    it.each(Array.from({ length: 10 }, (_, index) => index + 1))(
-      'bloqueia criação direta com %i item(ns) para exigir a Function autoritativa',
-      async (itemCount) => {
-        const ownerDb = dbFor('owner');
-        const items = Array.from({ length: itemCount }, (_, index) => ({
-          name: `Item ${index + 1}`,
-          quantity: 1,
-          unitPrice: 10,
-          price: 10,
-        }));
-        const order = createOrderWithConsistentPayment({
-          orderNumber: `#2026-${String(6000 + itemCount).padStart(4, '0')}`,
-          quantity: itemCount,
-          price: itemCount * 10,
-          items,
-        });
-
-        await assertFails(setDoc(doc(ownerDb, `orders/create-exact-${itemCount}`), order));
-        await assertFails(setDoc(doc(ownerDb, `orders/create-invalid-total-${itemCount}`), {
-          ...order,
-          orderNumber: `#2026-${String(7000 + itemCount).padStart(4, '0')}`,
-          price: itemCount * 10 + 1,
-          payment: {
-            status: 'paid',
-            totalAmount: itemCount * 10 + 1,
-            paidAmount: itemCount * 10 + 1,
-            remainingAmount: 0,
-          },
-        }));
-        await assertFails(setDoc(doc(ownerDb, `orders/create-invalid-quantity-${itemCount}`), {
-          ...order,
-          orderNumber: `#2026-${String(8000 + itemCount).padStart(4, '0')}`,
-          quantity: itemCount + 1,
-        }));
-      },
-    );
-
-    it('rejeita quando a soma das quantidades dos itens diverge do total do pedido', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-qty-mismatch'), {
-          ...createOrderWithConsistentPayment({
-            orderNumber: '#2026-0012',
-            quantity: 5, // Errado: itens somam 3
-            price: 150,
-            items: [
-              { name: 'Item 1', quantity: 2, unitPrice: 50, price: 100 },
-              { name: 'Item 2', quantity: 1, unitPrice: 50, price: 50 },
-            ],
-          }),
-        })
-      );
-    });
-
-    it('rejeita quando a soma dos preços dos itens diverge do valor total do pedido', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-price-mismatch'), {
-          ...createOrderWithConsistentPayment({
-            orderNumber: '#2026-0013',
-            quantity: 2,
-            price: 300, // Errado: itens somam 200
-            items: [
-              { name: 'Item 1', quantity: 1, unitPrice: 100, price: 100 },
-              { name: 'Item 2', quantity: 1, unitPrice: 100, price: 100 },
-            ],
-          }),
-        })
-      );
-    });
-
-    it('bloqueia criação direta de pedido com 1 item para exigir a Function autoritativa', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-single-item'), {
-          ...baseOrder,
-          orderNumber: '#2026-0014',
-          quantity: 2,
-          price: 100,
-          pricingMode: 'unit',
-          unitPrice: 50,
-          items: [{ name: 'Convite', quantity: 2, unitPrice: 50, price: 100 }],
-          payment: {
-            status: 'paid',
-            totalAmount: 100,
-            paidAmount: 100,
-            remainingAmount: 0,
-          },
-        })
-      );
-    });
-
-    it('rejeita pedido com 1 item se o unitPrice do pedido divergir do item', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-single-item-mismatch'), {
-          ...baseOrder,
-          orderNumber: '#2026-0015',
-          quantity: 2,
-          price: 100,
-          pricingMode: 'unit',
-          unitPrice: 80, // Diverge de 50
-          items: [{ name: 'Convite', quantity: 2, unitPrice: 50, price: 100 }],
         })
       );
     });
@@ -791,13 +531,13 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       expect(saved.data()).toMatchObject({ amount: 200, paidAmount: 50, paymentStatus: 'partial' });
     });
 
-    it('aceita criar o pedido e seu salesLedger correspondente na mesma transação', async () => {
+    it('bloqueia criar o pedido e seu salesLedger correspondente diretamente no cliente mesmo em transação', async () => {
       const ownerDb = dbFor('owner');
       const orderId = 'order-and-ledger-atomic-create';
       const orderRef = doc(ownerDb, `orders/${orderId}`);
       const saleRef = doc(ownerDb, `salesLedger/${orderId}`);
 
-      await assertSucceeds(runTransaction(ownerDb, async (transaction) => {
+      await assertFails(runTransaction(ownerDb, async (transaction) => {
         transaction.set(orderRef, { ...baseOrder, orderNumber: '#2026-0099', version: 1 });
         transaction.set(saleRef, {
           id: orderId, orderId, userId: 'owner', amount: 200, isExchange: false,
@@ -957,8 +697,8 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       const tags = tagNames.map(name => ({ name, color: '#3b82f6' }));
 
       // Pedido inicial criado com 20 etiquetas, sem itens estruturados
-      await assertSucceeds(
-        setDoc(doc(ownerDb, 'orders/order-20-tags-complex'), {
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/order-20-tags-complex').set({
           ...baseOrder,
           orderNumber: '#2026-0020',
           quantity: 1,
@@ -975,8 +715,8 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
             remainingAmount: 69.50,
           },
           version: 1,
-        })
-      );
+        });
+      });
 
       // Atualização que simula a edição de um pedido, pagamento e uma etiqueta
       // alterada em uma lista com 20 etiquetas.
@@ -1058,8 +798,8 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       const ownerDb = dbFor('owner');
       const initialTags = Array.from({ length: 20 }, (_, j) => ({ name: `Original ${j}`, color: '#123456' }));
 
-      await assertSucceeds(
-        setDoc(doc(ownerDb, 'orders/order-20-tags-all-new'), {
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/order-20-tags-all-new').set({
           ...baseOrder,
           orderNumber: '#2026-0021',
           quantity: 2,
@@ -1073,8 +813,8 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
             remainingAmount: 50,
           },
           version: 1,
-        })
-      );
+        });
+      });
 
       const brandNewTags = Array.from({ length: 20 }, (_, j) => ({ name: `Nova Etiqueta ${j}`, color: '#654321' }));
 
@@ -1116,17 +856,18 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         version: 1,
       };
 
-      await assertSucceeds(setDoc(doc(ownerDb, 'orders/order-20-tags-with-item'), {
-        ...commonOrder,
-        orderNumber: '#2026-0022',
-        tags,
-      }));
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/order-20-tags-with-item').set({
+          ...commonOrder,
+          orderNumber: '#2026-0022',
+          tags,
+        });
+      });
 
-      await assertFails(setDoc(doc(ownerDb, 'orders/order-21-tags-with-item'), {
-        ...commonOrder,
-        orderNumber: '#2026-0023',
+      // Edição direta com 21 etiquetas é bloqueada
+      await assertFails(updateOrder(ownerDb, 'orders/order-20-tags-with-item', {
         tags: [...tags, { name: 'Etiqueta 21', color: '#3b82f6' }],
-      }));
+      }, 2));
     });
   });
 
