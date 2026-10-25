@@ -382,11 +382,11 @@ service cloud.firestore {
     }
 
     function isConsistentOrderPayment(payment, price) {
-      let paid = payment.paidAmount;
-      let remaining = payment.remainingAmount;
-      let status = payment.status;
+      let paid = payment.get('paidAmount', 0);
+      let remaining = payment.get('remainingAmount', price - paid);
+      let status = payment.get('status', 'paid');
       let method = payment.get('method', null);
-      return payment.totalAmount == price
+      return payment.get('totalAmount', price) == price
         && paid >= 0 && paid <= price
         && remaining >= 0
         && math.abs(remaining - (price - paid)) < 0.005
@@ -421,7 +421,7 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/customers/$(data.customerId)).data.userId == data.userId))
         && ((!changed.hasAny(['items', 'pricingMode', 'unitPrice']) && (data.get('items', null) == null || !changed.hasAny(['price', 'quantity'])))
           || isValidOrderItemsField(data))
-        && (!('payment' in data) || data.payment == null || isConsistentOrderPayment(data.payment, data.get('isExchange', false) ? 0 : data.price));
+        && (!changed.hasAny(['price', 'payment', 'isExchange']) || data.get('payment', null) == null || isConsistentOrderPayment(data.payment, data.get('isExchange', false) ? 0 : data.price));
     }
 
     function isAllowedOrderUpdate(previous, next) {
