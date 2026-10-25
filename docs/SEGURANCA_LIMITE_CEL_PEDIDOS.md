@@ -63,3 +63,5 @@ Se o limite de 10 itens mudar, atualize conjuntamente:
 5. o pipeline e a publicação das regras e da Function no ambiente adequado.
 
 Se o limite CEL voltar a ser atingido, registre qual operação, perfil, quantidade de itens, etiquetas, estado do ledger e tamanho do histórico de pagamento reproduzem o caso. Não trate `PERMISSION_DENIED` genérico como prova de perfil incorreto antes de examinar os logs do emulador/Firestore e a operação completa.
+
+Ao incluir ou renomear uma Function de pedidos, mantenha a lista seletiva de deploys em `.github/workflows/deploy-dev.yml` atualizada. O fluxo seletivo por módulo não descobre automaticamente novos nomes exportados; sem essa entrada, uma execução direcionada ao escopo `orders` pode terminar sem publicar a Function necessária.
