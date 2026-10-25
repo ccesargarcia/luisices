@@ -295,6 +295,79 @@ describe('Cloud Function: atualização segura de pedidos com muitos itens', () 
     expect(events.docs[0].data()).toMatchObject({ type: 'payment', amount: 5, method: 'cash' });
   });
 
+  it('não conta ajustes negativos como transações de pagamento na consolidação do histórico', async () => {
+    const id = `complex-order-overflow-negative-${Date.now()}`;
+    const orderRef = adminDb.doc(`orders/${id}`);
+    // 9 pagamentos positivos de R$ 5 e 3 reduções negativas de -R$ 2 nas primeiras 12 posições (overflow)
+    // seguidos por 44 parcelas recentes de R$ 1 cada
+    const overflowList = [
+      ...Array.from({ length: 9 }, (_, i) => ({
+        amount: 5,
+        date: '2026-01-01T00:00:00.000Z',
+        method: 'pix',
+        notes: `Pagamento overflow ${i + 1}`,
+      })),
+      ...Array.from({ length: 3 }, (_, i) => ({
+        amount: -2,
+        date: '2026-01-02T00:00:00.000Z',
+        method: 'pix',
+        notes: `Estorno overflow ${i + 1}`,
+      })),
+    ];
+    const recentList = Array.from({ length: 44 }, (_, i) => ({
+      amount: 1,
+      date: '2026-01-03T00:00:00.000Z',
+      method: 'pix',
+      notes: `Parcela recente ${i + 1}`,
+    }));
+    // Total inicial = (9 * 5 - 3 * 2) + (44 * 1) = 39 + 44 = 83
+    const existingHistory = [...overflowList, ...recentList];
+    const initial = {
+      ...newOrder(id),
+      price: 150,
+      payment: {
+        status: 'partial',
+        method: 'pix',
+        totalAmount: 150,
+        paidAmount: 83,
+        remainingAmount: 67,
+        history: existingHistory,
+      },
+    };
+    await Promise.all([
+      orderRef.set(initial),
+      adminDb.doc('userProfiles/complex-owner').set({
+        role: 'user', active: true, permissions: { orders: { edit: true } },
+      }),
+      adminDb.doc(`salesLedger/${id}`).set({
+        id, orderId: id, userId: initial.userId, amount: 150, quantity: 1,
+        paymentStatus: 'partial', paidAmount: 83, paymentMethod: 'pix',
+      }),
+    ]);
+
+    await handleUpdateComplexOrder({
+      auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+      data: {
+        orderId: id,
+        expectedVersion: 1,
+        updates: { payment: { paidAmount: 90, method: 'pix' } },
+      },
+    }, adminDb);
+
+    const saved = (await orderRef.get()).data();
+    expect(saved?.payment.paidAmount).toBe(90);
+    expect(saved?.payment.history.length).toBeLessThanOrEqual(50);
+    // A soma consolidada de todo o histórico deve somar exatamente R$ 90
+    const sum = saved?.payment.history.reduce((s: number, h: any) => s + (h.amount || 0), 0);
+    expect(sum).toBe(90);
+    const consolidatedEntry = saved?.payment.history.find((h: any) => h.notes?.includes('Consolidação'));
+    expect(consolidatedEntry).toBeDefined();
+    // O valor consolidado das 12 primeiras entradas é 9 * 5 - 3 * 2 = R$ 39
+    expect(consolidatedEntry.amount).toBe(39);
+    // A contagem deve ser estritamente 9 (apenas pagamentos positivos), e NÃO 12
+    expect(consolidatedEntry.count).toBe(9);
+  });
+
   it('atualiza pagamento de pedido legado e estatísticas da permuta na mesma transação', async () => {
     const id = `legacy-payment-update-${Date.now()}`;
     const customerId = `customer-${id}`;

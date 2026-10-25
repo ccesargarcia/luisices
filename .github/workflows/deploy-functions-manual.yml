@@ -26,7 +26,7 @@ on:
           - 'all'
           - 'alexaWebhook,approveAlexaPairing,setAlexaPermission,revokeAlexaBinding,toggleGlobalAlexaIntegration,getAlexaIntegrationStatus,approveAlexaDraft,cancelAlexaDraft'
           - 'sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,markWhatsAppChatRead,ensureWhatsAppConversation'
-          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,submitPublicCatalogOrder,getPublicCatalogProducts,calculateSuperfreteShipping,createSuperfreteLabel,galleryMedia'
+          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,createOrder,updateComplexOrder,submitPublicCatalogOrder,getPublicCatalogProducts,calculateSuperfreteShipping,createSuperfreteLabel,galleryMedia'
           - 'createOrderTrackingLink,listOrderTrackingLinks,revokeOrderTrackingLink,revokeOrderTrackingLinkById,deleteOrderTrackingLink,deleteOrderTrackingLinksBatch,getPublicOrderTracking'
           - 'cleanupEmailDrafts,resendReceivingWebhook,sendCustomEmail,getEmailUsage'
           - 'updateUser,recordUserPasswordChange,completeUserInvitation,createUserInvitation,createUser,getUserAccountMetadata,deleteUser,revokeAllSessions,repairUserClaims,registerDeviceSession,revokeDeviceSession,sendAdminPasswordReset,sendPasswordResetEmail,sendVerificationEmail,validateUserInvitation'
@@ -37,6 +37,8 @@ on:
           - 'sendWhatsAppDirectMessage'
           - 'evolutionWhatsAppWebhook'
           - 'cleanupEmailDrafts'
+          - 'createOrder'
+          - 'updateComplexOrder'
           - 'submitPublicCatalogOrder'
           - 'getPublicCatalogProducts'
           - 'calculateSuperfreteShipping'
@@ -213,7 +215,7 @@ jobs:
               echo "📦 1/7: WhatsApp..."
               firebase deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project luisices-dev --non-interactive --force
               echo "📦 2/7: IA e Pedidos..."
-              firebase deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia" --project luisices-dev --non-interactive --force
+              firebase deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia" --project luisices-dev --non-interactive --force
               echo "📦 3/7: Acompanhamento..."
               firebase deploy --only "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking" --project luisices-dev --non-interactive --force
               echo "📦 4/7: E-mails..."
@@ -434,7 +436,7 @@ jobs:
               echo "📦 1/7: WhatsApp..."
               firebase deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project papelaria-dashboard --non-interactive --force
               echo "📦 2/7: IA e Pedidos..."
-              firebase deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:galleryMedia" --project papelaria-dashboard --non-interactive --force
+              firebase deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:galleryMedia" --project papelaria-dashboard --non-interactive --force
               echo "📦 3/7: Acompanhamento..."
               firebase deploy --only "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking" --project papelaria-dashboard --non-interactive --force
               echo "📦 4/7: E-mails..."

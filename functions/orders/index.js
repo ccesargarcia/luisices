@@ -86,7 +86,11 @@ function compressPaymentHistory(history, maxEntries = MAX_EMBEDDED_PAYMENT_HISTO
     if (!Number.isFinite(amount)) continue;
     const method = PAYMENT_METHODS.has(entry?.method) ? entry.method : 'pix';
     const current = methodTotals.get(method) || { totalCents: 0, count: 0 };
-    const entryCount = Number(entry?.count) > 0 ? Number(entry.count) : 1;
+    // Ajustes negativos (estornos/reduções) abatem o saldo financeiro, mas não contam como transações de pagamento
+    const isPositivePayment = amount > 0;
+    const entryCount = isPositivePayment
+      ? (Number(entry?.count) > 0 ? Number(entry.count) : 1)
+      : 0;
     methodTotals.set(method, {
       totalCents: current.totalCents + Math.round(amount * 100),
       count: current.count + entryCount,
@@ -95,7 +99,7 @@ function compressPaymentHistory(history, maxEntries = MAX_EMBEDDED_PAYMENT_HISTO
 
   const consolidated = [];
   for (const [method, data] of methodTotals) {
-    if (data.totalCents === 0 && data.count === 0) continue;
+    if (data.totalCents <= 0) continue;
     consolidated.push({
       amount: data.totalCents / 100,
       count: data.count,
