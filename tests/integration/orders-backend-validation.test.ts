@@ -418,8 +418,8 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         { name: 'Caneta Luxo', quantity: 1, unitPrice: 40, price: 40 },
       ];
 
-      await assertSucceeds(
-        setDoc(doc(ownerDb, 'orders/order-multi-items'), {
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/order-multi-items').set({
           ...baseOrder,
           orderNumber: '#2026-0004',
           quantity: 3,
@@ -434,8 +434,8 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
             paidAmount: 200,
             remainingAmount: 0,
           },
-        })
-      );
+        });
+      });
 
       // Alterações financeiras agora devem passar pela Function; o cliente não
       // pode gravar itens/preço/pagamento diretamente no mesmo documento.
@@ -539,7 +539,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       );
     });
 
-    it('aceita dez itens válidos sem ultrapassar o limite de expressões CEL', async () => {
+    it('bloqueia criação direta com dez itens para exigir a Function autoritativa', async () => {
       const ownerDb = dbFor('owner');
       const items = Array.from({ length: 10 }, (_, index) => ({
         name: `Item ${index + 1}`,
@@ -548,7 +548,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         price: 10,
       }));
 
-      await assertSucceeds(setDoc(doc(ownerDb, 'orders/order-ten-valid-items'), {
+      await assertFails(setDoc(doc(ownerDb, 'orders/order-ten-valid-items'), {
         ...createOrderWithConsistentPayment({
           orderNumber: '#2026-0016',
           quantity: 10,
@@ -580,7 +580,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
 
   describe('4. Consistência Agregada (Pedido vs Itens)', () => {
     it.each(Array.from({ length: 10 }, (_, index) => index + 1))(
-      'valida a quantidade e o total exatos no cadastro com %i item(ns)',
+      'bloqueia criação direta com %i item(ns) para exigir a Function autoritativa',
       async (itemCount) => {
         const ownerDb = dbFor('owner');
         const items = Array.from({ length: itemCount }, (_, index) => ({
@@ -596,7 +596,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
           items,
         });
 
-        await assertSucceeds(setDoc(doc(ownerDb, `orders/create-exact-${itemCount}`), order));
+        await assertFails(setDoc(doc(ownerDb, `orders/create-exact-${itemCount}`), order));
         await assertFails(setDoc(doc(ownerDb, `orders/create-invalid-total-${itemCount}`), {
           ...order,
           orderNumber: `#2026-${String(7000 + itemCount).padStart(4, '0')}`,
@@ -650,9 +650,9 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       );
     });
 
-    it('aceita pedido com 1 item com unitPrice consistente', async () => {
+    it('bloqueia criação direta de pedido com 1 item para exigir a Function autoritativa', async () => {
       const ownerDb = dbFor('owner');
-      await assertSucceeds(
+      await assertFails(
         setDoc(doc(ownerDb, 'orders/order-single-item'), {
           ...baseOrder,
           orderNumber: '#2026-0014',
@@ -1096,17 +1096,16 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       expect(saved.data()?.tags[0].name).toBe('Original 0');
     });
 
-    it('aceita 20 etiquetas com item estruturado e continua rejeitando a 21ª etiqueta', async () => {
+    it('aceita 20 etiquetas no pedido e continua rejeitando a 21ª etiqueta', async () => {
       const ownerDb = dbFor('owner');
       const tags = Array.from({ length: 20 }, (_, i) => ({ name: `Etiqueta ${i}`, color: '#3b82f6' }));
-      const item = { name: 'Convite Luxo', quantity: 1, unitPrice: 130.50, price: 130.50 };
       const commonOrder = {
         ...baseOrder,
         quantity: 1,
         price: 130.50,
-        pricingMode: 'unit',
-        unitPrice: 130.50,
-        items: [item],
+        pricingMode: 'total',
+        unitPrice: null,
+        items: null,
         payment: {
           status: 'partial',
           method: 'pix',

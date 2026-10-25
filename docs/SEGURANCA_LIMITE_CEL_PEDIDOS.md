@@ -12,14 +12,14 @@ O limite de negócio é **10 itens por pedido**. A validação é dividida para 
 
 | Operação | Caminho | Validações principais |
 | --- | --- | --- |
-| Criar pedido com 1–10 itens | Cliente → Firestore | As regras verificam os itens, a soma da quantidade, o total, metadados e pagamento. |
+| Criar pedido com 1–10 itens | Cliente → `createOrder` → Firestore Admin SDK | A Function valida autorização, calcula somas, centavos, atualiza contador, pedido, `salesLedger`, estatísticas de cliente e grava `paymentEvents` atomicamente com idempotência. A regra bloqueia a criação direta de pedidos com itens pelo cliente. |
+| Criar pedido simples sem itens (importações/legado) | Cliente → Firestore | As regras verificam campos escalares básicos, formato de data, autorização do proprietário e dados de pagamento. |
 | Editar pagamento ou classificação de permuta, com qualquer quantidade de itens | Cliente → `updateComplexOrder` → Firestore Admin SDK | A regra bloqueia alterações diretas a `payment` e `isExchange`. A Function valida autorização e versão, calcula os valores, e atualiza pedido, `salesLedger` e estatísticas afetadas na mesma transação. |
 | Editar itens, quantidade ou preço, com qualquer quantidade de itens | Cliente → `updateComplexOrder` → Firestore Admin SDK | A Function valida a lista e os totais e atualiza pedido e `salesLedger` atomicamente. A regra bloqueia a escrita direta para não depender do custo CEL acumulado nem de um limiar por quantidade. |
-| Editar pagamento ou classificação de permuta | Cliente → `updateComplexOrder` → Firestore Admin SDK | A regra bloqueia alterações diretas a `payment` e `isExchange`. A Function valida autorização e versão, calcula valores, registra auditoria e atualiza pedido, ledger e estatísticas afetadas na mesma transação. |
 | Trocar ou remover o cliente vinculado | Cliente → `updateComplexOrder` → Firestore Admin SDK | A Function reconcilia `totalOrders` e `totalSpent` entre os clientes na mesma transação. |
 | Editar campos não financeiros | Cliente → Firestore | Continua permitido pelas regras, com controle de acesso, versão e lista de campos permitidos. |
 
-Edições financeiras não dependem mais de um limiar por quantidade. Criações mantêm as validações CEL porque não escrevem um pedido existente; reavalie o custo de criação se forem acrescentadas gravações de documentos ao mesmo commit.
+Tanto edições financeiras quanto criações com itens estruturados não dependem mais de validações em CEL. A simplificação radical eliminou `isConsistentOrderItemsSum` e laços manuais de itens das regras do Firestore, eliminando o risco de estouro do limite de 1.000 expressões CEL.
 
 ## Responsabilidades da Function
 
@@ -41,7 +41,7 @@ Quando o preço, o cliente vinculado ou a classificação de permuta muda, a Fun
 
 ## Segurança das regras
 
-As regras continuam sendo a barreira de autorização para gravações diretas. Elas negam alterações diretas de `payment`, `isExchange`, `customerId`, `items`, `price`, `quantity`, `pricingMode` e `unitPrice`. A Function usa Admin SDK somente depois de repetir autorização, validação e controle de concorrência. Criações ainda usam o cliente e as regras de criação, com cobertura de emulador de 1 a 10 itens.
+As regras continuam sendo a barreira de autorização para gravações diretas. Elas negam alterações diretas de `payment`, `isExchange`, `customerId`, `items`, `price`, `quantity`, `pricingMode` e `unitPrice`, bem como criação direta de pedidos contendo `items` estruturados. As Functions usam Admin SDK somente depois de repetir autorização, validação e controle de concorrência.
 
 Não remova esse bloqueio para “fazer o cliente tentar de novo”: isso reintroduziria o caminho caro e poderia permitir que gravações não validadas pelo backend fossem aceitas. Também não mova validações apenas para o frontend; qualquer cliente Firebase pode enviar payloads próprios.
 
@@ -49,8 +49,9 @@ Não remova esse bloqueio para “fazer o cliente tentar de novo”: isso reintr
 
 Os seguintes testes documentam o contrato atual:
 
-- `tests/integration/orders-backend-validation.test.ts`: criação e regras com 1–10 itens, somas inválidas, acesso, bloqueio de edição financeira direta e escrita em `paymentEvents`;
-- `tests/integration/complex-order-function.test.ts`: atualizações transacionais para cada quantidade de 1 a 10 itens, consistência do ledger, auditoria, estatísticas de permuta, preservação de etiquetas e links, autorização, versão concorrente e rejeição de totais inválidos;
+- `tests/integration/orders-backend-validation.test.ts`: regras de acesso, campos imutáveis, bloqueio de criação/edição financeira direta pelo cliente e barreira em `paymentEvents`;
+- `tests/integration/create-order-function.test.ts`: criação atômica no backend para 1–10 itens, persistência no `salesLedger`, atualização de contadores, subcoleção `paymentEvents` e idempotência;
+- `tests/integration/complex-order-function.test.ts`: atualizações transacionais para cada quantidade de 1 a 10 itens, consistência do ledger, auditoria, estatísticas de permuta, preservação de etiquetas e links, autorização, versão concorrente e compactação com retenção de contagem;
 - `tests/unit/complex-order-validation.test.ts`: soma e quantidade corretas/incorretas para 1–10 itens, permissões, campos não permitidos, dados removidos e pagamento de permuta.
 
 Execute os testes de regras e integração no emulador antes de alterar as regras de criação ou de escrita direta. Uma rejeição esperada deve ser examinada para confirmar que foi negada pela condição correta, e não por estouro de avaliações CEL.
