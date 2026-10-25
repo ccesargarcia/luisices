@@ -57,6 +57,285 @@ const getPublicCatalogProducts = onCall({ cors: true, maxInstances: 10 }, async 
   return { products };
 });
 
+const COMPLEX_ORDER_UPDATE_FIELDS = new Set([
+  'customerName', 'customerPhone', 'customerId', 'productName', 'quantity', 'price',
+  'items', 'unitPrice', 'pricingMode', 'status', 'deliveryDate', 'notes', 'tags',
+  'payment', 'isExchange', 'exchangeNotes', 'exchangeItems', 'cardColor',
+]);
+
+function assertComplexOrderItems(items, quantity, price) {
+  if (!Array.isArray(items) || items.length < 1 || items.length > 10) {
+    throw new HttpsError('invalid-argument', 'O pedido deve ter de 1 a 10 itens.');
+  }
+  let itemQuantity = 0;
+  let itemTotalCents = 0;
+  for (const item of items) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)
+      || Object.keys(item).some((key) => !['name', 'quantity', 'unitPrice', 'price'].includes(key))
+      || typeof item.name !== 'string' || !item.name.trim() || item.name.trim().length > 300
+      || !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 10000
+      || typeof item.unitPrice !== 'number' || !Number.isFinite(item.unitPrice)
+      || item.unitPrice < 0 || item.unitPrice > 1000000) {
+      throw new HttpsError('invalid-argument', 'Um ou mais itens do pedido são inválidos.');
+    }
+    const unitPriceCents = Math.round(item.unitPrice * 100);
+    if (Math.abs(item.unitPrice * 100 - unitPriceCents) > 0.001) {
+      throw new HttpsError('invalid-argument', 'O preço unitário deve usar centavos inteiros.');
+    }
+    const expectedItemCents = item.quantity * unitPriceCents;
+    if (item.price !== undefined && (typeof item.price !== 'number' || !Number.isFinite(item.price)
+      || Math.abs(item.price * 100 - expectedItemCents) > 5)) {
+      throw new HttpsError('invalid-argument', 'O subtotal de um item não corresponde à quantidade e ao preço unitário.');
+    }
+    itemQuantity += item.quantity;
+    itemTotalCents += expectedItemCents;
+  }
+  if (!Number.isSafeInteger(quantity) || quantity !== itemQuantity
+    || typeof price !== 'number' || !Number.isFinite(price)
+    || Math.abs(price * 100 - itemTotalCents) > 5) {
+    throw new HttpsError('invalid-argument', 'A quantidade e o total do pedido devem corresponder à soma dos itens.');
+  }
+  return items.map((item) => ({
+    ...item,
+    name: item.name.trim(),
+    unitPrice: Math.round(item.unitPrice * 100) / 100,
+    price: Math.round(item.quantity * item.unitPrice * 100) / 100,
+  }));
+}
+
+function hasOrderPermission(profile, action) {
+  const permission = profile.permissions?.orders;
+  return permission === true || permission?.[action] === true;
+}
+
+function validateComplexOrderUpdate(updates, order, uid, profile) {
+  if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+    throw new HttpsError('invalid-argument', 'Dados da edição inválidos.');
+  }
+  const keys = Object.keys(updates);
+  if (!keys.length || keys.some((key) => !COMPLEX_ORDER_UPDATE_FIELDS.has(key))) {
+    throw new HttpsError('invalid-argument', 'A edição contém campos não permitidos.');
+  }
+  const admin = profile.role === 'admin';
+  const owner = order.userId === uid;
+  const assignedEmployee = profile.role === 'funcionario' && order.assignedTo === uid;
+  if (profile.active === false || (!admin && !(owner || assignedEmployee))
+    || (!admin && !hasOrderPermission(profile, 'edit'))) {
+    throw new HttpsError('permission-denied', 'Você não tem permissão para editar este pedido.');
+  }
+
+  const next = { ...order, ...updates };
+  next.items = assertComplexOrderItems(next.items, next.quantity, next.price);
+  if (typeof next.price !== 'number' || !Number.isFinite(next.price) || next.price < 0 || next.price > 1000000
+    || !Number.isSafeInteger(next.quantity) || next.quantity < 1 || next.quantity > 10000) {
+    throw new HttpsError('invalid-argument', 'Preço ou quantidade do pedido inválidos.');
+  }
+  if (next.payment != null) {
+    const payment = next.payment;
+    const paid = payment.paidAmount ?? 0;
+    const remaining = payment.remainingAmount ?? next.price - paid;
+    const paymentTotal = next.isExchange === true ? 0 : next.price;
+    if (payment.totalAmount !== paymentTotal || typeof paid !== 'number' || !Number.isFinite(paid)
+      || paid < 0 || paid > paymentTotal || typeof remaining !== 'number'
+      || Math.abs(remaining - (paymentTotal - paid)) > 0.005
+      || !(['paid', 'partial', 'pending'].includes(payment.status))
+      || (payment.status === 'paid' && paid !== paymentTotal)
+      || (payment.status === 'partial' && !(paymentTotal > 0 && paid > 0 && paid < paymentTotal))
+      || (payment.status === 'pending' && paid !== 0)) {
+      throw new HttpsError('invalid-argument', 'Os valores de pagamento não correspondem ao pedido.');
+    }
+    if (payment.method != null && !['pix', 'cash', 'credit', 'debit', 'transfer'].includes(payment.method)) {
+      throw new HttpsError('invalid-argument', 'Forma de pagamento inválida.');
+    }
+    if (payment.history != null && (!Array.isArray(payment.history) || payment.history.length > 100
+      || payment.history.some((entry) => !entry || typeof entry.amount !== 'number'
+        || !Number.isFinite(entry.amount) || Math.abs(entry.amount) > 1000000
+        || typeof entry.date !== 'string' || entry.date.length > 64
+        || (entry.notes != null && (typeof entry.notes !== 'string' || entry.notes.length > 1000))))) {
+      throw new HttpsError('invalid-argument', 'Histórico de pagamento inválido.');
+    }
+  }
+  if (next.status != null && !['pending', 'in-progress', 'completed', 'cancelled'].includes(next.status)) {
+    throw new HttpsError('invalid-argument', 'Status do pedido inválido.');
+  }
+  if (next.customerName != null && (typeof next.customerName !== 'string' || !next.customerName.trim() || next.customerName.length > 200)) {
+    throw new HttpsError('invalid-argument', 'Nome do cliente inválido.');
+  }
+  if (next.productName != null && (typeof next.productName !== 'string' || !next.productName.trim() || next.productName.length > 300)) {
+    throw new HttpsError('invalid-argument', 'Nome dos produtos inválido.');
+  }
+  if (next.customerPhone != null && (typeof next.customerPhone !== 'string' || next.customerPhone.length > 50)) {
+    throw new HttpsError('invalid-argument', 'Telefone do cliente inválido.');
+  }
+  if (next.notes != null && (typeof next.notes !== 'string' || next.notes.length > 1000)) {
+    throw new HttpsError('invalid-argument', 'Observações inválidas.');
+  }
+  if (next.tags != null && (!Array.isArray(next.tags) || next.tags.length > 20
+    || next.tags.some((tag) => !tag || typeof tag.name !== 'string' || !tag.name.trim()
+      || Object.keys(tag).length !== 2 || !('name' in tag) || !('color' in tag)
+      || tag.name !== tag.name.trim() || tag.name.includes('\0') || tag.name.length > 80
+      || typeof tag.color !== 'string' || tag.color.includes('\0')
+      || !/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(tag.color)))) {
+    throw new HttpsError('invalid-argument', 'As etiquetas do pedido são inválidas.');
+  }
+  if (next.deliveryDate != null && (typeof next.deliveryDate !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}$/.test(next.deliveryDate)
+    || Number.isNaN(Date.parse(`${next.deliveryDate}T00:00:00Z`))
+    || new Date(`${next.deliveryDate}T00:00:00.000Z`).toISOString().slice(0, 10) !== next.deliveryDate)) {
+    throw new HttpsError('invalid-argument', 'Data de entrega inválida.');
+  }
+  if (next.customerId != null && (typeof next.customerId !== 'string'
+    || !/^[A-Za-z0-9_-]{1,128}$/.test(next.customerId))) {
+    throw new HttpsError('invalid-argument', 'Cliente vinculado inválido.');
+  }
+  if (next.pricingMode != null && !['unit', 'total', 'items'].includes(next.pricingMode)) {
+    throw new HttpsError('invalid-argument', 'Tipo de preço inválido.');
+  }
+  if (next.unitPrice != null && (typeof next.unitPrice !== 'number' || !Number.isFinite(next.unitPrice)
+    || next.unitPrice < 0 || next.unitPrice > 1000000)) {
+    throw new HttpsError('invalid-argument', 'Preço unitário inválido.');
+  }
+  if (next.isExchange != null && typeof next.isExchange !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'Indicador de permuta inválido.');
+  }
+  if (next.exchangeNotes != null && (typeof next.exchangeNotes !== 'string' || next.exchangeNotes.length > 1000)) {
+    throw new HttpsError('invalid-argument', 'Observações da permuta inválidas.');
+  }
+  if (next.exchangeItems != null && (!Array.isArray(next.exchangeItems) || next.exchangeItems.length > 10
+    || next.exchangeItems.some((item) => !item || typeof item.name !== 'string' || !item.name.trim()
+      || !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 10000
+      || (item.value != null && (typeof item.value !== 'number' || !Number.isFinite(item.value)
+        || item.value < 0 || item.value > 1000000))))) {
+    throw new HttpsError('invalid-argument', 'Itens recebidos na permuta são inválidos.');
+  }
+  if (next.cardColor != null && (typeof next.cardColor !== 'string' || next.cardColor.length > 50)) {
+    throw new HttpsError('invalid-argument', 'Cor do pedido inválida.');
+  }
+  return next;
+}
+
+/** Edição de pedidos com muitos itens: valida fora das regras CEL e espelha o ledger atomicamente. */
+async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para editar pedidos.');
+  const { orderId, expectedVersion, updates } = request.data || {};
+  if (typeof orderId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(orderId)
+    || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+    throw new HttpsError('invalid-argument', 'Pedido ou versão inválidos.');
+  }
+  const db = firestore;
+  const orderRef = db.doc(`orders/${orderId}`);
+  const saleRef = db.doc(`salesLedger/${orderId}`);
+  const profileRef = db.doc(`userProfiles/${uid}`);
+  return db.runTransaction(async (transaction) => {
+    const customerRef = typeof updates?.customerId === 'string'
+      ? db.doc(`customers/${updates.customerId}`)
+      : null;
+    const [orderSnap, saleSnap, profileSnap, customerSnap] = await Promise.all([
+      transaction.get(orderRef), transaction.get(saleRef), transaction.get(profileRef),
+      ...(customerRef ? [transaction.get(customerRef)] : []),
+    ]);
+    if (!orderSnap.exists) throw new HttpsError('not-found', 'Pedido não encontrado.');
+    if (!profileSnap.exists) throw new HttpsError('permission-denied', 'Perfil de usuário não encontrado.');
+    const order = orderSnap.data() || {};
+    const profile = profileSnap.data() || {};
+    if (profile.tokensValidAfterTime != null
+      && (!Number.isFinite(request.auth.token.auth_time) || request.auth.token.auth_time <= profile.tokensValidAfterTime)) {
+      throw new HttpsError('unauthenticated', 'Sua sessão expirou. Entre novamente.');
+    }
+    const currentVersion = order.version === undefined ? 1 : order.version;
+    if (!Number.isSafeInteger(currentVersion) || currentVersion !== expectedVersion) {
+      throw new HttpsError('failed-precondition', 'O pedido foi alterado. Atualize a tela e tente novamente.');
+    }
+    const normalizedUpdates = { ...updates };
+    const now = new Date().toISOString();
+    const resolvedPrice = typeof normalizedUpdates.price === 'number' ? normalizedUpdates.price : order.price;
+    if (normalizedUpdates.payment === undefined && normalizedUpdates.price !== undefined && order.payment) {
+      const previousPayment = order.payment;
+      const previousPaid = Math.max(0, Number(previousPayment.paidAmount) || 0);
+      const paidAmount = Math.min(previousPaid, resolvedPrice);
+      const paymentTotal = (normalizedUpdates.isExchange ?? order.isExchange) ? 0 : resolvedPrice;
+      const normalizedPaid = Math.min(paidAmount, paymentTotal);
+      const history = Array.isArray(previousPayment.history) ? [...previousPayment.history] : [];
+      if (previousPaid > normalizedPaid) {
+        history.push({
+          amount: Math.round((normalizedPaid - previousPaid) * 100) / 100,
+          date: now,
+          method: previousPayment.method || 'pix',
+          notes: 'Ajuste automático após alteração do total do pedido.',
+        });
+      }
+      normalizedUpdates.payment = {
+        ...previousPayment,
+        totalAmount: paymentTotal,
+        paidAmount: normalizedPaid,
+        remainingAmount: Math.round((paymentTotal - normalizedPaid) * 100) / 100,
+        status: paymentTotal === normalizedPaid ? 'paid' : normalizedPaid > 0 ? 'partial' : 'pending',
+        history: history.length ? history : null,
+      };
+    }
+    if (normalizedUpdates.isExchange === true && normalizedUpdates.payment === undefined) {
+      normalizedUpdates.payment = {
+        status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0,
+        method: null, paymentDate: null, notes: null, history: null,
+      };
+    }
+    const next = validateComplexOrderUpdate(normalizedUpdates, order, uid, profile);
+    if (customerRef && (!customerSnap?.exists || customerSnap.data()?.userId !== order.userId)) {
+      throw new HttpsError('permission-denied', 'O cliente vinculado não pertence a esta conta.');
+    }
+    transaction.update(orderRef, { ...normalizedUpdates, items: next.items, version: currentVersion + 1, updatedAt: now });
+
+    const sale = saleSnap.data() || {};
+    if (saleSnap.exists && sale.userId && sale.userId !== order.userId) {
+      throw new HttpsError('failed-precondition', 'O registro financeiro não corresponde ao pedido.');
+    }
+    const saleUpdate = {
+      updatedAt: now,
+      amount: next.isExchange ? 0 : next.price,
+      quantity: next.quantity,
+      paymentStatus: next.payment?.status || 'pending',
+      paidAmount: next.isExchange ? 0 : (next.payment?.paidAmount || 0),
+      paymentMethod: next.isExchange ? null : (next.payment?.method || null),
+    };
+    for (const key of ['status', 'customerName', 'customerPhone', 'customerId', 'productName', 'deliveryDate']) {
+      if (normalizedUpdates[key] !== undefined) saleUpdate[key] = normalizedUpdates[key];
+    }
+    if (normalizedUpdates.isExchange !== undefined) saleUpdate.isExchange = Boolean(normalizedUpdates.isExchange);
+    if (saleSnap.exists) {
+      if (!sale.userId && order.userId) saleUpdate.userId = order.userId;
+      if (!sale.assignedTo && order.assignedTo) {
+        saleUpdate.assignedTo = order.assignedTo;
+        saleUpdate.assignedToName = order.assignedToName || null;
+      }
+      transaction.set(saleRef, saleUpdate, { merge: true });
+    } else {
+      transaction.set(saleRef, {
+        id: orderId, orderId, orderNumber: order.orderNumber || '',
+        userId: order.userId || uid, assignedTo: order.assignedTo || null,
+        assignedToName: order.assignedToName || null, customerId: next.customerId || null,
+        customerName: next.customerName || 'Cliente não informado', customerPhone: next.customerPhone || null,
+        productName: next.productName || 'Produto', quantity: next.quantity, amount: next.isExchange ? 0 : next.price,
+        isExchange: Boolean(next.isExchange), paymentStatus: next.payment?.status || 'pending',
+        paidAmount: next.isExchange ? 0 : (next.payment?.paidAmount || 0),
+        paymentMethod: next.isExchange ? null : (next.payment?.method || null),
+        date: order.createdAt || now, deliveryDate: next.deliveryDate || null,
+        status: next.status || 'pending', notes: next.notes || null, tags: next.tags || null,
+        createdAt: order.createdAt || now, updatedAt: now, isDeletedFromOrders: order.deletedAt != null,
+      });
+    }
+    return {
+      success: true,
+      customerStatsReconciliation: normalizedUpdates.isExchange !== undefined
+        && Boolean(normalizedUpdates.isExchange) !== Boolean(order.isExchange)
+        ? { customerId: normalizedUpdates.customerId ?? order.customerId ?? null, amount: Number(next.price || 0), toExchange: Boolean(normalizedUpdates.isExchange) }
+        : null,
+    };
+  });
+}
+
+const updateComplexOrder = onCall({ cors: true, maxInstances: 10 }, handleUpdateComplexOrder);
+
 function getTrackingEncryptionKey() {
   const key = Buffer.from(ORDER_TRACKING_ENCRYPTION_KEY.value() || '', 'base64');
   if (key.length !== 32) {
@@ -801,6 +1080,9 @@ module.exports = {
   deleteOrderTrackingLinksBatch,
   getPublicOrderTracking,
   handleSubmitPublicCatalogOrder,
+  updateComplexOrder,
+  validateComplexOrderUpdate,
+  handleUpdateComplexOrder,
   calculateSuperfreteShipping,
   createSuperfreteLabel,
 };

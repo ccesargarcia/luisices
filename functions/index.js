@@ -55,6 +55,7 @@ module.exports = {
 
   // ─── Pedidos e Vitrine Pública ─────────────────────────────────────────────
   submitPublicCatalogOrder: orderFunctions.submitPublicCatalogOrder,
+  updateComplexOrder: orderFunctions.updateComplexOrder,
   getPublicCatalogProducts: orderFunctions.getPublicCatalogProducts,
   createOrderTrackingLink: orderFunctions.createOrderTrackingLink,
   listOrderTrackingLinks: orderFunctions.listOrderTrackingLinks,

@@ -16,7 +16,8 @@ import {
   Timestamp,
   runTransaction,
 } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { db, auth, functions } from '../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import { Order, OrderItem, OrderStatus, ProductionStep, ProductionWorkflow } from '../app/types';
 import { parseDecimalMoneyInput } from '../app/utils/parseDecimalMoneyInput';
 import { MAX_ORDER_TAGS } from '../app/utils/orderLimits';
@@ -832,6 +833,41 @@ export class FirebaseOrderService {
     const initialSnap = await getDoc(orderRef);
     if (!initialSnap.exists() || !(await this.canAccessAssignedOrder(initialSnap.data(), userId))) {
       throw new Error('Pedido não encontrado ou sem permissão');
+    }
+
+    const initialOrderData = initialSnap.data();
+    const affectsItemTotals = ['items', 'price', 'quantity', 'pricingMode', 'unitPrice'].some((key) =>
+      Object.prototype.hasOwnProperty.call(updates, key));
+    const resultingItems = Array.isArray(updates.items) ? updates.items : initialOrderData.items;
+    const hadComplexItemTotals = Array.isArray(initialOrderData.items) && initialOrderData.items.length > 4;
+    const hasComplexItemTotals = Array.isArray(resultingItems) && resultingItems.length > 4;
+    if (affectsItemTotals && (hadComplexItemTotals || hasComplexItemTotals)) {
+      const callable = httpsCallable<{
+        orderId: string;
+        expectedVersion: number;
+        updates: typeof updates;
+      }, { success: boolean; customerStatsReconciliation: { customerId: string; amount: number; toExchange: boolean } | null }>(
+        functions,
+        'updateComplexOrder',
+      );
+      const result = await callable({
+        orderId,
+        expectedVersion: expectedVersion ?? this.currentOrderVersion(initialOrderData),
+        updates,
+      });
+      const reconciliation = result.data.customerStatsReconciliation;
+      if (reconciliation?.customerId) {
+        try {
+          if (reconciliation.toExchange) {
+            await firebaseCustomerService.decrementCustomerStats(reconciliation.customerId, reconciliation.amount);
+          } else {
+            await firebaseCustomerService.incrementCustomerStats(reconciliation.customerId, reconciliation.amount);
+          }
+        } catch (err) {
+          console.warn('[firebaseOrderService] Não foi possível reconciliar estatísticas da permuta:', err);
+        }
+      }
+      return;
     }
 
     const customerStatsReconciliation: { value: { customerId: string; amount: number; toExchange: boolean } | null } = { value: null };

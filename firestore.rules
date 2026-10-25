@@ -331,7 +331,19 @@ service cloud.firestore {
             : (quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity)
                 && math.abs(price - (items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice)) < 0.05)
           )
-          : (quantity >= count && price >= 0));
+          : (count == 5 ? (quantity == items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity
+                && math.abs(price - (items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice + items[4].quantity * items[4].unitPrice)) < 0.05)
+            : count == 6 ? (quantity == items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity
+                && math.abs(price - (items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice + items[4].quantity * items[4].unitPrice + items[5].quantity * items[5].unitPrice)) < 0.05)
+            : count == 7 ? (quantity == items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity
+                && math.abs(price - (items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice + items[4].quantity * items[4].unitPrice + items[5].quantity * items[5].unitPrice + items[6].quantity * items[6].unitPrice)) < 0.05)
+            : count == 8 ? (quantity == items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity
+                && math.abs(price - (items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice + items[4].quantity * items[4].unitPrice + items[5].quantity * items[5].unitPrice + items[6].quantity * items[6].unitPrice + items[7].quantity * items[7].unitPrice)) < 0.05)
+            : count == 9 ? (quantity == items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity + items[8].quantity
+                && math.abs(price - (items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice + items[4].quantity * items[4].unitPrice + items[5].quantity * items[5].unitPrice + items[6].quantity * items[6].unitPrice + items[7].quantity * items[7].unitPrice + items[8].quantity * items[8].unitPrice)) < 0.05)
+            : count == 10 ? (quantity == items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity + items[8].quantity + items[9].quantity
+                && math.abs(price - (items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice + items[4].quantity * items[4].unitPrice + items[5].quantity * items[5].unitPrice + items[6].quantity * items[6].unitPrice + items[7].quantity * items[7].unitPrice + items[8].quantity * items[8].unitPrice + items[9].quantity * items[9].unitPrice)) < 0.05)
+            : false));
     }
 
     function isConsistentOrderItemsMetadata(items, data) {
@@ -392,6 +404,12 @@ service cloud.firestore {
     }
 
     function isValidOrderChanges(previous, data, changed) {
+      let items = data.get('items', null);
+      let previousItems = previous.get('items', null);
+      let hasComplexItemList = (items is list && items.size() > 4)
+        || (previousItems is list && previousItems.size() > 4);
+      let usesComplexItemTotals = hasComplexItemList
+        && changed.hasAny(['items', 'price', 'quantity', 'pricingMode', 'unitPrice']);
       return isValidOrder(data, changed)
         && (!changed.hasAny(['tags']) || !('tags' in data) || data.tags == null || isValidOrderTagsUpdate(data.tags, previous))
         && (!changed.hasAny(['deliveryDate']) || ('deliveryDate' in data && data.deliveryDate is string
@@ -399,6 +417,7 @@ service cloud.firestore {
         && (!changed.hasAny(['customerId']) || !('customerId' in data) || data.customerId == null || (
           data.customerId is string && data.customerId.size() > 0 && data.customerId.size() <= 128
           && get(/databases/$(database)/documents/customers/$(data.customerId)).data.userId == data.userId))
+        && !usesComplexItemTotals
         && ((!changed.hasAny(['items', 'pricingMode', 'unitPrice']) && (data.get('items', null) == null || !changed.hasAny(['price', 'quantity'])))
           || isValidOrderItemsField(data))
         && (!changed.hasAny(['price', 'payment', 'isExchange']) || data.get('payment', null) == null || isConsistentOrderPayment(data.payment, data.get('isExchange', false) ? 0 : data.price));

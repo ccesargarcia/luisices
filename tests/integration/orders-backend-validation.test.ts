@@ -554,6 +554,43 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
   });
 
   describe('4. Consistência Agregada (Pedido vs Itens)', () => {
+    it.each(Array.from({ length: 10 }, (_, index) => index + 1))(
+      'valida a quantidade e o total exatos no cadastro com %i item(ns)',
+      async (itemCount) => {
+        const ownerDb = dbFor('owner');
+        const items = Array.from({ length: itemCount }, (_, index) => ({
+          name: `Item ${index + 1}`,
+          quantity: 1,
+          unitPrice: 10,
+          price: 10,
+        }));
+        const order = createOrderWithConsistentPayment({
+          orderNumber: `#2026-${String(6000 + itemCount).padStart(4, '0')}`,
+          quantity: itemCount,
+          price: itemCount * 10,
+          items,
+        });
+
+        await assertSucceeds(setDoc(doc(ownerDb, `orders/create-exact-${itemCount}`), order));
+        await assertFails(setDoc(doc(ownerDb, `orders/create-invalid-total-${itemCount}`), {
+          ...order,
+          orderNumber: `#2026-${String(7000 + itemCount).padStart(4, '0')}`,
+          price: itemCount * 10 + 1,
+          payment: {
+            status: 'paid',
+            totalAmount: itemCount * 10 + 1,
+            paidAmount: itemCount * 10 + 1,
+            remainingAmount: 0,
+          },
+        }));
+        await assertFails(setDoc(doc(ownerDb, `orders/create-invalid-quantity-${itemCount}`), {
+          ...order,
+          orderNumber: `#2026-${String(8000 + itemCount).padStart(4, '0')}`,
+          quantity: itemCount + 1,
+        }));
+      },
+    );
+
     it('rejeita quando a soma das quantidades dos itens diverge do total do pedido', async () => {
       const ownerDb = dbFor('owner');
       await assertFails(
@@ -1713,7 +1750,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       expect(updated.data()?.version).toBe(19);
     });
 
-    it('permite atualizar pedido #2026-0088 com link de rastreamento adicionando o 5º item (reproducao 5 itens)', async () => {
+    it('nega gravação direta de item agregado acima de quatro para exigir validação da Function', async () => {
       const orderId = 'tS3wHmGaBxCdFABBXF9l-5';
       const initialOrder = {
         userId: 'admin',
@@ -1783,7 +1820,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       const orderRef = doc(adminDb, `orders/${orderId}`);
       const saleRef = doc(adminDb, `salesLedger/${orderId}`);
 
-      await assertSucceeds(runTransaction(adminDb, async (transaction) => {
+      await assertFails(runTransaction(adminDb, async (transaction) => {
         await transaction.get(orderRef);
         await transaction.get(saleRef);
 
@@ -1843,12 +1880,12 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         });
       }));
 
-      const updated = await getDoc(orderRef);
-      expect(updated.data()?.quantity).toBe(11);
-      expect(updated.data()?.items).toHaveLength(5);
+      const unchanged = await getDoc(orderRef);
+      expect(unchanged.data()?.quantity).toBe(10);
+      expect(unchanged.data()?.items).toHaveLength(4);
     });
 
-    it('permite atualizar pedido com link de rastreamento com 10 itens sem estourar 1000 expressoes', async () => {
+    it('nega gravação direta de pedido com link e dez itens para exigir validação da Function', async () => {
       const orderId = 'tS3wHmGaBxCdFABBXF9l-10';
       const initialOrder = {
         userId: 'admin',
@@ -1917,7 +1954,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         price: 10,
       }));
 
-      await assertSucceeds(runTransaction(adminDb, async (transaction) => {
+      await assertFails(runTransaction(adminDb, async (transaction) => {
         await transaction.get(orderRef);
         await transaction.get(saleRef);
 
@@ -1969,7 +2006,8 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       }));
 
       const updated = await getDoc(orderRef);
-      expect(updated.data()?.items).toHaveLength(10);
+      expect(updated.data()?.items).toHaveLength(1);
+      expect(updated.data()?.version).toBe(1);
     });
   });
 });
