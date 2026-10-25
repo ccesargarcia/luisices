@@ -34,6 +34,8 @@ O limiar de quatro itens é uma decisão operacional baseada no custo de avalia�
 8. mantém os campos existentes que não fazem parte da edição, incluindo os metadados de acompanhamento público;
 9. atualiza pedido e `salesLedger` atomicamente, recusando um ledger que identifique outro proprietário.
 
+O histórico de pagamento é preservado como trilha de auditoria: a Function não aceita alterações do cliente como fonte para criar, remover ou reescrever eventos. Quando a redução do valor pago exige um ajuste, o servidor calcula e acrescenta um evento negativo ao histórico existente. Os campos do mapa de pagamento e de cada evento também são limitados e validados.
+
 Ajustes de estatísticas do cliente são reconciliados pelo serviço após a transação, como já ocorre no fluxo existente. Uma falha nessa reconciliação é registrada e não desfaz a edição do pedido.
 
 ## Segurança das regras

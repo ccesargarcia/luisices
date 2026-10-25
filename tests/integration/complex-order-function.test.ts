@@ -125,4 +125,47 @@ describe('Cloud Function: atualização segura de pedidos com muitos itens', () 
     expect((await orderRef.get()).data()).toMatchObject({ price: 10, quantity: 1, version: 1 });
     expect((await saleRef.get()).data()).toMatchObject({ amount: 10, quantity: 1 });
   });
+
+  it('preserva o histórico de pagamento e calcula o ajuste de redução no servidor', async () => {
+    const id = `complex-order-payment-history-${Date.now()}`;
+    const orderRef = adminDb.doc(`orders/${id}`);
+    const initial = newOrder(id);
+    await Promise.all([
+      orderRef.set(initial),
+      adminDb.doc('userProfiles/complex-owner').set({
+        role: 'user', active: true, permissions: { orders: { edit: true } },
+      }),
+      adminDb.doc(`salesLedger/${id}`).set({
+        id, orderId: id, userId: initial.userId, amount: initial.price, quantity: initial.quantity,
+        paymentStatus: 'paid', paidAmount: initial.price,
+      }),
+    ]);
+
+    await handleUpdateComplexOrder({
+      auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+      data: {
+        orderId: id,
+        expectedVersion: 1,
+        updates: {
+          items: Array.from({ length: 5 }, (_, index) => ({
+            name: `Produto ${index + 1}`, quantity: 1, unitPrice: 1, price: 1,
+          })),
+          quantity: 5,
+          price: 5,
+          payment: {
+            status: 'paid', method: 'pix', totalAmount: 5, paidAmount: 5, remainingAmount: 0,
+            history: [{ amount: 999, date: '2026-10-25T00:00:00.000Z', method: 'pix' }],
+          },
+        },
+      },
+    }, adminDb);
+
+    const saved = (await orderRef.get()).data();
+    expect(saved?.payment.history).toHaveLength(2);
+    expect(saved?.payment.history[0]).toMatchObject({
+      amount: 10, method: 'pix', notes: 'Pagamento inicial registrado',
+    });
+    expect(saved?.payment.history[1]).toMatchObject({ amount: -5, method: 'pix' });
+    expect(saved?.payment.history[0].amount + saved?.payment.history[1].amount).toBe(5);
+  });
 });

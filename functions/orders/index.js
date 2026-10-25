@@ -62,6 +62,62 @@ const COMPLEX_ORDER_UPDATE_FIELDS = new Set([
   'items', 'unitPrice', 'pricingMode', 'status', 'deliveryDate', 'notes', 'tags',
   'payment', 'isExchange', 'exchangeNotes', 'exchangeItems', 'cardColor',
 ]);
+const PAYMENT_METHODS = new Set(['pix', 'cash', 'credit', 'debit', 'transfer']);
+
+/**
+ * Mantém o histórico financeiro anterior e cria ajustes de redução no servidor.
+ * O cliente pode enviar a estrutura completa de payment, mas nunca é a fonte
+ * confiável para adicionar, remover ou reescrever eventos do histórico.
+ */
+function buildAuthoritativePaymentHistory(previousPayment, nextPayment, now) {
+  const previous = previousPayment && typeof previousPayment === 'object' ? previousPayment : {};
+  const history = Array.isArray(previous.history) ? previous.history.map((entry) => ({ ...entry })) : [];
+  const previousPaid = Number.isFinite(previous.paidAmount) ? Math.max(0, previous.paidAmount) : 0;
+  const fallbackMethod = PAYMENT_METHODS.has(previous.method)
+    ? previous.method
+    : (PAYMENT_METHODS.has(nextPayment.method) ? nextPayment.method : 'pix');
+
+  if (history.length === 0 && previousPaid > 0) {
+    history.push({
+      amount: previousPaid,
+      date: typeof previous.paymentDate === 'string' ? previous.paymentDate : now,
+      method: fallbackMethod,
+      notes: 'Pagamento inicial registrado',
+    });
+  }
+
+  const historyTotalCents = history.reduce((total, entry) => {
+    const amount = Number(entry?.amount);
+    return total + (Number.isFinite(amount) ? Math.round(amount * 100) : 0);
+  }, 0);
+  let amountToReduceCents = historyTotalCents - Math.round(nextPayment.paidAmount * 100);
+  if (amountToReduceCents <= 0) return history.length ? history : null;
+
+  const reductions = new Map();
+  for (let index = history.length - 1; index >= 0 && amountToReduceCents > 0; index -= 1) {
+    const amount = Number(history[index]?.amount);
+    const positiveCents = Number.isFinite(amount) ? Math.max(0, Math.round(amount * 100)) : 0;
+    if (positiveCents === 0) continue;
+    const reductionCents = Math.min(positiveCents, amountToReduceCents);
+    const method = PAYMENT_METHODS.has(history[index]?.method) ? history[index].method : fallbackMethod;
+    reductions.set(method, (reductions.get(method) || 0) + reductionCents);
+    amountToReduceCents -= reductionCents;
+  }
+  if (amountToReduceCents > 0) {
+    reductions.set(fallbackMethod, (reductions.get(fallbackMethod) || 0) + amountToReduceCents);
+  }
+
+  for (const [method, reductionCents] of reductions) {
+    const reduction = reductionCents / 100;
+    history.push({
+      amount: -reduction,
+      date: now,
+      method,
+      notes: `Ajuste automático após alteração do total do pedido. Forma ${method}: R$ ${reduction.toFixed(2)}.`,
+    });
+  }
+  return history;
+}
 
 function assertComplexOrderItems(items, quantity, price) {
   if (!Array.isArray(items) || items.length < 1 || items.length > 10) {
@@ -144,13 +200,26 @@ function validateComplexOrderUpdate(updates, order, uid, profile) {
       || (payment.status === 'pending' && paid !== 0)) {
       throw new HttpsError('invalid-argument', 'Os valores de pagamento não correspondem ao pedido.');
     }
-    if (payment.method != null && !['pix', 'cash', 'credit', 'debit', 'transfer'].includes(payment.method)) {
+    if (Object.keys(payment).some((key) => !['status', 'method', 'totalAmount', 'paidAmount', 'remainingAmount', 'paymentDate', 'notes', 'history'].includes(key))) {
+      throw new HttpsError('invalid-argument', 'O pagamento contém campos não permitidos.');
+    }
+    if (payment.method != null && !PAYMENT_METHODS.has(payment.method)) {
       throw new HttpsError('invalid-argument', 'Forma de pagamento inválida.');
+    }
+    if (payment.paymentDate != null && (typeof payment.paymentDate !== 'string'
+      || payment.paymentDate.length > 64 || Number.isNaN(Date.parse(payment.paymentDate)))) {
+      throw new HttpsError('invalid-argument', 'Data do pagamento inválida.');
+    }
+    if (payment.notes != null && (typeof payment.notes !== 'string' || payment.notes.length > 1000)) {
+      throw new HttpsError('invalid-argument', 'Observações do pagamento inválidas.');
     }
     if (payment.history != null && (!Array.isArray(payment.history) || payment.history.length > 100
       || payment.history.some((entry) => !entry || typeof entry.amount !== 'number'
         || !Number.isFinite(entry.amount) || Math.abs(entry.amount) > 1000000
-        || typeof entry.date !== 'string' || entry.date.length > 64
+        || Math.abs(entry.amount * 100 - Math.round(entry.amount * 100)) > 0.001
+        || typeof entry.date !== 'string' || entry.date.length > 64 || Number.isNaN(Date.parse(entry.date))
+        || !PAYMENT_METHODS.has(entry.method)
+        || Object.keys(entry).some((key) => !['amount', 'date', 'method', 'notes'].includes(key))
         || (entry.notes != null && (typeof entry.notes !== 'string' || entry.notes.length > 1000))))) {
       throw new HttpsError('invalid-argument', 'Histórico de pagamento inválido.');
     }
@@ -286,6 +355,11 @@ async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
       };
     }
     const next = validateComplexOrderUpdate(normalizedUpdates, order, uid, profile);
+    if (normalizedUpdates.payment !== undefined && next.payment) {
+      const history = buildAuthoritativePaymentHistory(order.payment, next.payment, now);
+      normalizedUpdates.payment = { ...normalizedUpdates.payment, history };
+      next.payment.history = history;
+    }
     if (customerRef && (!customerSnap?.exists || customerSnap.data()?.userId !== order.userId)) {
       throw new HttpsError('permission-denied', 'O cliente vinculado não pertence a esta conta.');
     }
@@ -1087,6 +1161,7 @@ module.exports = {
   handleSubmitPublicCatalogOrder,
   updateComplexOrder,
   validateComplexOrderUpdate,
+  buildAuthoritativePaymentHistory,
   handleUpdateComplexOrder,
   calculateSuperfreteShipping,
   createSuperfreteLabel,
