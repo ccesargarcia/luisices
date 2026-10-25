@@ -368,6 +368,79 @@ describe('Cloud Function: atualização segura de pedidos com muitos itens', () 
     expect(consolidatedEntry.count).toBe(9);
   });
 
+  it('preserva a contagem de transações mesmo quando todos os pagamentos antigos de um método foram estornados (saldo consolidado zero)', async () => {
+    const id = `complex-order-overflow-zero-balance-${Date.now()}`;
+    const orderRef = adminDb.doc(`orders/${id}`);
+    // 10 pagamentos de R$ 5 via cash e 1 estorno total de -R$ 50 via cash nas primeiras 11 posições (overflow)
+    // saldo financeiro do cash no overflow = 10 * 5 - 50 = 0
+    const overflowCash = [
+      ...Array.from({ length: 10 }, (_, i) => ({
+        amount: 5,
+        date: '2026-01-01T00:00:00.000Z',
+        method: 'cash',
+        notes: `Pagamento cash ${i + 1}`,
+      })),
+      {
+        amount: -50,
+        date: '2026-01-02T00:00:00.000Z',
+        method: 'cash',
+        notes: 'Estorno total do valor pago em dinheiro',
+      },
+    ];
+    // 45 parcelas recentes de R$ 1 via pix
+    const recentPix = Array.from({ length: 45 }, (_, i) => ({
+      amount: 1,
+      date: '2026-01-03T00:00:00.000Z',
+      method: 'pix',
+      notes: `Parcela pix ${i + 1}`,
+    }));
+    // Total pago inicial = 0 (cash) + 45 (pix) = 45
+    const existingHistory = [...overflowCash, ...recentPix];
+    const initial = {
+      ...newOrder(id),
+      price: 100,
+      payment: {
+        status: 'partial',
+        method: 'pix',
+        totalAmount: 100,
+        paidAmount: 45,
+        remainingAmount: 55,
+        history: existingHistory,
+      },
+    };
+    await Promise.all([
+      orderRef.set(initial),
+      adminDb.doc('userProfiles/complex-owner').set({
+        role: 'user', active: true, permissions: { orders: { edit: true } },
+      }),
+      adminDb.doc(`salesLedger/${id}`).set({
+        id, orderId: id, userId: initial.userId, amount: 100, quantity: 1,
+        paymentStatus: 'partial', paidAmount: 45, paymentMethod: 'pix',
+      }),
+    ]);
+
+    await handleUpdateComplexOrder({
+      auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+      data: {
+        orderId: id,
+        expectedVersion: 1,
+        updates: { payment: { paidAmount: 50, method: 'pix' } },
+      },
+    }, adminDb);
+
+    const saved = (await orderRef.get()).data();
+    expect(saved?.payment.paidAmount).toBe(50);
+    expect(saved?.payment.history.length).toBeLessThanOrEqual(50);
+    // A soma financeira total deve ser exatamente R$ 50
+    const sum = saved?.payment.history.reduce((s: number, h: any) => s + (h.amount || 0), 0);
+    expect(sum).toBe(50);
+    // A entrada consolidada de cash deve existir com saldo 0 e contagem preservada de 10
+    const consolidatedCash = saved?.payment.history.find((h: any) => h.method === 'cash' && h.notes?.includes('Consolidação'));
+    expect(consolidatedCash).toBeDefined();
+    expect(consolidatedCash.amount).toBe(0);
+    expect(consolidatedCash.count).toBe(10);
+  });
+
   it('atualiza pagamento de pedido legado e estatísticas da permuta na mesma transação', async () => {
     const id = `legacy-payment-update-${Date.now()}`;
     const customerId = `customer-${id}`;

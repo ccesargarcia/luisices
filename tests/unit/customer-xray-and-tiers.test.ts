@@ -188,6 +188,25 @@ describe('Inteligência Comercial: Raio X, Ticket Médio e Faixas de Clientes', 
       // 40 transações de pix vs 3 de credit -> pix deve vencer com folga
       expect(getPreferredPaymentMethod(orders)).toBe('pix');
     });
+
+    it('preserva a métrica de forma preferida mesmo quando o saldo consolidado fica zero por estorno total', () => {
+      const orders = [{
+        status: 'completed',
+        payment: {
+          method: 'pix',
+          history: [
+            // Entrada consolidada com 30 pagamentos via pix que foram totalmente estornados (amount: 0, count: 30)
+            { amount: 0, method: 'pix', count: 30 },
+            // 2 pagamentos recentes via cash
+            { amount: 50, method: 'cash' },
+            { amount: 50, method: 'cash' },
+          ],
+        },
+      }];
+
+      // 30 transações históricas de pix (mesmo com saldo final zerado) vs 2 de cash -> pix deve ser a preferida
+      expect(getPreferredPaymentMethod(orders)).toBe('pix');
+    });
   });
 
   describe('4. Classificação por Faixas de Gasto (Tiers) Configuráveis', () => {

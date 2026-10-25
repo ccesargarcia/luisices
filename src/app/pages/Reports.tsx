@@ -378,13 +378,14 @@ export function Reports() {
         let historyAmountRemaining = paid;
         history.forEach((h: any) => {
           const hAmount = Math.min(historyAmountRemaining, Math.max(0, Number(h.amount) || 0));
-          if (hAmount !== 0) {
+          const hasPositiveCount = typeof h.count === 'number' && h.count > 0;
+          const entryCount = hasPositiveCount ? h.count : (hAmount > 0 ? 1 : 0);
+          if (hAmount !== 0 || (hAmount === 0 && hasPositiveCount)) {
             const m = h.method || 'other';
             const cur = payMap.get(m) ?? { total: 0, count: 0 };
-            const entryCount = typeof h.count === 'number' && h.count > 0 ? h.count : 1;
             payMap.set(m, {
               total: Math.max(0, Math.round((cur.total + hAmount) * 100) / 100),
-              count: cur.count + (hAmount > 0 ? entryCount : 0),
+              count: cur.count + entryCount,
             });
             historySum += hAmount;
             historyAmountRemaining -= hAmount;

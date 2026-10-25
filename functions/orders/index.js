@@ -99,9 +99,9 @@ function compressPaymentHistory(history, maxEntries = MAX_EMBEDDED_PAYMENT_HISTO
 
   const consolidated = [];
   for (const [method, data] of methodTotals) {
-    if (data.totalCents <= 0) continue;
+    if (data.totalCents <= 0 && data.count === 0) continue;
     consolidated.push({
-      amount: data.totalCents / 100,
+      amount: Math.max(0, data.totalCents) / 100,
       count: data.count,
       date: oldestDate,
       method,
