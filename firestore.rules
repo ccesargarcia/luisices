@@ -320,25 +320,18 @@ service cloud.firestore {
 
     function isConsistentOrderItemsSum(items, quantity, price) {
       let count = items.size();
-      let priceSum = count == 1 ? items[0].quantity * items[0].unitPrice
-        : count == 2 ? items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice
-        : count == 3 ? items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice
-        : count == 4 ? items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice
-        : count == 5 ? items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice + items[4].quantity * items[4].unitPrice
-        : count == 6 ? items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice + items[4].quantity * items[4].unitPrice + items[5].quantity * items[5].unitPrice
-        : count == 7 ? items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice + items[4].quantity * items[4].unitPrice + items[5].quantity * items[5].unitPrice + items[6].quantity * items[6].unitPrice
-        : count == 8 ? items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice + items[4].quantity * items[4].unitPrice + items[5].quantity * items[5].unitPrice + items[6].quantity * items[6].unitPrice + items[7].quantity * items[7].unitPrice
-        : count == 9 ? items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice + items[4].quantity * items[4].unitPrice + items[5].quantity * items[5].unitPrice + items[6].quantity * items[6].unitPrice + items[7].quantity * items[7].unitPrice + items[8].quantity * items[8].unitPrice
-        : items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice + items[4].quantity * items[4].unitPrice + items[5].quantity * items[5].unitPrice + items[6].quantity * items[6].unitPrice + items[7].quantity * items[7].unitPrice + items[8].quantity * items[8].unitPrice + items[9].quantity * items[9].unitPrice;
-      let quantityConsistent = count <= 4
-        ? (count == 1 ? quantity == items[0].quantity
-          : count == 2 ? quantity == (items[0].quantity + items[1].quantity)
-          : count == 3 ? quantity == (items[0].quantity + items[1].quantity + items[2].quantity)
-          : quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity))
-        : quantity >= count;
       return count > 0 && count <= 10
-        && quantityConsistent
-        && math.abs(price - priceSum) < 0.05;
+        && (count <= 4
+          ? (
+            count == 1 ? (quantity == items[0].quantity && math.abs(price - items[0].quantity * items[0].unitPrice) < 0.05)
+            : count == 2 ? (quantity == (items[0].quantity + items[1].quantity)
+                && math.abs(price - (items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice)) < 0.05)
+            : count == 3 ? (quantity == (items[0].quantity + items[1].quantity + items[2].quantity)
+                && math.abs(price - (items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice)) < 0.05)
+            : (quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity)
+                && math.abs(price - (items[0].quantity * items[0].unitPrice + items[1].quantity * items[1].unitPrice + items[2].quantity * items[2].unitPrice + items[3].quantity * items[3].unitPrice)) < 0.05)
+          )
+          : (quantity >= count && price >= 0));
     }
 
     function isConsistentOrderItemsMetadata(items, data) {

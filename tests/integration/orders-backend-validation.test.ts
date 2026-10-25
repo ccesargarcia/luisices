@@ -1712,5 +1712,264 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       expect(updated.data()?.items).toHaveLength(4);
       expect(updated.data()?.version).toBe(19);
     });
+
+    it('permite atualizar pedido #2026-0088 com link de rastreamento adicionando o 5º item (reproducao 5 itens)', async () => {
+      const orderId = 'tS3wHmGaBxCdFABBXF9l-5';
+      const initialOrder = {
+        userId: 'admin',
+        orderNumber: '#2026-0089',
+        customerName: 'Ccesar',
+        customerPhone: '11975526876',
+        productName: 'Teste 1, Teste 2, Teste 3 (7x), ffff',
+        quantity: 10,
+        price: 83.03,
+        pricingMode: 'items',
+        unitPrice: null,
+        items: [
+          { name: 'Teste 1', quantity: 1, unitPrice: 36, price: 36 },
+          { name: 'Teste 2', quantity: 1, unitPrice: 32, price: 32 },
+          { name: 'Teste 3', quantity: 7, unitPrice: 1.29, price: 9.03 },
+          { name: 'ffff', quantity: 1, unitPrice: 6, price: 6 },
+        ],
+        status: 'in-progress',
+        deliveryDate: '2026-10-21',
+        notes: null,
+        tags: null,
+        payment: {
+          status: 'partial',
+          method: 'pix',
+          totalAmount: 83.03,
+          paidAmount: 77.03,
+          remainingAmount: 6,
+          paymentDate: '2026-10-21T20:32:14.803Z',
+          notes: 'Pagamento inicial registrado',
+          history: [{ amount: 32, notes: 'Pagamento inicial registrado', date: '2026-10-21T20:32:14.803Z', method: 'pix' }],
+        },
+        version: 19,
+        createdAt: Timestamp.now(),
+        updatedAt: '2026-10-24T20:49:47.931864000Z',
+        isExchange: false,
+        exchangeNotes: null,
+        cardColor: null,
+        exchangeItems: [],
+        publicTrackingHash: 'hash-xyz',
+        publicTrackingExpiresAt: '2026-12-31T00:00:00.000Z',
+        publicTrackingLinkId: 'link-uuid-123',
+      };
+
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set(initialOrder);
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          orderNumber: '#2026-0089',
+          userId: 'admin',
+          amount: 83.03,
+          isExchange: false,
+          status: 'in-progress',
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: 'Teste 1, Teste 2, Teste 3 (7x), ffff',
+          quantity: 10,
+          deliveryDate: '2026-10-21',
+          paymentStatus: 'partial',
+          paidAmount: 77.03,
+          paymentMethod: 'pix',
+          updatedAt: '2026-10-24T20:49:47.931864000Z',
+        });
+      });
+
+      const adminDb = dbFor('admin');
+      const orderRef = doc(adminDb, `orders/${orderId}`);
+      const saleRef = doc(adminDb, `salesLedger/${orderId}`);
+
+      await assertSucceeds(runTransaction(adminDb, async (transaction) => {
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+
+        transaction.update(orderRef, {
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: 'Teste 1, Teste 2, Teste 3 (7x), ffff, item 5',
+          quantity: 11,
+          price: 93.03,
+          items: [
+            { name: 'Teste 1', quantity: 1, unitPrice: 36, price: 36 },
+            { name: 'Teste 2', quantity: 1, unitPrice: 32, price: 32 },
+            { name: 'Teste 3', quantity: 7, unitPrice: 1.29, price: 9.03 },
+            { name: 'ffff', quantity: 1, unitPrice: 6, price: 6 },
+            { name: 'item 5', quantity: 1, unitPrice: 10, price: 10 },
+          ],
+          unitPrice: null,
+          pricingMode: 'items',
+          deliveryDate: '2026-10-21',
+          notes: null,
+          status: 'in-progress',
+          tags: null,
+          payment: {
+            status: 'partial',
+            method: 'pix',
+            totalAmount: 93.03,
+            paidAmount: 77.03,
+            remainingAmount: 16,
+            paymentDate: '2026-10-21T20:32:14.803Z',
+            notes: 'Estorno/crédito automático de R$ 1.00 por redução do valor pago (de R$ 32.00 para R$ 31.00). Forma pix: R$ 1.00.',
+            history: [
+              { amount: 32, notes: 'Pagamento inicial registrado', date: '2026-10-21T20:32:14.803Z', method: 'pix' },
+              { amount: -1, notes: 'Estorno/crédito automático de R$ 1.00 por redução do valor pago (de R$ 32.00 para R$ 31.00). Forma pix: R$ 1.00.', date: '2026-10-22T01:06:35.628Z', method: 'pix' },
+            ],
+          },
+          isExchange: false,
+          exchangeNotes: null,
+          cardColor: null,
+          exchangeItems: [],
+          version: 20,
+          updatedAt: '2026-10-25T00:40:08.110Z',
+        });
+
+        transaction.update(saleRef, {
+          updatedAt: '2026-10-25T00:40:08.110Z',
+          amount: 93.03,
+          isExchange: false,
+          status: 'in-progress',
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: 'Teste 1, Teste 2, Teste 3 (7x), ffff, item 5',
+          quantity: 11,
+          deliveryDate: '2026-10-21',
+          paymentStatus: 'partial',
+          paidAmount: 77.03,
+          paymentMethod: 'pix',
+        });
+      }));
+
+      const updated = await getDoc(orderRef);
+      expect(updated.data()?.quantity).toBe(11);
+      expect(updated.data()?.items).toHaveLength(5);
+    });
+
+    it('permite atualizar pedido com link de rastreamento com 10 itens sem estourar 1000 expressoes', async () => {
+      const orderId = 'tS3wHmGaBxCdFABBXF9l-10';
+      const initialOrder = {
+        userId: 'admin',
+        orderNumber: '#2026-0090',
+        customerName: 'Ccesar',
+        customerPhone: '11975526876',
+        productName: '10 itens',
+        quantity: 1,
+        price: 10,
+        pricingMode: 'items',
+        unitPrice: null,
+        items: [{ name: 'Item 1', quantity: 1, unitPrice: 10, price: 10 }],
+        status: 'in-progress',
+        deliveryDate: '2026-10-21',
+        notes: null,
+        tags: null,
+        payment: {
+          status: 'paid',
+          method: 'pix',
+          totalAmount: 10,
+          paidAmount: 10,
+          remainingAmount: 0,
+        },
+        version: 1,
+        createdAt: Timestamp.now(),
+        updatedAt: '2026-10-24T20:49:47.931864000Z',
+        isExchange: false,
+        exchangeNotes: null,
+        cardColor: null,
+        exchangeItems: [],
+        publicTrackingHash: 'hash-xyz',
+        publicTrackingExpiresAt: '2026-12-31T00:00:00.000Z',
+        publicTrackingLinkId: 'link-uuid-123',
+      };
+
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set(initialOrder);
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          orderNumber: '#2026-0090',
+          userId: 'admin',
+          amount: 10,
+          isExchange: false,
+          status: 'in-progress',
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: '10 itens',
+          quantity: 1,
+          deliveryDate: '2026-10-21',
+          paymentStatus: 'paid',
+          paidAmount: 10,
+          paymentMethod: 'pix',
+          updatedAt: '2026-10-24T20:49:47.931864000Z',
+        });
+      });
+
+      const adminDb = dbFor('admin');
+      const orderRef = doc(adminDb, `orders/${orderId}`);
+      const saleRef = doc(adminDb, `salesLedger/${orderId}`);
+
+      const items10 = Array.from({ length: 10 }, (_, i) => ({
+        name: `Item ${i + 1}`,
+        quantity: 1,
+        unitPrice: 10,
+        price: 10,
+      }));
+
+      await assertSucceeds(runTransaction(adminDb, async (transaction) => {
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+
+        transaction.update(orderRef, {
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: '10 itens atualizados',
+          quantity: 10,
+          price: 100,
+          items: items10,
+          unitPrice: null,
+          pricingMode: 'items',
+          deliveryDate: '2026-10-21',
+          notes: null,
+          status: 'in-progress',
+          tags: null,
+          payment: {
+            status: 'paid',
+            method: 'pix',
+            totalAmount: 100,
+            paidAmount: 100,
+            remainingAmount: 0,
+            paymentDate: '2026-10-21T20:32:14.803Z',
+            notes: 'Pagamento total',
+            history: null,
+          },
+          isExchange: false,
+          exchangeNotes: null,
+          cardColor: null,
+          exchangeItems: [],
+          version: 2,
+          updatedAt: '2026-10-25T00:40:08.110Z',
+        });
+
+        transaction.update(saleRef, {
+          updatedAt: '2026-10-25T00:40:08.110Z',
+          amount: 100,
+          isExchange: false,
+          status: 'in-progress',
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: '10 itens atualizados',
+          quantity: 10,
+          deliveryDate: '2026-10-21',
+          paymentStatus: 'paid',
+          paidAmount: 100,
+          paymentMethod: 'pix',
+        });
+      }));
+
+      const updated = await getDoc(orderRef);
+      expect(updated.data()?.items).toHaveLength(10);
+    });
   });
 });
