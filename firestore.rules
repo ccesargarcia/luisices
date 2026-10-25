@@ -132,23 +132,22 @@ service cloud.firestore {
       let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
       let role = profile.get('role', '');
       let isSoftDelete = changed.hasAny(['deletedAt']);
-      let isOnlySoftDelete = changed.hasOnly(['deletedAt', 'updatedAt', 'version']);
       return isActiveProfile(profile)
         && (
           role == 'admin'
           || (
             previous.userId == request.auth.uid
-            && (isSoftDelete
-              ? (isOnlySoftDelete && next.get('deletedAt', null) != null && hasOrderDeletePermission(profile, previous))
-              : hasPerm(profile.get('permissions', {}).get('orders', false), 'edit'))
+            && (!isSoftDelete
+              ? hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
+              : (changed.hasOnly(['deletedAt', 'updatedAt', 'version']) && next.get('deletedAt', null) != null && hasOrderDeletePermission(profile, previous)))
           )
           || (
             role == 'funcionario'
             && previous.get('assignedTo', '') == request.auth.uid
             && !changed.hasAny(['assignedTo'])
-            && (isSoftDelete
-              ? (isOnlySoftDelete && next.get('deletedAt', null) != null && hasOrderDeletePermission(profile, previous))
-              : hasPerm(profile.get('permissions', {}).get('orders', false), 'edit'))
+            && (!isSoftDelete
+              ? hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
+              : (changed.hasOnly(['deletedAt', 'updatedAt', 'version']) && next.get('deletedAt', null) != null && hasOrderDeletePermission(profile, previous)))
           )
         );
     }
@@ -225,26 +224,28 @@ service cloud.firestore {
       let count = tags.size();
       return tags is list && count <= 20
         && (count == 20 ? are20TagsValid(tags) : (
-          (count <= 0 || isValidOrderTag(tags[0]))
-          && (count <= 1 || isValidOrderTag(tags[1]))
-          && (count <= 2 || isValidOrderTag(tags[2]))
-          && (count <= 3 || isValidOrderTag(tags[3]))
-          && (count <= 4 || isValidOrderTag(tags[4]))
-          && (count <= 5 || isValidOrderTag(tags[5]))
-          && (count <= 6 || isValidOrderTag(tags[6]))
-          && (count <= 7 || isValidOrderTag(tags[7]))
-          && (count <= 8 || isValidOrderTag(tags[8]))
-          && (count <= 9 || isValidOrderTag(tags[9]))
-          && (count <= 10 || isValidOrderTag(tags[10]))
-          && (count <= 11 || isValidOrderTag(tags[11]))
-          && (count <= 12 || isValidOrderTag(tags[12]))
-          && (count <= 13 || isValidOrderTag(tags[13]))
-          && (count <= 14 || isValidOrderTag(tags[14]))
-          && (count <= 15 || isValidOrderTag(tags[15]))
-          && (count <= 16 || isValidOrderTag(tags[16]))
-          && (count <= 17 || isValidOrderTag(tags[17]))
-          && (count <= 18 || isValidOrderTag(tags[18]))
-          && (count <= 19 || isValidOrderTag(tags[19]))
+          count == 0 || (
+            isValidOrderTag(tags[0])
+            && (count <= 1 || isValidOrderTag(tags[1]))
+            && (count <= 2 || isValidOrderTag(tags[2]))
+            && (count <= 3 || isValidOrderTag(tags[3]))
+            && (count <= 4 || isValidOrderTag(tags[4]))
+            && (count <= 5 || isValidOrderTag(tags[5]))
+            && (count <= 6 || isValidOrderTag(tags[6]))
+            && (count <= 7 || isValidOrderTag(tags[7]))
+            && (count <= 8 || isValidOrderTag(tags[8]))
+            && (count <= 9 || isValidOrderTag(tags[9]))
+            && (count <= 10 || isValidOrderTag(tags[10]))
+            && (count <= 11 || isValidOrderTag(tags[11]))
+            && (count <= 12 || isValidOrderTag(tags[12]))
+            && (count <= 13 || isValidOrderTag(tags[13]))
+            && (count <= 14 || isValidOrderTag(tags[14]))
+            && (count <= 15 || isValidOrderTag(tags[15]))
+            && (count <= 16 || isValidOrderTag(tags[16]))
+            && (count <= 17 || isValidOrderTag(tags[17]))
+            && (count <= 18 || isValidOrderTag(tags[18]))
+            && (count <= 19 || isValidOrderTag(tags[19]))
+          )
         ));
     }
 
@@ -277,6 +278,7 @@ service cloud.firestore {
       let prevCount = prevTags is list ? prevTags.size() : 0;
       return tags is list && count <= 20
         && (tags == prevTags
+          || (count == 0 && (prevTags == null || prevCount == 0))
           || (count == 20 && prevCount == 20
             ? (tags[0] == prevTags[0] || tags[19] == prevTags[19]
               ? are20TagsValidUpdate(tags, prevTags)
@@ -317,25 +319,28 @@ service cloud.firestore {
 
     function isConsistentOrderItemsSum(items, quantity, price) {
       let count = items.size();
-      return (count == 1 && quantity == items[0].quantity && math.abs(price - getItemSubtotal(items[0])) < 0.05)
-        || (count == 2 && quantity == (items[0].quantity + items[1].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]))) < 0.05)
-        || (count == 3 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]))) < 0.05)
-        || (count == 4 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]))) < 0.05)
-        || (count == 5 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]))) < 0.05)
-        || (count == 6 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]))) < 0.05)
-        || (count == 7 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]))) < 0.05)
-        || (count == 8 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]) + getItemSubtotal(items[7]))) < 0.05)
-        || (count == 9 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity + items[8].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]) + getItemSubtotal(items[7]) + getItemSubtotal(items[8]))) < 0.05)
-        || (count == 10 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity + items[8].quantity + items[9].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]) + getItemSubtotal(items[7]) + getItemSubtotal(items[8]) + getItemSubtotal(items[9]))) < 0.05);
+      return count == 1
+        ? (quantity == items[0].quantity && math.abs(price - getItemSubtotal(items[0])) < 0.05)
+        : (
+          (count == 2 && quantity == (items[0].quantity + items[1].quantity)
+              && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]))) < 0.05)
+          || (count == 3 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity)
+              && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]))) < 0.05)
+          || (count == 4 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity)
+              && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]))) < 0.05)
+          || (count == 5 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity)
+              && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]))) < 0.05)
+          || (count == 6 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity)
+              && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]))) < 0.05)
+          || (count == 7 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity)
+              && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]))) < 0.05)
+          || (count == 8 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity)
+              && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]) + getItemSubtotal(items[7]))) < 0.05)
+          || (count == 9 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity + items[8].quantity)
+              && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]) + getItemSubtotal(items[7]) + getItemSubtotal(items[8]))) < 0.05)
+          || (count == 10 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity + items[8].quantity + items[9].quantity)
+              && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]) + getItemSubtotal(items[7]) + getItemSubtotal(items[8]) + getItemSubtotal(items[9]))) < 0.05)
+        );
     }
 
     function isConsistentOrderItemsMetadata(items, data) {
@@ -422,7 +427,8 @@ service cloud.firestore {
           'deletedAt', 'updatedAt', 'requiresFinancialApproval', 'financialWarning',
           'shippingTagId', 'shippingStatus', 'shippingTrackingNumber',
           'shippingLabelUrl', 'shippingServiceId', 'shippingServiceName',
-          'shippingCost', 'shippingUpdatedAt'
+          'shippingCost', 'shippingUpdatedAt',
+          'publicTrackingHash', 'publicTrackingExpiresAt', 'publicTrackingLinkId'
         ])
         && isValidOrderConcurrency(previous, next, changed)
         && isValidOrderChanges(previous, next, changed);

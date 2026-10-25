@@ -564,7 +564,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           deliveryDate: editData.deliveryDate,
           notes: editData.notes?.trim() ? editData.notes.trim() : null,
           status: editData.status,
-          tags: editTags,
+          tags: editTags.length > 0 ? editTags : null,
           payment: paymentData,
           isExchange: Boolean(editData.isExchange),
           exchangeNotes: editData.isExchange && editData.exchangeNotes?.trim() ? editData.exchangeNotes.trim() : null,

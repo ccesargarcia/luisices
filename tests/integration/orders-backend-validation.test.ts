@@ -1220,4 +1220,231 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       }));
     });
   });
+
+  describe('8. Edição de Pedido Existente com Link de Rastreamento (Adição de Itens e Limite CEL)', () => {
+    it('permite atualizar pedido existente sem link ao adicionar item via OrderDetailsDialog', async () => {
+      const orderId = 'order-cel-without-tracking';
+      const initialOrder = {
+        ...baseOrder,
+        orderNumber: '#2026-0001',
+        productName: 'Convite Luxo',
+        quantity: 1,
+        price: 100,
+        pricingMode: 'unit',
+        unitPrice: 100,
+        items: [{ name: 'Convite Luxo', quantity: 1, unitPrice: 100, price: 100 }],
+        tags: null,
+        payment: {
+          status: 'paid',
+          method: 'pix',
+          totalAmount: 100,
+          paidAmount: 100,
+          remainingAmount: 0,
+        },
+        version: 1,
+      };
+
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set(initialOrder);
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          orderNumber: '#2026-0001',
+          userId: 'owner',
+          customerName: 'Cliente Teste',
+          customerPhone: '11999999999',
+          productName: 'Convite Luxo',
+          quantity: 1,
+          amount: 100,
+          isExchange: false,
+          paymentStatus: 'paid',
+          paidAmount: 100,
+          paymentMethod: 'pix',
+          date: '2026-10-24',
+          deliveryDate: '2026-11-20',
+          status: 'pending',
+          createdAt: '2026-10-24T12:00:00.000Z',
+          updatedAt: '2026-10-24T12:00:00.000Z',
+        });
+      });
+
+      const ownerDb = dbFor('owner');
+      const now = new Date().toISOString();
+      const orderRef = doc(ownerDb, `orders/${orderId}`);
+      const saleRef = doc(ownerDb, `salesLedger/${orderId}`);
+
+      await assertSucceeds(runTransaction(ownerDb, async (transaction) => {
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+
+        transaction.update(orderRef, {
+          customerName: 'Cliente Teste',
+          customerPhone: '11999999999',
+          productName: 'Convite Luxo, Envelope',
+          quantity: 2,
+          price: 150,
+          items: [
+            { name: 'Convite Luxo', quantity: 1, unitPrice: 100, price: 100 },
+            { name: 'Envelope', quantity: 1, unitPrice: 50, price: 50 },
+          ],
+          unitPrice: null,
+          pricingMode: 'items',
+          deliveryDate: '2026-11-20',
+          notes: null,
+          status: 'pending',
+          tags: [],
+          payment: {
+            status: 'partial',
+            method: 'pix',
+            totalAmount: 150,
+            paidAmount: 100,
+            remainingAmount: 50,
+            paymentDate: '2026-10-24T12:00:00.000Z',
+            notes: null,
+            history: null,
+          },
+          isExchange: false,
+          exchangeNotes: null,
+          cardColor: null,
+          exchangeItems: [],
+          version: 2,
+          updatedAt: now,
+        });
+
+        transaction.update(saleRef, {
+          updatedAt: now,
+          amount: 150,
+          isExchange: false,
+          status: 'pending',
+          customerName: 'Cliente Teste',
+          customerPhone: '11999999999',
+          productName: 'Convite Luxo, Envelope',
+          quantity: 2,
+          deliveryDate: '2026-11-20',
+          paymentStatus: 'partial',
+          paidAmount: 100,
+          paymentMethod: 'pix',
+        });
+      }));
+
+      const updated = await getDoc(orderRef);
+      expect(updated.data()?.quantity).toBe(2);
+      expect(updated.data()?.price).toBe(150);
+      expect(updated.data()?.pricingMode).toBe('items');
+    });
+
+    it('permite atualizar pedido existente COM link de rastreamento ao adicionar item via OrderDetailsDialog sem estourar limite CEL', async () => {
+      const orderId = 'order-cel-with-tracking';
+      const initialOrder = {
+        ...baseOrder,
+        orderNumber: '#2026-0002',
+        productName: 'Convite Luxo',
+        quantity: 1,
+        price: 100,
+        pricingMode: 'unit',
+        unitPrice: 100,
+        items: [{ name: 'Convite Luxo', quantity: 1, unitPrice: 100, price: 100 }],
+        tags: null,
+        payment: {
+          status: 'paid',
+          method: 'pix',
+          totalAmount: 100,
+          paidAmount: 100,
+          remainingAmount: 0,
+        },
+        version: 1,
+        publicTrackingHash: 'hash-abc-123',
+        publicTrackingExpiresAt: '2026-12-31T00:00:00.000Z',
+        publicTrackingLinkId: 'link-123',
+      };
+
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set(initialOrder);
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          orderNumber: '#2026-0002',
+          userId: 'owner',
+          customerName: 'Cliente Teste',
+          customerPhone: '11999999999',
+          productName: 'Convite Luxo',
+          quantity: 1,
+          amount: 100,
+          isExchange: false,
+          paymentStatus: 'paid',
+          paidAmount: 100,
+          paymentMethod: 'pix',
+          date: '2026-10-24',
+          deliveryDate: '2026-11-20',
+          status: 'pending',
+          createdAt: '2026-10-24T12:00:00.000Z',
+          updatedAt: '2026-10-24T12:00:00.000Z',
+        });
+      });
+
+      const ownerDb = dbFor('owner');
+      const now = new Date().toISOString();
+      const orderRef = doc(ownerDb, `orders/${orderId}`);
+      const saleRef = doc(ownerDb, `salesLedger/${orderId}`);
+
+      await assertSucceeds(runTransaction(ownerDb, async (transaction) => {
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+
+        transaction.update(orderRef, {
+          customerName: 'Cliente Teste',
+          customerPhone: '11999999999',
+          productName: 'Convite Luxo, Envelope',
+          quantity: 2,
+          price: 150,
+          items: [
+            { name: 'Convite Luxo', quantity: 1, unitPrice: 100, price: 100 },
+            { name: 'Envelope', quantity: 1, unitPrice: 50, price: 50 },
+          ],
+          unitPrice: null,
+          pricingMode: 'items',
+          deliveryDate: '2026-11-20',
+          notes: null,
+          status: 'pending',
+          tags: [],
+          payment: {
+            status: 'partial',
+            method: 'pix',
+            totalAmount: 150,
+            paidAmount: 100,
+            remainingAmount: 50,
+            paymentDate: '2026-10-24T12:00:00.000Z',
+            notes: null,
+            history: null,
+          },
+          isExchange: false,
+          exchangeNotes: null,
+          cardColor: null,
+          exchangeItems: [],
+          version: 2,
+          updatedAt: now,
+        });
+
+        transaction.update(saleRef, {
+          updatedAt: now,
+          amount: 150,
+          isExchange: false,
+          status: 'pending',
+          customerName: 'Cliente Teste',
+          customerPhone: '11999999999',
+          productName: 'Convite Luxo, Envelope',
+          quantity: 2,
+          deliveryDate: '2026-11-20',
+          paymentStatus: 'partial',
+          paidAmount: 100,
+          paymentMethod: 'pix',
+        });
+      }));
+
+      const updated = await getDoc(orderRef);
+      expect(updated.data()?.quantity).toBe(2);
+      expect(updated.data()?.price).toBe(150);
+      expect(updated.data()?.publicTrackingHash).toBe('hash-abc-123');
+    });
+  });
 });

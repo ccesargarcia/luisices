@@ -353,6 +353,50 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
       expect(savedLedger.quantity).toBe(120);
     });
 
+    it('atualiza pedido existente com campos de rastreamento (tracking link) e adiciona itens em transação', async () => {
+      mockOrderGet.mockReturnValue({
+        exists: () => true,
+        data: () => ({
+          userId: 'user-1',
+          version: 1,
+          customerName: 'Cliente Teste',
+          productName: 'Convite Luxo',
+          quantity: 1,
+          price: 100,
+          pricingMode: 'unit',
+          unitPrice: 100,
+          items: [{ name: 'Convite Luxo', quantity: 1, unitPrice: 100, price: 100 }],
+          publicTrackingHash: 'hash-abc-123',
+          publicTrackingExpiresAt: '2026-12-31T00:00:00.000Z',
+          publicTrackingLinkId: 'link-123',
+        }),
+      });
+      mockSaleGet.mockReturnValue({ exists: () => false });
+
+      const newItems = [
+        { name: 'Convite Luxo', quantity: 1, unitPrice: 100, price: 100 },
+        { name: 'Envelope', quantity: 1, unitPrice: 50, price: 50 },
+      ];
+
+      await firebaseOrderService.updateOrder('order-with-tracking', {
+        productName: 'Convite Luxo, Envelope',
+        quantity: 2,
+        price: 150,
+        items: newItems,
+        pricingMode: 'items',
+        unitPrice: null,
+      }, 1);
+
+      expect(mockTransactionUpdate).toHaveBeenCalled();
+      const updatePayload = mockTransactionUpdate.mock.calls[0][1];
+      expect(updatePayload.items).toEqual(newItems);
+      expect(updatePayload.price).toBe(150);
+      expect(updatePayload.quantity).toBe(2);
+      expect(updatePayload.pricingMode).toBe('items');
+      expect(updatePayload.unitPrice).toBeNull();
+      expect(updatePayload.version).toBe(2);
+    });
+
     it('rejeita quantidade fracionária ao editar antes de iniciar a transação', async () => {
       await expect(firebaseOrderService.updateOrder('order-invalid-items', {
         quantity: 1.5,
