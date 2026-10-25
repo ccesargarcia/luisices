@@ -126,6 +126,35 @@ describe('Cloud Function: atualização segura de pedidos com muitos itens', () 
     expect((await saleRef.get()).data()).toMatchObject({ amount: 10, quantity: 1 });
   });
 
+  it('rejeita payloads de pagamento inválidos e não altera pedido nem ledger', async () => {
+    const id = `complex-order-invalid-payment-${Date.now()}`;
+    const orderRef = adminDb.doc(`orders/${id}`);
+    const initial = newOrder(id);
+    await Promise.all([
+      orderRef.set(initial),
+      adminDb.doc('userProfiles/complex-owner').set({
+        role: 'user', active: true, permissions: { orders: { edit: true } },
+      }),
+      adminDb.doc(`salesLedger/${id}`).set({
+        id, orderId: id, userId: initial.userId, amount: 10, quantity: 1,
+        paymentStatus: 'paid', paidAmount: 10,
+      }),
+    ]);
+
+    const invoke = (payment: Record<string, unknown>) => handleUpdateComplexOrder({
+      auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+      data: { orderId: id, expectedVersion: 1, updates: { payment } },
+    }, adminDb);
+    await expect(invoke({ paidAmount: -1 })).rejects.toThrow(/Valor pago inválido/);
+    await expect(invoke({ paidAmount: 11 })).rejects.toThrow(/não pode exceder o total/);
+    await expect(invoke({ paidAmount: 5, method: 'crypto' })).rejects.toThrow(/Forma de pagamento inválida/);
+    await expect(invoke({ paidAmount: 5, adminOverride: true })).rejects.toThrow(/campos não permitidos/);
+
+    expect((await orderRef.get()).data()).toMatchObject({ version: 1, price: 10, payment: initial.payment });
+    expect((await adminDb.doc(`salesLedger/${id}`).get()).data()).toMatchObject({ amount: 10, paidAmount: 10 });
+    expect((await orderRef.collection('paymentEvents').get()).size).toBe(0);
+  });
+
   it('preserva o histórico de pagamento e calcula o ajuste de redução no servidor', async () => {
     const id = `complex-order-payment-history-${Date.now()}`;
     const orderRef = adminDb.doc(`orders/${id}`);
@@ -167,5 +196,136 @@ describe('Cloud Function: atualização segura de pedidos com muitos itens', () 
     });
     expect(saved?.payment.history[1]).toMatchObject({ amount: -5, method: 'pix' });
     expect(saved?.payment.history[0].amount + saved?.payment.history[1].amount).toBe(5);
+    const events = await orderRef.collection('paymentEvents').get();
+    expect(events.docs).toHaveLength(1);
+    expect(events.docs[0].data()).toMatchObject({
+      type: 'adjustment', amount: -5, method: 'pix', actorUid: 'complex-owner',
+      source: 'updateComplexOrder',
+    });
+  });
+
+  it('registra entrada positiva no histórico e na subcoleção de auditoria', async () => {
+    const id = `complex-order-payment-add-${Date.now()}`;
+    const orderRef = adminDb.doc(`orders/${id}`);
+    const initial = {
+      ...newOrder(id),
+      payment: { status: 'partial', method: 'pix', totalAmount: 10, paidAmount: 4, remainingAmount: 6 },
+    };
+    await Promise.all([
+      orderRef.set(initial),
+      adminDb.doc('userProfiles/complex-owner').set({
+        role: 'user', active: true, permissions: { orders: { edit: true } },
+      }),
+      adminDb.doc(`salesLedger/${id}`).set({
+        id, orderId: id, userId: initial.userId, amount: 10, quantity: 1,
+        paymentStatus: 'partial', paidAmount: 4, paymentMethod: 'pix',
+      }),
+    ]);
+
+    await handleUpdateComplexOrder({
+      auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+      data: {
+        orderId: id,
+        expectedVersion: 1,
+        updates: { payment: { paidAmount: 7, method: 'cash' } },
+      },
+    }, adminDb);
+
+    const saved = (await orderRef.get()).data();
+    expect(saved?.payment).toMatchObject({ paidAmount: 7, remainingAmount: 3, status: 'partial', method: 'cash' });
+    expect(saved?.payment.history[saved.payment.history.length - 1]).toMatchObject({ amount: 3, method: 'cash' });
+    const events = await orderRef.collection('paymentEvents').get();
+    expect(events.docs).toHaveLength(1);
+    expect(events.docs[0].data()).toMatchObject({ type: 'payment', amount: 3, method: 'cash', actorUid: 'complex-owner' });
+  });
+
+  it('atualiza pagamento de pedido legado e estatísticas da permuta na mesma transação', async () => {
+    const id = `legacy-payment-update-${Date.now()}`;
+    const customerId = `customer-${id}`;
+    const orderRef = adminDb.doc(`orders/${id}`);
+    const customerRef = adminDb.doc(`customers/${customerId}`);
+    const initial = { ...newOrder(id), items: null, pricingMode: 'total', customerId };
+    await Promise.all([
+      orderRef.set(initial),
+      customerRef.set({ userId: initial.userId, totalOrders: 3, totalSpent: 30 }),
+      adminDb.doc('userProfiles/complex-owner').set({
+        role: 'user', active: true, permissions: { orders: { edit: true } },
+      }),
+      adminDb.doc(`salesLedger/${id}`).set({
+        id, orderId: id, userId: initial.userId, amount: 10, quantity: 1,
+        paymentStatus: 'paid', paidAmount: 10,
+      }),
+    ]);
+
+    const request = {
+      auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+      data: {
+        orderId: id,
+        expectedVersion: 1,
+        updates: {
+          price: 15,
+          isExchange: true,
+        },
+      },
+    };
+    await handleUpdateComplexOrder(request, adminDb);
+    const [savedOrder, savedCustomer, savedSale] = await Promise.all([
+      orderRef.get(), customerRef.get(), adminDb.doc(`salesLedger/${id}`).get(),
+    ]);
+    expect(savedOrder.data()?.payment).toMatchObject({
+      status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0,
+    });
+    expect(savedOrder.data()?.payment.history).toHaveLength(2);
+    expect(savedOrder.data()?.payment.history[0].amount + savedOrder.data()?.payment.history[1].amount).toBe(0);
+    expect(savedOrder.data()?.price).toBe(15);
+    expect(savedCustomer.data()).toMatchObject({ totalOrders: 2, totalSpent: 20 });
+    expect(savedSale.data()).toMatchObject({ paymentStatus: 'paid', paidAmount: 0, isExchange: true });
+
+    await expect(handleUpdateComplexOrder(request, adminDb)).rejects.toThrow(/alterado/);
+    expect((await customerRef.get()).data()).toMatchObject({ totalOrders: 2, totalSpent: 20 });
+
+    await handleUpdateComplexOrder({
+      ...request,
+      data: { ...request.data, expectedVersion: 2, updates: { isExchange: false } },
+    }, adminDb);
+    expect((await customerRef.get()).data()).toMatchObject({ totalOrders: 3, totalSpent: 35 });
+  });
+
+  it('reconcilia estatísticas ao editar o preço e trocar o cliente do pedido', async () => {
+    const id = `customer-reassignment-${Date.now()}`;
+    const oldCustomerId = `old-customer-${id}`;
+    const newCustomerId = `new-customer-${id}`;
+    const orderRef = adminDb.doc(`orders/${id}`);
+    const oldCustomerRef = adminDb.doc(`customers/${oldCustomerId}`);
+    const newCustomerRef = adminDb.doc(`customers/${newCustomerId}`);
+    const initial = { ...newOrder(id), items: null, pricingMode: 'total', customerId: oldCustomerId };
+    await Promise.all([
+      orderRef.set(initial),
+      oldCustomerRef.set({ userId: initial.userId, totalOrders: 2, totalSpent: 25 }),
+      newCustomerRef.set({ userId: initial.userId, totalOrders: 1, totalSpent: 5 }),
+      adminDb.doc('userProfiles/complex-owner').set({
+        role: 'user', active: true, permissions: { orders: { edit: true } },
+      }),
+      adminDb.doc(`salesLedger/${id}`).set({
+        id, orderId: id, userId: initial.userId, customerId: oldCustomerId,
+        amount: 10, quantity: 1, paymentStatus: 'paid', paidAmount: 10,
+      }),
+    ]);
+
+    await handleUpdateComplexOrder({
+      auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+      data: {
+        orderId: id,
+        expectedVersion: 1,
+        updates: { price: 15, customerId: newCustomerId },
+      },
+    }, adminDb);
+
+    expect((await oldCustomerRef.get()).data()).toMatchObject({ totalOrders: 1, totalSpent: 15 });
+    expect((await newCustomerRef.get()).data()).toMatchObject({ totalOrders: 2, totalSpent: 20 });
+    expect((await orderRef.get()).data()).toMatchObject({ price: 15, customerId: newCustomerId });
+    expect((await adminDb.doc(`salesLedger/${id}`).get()).data()).toMatchObject({
+      amount: 15, customerId: newCustomerId,
+    });
   });
 });

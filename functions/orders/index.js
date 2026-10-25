@@ -63,25 +63,32 @@ const COMPLEX_ORDER_UPDATE_FIELDS = new Set([
   'payment', 'isExchange', 'exchangeNotes', 'exchangeItems', 'cardColor',
 ]);
 const PAYMENT_METHODS = new Set(['pix', 'cash', 'credit', 'debit', 'transfer']);
+const MAX_EMBEDDED_PAYMENT_HISTORY = 50;
 
 /**
  * Mantém o histórico financeiro anterior e cria ajustes de redução no servidor.
  * O cliente pode enviar a estrutura completa de payment, mas nunca é a fonte
  * confiável para adicionar, remover ou reescrever eventos do histórico.
+ * O histórico embutido no documento é limitado a MAX_EMBEDDED_PAYMENT_HISTORY
+ * eventos mais recentes para manter o documento leve; a subcoleção paymentEvents
+ * preserva a trilha completa de auditoria de forma ilimitada.
  */
 function buildAuthoritativePaymentHistory(previousPayment, nextPayment, now) {
   const previous = previousPayment && typeof previousPayment === 'object' ? previousPayment : {};
   const history = Array.isArray(previous.history) ? previous.history.map((entry) => ({ ...entry })) : [];
   const previousPaid = Number.isFinite(previous.paidAmount) ? Math.max(0, previous.paidAmount) : 0;
-  const fallbackMethod = PAYMENT_METHODS.has(previous.method)
+  const previousMethod = PAYMENT_METHODS.has(previous.method)
     ? previous.method
     : (PAYMENT_METHODS.has(nextPayment.method) ? nextPayment.method : 'pix');
+  const incomingMethod = PAYMENT_METHODS.has(nextPayment.method)
+    ? nextPayment.method
+    : (PAYMENT_METHODS.has(previous.method) ? previous.method : 'pix');
 
   if (history.length === 0 && previousPaid > 0) {
     history.push({
       amount: previousPaid,
       date: typeof previous.paymentDate === 'string' ? previous.paymentDate : now,
-      method: fallbackMethod,
+      method: previousMethod,
       notes: 'Pagamento inicial registrado',
     });
   }
@@ -90,8 +97,30 @@ function buildAuthoritativePaymentHistory(previousPayment, nextPayment, now) {
     const amount = Number(entry?.amount);
     return total + (Number.isFinite(amount) ? Math.round(amount * 100) : 0);
   }, 0);
-  let amountToReduceCents = historyTotalCents - Math.round(nextPayment.paidAmount * 100);
-  if (amountToReduceCents <= 0) return history.length ? history : null;
+  const baselineCents = Number.isFinite(previous.paidAmount) ? Math.round(previousPaid * 100) : historyTotalCents;
+  let amountToReduceCents = baselineCents - Math.round(nextPayment.paidAmount * 100);
+  const appendedEntries = [];
+  if (amountToReduceCents < 0) {
+    const amount = -amountToReduceCents / 100;
+    const entry = {
+      amount,
+      date: now,
+      method: incomingMethod,
+      notes: `Pagamento registrado na atualização do pedido. Forma ${incomingMethod}: R$ ${amount.toFixed(2)}.`,
+    };
+    history.push(entry);
+    appendedEntries.push(entry);
+    const finalHistory = history.length > MAX_EMBEDDED_PAYMENT_HISTORY
+      ? history.slice(-MAX_EMBEDDED_PAYMENT_HISTORY)
+      : history;
+    return { history: finalHistory, appendedEntries };
+  }
+  if (amountToReduceCents === 0) {
+    const finalHistory = history.length > MAX_EMBEDDED_PAYMENT_HISTORY
+      ? history.slice(-MAX_EMBEDDED_PAYMENT_HISTORY)
+      : history;
+    return { history: finalHistory.length ? finalHistory : null, appendedEntries };
+  }
 
   const reductions = new Map();
   for (let index = history.length - 1; index >= 0 && amountToReduceCents > 0; index -= 1) {
@@ -99,24 +128,69 @@ function buildAuthoritativePaymentHistory(previousPayment, nextPayment, now) {
     const positiveCents = Number.isFinite(amount) ? Math.max(0, Math.round(amount * 100)) : 0;
     if (positiveCents === 0) continue;
     const reductionCents = Math.min(positiveCents, amountToReduceCents);
-    const method = PAYMENT_METHODS.has(history[index]?.method) ? history[index].method : fallbackMethod;
+    const method = PAYMENT_METHODS.has(history[index]?.method) ? history[index].method : previousMethod;
     reductions.set(method, (reductions.get(method) || 0) + reductionCents);
     amountToReduceCents -= reductionCents;
   }
   if (amountToReduceCents > 0) {
-    reductions.set(fallbackMethod, (reductions.get(fallbackMethod) || 0) + amountToReduceCents);
+    reductions.set(previousMethod, (reductions.get(previousMethod) || 0) + amountToReduceCents);
   }
 
   for (const [method, reductionCents] of reductions) {
     const reduction = reductionCents / 100;
-    history.push({
+    const entry = {
       amount: -reduction,
       date: now,
       method,
       notes: `Ajuste automático após alteração do total do pedido. Forma ${method}: R$ ${reduction.toFixed(2)}.`,
-    });
+    };
+    history.push(entry);
+    appendedEntries.push(entry);
   }
-  return history;
+  const finalHistory = history.length > MAX_EMBEDDED_PAYMENT_HISTORY
+    ? history.slice(-MAX_EMBEDDED_PAYMENT_HISTORY)
+    : history;
+  return { history: finalHistory, appendedEntries };
+}
+
+function normalizeComplexOrderPayment(paymentUpdate, previousPayment, price, isExchange, now) {
+  if (!paymentUpdate || typeof paymentUpdate !== 'object' || Array.isArray(paymentUpdate)) {
+    throw new HttpsError('invalid-argument', 'Dados do pagamento inválidos.');
+  }
+  const allowedFields = new Set(['status', 'method', 'totalAmount', 'paidAmount', 'remainingAmount', 'paymentDate', 'notes', 'history']);
+  if (Object.keys(paymentUpdate).some((key) => !allowedFields.has(key))) {
+    throw new HttpsError('invalid-argument', 'O pagamento contém campos não permitidos.');
+  }
+  const existing = previousPayment && typeof previousPayment === 'object' ? previousPayment : {};
+  const totalAmount = isExchange ? 0 : price;
+  const requestedPaid = paymentUpdate.paidAmount ?? existing.paidAmount ?? 0;
+  if (typeof requestedPaid !== 'number' || !Number.isFinite(requestedPaid) || requestedPaid < 0) {
+    throw new HttpsError('invalid-argument', 'Valor pago inválido.');
+  }
+  if (requestedPaid > totalAmount) {
+    throw new HttpsError('invalid-argument', 'O valor pago não pode exceder o total do pedido.');
+  }
+  const paidAmount = requestedPaid;
+  const status = paidAmount === totalAmount ? 'paid' : paidAmount > 0 ? 'partial' : 'pending';
+  const method = Object.prototype.hasOwnProperty.call(paymentUpdate, 'method')
+    ? paymentUpdate.method
+    : (existing.method ?? null);
+  const paymentDate = paidAmount === 0 ? null
+    : (paymentUpdate.paymentDate ?? existing.paymentDate ?? now);
+  const notes = Object.prototype.hasOwnProperty.call(paymentUpdate, 'notes')
+    ? paymentUpdate.notes
+    : (existing.notes ?? null);
+  return {
+    status,
+    method,
+    totalAmount,
+    paidAmount,
+    remainingAmount: Math.round((totalAmount - paidAmount) * 100) / 100,
+    paymentDate,
+    notes,
+    // Never accept client history. The server rebuilds it from the stored order.
+    history: null,
+  };
 }
 
 function assertComplexOrderItems(items, quantity, price) {
@@ -181,7 +255,13 @@ function validateComplexOrderUpdate(updates, order, uid, profile) {
   }
 
   const next = { ...order, ...updates };
-  next.items = assertComplexOrderItems(next.items, next.quantity, next.price);
+  const changesItemTotals = ['items', 'price', 'quantity', 'pricingMode', 'unitPrice']
+    .some((key) => Object.prototype.hasOwnProperty.call(updates, key));
+  if (changesItemTotals && Array.isArray(next.items)) {
+    next.items = assertComplexOrderItems(next.items, next.quantity, next.price);
+  } else if (changesItemTotals && updates.items === null && Array.isArray(order.items)) {
+    throw new HttpsError('invalid-argument', 'Não é permitido remover os itens estruturados do pedido.');
+  }
   if (typeof next.price !== 'number' || !Number.isFinite(next.price) || next.price < 0 || next.price > 1000000
     || !Number.isSafeInteger(next.quantity) || next.quantity < 1 || next.quantity > 10000) {
     throw new HttpsError('invalid-argument', 'Preço ou quantidade do pedido inválidos.');
@@ -297,17 +377,20 @@ async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
     || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
     throw new HttpsError('invalid-argument', 'Pedido ou versão inválidos.');
   }
+  if (typeof updates?.customerId === 'string' && !/^[A-Za-z0-9_-]{1,128}$/.test(updates.customerId)) {
+    throw new HttpsError('invalid-argument', 'Cliente vinculado inválido.');
+  }
   const db = firestore;
   const orderRef = db.doc(`orders/${orderId}`);
   const saleRef = db.doc(`salesLedger/${orderId}`);
   const profileRef = db.doc(`userProfiles/${uid}`);
   return db.runTransaction(async (transaction) => {
-    const customerRef = typeof updates?.customerId === 'string'
+    const requestedCustomerRef = typeof updates?.customerId === 'string'
       ? db.doc(`customers/${updates.customerId}`)
       : null;
-    const [orderSnap, saleSnap, profileSnap, customerSnap] = await Promise.all([
+    const [orderSnap, saleSnap, profileSnap, requestedCustomerSnap] = await Promise.all([
       transaction.get(orderRef), transaction.get(saleRef), transaction.get(profileRef),
-      ...(customerRef ? [transaction.get(customerRef)] : []),
+      ...(requestedCustomerRef ? [transaction.get(requestedCustomerRef)] : []),
     ]);
     if (!orderSnap.exists) throw new HttpsError('not-found', 'Pedido não encontrado.');
     if (!profileSnap.exists) throw new HttpsError('permission-denied', 'Perfil de usuário não encontrado.');
@@ -348,22 +431,88 @@ async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
         history: history.length ? history : null,
       };
     }
-    if (normalizedUpdates.isExchange === true && normalizedUpdates.payment === undefined) {
+    if (normalizedUpdates.isExchange !== undefined
+      && Boolean(normalizedUpdates.isExchange) !== Boolean(order.isExchange)
+      && normalizedUpdates.payment === undefined) {
+      const totalAmount = normalizedUpdates.isExchange ? 0 : resolvedPrice;
+      const paidAmount = Math.min(Math.max(0, Number(order.payment?.paidAmount) || 0), totalAmount);
       normalizedUpdates.payment = {
-        status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0,
-        method: null, paymentDate: null, notes: null, history: null,
+        status: paidAmount === totalAmount ? 'paid' : paidAmount > 0 ? 'partial' : 'pending',
+        totalAmount,
+        paidAmount,
+        remainingAmount: Math.round((totalAmount - paidAmount) * 100) / 100,
+        method: order.payment?.method ?? null,
+        paymentDate: paidAmount === 0 ? null : (order.payment?.paymentDate ?? now),
+        notes: order.payment?.notes ?? null,
+        history: null,
       };
     }
+    if (normalizedUpdates.payment !== undefined) {
+      normalizedUpdates.payment = normalizeComplexOrderPayment(
+        normalizedUpdates.payment, order.payment, resolvedPrice, Boolean(normalizedUpdates.isExchange ?? order.isExchange), now,
+      );
+    }
     const next = validateComplexOrderUpdate(normalizedUpdates, order, uid, profile);
+    let appendedPaymentEvents = [];
     if (normalizedUpdates.payment !== undefined && next.payment) {
-      const history = buildAuthoritativePaymentHistory(order.payment, next.payment, now);
+      const paymentHistory = buildAuthoritativePaymentHistory(order.payment, next.payment, now);
+      const history = paymentHistory.history;
+      appendedPaymentEvents = paymentHistory.appendedEntries;
       normalizedUpdates.payment = { ...normalizedUpdates.payment, history };
       next.payment.history = history;
     }
-    if (customerRef && (!customerSnap?.exists || customerSnap.data()?.userId !== order.userId)) {
+    const previousCustomerId = typeof order.customerId === 'string' ? order.customerId : null;
+    const nextCustomerId = typeof next.customerId === 'string' ? next.customerId : null;
+    const customerIds = [...new Set([previousCustomerId, nextCustomerId].filter(Boolean))];
+    const customerRefs = new Map(customerIds.map((id) => [id, db.doc(`customers/${id}`)]));
+    const customerSnapshots = new Map();
+    for (const customerId of customerIds) {
+      const customerRef = customerRefs.get(customerId);
+      const customerSnap = requestedCustomerRef && customerId === normalizedUpdates.customerId
+        ? requestedCustomerSnap
+        : await transaction.get(customerRef);
+      customerSnapshots.set(customerId, customerSnap);
+    }
+    const nextCustomerSnap = nextCustomerId ? customerSnapshots.get(nextCustomerId) : null;
+    if (normalizedUpdates.customerId != null
+      && (!nextCustomerSnap?.exists || nextCustomerSnap.data()?.userId !== order.userId)) {
       throw new HttpsError('permission-denied', 'O cliente vinculado não pertence a esta conta.');
     }
-    transaction.update(orderRef, { ...normalizedUpdates, items: next.items, version: currentVersion + 1, updatedAt: now });
+    const customerDeltas = new Map();
+    const addCustomerDelta = (customerId, orderDelta, spentCentsDelta) => {
+      if (!customerId) return;
+      const delta = customerDeltas.get(customerId) || { orders: 0, spentCents: 0 };
+      delta.orders += orderDelta;
+      delta.spentCents += spentCentsDelta;
+      customerDeltas.set(customerId, delta);
+    };
+    if (!order.isExchange) {
+      addCustomerDelta(previousCustomerId, -1, -Math.round(Number(order.price || 0) * 100));
+    }
+    if (!next.isExchange) {
+      addCustomerDelta(nextCustomerId, 1, Math.round(Number(next.price || 0) * 100));
+    }
+    const orderUpdate = { ...normalizedUpdates, version: currentVersion + 1, updatedAt: now };
+    const changesItemTotals = ['items', 'price', 'quantity', 'pricingMode', 'unitPrice']
+      .some((key) => Object.prototype.hasOwnProperty.call(normalizedUpdates, key));
+    if (changesItemTotals && Array.isArray(next.items)) orderUpdate.items = next.items;
+    transaction.update(orderRef, orderUpdate);
+
+    // A subcoleção fornece uma trilha append-only gravada pelo Admin SDK. O
+    // array payment.history permanece como espelho para relatórios existentes.
+    for (const event of appendedPaymentEvents) {
+      const eventRef = orderRef.collection('paymentEvents').doc();
+      transaction.create(eventRef, {
+        type: event.amount < 0 ? 'adjustment' : 'payment',
+        amount: event.amount,
+        method: event.method,
+        notes: event.notes || null,
+        occurredAt: event.date,
+        actorUid: uid,
+        source: 'updateComplexOrder',
+        createdAt: now,
+      });
+    }
 
     const sale = saleSnap.data() || {};
     if (saleSnap.exists && sale.userId && sale.userId !== order.userId) {
@@ -403,13 +552,22 @@ async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
         createdAt: order.createdAt || now, updatedAt: now, isDeletedFromOrders: order.deletedAt != null,
       });
     }
-    return {
-      success: true,
-      customerStatsReconciliation: normalizedUpdates.isExchange !== undefined
-        && Boolean(normalizedUpdates.isExchange) !== Boolean(order.isExchange)
-        ? { customerId: normalizedUpdates.customerId ?? order.customerId ?? null, amount: Number(next.price || 0), toExchange: Boolean(normalizedUpdates.isExchange) }
-        : null,
-    };
+    for (const [customerId, delta] of customerDeltas) {
+      if (delta.orders === 0 && delta.spentCents === 0) continue;
+      const customerSnap = customerSnapshots.get(customerId);
+      if (!customerSnap?.exists) continue;
+      const customer = customerSnap.data() || {};
+      if (customer.userId !== order.userId) {
+        throw new HttpsError('permission-denied', 'O cliente vinculado não pertence a esta conta.');
+      }
+      const currentOrders = Number.isFinite(customer.totalOrders) ? customer.totalOrders : 0;
+      const currentSpent = Number.isFinite(customer.totalSpent) ? customer.totalSpent : 0;
+      transaction.update(customerRefs.get(customerId), {
+        totalOrders: Math.max(0, currentOrders + delta.orders),
+        totalSpent: Math.max(0, Math.round(currentSpent * 100) + delta.spentCents) / 100,
+      });
+    }
+    return { success: true };
   });
 }
 

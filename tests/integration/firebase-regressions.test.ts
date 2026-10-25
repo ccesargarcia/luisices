@@ -5,11 +5,34 @@ import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, Timesta
 import { ref, uploadBytes, getMetadata } from 'firebase/storage';
 import { assertPermissionDenied } from '../helpers/assertPermissionDenied';
 import { DEFAULT_USER_PERMISSIONS } from '../../src/app/types';
+import { initializeApp, deleteApp, type App } from 'firebase-admin/app';
+import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { handleUpdateComplexOrder } from '../../functions/orders/index.js';
+
+let adminApp: App;
+let adminDb: Firestore;
 
 const client = vi.hoisted(() => ({ db: undefined as any, auth: { currentUser: null as any } }));
 vi.mock('../../src/lib/firebase', () => ({
   get db() { return client.db; },
   auth: client.auth,
+  functions: {},
+}));
+
+vi.mock('firebase/functions', () => ({
+  httpsCallable: vi.fn((_functions, name) => {
+    if (name === 'updateComplexOrder') {
+      return async (data: any) => {
+        const uid = client.auth.currentUser?.uid || 'owner';
+        await handleUpdateComplexOrder({
+          auth: { uid, token: { auth_time: 1 } },
+          data,
+        }, adminDb);
+        return { data: { success: true } };
+      };
+    }
+    return vi.fn().mockResolvedValue({ data: { success: true } });
+  }),
 }));
 import { firebaseSettingsService } from '../../src/services/firebaseSettingsService';
 import { getSalesLedgerQuery } from '../../src/services/firebaseLedgerService';
@@ -43,13 +66,18 @@ beforeAll(async () => {
   if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_STORAGE_EMULATOR_HOST) {
     throw new Error('Execute npm run test:integration para usar apenas emuladores locais.');
   }
+  adminApp = initializeApp({ projectId: 'demo-luisices-review' }, `firebase-regressions-${Date.now()}`);
+  adminDb = getFirestore(adminApp);
   env = await initializeTestEnvironment({
     projectId: 'demo-luisices-review',
     firestore: { rules: readFileSync('firestore.rules', 'utf8') },
     storage: { rules: readFileSync('storage.rules', 'utf8') },
   });
 });
-afterAll(async () => { await env?.cleanup(); });
+afterAll(async () => {
+  if (adminApp) await deleteApp(adminApp);
+  await env?.cleanup();
+});
 beforeEach(async () => {
   await env.clearFirestore();
   await Promise.all([
@@ -258,10 +286,10 @@ describe('Acompanhamento de produção (productionTracking - Achado 4)', () => {
 });
 
 describe('Isolamento financeiro', () => {
-  it('impede assumir registros de outro proprietário ou sem pedido atribuído associado', async () => {
+  it('impede assumir ou alterar valores de registros sem pedido correspondente', async () => {
     await seed('salesLedger/sale', { userId: 'owner', assignedTo: 'old-employee', amount: 100 });
     await assertPermissionDenied(() => setDoc(doc(dbFor('other') as any, 'salesLedger/sale'), { userId: 'other', amount: 1 }));
-    await assertSucceeds(updateDoc(doc(dbFor('owner') as any, 'salesLedger/sale'), { amount: 120 }));
+    await assertPermissionDenied(() => updateDoc(doc(dbFor('owner') as any, 'salesLedger/sale'), { amount: 120 }));
     await assertPermissionDenied(() => updateDoc(doc(dbFor('old-employee') as any, 'salesLedger/sale'), { amount: 130 }));
     await assertPermissionDenied(() => updateDoc(doc(dbFor('old-employee') as any, 'salesLedger/sale'), { assignedTo: 'new-employee' }));
   });

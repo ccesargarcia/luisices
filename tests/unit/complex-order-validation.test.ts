@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateComplexOrderUpdate } from '../../functions/orders/index.js';
+import { validateComplexOrderUpdate, buildAuthoritativePaymentHistory } from '../../functions/orders/index.js';
 
 const ownerProfile = {
   role: 'user',
@@ -93,7 +93,7 @@ describe('validação de edição complexa de pedido no servidor', () => {
   it('rejeita a remoção dos itens ao atualizar totais pela rota complexa', () => {
     const order = orderWithItems(5);
     expect(() => validateComplexOrderUpdate({ items: null, price: order.price + 1 }, order, 'owner', ownerProfile))
-      .toThrow(/1 a 10 itens/);
+      .toThrow(/Não é permitido remover os itens estruturados do pedido/);
   });
 
   it('aceita permuta somente com pagamento zerado', () => {
@@ -109,5 +109,54 @@ describe('validação de edição complexa de pedido no servidor', () => {
       ...updates,
       payment: { ...updates.payment, totalAmount: order.price, paidAmount: order.price, remainingAmount: 0 },
     }, order, 'owner', ownerProfile)).toThrow(/valores de pagamento/);
+  });
+
+  describe('buildAuthoritativePaymentHistory', () => {
+    it('adiciona entrada positiva com a forma de pagamento do novo pagamento ao aumentar o valor pago', () => {
+      const prevPayment = {
+        status: 'partial',
+        method: 'pix',
+        totalAmount: 100,
+        paidAmount: 40,
+        remainingAmount: 60,
+        history: [{ amount: 40, date: '2026-01-01', method: 'pix', notes: 'Inicial' }],
+      };
+      const nextPayment = { paidAmount: 70, method: 'cash' };
+      const now = '2026-01-02T10:00:00.000Z';
+
+      const result = buildAuthoritativePaymentHistory(prevPayment, nextPayment, now);
+      expect(result.history).toHaveLength(2);
+      expect(result.history[1]).toMatchObject({ amount: 30, method: 'cash', date: now });
+      expect(result.appendedEntries).toHaveLength(1);
+      expect(result.appendedEntries[0]).toMatchObject({ amount: 30, method: 'cash' });
+    });
+
+    it('limita o histórico embutido aos 50 eventos mais recentes mantendo todos os novos eventos na trilha de auditoria', () => {
+      // Cria histórico prévio com 55 entradas
+      const existingHistory = Array.from({ length: 55 }, (_, i) => ({
+        amount: 1,
+        date: `2026-01-${String((i % 28) + 1).padStart(2, '0')}T00:00:00.000Z`,
+        method: 'pix',
+        notes: `Parcela ${i + 1}`,
+      }));
+      const prevPayment = {
+        status: 'partial',
+        method: 'pix',
+        totalAmount: 100,
+        paidAmount: 55,
+        remainingAmount: 45,
+        history: existingHistory,
+      };
+      const nextPayment = { paidAmount: 60, method: 'cash' };
+      const now = '2026-01-26T00:00:00.000Z';
+
+      const result = buildAuthoritativePaymentHistory(prevPayment, nextPayment, now);
+      // O documento principal recebe apenas os últimos 50 eventos
+      expect(result.history).toHaveLength(50);
+      expect(result.history[result.history.length - 1]).toMatchObject({ amount: 5, method: 'cash', date: now });
+      // A lista de eventos a gravar na subcoleção contém a nova entrada completa
+      expect(result.appendedEntries).toHaveLength(1);
+      expect(result.appendedEntries[0]).toMatchObject({ amount: 5, method: 'cash' });
+    });
   });
 });

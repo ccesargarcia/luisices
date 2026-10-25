@@ -89,7 +89,8 @@ describe('Importação: gravação direta não contorna validação do servidor'
     const result=await executeOrdersImport(rows as any,String(uid));
     expect(result.errors).toEqual([]);expect(result.successCount).toBe(11);
     const orderRef=doc(appClient.db,'orders',result.createdOrderIds[0]);
-    await assertSucceeds(updateDoc(orderRef,{status:'pending',price:30.5,payment:{status:'partial',totalAmount:30.5,paidAmount:10,remainingAmount:20.5,method:'pix'},tags:rows[0].tags?.map(tag=>({...tag,name:'Etiqueta alterada'})),version:2}));
+    await assertSucceeds(updateDoc(orderRef,{status:'pending',tags:rows[0].tags?.map(tag=>({...tag,name:'Etiqueta alterada'})),version:2}));
+    await assertFails(updateDoc(orderRef,{price:30.5,payment:{status:'partial',totalAmount:30.5,paidAmount:10,remainingAmount:20.5,method:'pix'},version:2}));
   });
   it.each([
     { name: '', color: '#123456' }, { name: 'a'.repeat(81), color: '#123456' },

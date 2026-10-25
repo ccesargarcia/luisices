@@ -405,22 +405,21 @@ service cloud.firestore {
 
     function isValidOrderChanges(previous, data, changed) {
       let items = data.get('items', null);
-      let previousItems = previous.get('items', null);
-      // Large aggregate checks run in updateComplexOrder (server-side). Block
-      // direct client updates for both growing and shrinking lists so clients
-      // cannot bypass that validation by first removing items.
-      let hasComplexItemList = (items is list && items.size() > 4)
-        || (previousItems is list && previousItems.size() > 4);
-      let usesComplexItemTotals = hasComplexItemList
-        && changed.hasAny(['items', 'price', 'quantity', 'pricingMode', 'unitPrice']);
+      // All total/item edits run through updateComplexOrder. This avoids
+      // cumulative CEL evaluation risk and blocks shrinking/removing items as
+      // an attempted bypass, regardless of the list's current size.
+      let usesOrderTotals = changed.hasAny(['items', 'price', 'quantity', 'pricingMode', 'unitPrice']);
       return isValidOrder(data, changed)
+        // Financial, exchange and customer-link changes go through
+        // updateComplexOrder, which validates and reconciles dependent records.
+        && !changed.hasAny(['payment', 'isExchange', 'customerId'])
         && (!changed.hasAny(['tags']) || !('tags' in data) || data.tags == null || isValidOrderTagsUpdate(data.tags, previous))
         && (!changed.hasAny(['deliveryDate']) || ('deliveryDate' in data && data.deliveryDate is string
           && data.deliveryDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && isValidCalendarDate(data.deliveryDate)))
         && (!changed.hasAny(['customerId']) || !('customerId' in data) || data.customerId == null || (
           data.customerId is string && data.customerId.size() > 0 && data.customerId.size() <= 128
           && get(/databases/$(database)/documents/customers/$(data.customerId)).data.userId == data.userId))
-        && !usesComplexItemTotals
+        && !usesOrderTotals
         && ((!changed.hasAny(['items', 'pricingMode', 'unitPrice']) && (data.get('items', null) == null || !changed.hasAny(['price', 'quantity'])))
           || isValidOrderItemsField(data))
         && (!changed.hasAny(['price', 'payment', 'isExchange']) || data.get('payment', null) == null || isConsistentOrderPayment(data.payment, data.get('isExchange', false) ? 0 : data.price));
@@ -565,10 +564,54 @@ service cloud.firestore {
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('orders', 'delete'))
         || isAdmin()
         || (resource != null && 'assignedTo' in resource.data && isAssignedEmployeeDeleter(resource.data.assignedTo));
+
+      match /paymentEvents/{eventId} {
+        function canReadOrderPaymentEvents() {
+          let orderPath = /databases/$(database)/documents/orders/$(orderId);
+          let orderData = get(orderPath).data;
+          return request.auth != null && exists(orderPath)
+            && ((orderData.get('userId', null) is string
+                && isOwner(orderData.get('userId', '')) && userHasPerm('orders', 'view'))
+              || isAdmin()
+              || (orderData.get('assignedTo', null) is string
+                && isAssignedEmployee(orderData.get('assignedTo', '')) && userHasPerm('orders', 'view')));
+        }
+        allow read: if canReadOrderPaymentEvents();
+        // Event records are created only by updateComplexOrder using Admin SDK.
+        allow write: if false;
+      }
     }
 
     // Regras para histórico financeiro de vendas (salesLedger)
     match /salesLedger/{saleId} {
+      function matchesOrderFinancialMirror(orderData, requireIdentity) {
+        let payment = orderData.get('payment', null);
+        let isExchange = orderData.get('isExchange', false) == true;
+        let expectedPaid = payment is map ? payment.get('paidAmount', 0) : 0;
+        return (!requireIdentity || (request.resource.data.get('id', null) == saleId
+            && request.resource.data.get('orderId', null) == saleId
+            && request.resource.data.get('userId', null) == orderData.get('userId', null)))
+          && (!('userId' in orderData) || request.resource.data.get('userId', null) == orderData.get('userId', null))
+          && request.resource.data.get('amount', 0) == (isExchange ? 0 : orderData.get('price', 0))
+          && request.resource.data.get('isExchange', false) == isExchange
+          && request.resource.data.get('paymentStatus', 'pending') == (payment is map ? payment.get('status', 'pending') : 'pending')
+          && request.resource.data.get('paidAmount', 0) == (isExchange ? 0 : expectedPaid)
+          && request.resource.data.get('paymentMethod', null) == (payment is map ? payment.get('method', null) : null);
+      }
+
+      function financialLedgerUpdateMatchesOrder() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        let financialFields = ['amount', 'isExchange', 'paymentStatus', 'paidAmount', 'paymentMethod'];
+        let orderPath = /databases/$(database)/documents/orders/$(saleId);
+        return !changed.hasAny(financialFields)
+          || (exists(orderPath) && matchesOrderFinancialMirror(getAfter(orderPath).data, false));
+      }
+
+      function financialLedgerCreateMatchesOrder() {
+        let orderPath = /databases/$(database)/documents/orders/$(saleId);
+        return existsAfter(orderPath) && matchesOrderFinancialMirror(getAfter(orderPath).data, true);
+      }
+
       // Registros antigos podem não ter recebido assignedTo quando o pedido foi atribuído.
       // Nesses casos, a atribuição do pedido vinculado continua sendo a fonte de permissão.
       function ledgerValueOr(value, fallback) {
@@ -721,7 +764,8 @@ service cloud.firestore {
         ('userId' in request.resource.data && isOwner(request.resource.data.userId))
         || isAdmin()
         || canCreateThroughAssignedOrder()
-      ) && isValidSaleRecord(request.resource.data);
+      ) && isValidSaleRecord(request.resource.data)
+        && financialLedgerCreateMatchesOrder();
       allow update: if (
         isAdmin()
         || (resource != null
@@ -730,7 +774,8 @@ service cloud.firestore {
           && request.resource.data.userId == resource.data.userId
           && isOwner(resource.data.userId))
         || canUpdateThroughAssignedOrder()
-      ) && isValidSaleRecord(request.resource.data);
+      ) && isValidSaleRecord(request.resource.data)
+        && financialLedgerUpdateMatchesOrder();
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin();
     }

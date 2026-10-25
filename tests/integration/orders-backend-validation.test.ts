@@ -152,9 +152,9 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       }));
     });
 
-    it('permite converter um pedido em permuta somente com pagamento zerado', async () => {
+    it('bloqueia conversão direta em permuta para atualizar pagamento no backend', async () => {
       const ownerDb = dbFor('owner');
-      await assertSucceeds(updateOrder(ownerDb, 'orders/order-1', {
+      await assertFails(updateOrder(ownerDb, 'orders/order-1', {
         isExchange: true,
         exchangeItems: [{ name: 'Divulgação', quantity: 1, value: 150 }],
         payment: { status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0, method: null },
@@ -387,7 +387,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       );
     });
 
-    it('aceita lista válida de itens com preços distintos e unitPrice correspondente', async () => {
+    it('bloqueia edição direta de lista de itens que também altera preço e pagamento', async () => {
       const ownerDb = dbFor('owner');
       const structuredItems = [
         { name: 'Agenda 2026', quantity: 2, unitPrice: 80, price: 160 },
@@ -413,8 +413,9 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         })
       );
 
-      // Edição atualizando os itens estruturados
-      await assertSucceeds(
+      // Alterações financeiras agora devem passar pela Function; o cliente não
+      // pode gravar itens/preço/pagamento diretamente no mesmo documento.
+      await assertFails(
         updateOrder(ownerDb, 'orders/order-multi-items', {
           quantity: 4,
           price: 240,
@@ -696,7 +697,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       );
     });
 
-    it('aceita edição de pedido legado cujo pagamento não tinha remainingAmount', async () => {
+    it('bloqueia edição direta de pagamento legado para exigir validação no backend', async () => {
       const ownerDb = dbFor('owner');
       await env.withSecurityRulesDisabled(async (context) => {
         await context.firestore().doc('orders/legacy-payment-without-remaining').set({
@@ -711,7 +712,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         });
       });
 
-      await assertSucceeds(updateOrder(ownerDb, 'orders/legacy-payment-without-remaining', {
+      await assertFails(updateOrder(ownerDb, 'orders/legacy-payment-without-remaining', {
         price: 250,
         payment: {
           status: 'partial',
@@ -722,8 +723,63 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       }, 2));
 
       const saved = await getDoc(doc(ownerDb, 'orders/legacy-payment-without-remaining'));
-      expect(saved.data()?.price).toBe(250);
+      expect(saved.data()?.price).toBe(200);
       expect(saved.data()?.payment.remainingAmount).toBeUndefined();
+    });
+
+    it('permite consultar eventos financeiros, mas bloqueia criação e alteração pelo cliente', async () => {
+      const eventPath = 'orders/order-1/paymentEvents/event-1';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(eventPath).set({
+          type: 'payment', amount: 10, method: 'pix', actorUid: 'owner',
+        });
+      });
+
+      const ownerDb = dbFor('owner');
+      await assertSucceeds(getDoc(doc(ownerDb, eventPath)));
+      await assertFails(setDoc(doc(ownerDb, 'orders/order-1/paymentEvents/client-event'), {
+        type: 'payment', amount: 999, method: 'pix', actorUid: 'owner',
+      }));
+      await assertFails(updateDoc(doc(ownerDb, eventPath), { amount: 999 }));
+      await assertFails(getDoc(doc(dbFor('other-user'), eventPath)));
+    });
+
+    it('impede alterar o valor financeiro apenas no salesLedger', async () => {
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('salesLedger/order-1').set({
+          id: 'order-1', orderId: 'order-1', userId: 'owner', amount: 200,
+          isExchange: false, paymentStatus: 'partial', paidAmount: 50, paymentMethod: 'pix',
+        });
+      });
+
+      const ownerDb = dbFor('owner');
+      await assertFails(updateDoc(doc(ownerDb, 'salesLedger/order-1'), {
+        paidAmount: 200, paymentStatus: 'paid',
+      }));
+      await assertFails(updateDoc(doc(ownerDb, 'salesLedger/order-1'), { amount: 1 }));
+      await assertFails(setDoc(doc(ownerDb, 'salesLedger/fake-financial-record'), {
+        id: 'fake-financial-record', orderId: 'fake-financial-record', userId: 'owner',
+        amount: 9999, isExchange: false, paymentStatus: 'paid', paidAmount: 9999,
+        paymentMethod: 'pix',
+      }));
+
+      const saved = await getDoc(doc(ownerDb, 'salesLedger/order-1'));
+      expect(saved.data()).toMatchObject({ amount: 200, paidAmount: 50, paymentStatus: 'partial' });
+    });
+
+    it('aceita criar o pedido e seu salesLedger correspondente na mesma transação', async () => {
+      const ownerDb = dbFor('owner');
+      const orderId = 'order-and-ledger-atomic-create';
+      const orderRef = doc(ownerDb, `orders/${orderId}`);
+      const saleRef = doc(ownerDb, `salesLedger/${orderId}`);
+
+      await assertSucceeds(runTransaction(ownerDb, async (transaction) => {
+        transaction.set(orderRef, { ...baseOrder, orderNumber: '#2026-0099', version: 1 });
+        transaction.set(saleRef, {
+          id: orderId, orderId, userId: 'owner', amount: 200, isExchange: false,
+          quantity: 2, paymentStatus: 'partial', paidAmount: 50, paymentMethod: 'pix',
+        });
+      }));
     });
 
     it('permite atualização legítima de status sem alteração de valores financeiros', async () => {
@@ -851,8 +907,27 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
     });
   });
 
-  describe('7. Limite de Expressões CEL e Atualização Complexa (20 Etiquetas + Item + Preço + Pagamento)', () => {
-    it('permite atualizar pedido com 20 etiquetas, um item e pagamento sem exceder 1000 expressões CEL', async () => {
+  describe('7. Proteção de Escritas Financeiras Diretas (Pedidos com Etiquetas e Itens)', () => {
+    it.each(Array.from({ length: 10 }, (_, index) => index + 1))(
+      'bloqueia alteração direta de total em pedido com %i item(ns)', async (itemCount) => {
+        const ownerDb = dbFor('owner');
+        const orderId = `direct-total-edit-${itemCount}`;
+        const items = Array.from({ length: itemCount }, (_, index) => ({
+          name: `Item ${index + 1}`, quantity: 1, unitPrice: 10, price: 10,
+        }));
+        await env.withSecurityRulesDisabled(async (context) => {
+          await context.firestore().doc(`orders/${orderId}`).set({
+            ...baseOrder, quantity: itemCount, price: itemCount * 10,
+            pricingMode: 'items', unitPrice: null, items, payment: null, version: 1,
+          });
+        });
+
+        await assertFails(updateOrder(ownerDb, `orders/${orderId}`, { price: itemCount * 10 + 1 }, 2));
+        expect((await getDoc(doc(ownerDb, `orders/${orderId}`))).data()?.price).toBe(itemCount * 10);
+      },
+    );
+
+    it('bloqueia edição financeira direta de pedido com 20 etiquetas', async () => {
       const ownerDb = dbFor('owner');
       const tagNames = Array.from({ length: 20 }, (_, index) => `Etiqueta E2E ${String(index + 1).padStart(2, '0')}`);
       const tags = tagNames.map(name => ({ name, color: '#3b82f6' }));
@@ -885,7 +960,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       const updatedTags = [...tags.slice(0, 19), { name: revisedTag, color: '#3b82f6' }];
       const items = [{ name: 'Convite Luxo', quantity: 1, unitPrice: 130.50, price: 130.50 }];
 
-      await assertSucceeds(
+      await assertFails(
         updateOrder(ownerDb, 'orders/order-20-tags-complex', {
           customerName: 'Cliente Teste',
           customerPhone: '11999999999',
@@ -910,13 +985,13 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       );
 
       const saved = await getDoc(doc(ownerDb, 'orders/order-20-tags-complex'));
-      expect(saved.data()?.version).toBe(2);
-      expect(saved.data()?.price).toBe(130.50);
+      expect(saved.data()?.version).toBe(1);
+      expect(saved.data()?.price).toBe(100);
       expect(saved.data()?.tags).toHaveLength(20);
-      expect(saved.data()?.tags[19].name).toBe(revisedTag);
+      expect(saved.data()?.tags[19].name).toBe('Etiqueta E2E 20');
     });
 
-    it('permite editar quatro itens em pedido que já tem 20 etiquetas sem exceder 1000 expressões CEL', async () => {
+    it('bloqueia edição direta de quatro itens e pagamento em pedido com 20 etiquetas', async () => {
       const ownerDb = dbFor('owner');
       const tags = Array.from({ length: 20 }, (_, index) => ({ name: `Etiqueta ${index + 1}`, color: '#3b82f6' }));
       await env.withSecurityRulesDisabled(async (context) => {
@@ -940,7 +1015,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         { name: 'Produto 3', quantity: 7, unitPrice: 1.29, price: 9.03 },
         { name: 'Produto 4', quantity: 1, unitPrice: 53.47, price: 53.47 },
       ];
-      await assertSucceeds(updateOrder(ownerDb, 'orders/order-20-tags-four-items', {
+      await assertFails(updateOrder(ownerDb, 'orders/order-20-tags-four-items', {
         quantity: 10,
         price: 130.50,
         items,
@@ -950,12 +1025,12 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       }, 2));
 
       const saved = await getDoc(doc(ownerDb, 'orders/order-20-tags-four-items'));
-      expect(saved.data()?.items).toHaveLength(4);
+      expect(saved.data()?.items).toBeNull();
       expect(saved.data()?.tags).toHaveLength(20);
-      expect(saved.data()?.price).toBe(130.50);
+      expect(saved.data()?.price).toBe(100);
     });
 
-    it('permite atualizar pedido substituindo todas as 20 etiquetas por novas etiquetas sem exceder limite CEL', async () => {
+    it('bloqueia atualização direta de preço e pagamento ao trocar etiquetas', async () => {
       const ownerDb = dbFor('owner');
       const initialTags = Array.from({ length: 20 }, (_, j) => ({ name: `Original ${j}`, color: '#123456' }));
 
@@ -979,7 +1054,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
 
       const brandNewTags = Array.from({ length: 20 }, (_, j) => ({ name: `Nova Etiqueta ${j}`, color: '#654321' }));
 
-      await assertSucceeds(
+      await assertFails(
         updateOrder(ownerDb, 'orders/order-20-tags-all-new', {
           tags: brandNewTags,
           price: 120,
@@ -994,7 +1069,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       );
 
       const saved = await getDoc(doc(ownerDb, 'orders/order-20-tags-all-new'));
-      expect(saved.data()?.tags[0].name).toBe('Nova Etiqueta 0');
+      expect(saved.data()?.tags[0].name).toBe('Original 0');
     });
 
     it('aceita 20 etiquetas com item estruturado e continua rejeitando a 21ª etiqueta', async () => {
@@ -1033,7 +1108,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
   });
 
   describe('4. Permissões transacionais entre pedidos atribuídos e salesLedger legado', () => {
-    it('edita pedido atribuído, repara salesLedger legado e conclui com pagamento preservado', async () => {
+    it('bloqueia edição financeira direta no pedido atribuído e permite concluir preservando pagamento', async () => {
       await env.withSecurityRulesDisabled(async (context) => {
         await context.firestore().doc('salesLedger/order-1').set({
           id: 'order-1',
@@ -1058,7 +1133,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       });
 
       const employeeDb = dbFor('emp-assigned');
-      await assertSucceeds(runTransaction(employeeDb, async (transaction) => {
+      await assertFails(runTransaction(employeeDb, async (transaction) => {
         const orderRef = doc(employeeDb, 'orders/order-1');
         const saleRef = doc(employeeDb, 'salesLedger/order-1');
         await transaction.get(orderRef);
@@ -1100,7 +1175,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         await transaction.get(saleRef);
         transaction.update(orderRef, {
           status: 'completed',
-          version: 3,
+          version: 2,
           updatedAt: '2026-10-24T14:00:00.000Z',
         });
         transaction.update(saleRef, {
@@ -1112,10 +1187,10 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       const savedOrder = await getDoc(doc(employeeDb, 'orders/order-1'));
       const savedLedger = await getDoc(doc(employeeDb, 'salesLedger/order-1'));
       expect(savedOrder.data()?.status).toBe('completed');
-      expect(savedOrder.data()?.payment.paidAmount).toBe(75);
-      expect(savedLedger.data()?.assignedTo).toBe('emp-assigned');
-      expect(savedLedger.data()?.amount).toBe(300);
-      expect(savedLedger.data()?.paidAmount).toBe(75);
+      expect(savedOrder.data()?.payment.paidAmount).toBe(50);
+      expect(savedLedger.data()?.assignedTo).toBeUndefined();
+      expect(savedLedger.data()?.amount).toBe(200);
+      expect(savedLedger.data()?.paidAmount).toBe(50);
       expect(savedLedger.data()?.status).toBe('completed');
     });
 
@@ -1390,7 +1465,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
   });
 
   describe('8. Edição de Pedido Existente com Link de Rastreamento (Adição de Itens e Limite CEL)', () => {
-    it('permite atualizar pedido existente sem link ao adicionar item via OrderDetailsDialog', async () => {
+    it('bloqueia gravação financeira direta no pedido sem link', async () => {
       const orderId = 'order-cel-without-tracking';
       const initialOrder = {
         ...baseOrder,
@@ -1441,7 +1516,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       const orderRef = doc(ownerDb, `orders/${orderId}`);
       const saleRef = doc(ownerDb, `salesLedger/${orderId}`);
 
-      await assertSucceeds(runTransaction(ownerDb, async (transaction) => {
+      await assertFails(runTransaction(ownerDb, async (transaction) => {
         await transaction.get(orderRef);
         await transaction.get(saleRef);
 
@@ -1496,12 +1571,12 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       }));
 
       const updated = await getDoc(orderRef);
-      expect(updated.data()?.quantity).toBe(2);
-      expect(updated.data()?.price).toBe(150);
-      expect(updated.data()?.pricingMode).toBe('items');
+      expect(updated.data()?.quantity).toBe(1);
+      expect(updated.data()?.price).toBe(100);
+      expect(updated.data()?.pricingMode).toBe('unit');
     });
 
-    it('permite atualizar pedido existente COM link de rastreamento ao adicionar item via OrderDetailsDialog sem estourar limite CEL', async () => {
+    it('bloqueia gravação financeira direta em pedido com link de rastreamento', async () => {
       const orderId = 'order-cel-with-tracking';
       const initialOrder = {
         ...baseOrder,
@@ -1555,7 +1630,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       const orderRef = doc(ownerDb, `orders/${orderId}`);
       const saleRef = doc(ownerDb, `salesLedger/${orderId}`);
 
-      await assertSucceeds(runTransaction(ownerDb, async (transaction) => {
+      await assertFails(runTransaction(ownerDb, async (transaction) => {
         await transaction.get(orderRef);
         await transaction.get(saleRef);
 
@@ -1610,12 +1685,12 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       }));
 
       const updated = await getDoc(orderRef);
-      expect(updated.data()?.quantity).toBe(2);
-      expect(updated.data()?.price).toBe(150);
+      expect(updated.data()?.quantity).toBe(1);
+      expect(updated.data()?.price).toBe(100);
       expect(updated.data()?.publicTrackingHash).toBe('hash-abc-123');
     });
 
-    it('permite atualizar pedido #2026-0088 com link de rastreamento adicionando o 4º item (payload exato dev)', async () => {
+    it('bloqueia alteração direta do pedido #2026-0088 para exigir a Function', async () => {
       const orderId = 'tS3wHmGaBxCdFABBXF9l';
       const initialOrder = {
         userId: 'admin',
@@ -1684,7 +1759,7 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       const orderRef = doc(adminDb, `orders/${orderId}`);
       const saleRef = doc(adminDb, `salesLedger/${orderId}`);
 
-      await assertSucceeds(runTransaction(adminDb, async (transaction) => {
+      await assertFails(runTransaction(adminDb, async (transaction) => {
         await transaction.get(orderRef);
         await transaction.get(saleRef);
 
@@ -1744,10 +1819,10 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       }));
 
       const updated = await getDoc(orderRef);
-      expect(updated.data()?.quantity).toBe(10);
-      expect(updated.data()?.price).toBe(83.03);
-      expect(updated.data()?.items).toHaveLength(4);
-      expect(updated.data()?.version).toBe(19);
+      expect(updated.data()?.quantity).toBe(9);
+      expect(updated.data()?.price).toBe(77.03);
+      expect(updated.data()?.items).toHaveLength(3);
+      expect(updated.data()?.version).toBe(18);
     });
 
     it('nega gravação direta de item agregado acima de quatro para exigir validação da Function', async () => {

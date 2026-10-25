@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const mockCallable = vi.hoisted(() => vi.fn());
+
 const mockOrderGet = vi.fn();
 const mockSaleGet = vi.fn();
 const mockTransactionUpdate = vi.fn();
@@ -12,30 +14,40 @@ vi.mock('../../../src/lib/firebase', () => ({
   functions: {},
 }));
 
+vi.mock('firebase/functions', () => ({
+  httpsCallable: vi.fn(() => mockCallable),
+}));
+
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn((_db, coll) => ({ coll })),
   doc: vi.fn((_db, coll, id) => ({ coll, id: id || 'generated-id' })),
   getDocs: vi.fn(),
-  getDoc: vi.fn((ref: any) => Promise.resolve({
-    exists: () => true,
-    data: () => ({
-      userId: 'user-1',
-      version: 1,
-      customerName: 'Cliente Teste',
-      customerPhone: '11999999999',
-      productName: 'Caderno (2x), Adesivo (1x)',
-      quantity: 3,
-      price: 250,
-      pricingMode: 'items',
-      unitPrice: null,
-      items: [
-        { name: 'Caderno', quantity: 2, unitPrice: 100, price: 200 },
-        { name: 'Adesivo', quantity: 1, unitPrice: 50, price: 50 },
-      ],
-      deliveryDate: '2026-12-01',
-      status: 'pending',
-    }),
-  })),
+  getDoc: vi.fn((ref: any) => {
+    if (ref?.coll === 'orders') {
+      const custom = mockOrderGet();
+      if (custom) return Promise.resolve(custom);
+    }
+    return Promise.resolve({
+      exists: () => true,
+      data: () => ({
+        userId: 'user-1',
+        version: 1,
+        customerName: 'Cliente Teste',
+        customerPhone: '11999999999',
+        productName: 'Caderno (2x), Adesivo (1x)',
+        quantity: 3,
+        price: 250,
+        pricingMode: 'items',
+        unitPrice: null,
+        items: [
+          { name: 'Caderno', quantity: 2, unitPrice: 100, price: 200 },
+          { name: 'Adesivo', quantity: 1, unitPrice: 50, price: 50 },
+        ],
+        deliveryDate: '2026-12-01',
+        status: 'pending',
+      }),
+    });
+  }),
   setDoc: vi.fn(),
   deleteDoc: vi.fn(),
   updateDoc: vi.fn(),
@@ -71,6 +83,10 @@ import { firebaseOrderService } from '../../../src/services/firebaseOrderService
 describe('Persistência e recuperação de itens e preços unitários dos pedidos', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockOrderGet.mockReset();
+    mockSaleGet.mockReset();
+    mockCallable.mockReset();
+    mockCallable.mockResolvedValue({ data: { success: true } });
   });
 
   describe('Criação de Pedidos (createOrder)', () => {
@@ -204,7 +220,7 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
   });
 
   describe('Atualização de Pedidos (updateOrder)', () => {
-    it('atualiza array de itens e mantém preços unitários na transação', async () => {
+    it('encaminha alteração do array de itens e preços unitários para a callable segura', async () => {
       mockOrderGet.mockReturnValue({
         exists: () => true,
         data: () => ({
@@ -229,13 +245,17 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
         unitPrice: null,
       }, 1);
 
-      expect(mockTransactionUpdate).toHaveBeenCalled();
-      const updatePayload = mockTransactionUpdate.mock.calls[0][1];
-      expect(updatePayload.items).toEqual(updatedItems);
-      expect(updatePayload.price).toBe(130);
-      expect(updatePayload.pricingMode).toBe('items');
-      expect(updatePayload.unitPrice).toBeNull();
-      expect(updatePayload.version).toBe(2);
+      expect(mockCallable).toHaveBeenCalledWith(expect.objectContaining({
+        orderId: 'order-123',
+        expectedVersion: 1,
+        updates: expect.objectContaining({
+          items: updatedItems,
+          price: 130,
+          pricingMode: 'items',
+          unitPrice: null,
+        }),
+      }));
+      expect(mockTransactionUpdate).not.toHaveBeenCalled();
     });
 
     it('não inventa média ou preços unitários iguais quando um pedido legado sem items é editado sem valores unitários', async () => {
@@ -266,9 +286,9 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
 
       expect(mockTransactionUpdate).toHaveBeenCalled();
       const updatePayload = mockTransactionUpdate.mock.calls[0][1];
-      expect(updatePayload.items).toBeNull();
-      expect(updatePayload.pricingMode).toBe('total');
-      expect(updatePayload.unitPrice).toBeNull();
+      expect(updatePayload.items ?? null).toBeNull();
+      expect(updatePayload.pricingMode ?? 'total').toBe('total');
+      expect(updatePayload.unitPrice ?? null).toBeNull();
       // Garante que nenhuma média aritmética (ex: 300 / 3 = 100) foi atribuída aos produtos
       expect(updatePayload.items).not.toEqual([
         { name: 'Caderno', quantity: 2, unitPrice: 100, price: 200 },
@@ -302,11 +322,11 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
         unitPrice: null,
       }, 1);
 
-      expect(mockTransactionUpdate).toHaveBeenCalled();
-      const updatePayload = mockTransactionUpdate.mock.calls[0][1];
-      expect(updatePayload.items).toEqual(distinctItems);
-      expect(updatePayload.items[0].unitPrice).toBe(120);
-      expect(updatePayload.items[1].unitPrice).toBe(60);
+      expect(mockCallable).toHaveBeenCalledWith(expect.objectContaining({
+        orderId: 'order-legacy-1',
+        updates: expect.objectContaining({ items: distinctItems }),
+      }));
+      expect(mockTransactionUpdate).not.toHaveBeenCalled();
     });
 
     it('edita pedido atribuído, adiciona item e repara a atribuição ausente no salesLedger legado', async () => {
@@ -341,19 +361,14 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
         payment: { status: 'pending', paidAmount: 0, method: null } as any,
       }, 1);
 
-      expect(mockTransactionUpdate).toHaveBeenCalledTimes(2);
-      const savedOrder = mockTransactionUpdate.mock.calls[0][1];
-      const savedLedger = mockTransactionUpdate.mock.calls[1][1];
-      expect(savedOrder.items).toHaveLength(3);
-      expect(savedOrder.quantity).toBe(120);
-      expect(savedOrder.price).toBe(92.19);
-      expect(savedLedger.assignedTo).toBe('user-1');
-      expect(savedLedger.assignedToName).toBe('Funcionário responsável');
-      expect(savedLedger.amount).toBe(92.19);
-      expect(savedLedger.quantity).toBe(120);
+      expect(mockCallable).toHaveBeenCalledWith(expect.objectContaining({
+        orderId: 'assigned-legacy-order',
+        updates: expect.objectContaining({ quantity: 120, price: 92.19 }),
+      }));
+      expect(mockTransactionUpdate).not.toHaveBeenCalled();
     });
 
-    it('atualiza pedido existente com campos de rastreamento (tracking link) e adiciona itens em transação', async () => {
+    it('atualiza pedido com tracking link e itens pela callable segura', async () => {
       mockOrderGet.mockReturnValue({
         exists: () => true,
         data: () => ({
@@ -387,14 +402,11 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
         unitPrice: null,
       }, 1);
 
-      expect(mockTransactionUpdate).toHaveBeenCalled();
-      const updatePayload = mockTransactionUpdate.mock.calls[0][1];
-      expect(updatePayload.items).toEqual(newItems);
-      expect(updatePayload.price).toBe(150);
-      expect(updatePayload.quantity).toBe(2);
-      expect(updatePayload.pricingMode).toBe('items');
-      expect(updatePayload.unitPrice).toBeNull();
-      expect(updatePayload.version).toBe(2);
+      expect(mockCallable).toHaveBeenCalledWith(expect.objectContaining({
+        orderId: 'order-with-tracking',
+        updates: expect.objectContaining({ items: newItems, price: 150, quantity: 2 }),
+      }));
+      expect(mockTransactionUpdate).not.toHaveBeenCalled();
     });
 
     it('rejeita quantidade fracionária ao editar antes de iniciar a transação', async () => {
@@ -404,7 +416,7 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
         items: [{ name: 'Produto', quantity: 1.5, unitPrice: 10, price: 15 }],
       } as any)).rejects.toThrow('quantidade inteira');
 
-      expect(mockTransactionUpdate).not.toHaveBeenCalled();
+      expect(mockCallable).not.toHaveBeenCalled();
     });
 
     it('rejeita soma de quantidades diferente da quantidade informada no pedido', async () => {
@@ -414,7 +426,7 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
         items: [{ name: 'Produto', quantity: 2, unitPrice: 50, price: 100 }],
       })).rejects.toThrow('A quantidade total não corresponde à soma');
 
-      expect(mockTransactionUpdate).not.toHaveBeenCalled();
+      expect(mockCallable).not.toHaveBeenCalled();
     });
 
     it('recalcula subtotal divergente a partir de quantidade e preço unitário antes de gravar', async () => {
@@ -424,11 +436,11 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
         items: [{ name: 'Produto', quantity: 2, unitPrice: 50, price: 90 }],
       });
 
-      expect(mockTransactionUpdate).toHaveBeenCalled();
-      const updatePayload = mockTransactionUpdate.mock.calls[0][1];
-      expect(updatePayload.items).toEqual([
-        { name: 'Produto', quantity: 2, unitPrice: 50, price: 100 },
-      ]);
+      expect(mockCallable).toHaveBeenCalledWith(expect.objectContaining({
+        updates: expect.objectContaining({ items: [
+          { name: 'Produto', quantity: 2, unitPrice: 50, price: 100 },
+        ] }),
+      }));
     });
 
     it('rejeita soma dos subtotais diferente do valor total do pedido', async () => {
@@ -438,10 +450,10 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
         items: [{ name: 'Produto', quantity: 2, unitPrice: 45, price: 90 }],
       })).rejects.toThrow('O valor total não corresponde à soma');
 
-      expect(mockTransactionUpdate).not.toHaveBeenCalled();
+      expect(mockCallable).not.toHaveBeenCalled();
     });
 
-    it('remove itens estruturados antigos no Firestore quando a edição envia items como null', async () => {
+    it('encaminha tentativa de remover itens estruturados para validação segura no backend', async () => {
       mockOrderGet.mockReturnValue({
         exists: () => true,
         data: () => ({
@@ -461,7 +473,7 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
       });
       mockSaleGet.mockReturnValue({ exists: () => false });
 
-      // O usuário limpou os preços unitários ou desestruturou os itens na edição: items é enviado explicitamente como null
+      // O backend decide se é permitido remover os itens existentes.
       await firebaseOrderService.updateOrder('order-structured-1', {
         productName: 'Camiseta (2x), Caneca (1x)',
         quantity: 3,
@@ -471,11 +483,11 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
         unitPrice: null,
       }, 1);
 
-      expect(mockTransactionUpdate).toHaveBeenCalled();
-      const updatePayload = mockTransactionUpdate.mock.calls[0][1];
-      // Verifica que o payload grava items: null (e não mantém os itens antigos nem envia undefined)
-      expect(updatePayload).toHaveProperty('items', null);
-      expect(updatePayload.pricingMode).toBe('total');
+      expect(mockCallable).toHaveBeenCalledWith(expect.objectContaining({
+        orderId: 'order-structured-1',
+        updates: expect.objectContaining({ items: null, pricingMode: 'total' }),
+      }));
+      expect(mockTransactionUpdate).not.toHaveBeenCalled();
     });
   });
 

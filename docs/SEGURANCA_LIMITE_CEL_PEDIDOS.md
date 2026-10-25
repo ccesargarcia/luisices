@@ -13,12 +13,13 @@ O limite de negócio é **10 itens por pedido**. A validação é dividida para 
 | Operação | Caminho | Validações principais |
 | --- | --- | --- |
 | Criar pedido com 1–10 itens | Cliente → Firestore | As regras verificam os itens, a soma da quantidade, o total, metadados e pagamento. |
-| Editar totais com 1–4 itens | Cliente → Firestore | As regras verificam os novos dados e a soma exata dos itens. |
-| Editar totais com 5–10 itens | Cliente → `updateComplexOrder` → Firestore Admin SDK | A Function valida autorização, versão, campos, itens, valores, pagamento e vínculo do cliente; atualiza pedido e `salesLedger` na mesma transação. |
-| Editar totais quando o pedido anterior tinha 5–10 itens, mesmo reduzindo para 4 ou menos | Cliente → `updateComplexOrder` → Firestore Admin SDK | A Function valida o estado final. A regra também bloqueia escrita direta usando a quantidade de itens anterior, evitando contornar a validação ao remover itens. |
-| Editar outros campos de um pedido com 5–10 itens | Cliente → Firestore | Continua permitido pelas regras quando não altera `items`, `price`, `quantity`, `pricingMode` ou `unitPrice`. |
+| Editar pagamento ou classificação de permuta, com qualquer quantidade de itens | Cliente → `updateComplexOrder` → Firestore Admin SDK | A regra bloqueia alterações diretas a `payment` e `isExchange`. A Function valida autorização e versão, calcula os valores, e atualiza pedido, `salesLedger` e estatísticas afetadas na mesma transação. |
+| Editar itens, quantidade ou preço, com qualquer quantidade de itens | Cliente → `updateComplexOrder` → Firestore Admin SDK | A Function valida a lista e os totais e atualiza pedido e `salesLedger` atomicamente. A regra bloqueia a escrita direta para não depender do custo CEL acumulado nem de um limiar por quantidade. |
+| Editar pagamento ou classificação de permuta | Cliente → `updateComplexOrder` → Firestore Admin SDK | A regra bloqueia alterações diretas a `payment` e `isExchange`. A Function valida autorização e versão, calcula valores, registra auditoria e atualiza pedido, ledger e estatísticas afetadas na mesma transação. |
+| Trocar ou remover o cliente vinculado | Cliente → `updateComplexOrder` → Firestore Admin SDK | A Function reconcilia `totalOrders` e `totalSpent` entre os clientes na mesma transação. |
+| Editar campos não financeiros | Cliente → Firestore | Continua permitido pelas regras, com controle de acesso, versão e lista de campos permitidos. |
 
-O limiar de quatro itens é uma decisão operacional baseada no custo de avaliação das regras e na validação no emulador. Se as regras de acesso, ledger ou pedidos mudarem, reavalie esse limiar com testes de integração; não aumente o número por suposição.
+Edições financeiras não dependem mais de um limiar por quantidade. Criações mantêm as validações CEL porque não escrevem um pedido existente; reavalie o custo de criação se forem acrescentadas gravações de documentos ao mesmo commit.
 
 ## Responsabilidades da Function
 
@@ -34,13 +35,13 @@ O limiar de quatro itens é uma decisão operacional baseada no custo de avalia�
 8. mantém os campos existentes que não fazem parte da edição, incluindo os metadados de acompanhamento público;
 9. atualiza pedido e `salesLedger` atomicamente, recusando um ledger que identifique outro proprietário.
 
-O histórico de pagamento é preservado como trilha de auditoria: a Function não aceita alterações do cliente como fonte para criar, remover ou reescrever eventos. Quando a redução do valor pago exige um ajuste, o servidor calcula e acrescenta um evento negativo ao histórico existente. Os campos do mapa de pagamento e de cada evento também são limitados e validados.
+O cliente nunca é fonte confiável para reescrever histórico financeiro durante uma edição. A Function preserva `payment.history` por compatibilidade com relatórios existentes e grava pagamentos e ajustes decorrentes de edições em `orders/{orderId}/paymentEvents/{eventId}` usando Admin SDK. Os documentos dessa subcoleção são append-only: regras negam escrita pelo cliente e permitem leitura apenas a quem já pode visualizar o pedido. O histórico embutido ainda é mantido como espelho legado; não houve migração retroativa dos dados existentes para a subcoleção. Pagamentos registrados na criação do pedido ainda ficam apenas no mapa embutido, porque a criação continua no cliente. As regras do `salesLedger` comparam os campos financeiros e o proprietário ao pedido após a operação, tanto na criação quanto na atualização, bloqueando registro falso ou alteração isolada do livro financeiro.
 
-Ajustes de estatísticas do cliente são reconciliados pelo serviço após a transação, como já ocorre no fluxo existente. Uma falha nessa reconciliação é registrada e não desfaz a edição do pedido.
+Quando o preço, o cliente vinculado ou a classificação de permuta muda, a Function remove a contribuição antiga e adiciona a nova em `totalOrders` e `totalSpent` na mesma transação do pedido e do `salesLedger`. Isso cobre edição de preço e troca/remoção de cliente, além de conversão de permuta, sem a janela em que uma segunda gravação de estatísticas poderia falhar. A criação de pedidos ainda atualiza essas estatísticas em uma chamada separada do cliente e deve ser migrada separadamente se for necessário garantir atomicidade nesse fluxo também.
 
 ## Segurança das regras
 
-As regras continuam sendo uma barreira de autorização para gravações diretas. Quando uma edição de totais envolve uma lista atual ou anterior com mais de quatro itens, `isValidOrderChanges` nega a escrita direta. A chamada ao Admin SDK ocorre somente depois das verificações explícitas da Function.
+As regras continuam sendo a barreira de autorização para gravações diretas. Elas negam alterações diretas de `payment`, `isExchange`, `customerId`, `items`, `price`, `quantity`, `pricingMode` e `unitPrice`. A Function usa Admin SDK somente depois de repetir autorização, validação e controle de concorrência. Criações ainda usam o cliente e as regras de criação, com cobertura de emulador de 1 a 10 itens.
 
 Não remova esse bloqueio para “fazer o cliente tentar de novo”: isso reintroduziria o caminho caro e poderia permitir que gravações não validadas pelo backend fossem aceitas. Também não mova validações apenas para o frontend; qualquer cliente Firebase pode enviar payloads próprios.
 
@@ -48,11 +49,11 @@ Não remova esse bloqueio para “fazer o cliente tentar de novo”: isso reintr
 
 Os seguintes testes documentam o contrato atual:
 
-- `tests/integration/orders-backend-validation.test.ts`: criação e regras com 1–10 itens, somas inválidas, acesso e bloqueio de atualização direta complexa;
-- `tests/integration/complex-order-function.test.ts`: atualizações transacionais para cada quantidade de 1 a 10 itens, consistência do ledger, preservação de etiquetas e links, autorização, versão concorrente e rejeição de totais inválidos;
+- `tests/integration/orders-backend-validation.test.ts`: criação e regras com 1–10 itens, somas inválidas, acesso, bloqueio de edição financeira direta e escrita em `paymentEvents`;
+- `tests/integration/complex-order-function.test.ts`: atualizações transacionais para cada quantidade de 1 a 10 itens, consistência do ledger, auditoria, estatísticas de permuta, preservação de etiquetas e links, autorização, versão concorrente e rejeição de totais inválidos;
 - `tests/unit/complex-order-validation.test.ts`: soma e quantidade corretas/incorretas para 1–10 itens, permissões, campos não permitidos, dados removidos e pagamento de permuta.
 
-Execute os testes de regras e integração no emulador antes de alterar a regra ou o limiar. Uma rejeição esperada deve ser examinada para confirmar que foi negada pela condição correta, e não por estouro de avaliações CEL.
+Execute os testes de regras e integração no emulador antes de alterar as regras de criação ou de escrita direta. Uma rejeição esperada deve ser examinada para confirmar que foi negada pela condição correta, e não por estouro de avaliações CEL.
 
 ## Mudanças futuras
 
@@ -67,3 +68,15 @@ Se o limite de 10 itens mudar, atualize conjuntamente:
 Se o limite CEL voltar a ser atingido, registre qual operação, perfil, quantidade de itens, etiquetas, estado do ledger e tamanho do histórico de pagamento reproduzem o caso. Não trate `PERMISSION_DENIED` genérico como prova de perfil incorreto antes de examinar os logs do emulador/Firestore e a operação completa.
 
 Ao incluir ou renomear uma Function de pedidos, mantenha a lista seletiva de deploys em `.github/workflows/deploy-dev.yml` atualizada. O fluxo seletivo por módulo não descobre automaticamente novos nomes exportados; sem essa entrada, uma execução direcionada ao escopo `orders` pode terminar sem publicar a Function necessária.
+
+## App Check
+
+App Check é uma defesa adicional contra chamadas automatizadas a partir de clientes não legítimos; ele não substitui autenticação, permissões, validação de dados nem rate limiting. `updateComplexOrder` ainda não exige App Check porque a ativação depende de cadastrar um provedor e chaves/domínios nos projetos Firebase e disponibilizar a chave pública do provedor ao frontend. Exigir App Check antes dessa configuração bloquearia clientes legítimos.
+
+Antes de habilitar `enforceAppCheck` na Function:
+
+1. registrar os domínios de produção e desenvolvimento no provedor escolhido e no Firebase App Check;
+2. disponibilizar a chave pública por ambiente (`VITE_FIREBASE_APPCHECK_SITE_KEY`) sem incluir segredos privados no frontend;
+3. inicializar App Check no cliente web e confirmar que o SDK Callable encaminha o token;
+4. validar o fluxo no emulador e nos dois ambientes com enforcement desabilitado/monitorado;
+5. ativar enforcement primeiro em desenvolvimento, verificar chamadas reais e só então planejar produção.

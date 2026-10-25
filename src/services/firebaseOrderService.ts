@@ -837,42 +837,40 @@ export class FirebaseOrderService {
 
     const initialOrderData = initialSnap.data();
     const affectsItemTotals = ['items', 'price', 'quantity', 'pricingMode', 'unitPrice'].some((key) =>
-      Object.prototype.hasOwnProperty.call(updates, key));
-    const resultingItems = Array.isArray(updates.items) ? updates.items : initialOrderData.items;
-    const hadComplexItemTotals = Array.isArray(initialOrderData.items) && initialOrderData.items.length > 4;
-    const hasComplexItemTotals = Array.isArray(resultingItems) && resultingItems.length > 4;
-    // Keep this threshold aligned with firestore.rules: changes to totals are
-    // blocked there when either the old or new item list has more than 4 rows.
-    if (affectsItemTotals && (hadComplexItemTotals || hasComplexItemTotals)) {
+      Object.prototype.hasOwnProperty.call(updates, key)
+        && updates[key as keyof typeof updates] !== undefined
+        && JSON.stringify(updates[key as keyof typeof updates])
+          !== JSON.stringify(initialOrderData[key] ?? null));
+    const paymentChanged = updates.payment !== undefined
+      && JSON.stringify(updates.payment) !== JSON.stringify(initialOrderData.payment ?? null);
+    const exchangeChanged = updates.isExchange !== undefined
+      && Boolean(updates.isExchange) !== Boolean(initialOrderData.isExchange);
+    const customerChanged = updates.customerId !== undefined
+      && (updates.customerId ?? null) !== (initialOrderData.customerId ?? null);
+    // Todas as alterações financeiras/itens passam pela Function. Isso evita
+    // depender do custo CEL até mesmo para listas pequenas ou pedidos legados.
+    const requiresBackend = paymentChanged || exchangeChanged || customerChanged || affectsItemTotals;
+    if (requiresBackend) {
       const callable = httpsCallable<{
         orderId: string;
         expectedVersion: number;
         updates: typeof updates;
-      }, { success: boolean; customerStatsReconciliation: { customerId: string; amount: number; toExchange: boolean } | null }>(
+      }, { success: boolean }>(
         functions,
         'updateComplexOrder',
       );
-      const result = await callable({
+      const sanitizedUpdates = {
+        ...updates,
+        ...(updates.items !== undefined ? { items: this.sanitizeOrderItems(updates.items) } : {}),
+      };
+      await callable({
         orderId,
         expectedVersion: expectedVersion ?? this.currentOrderVersion(initialOrderData),
-        updates,
+        updates: sanitizedUpdates,
       });
-      const reconciliation = result.data.customerStatsReconciliation;
-      if (reconciliation?.customerId) {
-        try {
-          if (reconciliation.toExchange) {
-            await firebaseCustomerService.decrementCustomerStats(reconciliation.customerId, reconciliation.amount);
-          } else {
-            await firebaseCustomerService.incrementCustomerStats(reconciliation.customerId, reconciliation.amount);
-          }
-        } catch (err) {
-          console.warn('[firebaseOrderService] Não foi possível reconciliar estatísticas da permuta:', err);
-        }
-      }
       return;
     }
 
-    const customerStatsReconciliation: { value: { customerId: string; amount: number; toExchange: boolean } | null } = { value: null };
     await runTransaction(db, async (transaction) => {
       // 1. TODAS as leituras antes de qualquer escrita (exigência estrita do Firestore)
       const orderSnap = await transaction.get(orderRef);
@@ -902,6 +900,17 @@ export class FirebaseOrderService {
       const cleanUpdates: any = {};
       Object.entries(updates).forEach(([key, value]) => {
         if (value !== undefined) {
+          if (['items', 'price', 'quantity', 'pricingMode', 'unitPrice', 'payment', 'isExchange'].includes(key)) {
+            const unchanged = key === 'isExchange'
+              ? Boolean(value) === Boolean(orderData.isExchange)
+              : JSON.stringify(value) === JSON.stringify(orderData[key] ?? null);
+            if (!unchanged) {
+              throw new Error('Os dados financeiros do pedido mudaram durante a edição. Atualize a tela e tente novamente.');
+            }
+            // Valores sem alteração não devem ser incluídos na gravação direta;
+            // mudanças reais são encaminhadas a updateComplexOrder antes da transação.
+            return;
+          }
           if (key === 'price' && typeof value === 'number') {
             cleanUpdates[key] = resolvedPrice;
           } else if (key === 'payment' && value) {
@@ -1105,32 +1114,7 @@ export class FirebaseOrderService {
         });
       }
 
-      // Customer aggregates exclude exchanges. Reconcile only when the exchange
-      // classification changes; normal price edits retain existing behavior.
-      if (cleanUpdates.isExchange !== undefined && Boolean(cleanUpdates.isExchange) !== Boolean(orderData.isExchange)) {
-        const customerId = cleanUpdates.customerId ?? orderData.customerId;
-        if (customerId) {
-          customerStatsReconciliation.value = {
-            customerId,
-            amount: Number(cleanUpdates.price ?? orderData.price ?? 0),
-            toExchange: Boolean(cleanUpdates.isExchange),
-          };
-        }
-      }
     });
-
-    if (customerStatsReconciliation.value) {
-      const reconciliation = customerStatsReconciliation.value;
-      try {
-        if (reconciliation.toExchange) {
-          await firebaseCustomerService.decrementCustomerStats(reconciliation.customerId, reconciliation.amount);
-        } else {
-          await firebaseCustomerService.incrementCustomerStats(reconciliation.customerId, reconciliation.amount);
-        }
-      } catch (err) {
-        console.warn('[firebaseOrderService] Não foi possível reconciliar estatísticas da permuta:', err);
-      }
-    }
   }
 
   /**
