@@ -2,6 +2,8 @@
  * Módulo de Integração com WhatsApp (Evolution API e Webhooks).
  */
 
+const moduleInitializationStartedAt = process.hrtime.bigint();
+
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
 const { HttpsError } = require('firebase-functions/v2/https');
 const { onCall, onRequest } = require('../common/sentryFunctions');
@@ -14,10 +16,12 @@ const {
 } = require('../common/helpers');
 const { validateOriginSecret } = require('../originProtection');
 const { whatsappMessageLimiter } = require('../common/rateLimiters');
+const { withFirstInvocationSpan } = require('../common/sentry');
 
 const { persistIncomingMessage } = require('./persistMessage');
 
 const { authorizeChat } = require('./chatScope');
+let moduleInitializationMs = null;
 const chatScope = (request, phone, options = {}) => authorizeChat(request, phone, { db: getFirestore(), assertActiveSession, ...options });
 
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
@@ -41,7 +45,7 @@ const isAuthorizedForWhatsApp = async (request) => {
  */
 const sendWhatsAppDirectMessage = onCall(
   { maxInstances: 5, secrets: [EVOLUTION_API_KEY] },
-  async (request) => {
+  withFirstInvocationSpan('sendWhatsAppDirectMessage', async (request) => {
     if (!(await isAuthorizedForWhatsApp(request))) {
       throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
     }
@@ -244,7 +248,7 @@ const sendWhatsAppDirectMessage = onCall(
       console.error('[sendWhatsAppDirectMessage] Falha ao enviar mensagem:', error);
       throw new HttpsError('internal', error.message || 'Erro ao conectar com a API do WhatsApp.');
     }
-  }
+  }, () => moduleInitializationMs)
 );
 
 /**
@@ -252,7 +256,7 @@ const sendWhatsAppDirectMessage = onCall(
  */
 const deleteWhatsAppMessage = onCall(
   { maxInstances: 5, secrets: [EVOLUTION_API_KEY] },
-  async (request) => {
+  withFirstInvocationSpan('deleteWhatsAppMessage', async (request) => {
     if (!(await isAuthorizedForWhatsApp(request))) {
       throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
     }
@@ -376,7 +380,7 @@ const deleteWhatsAppMessage = onCall(
       success: true,
       message: 'Mensagem apagada com sucesso!',
     };
-  }
+  }, () => moduleInitializationMs)
 );
 
 /**
@@ -384,7 +388,7 @@ const deleteWhatsAppMessage = onCall(
  */
 const syncWhatsAppChatMessages = onCall(
   { maxInstances: 5, secrets: [EVOLUTION_API_KEY] },
-  async (request) => {
+  withFirstInvocationSpan('syncWhatsAppChatMessages', async (request) => {
     if (!(await isAuthorizedForWhatsApp(request))) {
       throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
     }
@@ -524,7 +528,7 @@ const syncWhatsAppChatMessages = onCall(
       console.error('[syncWhatsAppChatMessages] Erro:', err);
       throw new HttpsError('internal', err.message || 'Erro ao sincronizar mensagens.');
     }
-  }
+  }, () => moduleInitializationMs)
 );
 
 /**
@@ -532,7 +536,7 @@ const syncWhatsAppChatMessages = onCall(
  */
 const getWhatsAppInstanceStatus = onCall(
   { maxInstances: 5, secrets: [EVOLUTION_API_KEY] },
-  async (request) => {
+  withFirstInvocationSpan('getWhatsAppInstanceStatus', async (request) => {
     if (!(await isAuthorizedForWhatsApp(request))) {
       throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
     }
@@ -585,10 +589,10 @@ const getWhatsAppInstanceStatus = onCall(
         instance: EVOLUTION_INSTANCE,
       };
     }
-  }
+  }, () => moduleInitializationMs)
 );
 
-const markWhatsAppChatRead = onCall(async (request) => {
+const markWhatsAppChatRead = onCall(withFirstInvocationSpan('markWhatsAppChatRead', async (request) => {
   if (!(await isAuthorizedForWhatsApp(request))) {
     throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
   }
@@ -606,9 +610,9 @@ const markWhatsAppChatRead = onCall(async (request) => {
     updatedAt: FieldValue.serverTimestamp(),
   });
   return { success: true };
-});
+}, () => moduleInitializationMs));
 
-const ensureWhatsAppConversation = onCall(async (request) => {
+const ensureWhatsAppConversation = onCall(withFirstInvocationSpan('ensureWhatsAppConversation', async (request) => {
   if (!(await isAuthorizedForWhatsApp(request))) {
     throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
   }
@@ -646,14 +650,14 @@ const ensureWhatsAppConversation = onCall(async (request) => {
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
   return { success: true };
-});
+}, () => moduleInitializationMs));
 
 /**
  * Webhook para receber mensagens recebidas (MESSAGES_UPSERT) da API do WhatsApp em tempo real.
  */
 const evolutionWhatsAppWebhook = onRequest(
   { secrets: [EVOLUTION_API_KEY, ORIGIN_SECRET] },
-  async (req, res) => {
+  withFirstInvocationSpan('evolutionWhatsAppWebhook', async (req, res) => {
     const originCheck = validateOriginSecret(req);
     if (!originCheck.allowed) {
       console.warn('[evolutionWhatsAppWebhook] Tentativa de acesso direto bloqueada (sem header da Cloudflare)');
@@ -751,8 +755,10 @@ const evolutionWhatsAppWebhook = onRequest(
       console.error('[evolutionWhatsAppWebhook] Erro ao processar webhook:', error);
       res.status(500).json({ error: error.message });
     }
-  }
+  }, () => moduleInitializationMs)
 );
+
+moduleInitializationMs = Number((Number(process.hrtime.bigint() - moduleInitializationStartedAt) / 1e6).toFixed(2));
 
 module.exports = {
   isAuthorizedForWhatsApp,

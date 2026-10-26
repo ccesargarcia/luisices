@@ -3,6 +3,31 @@
  * Admin e das declarações de triggers para permitir a instrumentação automática.
  */
 const Sentry = require('@sentry/node');
+const firstInvocationSpans = new Set();
+
+/** Instrumenta apenas a primeira chamada por processo; não mede o provisionamento do container. */
+function withFirstInvocationSpan(functionId, handler, getModuleInitializationMs = () => null) {
+  return function firstInvocationObserved(...args) {
+    if (firstInvocationSpans.has(functionId)) return handler.apply(this, args);
+    firstInvocationSpans.add(functionId);
+
+    if (!Sentry.getClient()) return handler.apply(this, args);
+
+    return Sentry.startSpan({
+      name: `firebase.function.${functionId}.first_invocation`,
+      op: 'function.cold_start',
+      parentSpan: null,
+      forceTransaction: true,
+      attributes: {
+        'firebase.function.id': functionId,
+        'firebase.function.first_invocation': true,
+        'runtime.module_init_ms': typeof getModuleInitializationMs === 'function' ? getModuleInitializationMs() : null,
+        'runtime.node_major': Number(process.versions.node.split('.')[0]),
+        'runtime.revision': process.env.K_REVISION || 'local',
+      },
+    }, () => handler.apply(this, args));
+  };
+}
 
 function sanitizeText(value) {
   if (typeof value !== 'string') return value;
@@ -119,4 +144,4 @@ async function captureApiError(error, tags = {}) {
   await Sentry.flush(1500);
 }
 
-module.exports = { Sentry, captureApiError, sanitizeEvent, sanitizeText, sanitizeValue, sanitizeSpan };
+module.exports = { Sentry, captureApiError, sanitizeEvent, sanitizeText, sanitizeValue, sanitizeSpan, withFirstInvocationSpan };

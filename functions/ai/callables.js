@@ -1,3 +1,5 @@
+const moduleInitializationStartedAt = process.hrtime.bigint();
+
 /**
  * Endpoints Callables de IA (Cloud Functions v2) para o Copiloto e Enriquecimento Visual.
  */
@@ -10,6 +12,9 @@ const { onCall } = require('../common/sentryFunctions');
 const { GEMINI_API_KEY } = require('../common/secrets');
 const { assertActiveSession } = require('../common/helpers');
 const { createAiServices } = require('./index');
+const { withFirstInvocationSpan } = require('../common/sentry');
+
+let moduleInitializationMs = null;
 
 const mapToHttpsError = (err) => {
   if (err && err.code && typeof err.code === 'string' && err.message) {
@@ -33,7 +38,7 @@ const mapToHttpsError = (err) => {
  */
 const aiAgentChat = onCall(
   { cors: true, timeoutSeconds: 120, memory: '1GiB', maxInstances: 10, secrets: [GEMINI_API_KEY] },
-  async (request) => {
+  withFirstInvocationSpan('aiAgentChat', async (request) => {
     const rawKey =
       (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
     const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth, storage: getStorage }, rawKey);
@@ -44,7 +49,7 @@ const aiAgentChat = onCall(
     } catch (err) {
       throw mapToHttpsError(err);
     }
-  }
+  }, () => moduleInitializationMs)
 );
 
 /**
@@ -52,7 +57,7 @@ const aiAgentChat = onCall(
  */
 const getAiUsage = onCall(
   { cors: true, maxInstances: 5, secrets: [GEMINI_API_KEY] },
-  async (request) => {
+  withFirstInvocationSpan('getAiUsage', async (request) => {
     const rawKey =
       (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
     const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth, storage: getStorage }, rawKey);
@@ -63,7 +68,7 @@ const getAiUsage = onCall(
     } catch (err) {
       throw mapToHttpsError(err);
     }
-  }
+  }, () => moduleInitializationMs)
 );
 
 /**
@@ -71,7 +76,7 @@ const getAiUsage = onCall(
  */
 const enrichGalleryItemWithAi = onCall(
   { cors: true, timeoutSeconds: 120, memory: '1GiB', maxInstances: 5, secrets: [GEMINI_API_KEY] },
-  async (request) => {
+  withFirstInvocationSpan('enrichGalleryItemWithAi', async (request) => {
     const rawKey =
       (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
     const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth, storage: getStorage }, rawKey);
@@ -82,7 +87,7 @@ const enrichGalleryItemWithAi = onCall(
     } catch (err) {
       throw mapToHttpsError(err);
     }
-  }
+  }, () => moduleInitializationMs)
 );
 
 /**
@@ -90,7 +95,7 @@ const enrichGalleryItemWithAi = onCall(
  */
 const enrichStoreProductWithAi = onCall(
   { cors: true, timeoutSeconds: 120, memory: '1GiB', maxInstances: 5, secrets: [GEMINI_API_KEY] },
-  async (request) => {
+  withFirstInvocationSpan('enrichStoreProductWithAi', async (request) => {
     const rawKey =
       (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
     const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth, storage: getStorage }, rawKey);
@@ -101,8 +106,10 @@ const enrichStoreProductWithAi = onCall(
     } catch (err) {
       throw mapToHttpsError(err);
     }
-  }
+  }, () => moduleInitializationMs)
 );
+
+moduleInitializationMs = Number((Number(process.hrtime.bigint() - moduleInitializationStartedAt) / 1e6).toFixed(2));
 
 module.exports = {
   aiAgentChat,

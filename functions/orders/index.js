@@ -6,7 +6,7 @@ const moduleInitializationStartedAt = process.hrtime.bigint();
 const { Timestamp, FieldValue, getFirestore } = require('firebase-admin/firestore');
 const { HttpsError } = require('firebase-functions/v2/https');
 const { onCall } = require('../common/sentryFunctions');
-const { Sentry } = require('../common/sentry');
+const { withFirstInvocationSpan } = require('../common/sentry');
 const { ORDER_TRACKING_ENCRYPTION_KEY } = require('../common/secrets');
 const crypto = require('crypto');
 const { publicCatalogOrderLimiter, publicOrderTrackingLimiter } = require('../common/rateLimiters');
@@ -685,39 +685,9 @@ async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
   });
 }
 
-const firstInvocationSpans = new Set();
-
-/**
- * Marca a primeira chamada observada neste processo em um span do Sentry.
- * O span mede o handler e registra o custo de inicialização deste módulo;
- * não representa o tempo de provisionamento do container pelo Google Cloud.
- */
-function withFirstInvocationSpan(functionId, handler) {
-  return function firstInvocationObserved(request) {
-    if (firstInvocationSpans.has(functionId)) return handler.call(this, request);
-    firstInvocationSpans.add(functionId);
-
-    if (!Sentry.getClient()) return handler.call(this, request);
-
-    return Sentry.startSpan({
-      name: `firebase.function.${functionId}.first_invocation`,
-      op: 'function.cold_start',
-      parentSpan: null,
-      forceTransaction: true,
-      attributes: {
-        'firebase.function.id': functionId,
-        'firebase.function.first_invocation': true,
-        'runtime.module_init_ms': moduleInitializationMs,
-        'runtime.node_major': Number(process.versions.node.split('.')[0]),
-        'runtime.revision': process.env.K_REVISION || 'local',
-      },
-    }, () => handler.call(this, request));
-  };
-}
-
 const updateComplexOrder = onCall(
   { cors: true, maxInstances: 10 },
-  withFirstInvocationSpan('updateComplexOrder', handleUpdateComplexOrder),
+  withFirstInvocationSpan('updateComplexOrder', handleUpdateComplexOrder, () => moduleInitializationMs),
 );
 
 /**
@@ -1175,7 +1145,7 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
 
 const createOrder = onCall(
   { cors: true, maxInstances: 10 },
-  withFirstInvocationSpan('createOrder', handleCreateOrder),
+  withFirstInvocationSpan('createOrder', handleCreateOrder, () => moduleInitializationMs),
 );
 
 function getTrackingEncryptionKey() {
@@ -1205,7 +1175,7 @@ function decryptTrackingToken(value) {
 }
 
 /** Gera um link secreto de acompanhamento quando o pedido ainda não tem link ativo. */
-const createOrderTrackingLink = onCall({ cors: true, maxInstances: 10, memory: '512MiB', secrets: [ORDER_TRACKING_ENCRYPTION_KEY] }, async (request) => {
+const createOrderTrackingLink = onCall({ cors: true, maxInstances: 10, memory: '512MiB', secrets: [ORDER_TRACKING_ENCRYPTION_KEY] }, withFirstInvocationSpan('createOrderTrackingLink', async (request) => {
   const uid = request.auth?.uid;
   const orderId = request.data?.orderId;
   if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para gerar o link.');
@@ -1277,10 +1247,10 @@ const createOrderTrackingLink = onCall({ cors: true, maxInstances: 10, memory: '
     });
   });
   return { token, expiresAt, linkId };
-});
+}, () => moduleInitializationMs));
 
 /** Lista links criados pelo usuário ou todos para administradores. Os tokens só saem por callable autenticada. */
-const listOrderTrackingLinks = onCall({ cors: true, maxInstances: 10, memory: '512MiB', secrets: [ORDER_TRACKING_ENCRYPTION_KEY] }, async (request) => {
+const listOrderTrackingLinks = onCall({ cors: true, maxInstances: 10, memory: '512MiB', secrets: [ORDER_TRACKING_ENCRYPTION_KEY] }, withFirstInvocationSpan('listOrderTrackingLinks', async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para consultar os links.');
   const profileSnap = await getFirestore().doc(`userProfiles/${uid}`).get();
@@ -1334,10 +1304,10 @@ const listOrderTrackingLinks = onCall({ cors: true, maxInstances: 10, memory: '5
     };
   });
   return { links, nextCursor: hasMore ? docs.at(-1)?.id || null : null };
-});
+}, () => moduleInitializationMs));
 
 /** Invalida imediatamente o link público de acompanhamento. */
-const revokeOrderTrackingLink = onCall({ cors: true, maxInstances: 10 }, async (request) => {
+const revokeOrderTrackingLink = onCall({ cors: true, maxInstances: 10 }, withFirstInvocationSpan('revokeOrderTrackingLink', async (request) => {
   const uid = request.auth?.uid;
   const orderId = request.data?.orderId;
   if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para desativar o link.');
@@ -1368,10 +1338,10 @@ const revokeOrderTrackingLink = onCall({ cors: true, maxInstances: 10 }, async (
   }
   await batch.commit();
   return { success: true, revoked: true };
-});
+}, () => moduleInitializationMs));
 
 /** Revoga um link específico da lista de links e respeita quem o criou ou a administração. */
-const revokeOrderTrackingLinkById = onCall({ cors: true, maxInstances: 10 }, async (request) => {
+const revokeOrderTrackingLinkById = onCall({ cors: true, maxInstances: 10 }, withFirstInvocationSpan('revokeOrderTrackingLinkById', async (request) => {
   const uid = request.auth?.uid;
   const linkId = request.data?.linkId;
   if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para revogar o link.');
@@ -1410,10 +1380,10 @@ const revokeOrderTrackingLinkById = onCall({ cors: true, maxInstances: 10 }, asy
     transaction.update(linkRef, { revokedAt: FieldValue.serverTimestamp() });
     return { success: true, revoked: true };
   });
-});
+}, () => moduleInitializationMs));
 
 /** Remove um link do histórico; se ainda estiver ativo, invalida-o antes da exclusão. */
-const deleteOrderTrackingLink = onCall({ cors: true, maxInstances: 10, memory: '512MiB' }, async (request) => {
+const deleteOrderTrackingLink = onCall({ cors: true, maxInstances: 10, memory: '512MiB' }, withFirstInvocationSpan('deleteOrderTrackingLink', async (request) => {
   const uid = request.auth?.uid;
   const linkId = request.data?.linkId;
   if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para excluir o link.');
@@ -1451,10 +1421,10 @@ const deleteOrderTrackingLink = onCall({ cors: true, maxInstances: 10, memory: '
     transaction.delete(linkRef);
     return { success: true, deleted: true };
   });
-});
+}, () => moduleInitializationMs));
 
 /** Remove múltiplos links do histórico em lote (até 100 por chamada). */
-const deleteOrderTrackingLinksBatch = onCall({ cors: true, maxInstances: 10, memory: '512MiB' }, async (request) => {
+const deleteOrderTrackingLinksBatch = onCall({ cors: true, maxInstances: 10, memory: '512MiB' }, withFirstInvocationSpan('deleteOrderTrackingLinksBatch', async (request) => {
   const uid = request.auth?.uid;
   const rawIds = request.data?.linkIds;
   if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para excluir links.');
@@ -1524,10 +1494,10 @@ const deleteOrderTrackingLinksBatch = onCall({ cors: true, maxInstances: 10, mem
 
   await batch.commit();
   return { success: true, deletedCount };
-});
+}, () => moduleInitializationMs));
 
 /** Retorna somente dados próprios para acompanhamento público; nunca expõe dados financeiros/contato. */
-const getPublicOrderTracking = onCall({ cors: true, maxInstances: 20, memory: '512MiB' }, async (request) => {
+const getPublicOrderTracking = onCall({ cors: true, maxInstances: 20, memory: '512MiB' }, withFirstInvocationSpan('getPublicOrderTracking', async (request) => {
   const ip = getTrustedClientIp(request.rawRequest);
   try {
     await publicOrderTrackingLimiter.consume(ip);
@@ -1614,7 +1584,7 @@ const getPublicOrderTracking = onCall({ cors: true, maxInstances: 20, memory: '5
     shippingTrackingNumber: typeof order.shippingTrackingNumber === 'string' ? order.shippingTrackingNumber.slice(0, 120) : '',
     trackingTemplate,
   };
-});
+}, () => moduleInitializationMs));
 
 /**
  * Checkout Público Confiável (Lojinha Online / Vitrine).
