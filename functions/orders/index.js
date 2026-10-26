@@ -2,9 +2,11 @@
  * Módulo de Pedidos e Catálogo Público (Cloud Functions v2).
  */
 
+const moduleInitializationStartedAt = process.hrtime.bigint();
 const { Timestamp, FieldValue, getFirestore } = require('firebase-admin/firestore');
 const { HttpsError } = require('firebase-functions/v2/https');
 const { onCall } = require('../common/sentryFunctions');
+const { Sentry } = require('../common/sentry');
 const { ORDER_TRACKING_ENCRYPTION_KEY } = require('../common/secrets');
 const crypto = require('crypto');
 const { publicCatalogOrderLimiter, publicOrderTrackingLimiter } = require('../common/rateLimiters');
@@ -683,7 +685,38 @@ async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
   });
 }
 
-const updateComplexOrder = onCall({ cors: true, maxInstances: 10 }, handleUpdateComplexOrder);
+const firstInvocationSpans = new Set();
+
+/**
+ * Marca a primeira chamada observada neste processo em um span do Sentry.
+ * O span mede o handler e registra o custo de inicialização deste módulo;
+ * não representa o tempo de provisionamento do container pelo Google Cloud.
+ */
+function withFirstInvocationSpan(functionId, handler) {
+  return function firstInvocationObserved(request) {
+    if (firstInvocationSpans.has(functionId)) return handler.call(this, request);
+    firstInvocationSpans.add(functionId);
+
+    if (!Sentry.getClient()) return handler.call(this, request);
+
+    return Sentry.startSpan({
+      name: `firebase.function.${functionId}.first_invocation`,
+      op: 'function.cold_start',
+      attributes: {
+        'firebase.function.id': functionId,
+        'firebase.function.first_invocation': true,
+        'runtime.module_init_ms': moduleInitializationMs,
+        'runtime.node_major': Number(process.versions.node.split('.')[0]),
+        'runtime.revision': process.env.K_REVISION || 'local',
+      },
+    }, () => handler.call(this, request));
+  };
+}
+
+const updateComplexOrder = onCall(
+  { cors: true, maxInstances: 10 },
+  withFirstInvocationSpan('updateComplexOrder', handleUpdateComplexOrder),
+);
 
 /**
  * Criação atômica de pedidos com itens, salesLedger, contadores e estatísticas de cliente.
@@ -1138,7 +1171,10 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
   });
 }
 
-const createOrder = onCall({ cors: true, maxInstances: 10 }, handleCreateOrder);
+const createOrder = onCall(
+  { cors: true, maxInstances: 10 },
+  withFirstInvocationSpan('createOrder', handleCreateOrder),
+);
 
 function getTrackingEncryptionKey() {
   const key = Buffer.from(ORDER_TRACKING_ENCRYPTION_KEY.value() || '', 'base64');
@@ -1872,6 +1908,10 @@ if (isDevOrEmulator) {
   calculateSuperfreteShipping = superfrete.calculateSuperfreteShipping;
   createSuperfreteLabel = superfrete.createSuperfreteLabel;
 }
+
+const moduleInitializationMs = Number(
+  (Number(process.hrtime.bigint() - moduleInitializationStartedAt) / 1e6).toFixed(2),
+);
 
 module.exports = {
   submitPublicCatalogOrder,

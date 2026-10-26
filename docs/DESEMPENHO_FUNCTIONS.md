@@ -8,6 +8,14 @@ Reduzir o trabalho de inicialização, mantendo a escala para zero e a validaç�
 
 Cold start não desaparece: o provisionamento do container, a inicialização dos SDKs, autenticação e rede ainda fazem parte do primeiro acesso. Uma medição local de importação não prevê quanto dos aproximadamente cinco segundos percebidos pelo usuário será eliminado.
 
+## Sentry: primeira chamada dos pedidos
+
+`createOrder` e `updateComplexOrder` emitem um span `function.cold_start` na primeira chamada de cada processo. O span inclui o tempo do handler e atributos de baixo risco para identificar a função, a revisão e o tempo de avaliação do módulo `orders` (`runtime.module_init_ms`). Ele não inclui necessariamente o provisionamento do container ou toda a espera da plataforma antes de iniciar o handler.
+
+No Sentry, filtre a operação `function.cold_start` e compare os spans com a operação normal do handler. A amostragem de tracing segue `SENTRY_TRACES_SAMPLE_RATE`, cujo padrão atual é **5%**; portanto, a ausência de um span não prova que não houve cold start. A instrumentação só acrescenta spans às duas Functions de pedidos e não faz chamada de rede síncrona nem mantém a resposta aberta para enviar telemetria.
+
+Use as métricas e os logs do Cloud Run/Cloud Functions para confirmar o tempo de inicialização da plataforma. O Sentry serve para relacionar a primeira execução observada à latência e aos spans da aplicação; não substitui a métrica de inicialização do Google Cloud. A documentação do Google confirma que o carregamento de módulos contribui para cold starts e recomenda reduzir dependências e trabalho de inicialização ([boas práticas](https://docs.cloud.google.com/run/docs/tips/functions-best-practices?hl=en)); os logs da plataforma registram execuções e identificadores de execução ([platform logs](https://docs.cloud.google.com/logging/docs/api/platform-logs)).
+
 ## O que mudou
 
 ### 1. Carregamento por domínio
