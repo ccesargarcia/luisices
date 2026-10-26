@@ -107,3 +107,45 @@ test('failed prior deployments remain pending relative to deployed snapshot', ()
   const testOnlyFollowup = { ...failedPush, 'tests/unit/example.test.ts': 'fixed test' };
   assert.deepEqual(selectFunctions(deployed, testOnlyFollowup).targets, orderNames);
 });
+
+const lazyFixture = () => ({
+  ...fixture(),
+  'functions/index.js': `require('./bootstrap');
+function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }
+expose('createOrder', () => require('./orders').createOrder);
+expose('updateOrder', () => require('./orders').updateOrder);
+expose('createUser', () => require('./users').createUser);
+if (process.env.GCLOUD_PROJECT === 'luisices-dev') { expose('sandbox', () => require('./orders').sandbox); }`,
+});
+
+test('migration to lazy exports preserves all endpoints including sandbox', () => {
+  const plan = selectFunctions(fixture(), lazyFixture());
+  assert.deepEqual(plan.targets, allNames);
+  assert.deepEqual(plan.removed, []);
+  assert.deepEqual(selectFunctions(lazyFixture(), fixture()).removed, []);
+});
+test('lazy imports retain selective deploy and shared bootstrap dependencies', () => {
+  assert.deepEqual(selectFunctions(lazyFixture(), lazyFixture()).targets, []);
+  for (const [file, expected] of [
+    ['functions/orders/index.js', orderNames],
+    ['functions/common/payment.js', orderNames],
+    ['functions/common/auth.js', allNames],
+    ['functions/bootstrap.js', allNames],
+  ]) {
+    const after = lazyFixture();
+    after[file] += '\n// changed';
+    assert.deepEqual(selectFunctions(lazyFixture(), after).targets, expected);
+  }
+});
+test('unknown, duplicate and dynamic lazy exports fail closed', () => {
+  for (const extra of [
+    "expose('extra', () => require(process.env.MODULE).extra);",
+    "expose('extra', getModule);",
+    "expose('createOrder', () => require('./orders').createOrder);",
+    'module.exports.extra = getModule();',
+  ]) {
+    const after = lazyFixture();
+    after['functions/index.js'] += extra;
+    assert.throws(() => selectFunctions(lazyFixture(), after), /Export/);
+  }
+});

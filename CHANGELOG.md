@@ -8,6 +8,7 @@ O registro começou em 12/10/2026 com as entregas recentes verificadas em produ�
 
 ### Alterado
 
+- Inicialização das Functions carrega os domínios sob demanda e prefere REST no Firestore Admin em nuvem, mantendo escala para zero, controles de acesso e compatibilidade do deploy seletivo; emuladores preservam o transporte padrão sem credenciais reais.
 - Pipeline DEV seleciona Functions por dependências desde a última publicação bem-sucedida, publica nomes explícitos em grupos de até seis e não amplia automaticamente o deploy após falha. Auditoria de secrets exibe somente presença, sem trechos dos valores.
 
 - Criação de pedidos do painel centralizada em `createOrder`, com autorização, validação de 1–10 itens, contador, ledger, estatísticas e eventos financeiros na transação; criação direta no Firestore bloqueada.

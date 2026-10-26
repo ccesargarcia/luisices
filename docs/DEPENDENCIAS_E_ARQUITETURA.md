@@ -1,11 +1,11 @@
 # Arquitetura e dependências
 
-Revisão estrutural inicial: **10/10/2026**. Fluxos de pedidos e publicação atualizados em **25/10/2026**, na `develop`. Este mapa descreve relações verificáveis no repositório; não substitui inventário de serviços configurados na nuvem.
+Revisão estrutural inicial: **10/10/2026**. Fluxos de pedidos e publicação atualizados em **25/10/2026**; inicialização das Functions em **26/10/2026**, na `develop`. Este mapa descreve relações verificáveis no repositório; não substitui inventário de serviços configurados na nuvem.
 
 ## Entrypoints e execução
 
 - Frontend: [src/main.tsx](../src/main.tsx) → [src/app/App.tsx](../src/app/App.tsx) → [rotas](../src/app/routes.tsx).
-- Backend: [functions/index.js](../functions/index.js), que exporta os módulos de domínio.
+- Backend: [functions/index.js](../functions/index.js), que resolve os exports por domínio sob demanda, preservando a descoberta completa no deploy. Firestore Admin prefere REST na nuvem; o emulador mantém gRPC. Estratégia, custos e validação em [Desempenho das Functions](DESEMPENHO_FUNCTIONS.md).
 - Build: [vite.config.ts](../vite.config.ts), com React/TypeScript e saída em `dist`.
 - Runtime de Functions: **Node.js 22**, em [firebase.json](../firebase.json) e [functions/package.json](../functions/package.json).
 - O protótipo Express foi removido. Não existe backend Studio separado no fluxo publicado por esses workflows.

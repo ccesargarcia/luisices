@@ -7,6 +7,22 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 function endpoints(source) {
+  // Lazy exports use fixed module paths and return the ORIGINAL trigger. Keep
+  // support for the previous eager format: the deployed baseline may use it.
+  const lazy = [...source.matchAll(/\bexpose\(\s*['"](\w+)['"]\s*,\s*\(\)\s*=>\s*require\(['"](\.[^'"]+)['"]\)\.(\w+)\s*\);/g)];
+  if (lazy.length) {
+    const remaining = lazy.reduce((text, match) => text.replace(match[0], ''), source);
+    if (/\bexpose\s*\(/.test(remaining.replace(/function expose\(name, load\)/, ''))
+      || /module\.exports\s*[.=\[]|exports\.\w+\s*=/.test(remaining)) {
+      throw new Error('Export não suportado pelo seletor: revise o registro lazy.');
+    }
+    const result = new Map();
+    for (const [, name, module] of lazy) {
+      if (result.has(name)) throw new Error(`Export duplicado: ${name}`);
+      result.set(name, module);
+    }
+    return result;
+  }
   const aliases = new Map([...source.matchAll(/const\s+(\w+)\s*=\s*require\(['"](\.[^'"]+)['"]\)/g)]
     .map((match) => [match[1], match[2]]));
   const result = new Map();

@@ -1,0 +1,79 @@
+{
+  "./users": [
+    "sendAdminPasswordReset",
+    "createUserInvitation",
+    "validateUserInvitation",
+    "completeUserInvitation",
+    "sendVerificationEmail",
+    "sendPasswordResetEmail",
+    "getUserAccountMetadata",
+    "recordUserPasswordChange",
+    "deleteUser",
+    "createUser",
+    "updateUser",
+    "registerDeviceSession",
+    "revokeAllSessions",
+    "revokeDeviceSession",
+    "repairUserClaims"
+  ],
+  "./email": [
+    "sendCustomEmail",
+    "getEmailUsage",
+    "resendReceivingWebhook",
+    "cleanupEmailDrafts"
+  ],
+  "./whatsapp": [
+    "sendWhatsAppDirectMessage",
+    "deleteWhatsAppMessage",
+    "syncWhatsAppChatMessages",
+    "getWhatsAppInstanceStatus",
+    "markWhatsAppChatRead",
+    "ensureWhatsAppConversation",
+    "evolutionWhatsAppWebhook"
+  ],
+  "./orders": [
+    "submitPublicCatalogOrder",
+    "updateComplexOrder",
+    "createOrder",
+    "getPublicCatalogProducts",
+    "createOrderTrackingLink",
+    "listOrderTrackingLinks",
+    "revokeOrderTrackingLink",
+    "revokeOrderTrackingLinkById",
+    "deleteOrderTrackingLink",
+    "deleteOrderTrackingLinksBatch",
+    "getPublicOrderTracking"
+  ],
+  "./ai/callables": [
+    "aiAgentChat",
+    "getAiUsage",
+    "enrichGalleryItemWithAi",
+    "enrichStoreProductWithAi"
+  ],
+  "./alexa": [
+    "alexaWebhook",
+    "approveAlexaPairing",
+    "setAlexaPermission",
+    "revokeAlexaBinding",
+    "toggleGlobalAlexaIntegration",
+    "getAlexaIntegrationStatus",
+    "approveAlexaDraft",
+    "cancelAlexaDraft"
+  ],
+  "./mcp": [
+    "getMcpSettingsStatus",
+    "createMcpApiKey",
+    "updateMcpApiKeyScopes",
+    "toggleMcpApiKey",
+    "revokeMcpApiKey",
+    "toggleGlobalMcp",
+    "setUserMcpEligibility",
+    "revokeMcpSession",
+    "getMcpAuditLogs",
+    "getMcpOpenApiSchema",
+    "chatGptToolsEndpoint"
+  ],
+  "./media/gallery": [
+    "galleryMedia"
+  ]
+}

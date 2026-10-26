@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { initializeApp, deleteApp, type App } from 'firebase-admin/app';
-import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import type { App } from 'firebase-admin/app';
+import type { Firestore } from 'firebase-admin/firestore';
+import { initializeApp, deleteApp, initializeRestEmulator } from './helpers/backend-admin';
 import { handleUpdateComplexOrder } from '../../functions/orders/index.js';
 
 let adminApp: App;
@@ -11,7 +12,7 @@ beforeAll(() => {
     throw new Error('Execute via emulador local do Firestore (npm run test:integration).');
   }
   adminApp = initializeApp({ projectId: 'demo-luisices-review' }, `complex-order-function-${Date.now()}`);
-  adminDb = getFirestore(adminApp);
+  adminDb = initializeRestEmulator(adminApp);
 });
 
 afterAll(async () => {

@@ -1,6 +1,6 @@
 # Backend Firebase — Luisices
 
-Pedidos revisados em **25/10/2026**, branch `develop`. Runtime **Node.js 22**. O entrypoint público é [index.js](index.js); funções internas só ficam disponíveis remotamente quando exportadas e publicadas.
+Pedidos revisados em **25/10/2026**; inicialização atualizada em **26/10/2026**, branch `develop`. Runtime **Node.js 22**. O entrypoint público é [index.js](index.js); funções internas só ficam disponíveis remotamente quando exportadas e publicadas.
 
 ## Instalação e verificação
 
@@ -47,7 +47,7 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 - **Padrão Negado no Código (`deny-by-default`):** No wrapper compartilhado `common/sentryFunctions.js`, todos os callables exigem o cabeçalho `x-origin-secret`. No código revisado, chamadas diretas sem esse cabeçalho são sumariamente rejeitadas com `permission-denied`, mesmo que o usuário esteja autenticado no Firebase Auth. A eficácia remota depende de o segredo estar provisionado no Cloud Functions e mantido em sigilo no Cloudflare Worker.
 - **Exclusividade do Gateway:** No código do cliente, as chamadas conectam exclusivamente pelo gateway configurado para o Cloudflare (`api.luisices.com.br`). Rotas diretas de contingência pelo navegador foram removidas do código para preservar os controles de borda e evitar bypass não monitorado.
 - **Tratamento de Timeout como Estado Incerto:** Falhas de rede, timeouts ou erros 5xx de gateway não são tratados como falha definitiva de gravação. O cliente preserva a chave determinística (`idempotencyKey` ou `operationId`) e mantém o estado da operação pendente para reconciliação e retry pelo mesmo caminho oficial. Se o comando original já tiver sido persistido pelo backend, a repetição devolve o recibo autoritativo sem duplicar pedidos, ledger ou estatísticas.
-- **Cold Start e Custos:** Mantém-se `minInstances: 0` na declaração dos endpoints (zero custo fixo mensal). Pings periódicos via cron e atalhos de aquecimento por payload público foram removidos do código. Timeout transitório não deve ser confundido com cold start.
+- **Cold Start e Custos:** Mantém-se a escala mínima padrão zero, sem reservar instâncias ociosas. O entrypoint carrega cada domínio ao resolver seu export; o Firestore Admin prefere REST na nuvem e preserva gRPC no emulador. Não há pings de aquecimento. Custos normais por uso continuam existindo; timeout transitório não comprova cold start. Medição, testes e limites em [Desempenho das Functions](../docs/DESEMPENHO_FUNCTIONS.md).
 
 - Administração de contas passa pelo módulo `users`, com autorização, sincronização e tratamento de estado pendente.
 - `revokeDeviceSession` solicita desconexão cooperativa; `revokeAllSessions` trata revogação global.
@@ -107,7 +107,7 @@ O workflow `deploy-dev.yml` usa `scripts/select-functions-deploy.mjs` para compa
 - Alterações no entrypoint, bootstrap, dependências npm, configuração de Functions ou sincronização de secrets podem selecionar todo o backend. Um arquivo de runtime não reconhecido no grafo também seleciona tudo, por segurança.
 - Documentação e configurações exclusivas do Hosting não selecionam Functions. A análise é estática: não executa o backend nem lê credenciais.
 - Sem publicação de referência entre os últimos 90 runs completos, seleciona todo o backend atual. Falha de acesso à API de histórico interrompe o job, sem assumir uma referência incorreta.
-- Imports dinâmicos e dependências locais não resolvidas interrompem a seleção e exigem revisão do seletor. O formato suportado de exports é o atual de `functions/index.js` (objeto com aliases e atribuições nomeadas).
+- Imports dinâmicos e dependências locais não resolvidas interrompem a seleção e exigem revisão do seletor. São suportados o formato anterior (objeto com aliases e atribuições nomeadas) e o atual, com registros `expose('nome', () => require('./dominio').nome)` de caminhos literais. Getters preservam os triggers e a descoberta no deploy; não introduza formatos novos sem atualizar o seletor e seus testes.
 - O deploy usa nomes explícitos, em grupos de até seis, e repete somente o grupo que falhou. Não tenta primeiro `--only functions` nem amplia os alvos após uma falha. Uma Function removida do código é reportada, sem exclusão remota automática.
 - `[deploy all]`, `[only functions]` ou execução manual com alvo `auto`, `all` ou `functions-only` forçam a publicação de todos os exports atuais. Use quando mudar secrets/configuração externa sem alteração de código.
 

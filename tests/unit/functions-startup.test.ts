@@ -1,0 +1,106 @@
+import { describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import exportsByDomain from '../fixtures/functions-exports.json';
+
+// Processo novo por caso: medir/verificar carregamento com cache já populado
+// esconderia regressões. Não herdar credenciais, DSN ou flags de emulador.
+function checkStartup(script: string, extraEnv: Record<string, string> = {}) {
+  const result = spawnSync(process.execPath, ['-e', `
+    const assert = require('node:assert/strict');
+    const functions = require('./index.js');
+    ${script}
+  `], {
+    cwd: path.resolve('functions'),
+    encoding: 'utf8',
+    timeout: 15000,
+    env: {
+      PATH: process.env.PATH,
+      SYSTEMROOT: process.env.SYSTEMROOT,
+      GCLOUD_PROJECT: 'demo-luisices-startup',
+      ORIGIN_SECRET: 'startup-test-placeholder',
+      ...extraEnv,
+    },
+  });
+  expect(result.error, result.stderr).toBeUndefined();
+  expect(result.status, result.stderr || result.stdout).toBe(0);
+}
+
+describe('inicialização das Functions com SDK real', () => {
+  it.each(['createOrder', 'updateComplexOrder'])(
+    '%s carrega apenas o domínio necessário e reutiliza o handler protegido', (target) => {
+      checkStartup(`
+        const domains = ${JSON.stringify(Object.keys(exportsByDomain))};
+        for (const domain of domains) assert.equal(require.cache[require.resolve(domain)], undefined);
+        const handler = functions[${JSON.stringify(target)}];
+        assert.equal(typeof handler, 'function');
+        assert.equal(handler, functions[${JSON.stringify(target)}]);
+        assert.equal(handler, require('./orders')[${JSON.stringify(target)}]);
+        assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'ORIGIN_SECRET'));
+        // O SDK serializa ResetValue (padrão da plataforma) como null.
+        assert.ok([null, 0].includes(JSON.parse(JSON.stringify(handler.__endpoint)).minInstances));
+        assert.equal(handler.__endpoint.maxInstances, 10);
+        for (const domain of domains.filter(name => name !== './orders')) {
+          assert.equal(require.cache[require.resolve(domain)], undefined, domain + ' carregado indevidamente');
+        }
+      `);
+    },
+  );
+
+  it('inicializa REST antes do primeiro getFirestore e reutiliza a instância', () => {
+    checkStartup(`
+      const { getFirestore, initializeFirestore } = require('firebase-admin/firestore');
+      const { getApp } = require('firebase-admin/app');
+      assert.equal(getFirestore(), initializeFirestore(getApp(), { preferRest: true }));
+    `);
+  });
+
+  it('preserva transporte do emulador sem exigir credenciais da nuvem', () => {
+    checkStartup(`
+      const { getFirestore, initializeFirestore } = require('firebase-admin/firestore');
+      const { getApp } = require('firebase-admin/app');
+      assert.equal(getFirestore(), initializeFirestore(getApp(), { preferRest: false }));
+    `, { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' });
+  });
+
+  it.each([
+    { project: 'demo-luisices-startup', emulator: '', sandbox: false },
+    { project: 'luisices-dev', emulator: '', sandbox: true },
+    { project: 'demo-luisices-startup', emulator: 'true', sandbox: true },
+  ])('descoberta preserva exports, triggers e secrets: %j', ({ project, emulator, sandbox }) => {
+    checkStartup(`
+      (async () => {
+        const domains = ${JSON.stringify(exportsByDomain)};
+        const expected = Object.values(domains).flat();
+        if (${sandbox}) expected.push('calculateSuperfreteShipping', 'createSuperfreteLabel');
+        assert.deepEqual(Object.keys(functions).sort(), expected.sort());
+        for (const [domain, names] of Object.entries(domains)) {
+          for (const name of names) assert.equal(functions[name], require(domain)[name], name);
+        }
+        // Loader real do SDK: é o que o Firebase CLI usa para construir o manifest.
+        const path = require('node:path');
+        const sdkV2 = path.dirname(require.resolve('firebase-functions/v2'));
+        const { loadStack } = require(path.join(sdkV2, '../runtime/loader.js'));
+        const stack = await loadStack(process.cwd());
+        assert.deepEqual(Object.keys(stack.endpoints).sort(), expected.sort());
+        for (const name of expected) {
+          assert.deepEqual(stack.endpoints[name], { ...functions[name].__endpoint, entryPoint: name });
+        }
+      })().catch(error => { console.error(error); process.exitCode = 1; });
+    `, { GCLOUD_PROJECT: project, FUNCTIONS_EMULATOR: emulator });
+  });
+
+  it.each(['createOrder', 'updateComplexOrder'])('%s continua negando origem inválida', (target) => {
+    checkStartup(`
+      (async () => {
+        const handler = functions[${JSON.stringify(target)}];
+        for (const headers of [{}, { 'x-origin-secret': 'invalid' }]) {
+          await assert.rejects(handler.run({ rawRequest: { headers }, data: {},
+            auth: { uid: 'fake-user', token: { role: 'admin' } } }), { code: 'permission-denied' });
+        }
+        await assert.rejects(handler.run({ rawRequest: { headers: {
+          'x-origin-secret': 'startup-test-placeholder' } }, data: {} }), { code: 'unauthenticated' });
+      })().catch(error => { console.error(error); process.exitCode = 1; });
+    `);
+  });
+});
