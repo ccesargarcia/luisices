@@ -1,0 +1,18 @@
+name: Criar dashboard Sentry de cold start
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  create-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Criar dashboard da organização luisices
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: node .github/workflows/create-sentry-cold-start-dashboard.mjs
