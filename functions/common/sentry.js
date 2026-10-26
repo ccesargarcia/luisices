@@ -91,7 +91,6 @@ if (dsn) {
     tracesSampleRate: Number.isFinite(sampleRate) && sampleRate >= 0 && sampleRate <= 1 ? sampleRate : 0.05,
     beforeSend: sanitizeEvent,
     beforeSendSpan: sanitizeSpan,
-    beforeSendTransaction: sanitizeEvent,
     beforeBreadcrumb(breadcrumb) {
       if (breadcrumb.message) breadcrumb.message = sanitizeText(breadcrumb.message);
       if (breadcrumb.data) breadcrumb.data = sanitizeValue(breadcrumb.data);
