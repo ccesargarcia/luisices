@@ -15,6 +15,7 @@ Este diretório consolida a documentação técnica oficial, arquitetura viva e 
 | **[Dependências & Arquitetura](DEPENDENCIAS_E_ARQUITETURA.md)** | Visão estrutural de serviços, entrypoints frontend/backend, modelo de dados multi-tenant e pipelines de deploy. |
 | **[Operação e recuperação](OPERACAO_E_RECUPERACAO.md)** | Auditoria de pedidos, validação E2E, diagnóstico de falhas e recuperação de deploy ou dados. |
 | **[Segurança de pedidos e limite CEL](SEGURANCA_LIMITE_CEL_PEDIDOS.md)** | Limite de avaliações do Firestore, separação entre gravação direta e Function, autorização e testes de regressão para pedidos com 1–10 itens. |
+| **[Modelagem de ameaças](MODELAGEM_AMEACAS_SEGURANCA.md)** | Ativos, atores, limites de confiança, controles observados, ameaças STRIDE, riscos residuais e prioridades de mitigação. |
 | **[Idempotência e recuperação de pedidos](IDEMPOTENCIA_PEDIDOS.md)** | Chaves de operação, recibos transacionais, retomada após timeout e limites da recuperação no navegador. |
 | **[Copiloto de IA](COPILOTO_IA.md)** | Especificação do subsistema de inteligência artificial (Google Gemini), ferramentas (Function Calling), orçamentos de token e system prompt. |
 | **[Integração ChatGPT & MCP](INTEGRACAO_CHATGPT_MCP.md)** | Manual da API do Plugin ChatGPT e servidor MCP (OpenAPI 3.0.3, OAuth 2.1, 30 ferramentas, escopos e idempotência). |

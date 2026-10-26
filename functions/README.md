@@ -42,6 +42,13 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 - `createOrder` é o caminho autoritativo para criar pedidos do painel; a regra nega criação direta. Grava contador, pedido, ledger, estatísticas e eventos financeiros atomicamente. A chave reutilizada exige mesmo usuário e hash do comando completo; diferenças produzem conflito.
 - `updateComplexOrder` valida a sessão, permissão atual, campos, 1–10 itens e versão; grava recibos duráveis na mesma transação. O replay verifica autorização antes do recibo e reconhece a operação original mesmo após outra edição. O cliente não pode alterar recibos. Ver [contrato de idempotência](../docs/IDEMPOTENCIA_PEDIDOS.md).
 
+### Proteção de Origem e Recuperação Idempotente de Pedidos
+
+- **Padrão Negado no Código (`deny-by-default`):** No wrapper compartilhado `common/sentryFunctions.js`, todos os callables exigem o cabeçalho `x-origin-secret`. No código revisado, chamadas diretas sem esse cabeçalho são sumariamente rejeitadas com `permission-denied`, mesmo que o usuário esteja autenticado no Firebase Auth. A eficácia remota depende de o segredo estar provisionado no Cloud Functions e mantido em sigilo no Cloudflare Worker.
+- **Exclusividade do Gateway:** No código do cliente, as chamadas conectam exclusivamente pelo gateway configurado para o Cloudflare (`api.luisices.com.br`). Rotas diretas de contingência pelo navegador foram removidas do código para preservar os controles de borda e evitar bypass não monitorado.
+- **Tratamento de Timeout como Estado Incerto:** Falhas de rede, timeouts ou erros 5xx de gateway não são tratados como falha definitiva de gravação. O cliente preserva a chave determinística (`idempotencyKey` ou `operationId`) e mantém o estado da operação pendente para reconciliação e retry pelo mesmo caminho oficial. Se o comando original já tiver sido persistido pelo backend, a repetição devolve o recibo autoritativo sem duplicar pedidos, ledger ou estatísticas.
+- **Cold Start e Custos:** Mantém-se `minInstances: 0` na declaração dos endpoints (zero custo fixo mensal). Pings periódicos via cron e atalhos de aquecimento por payload público foram removidos do código. Timeout transitório não deve ser confundido com cold start.
+
 - Administração de contas passa pelo módulo `users`, com autorização, sincronização e tratamento de estado pendente.
 - `revokeDeviceSession` solicita desconexão cooperativa; `revokeAllSessions` trata revogação global.
 - `sendCustomEmail` admite administrador ou permissão de envio correspondente. O fluxo com chave de idempotência usa reserva local, chave do provedor e recuperação documentada.

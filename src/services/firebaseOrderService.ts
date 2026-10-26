@@ -28,13 +28,68 @@ import { loadPendingOrderOperation, savePendingOrderOperation, clearPendingOrder
 
 const ORDERS_COLLECTION = 'orders';
 
-function callableErrorCode(error: any): string {
+export function callableErrorCode(error: any): string {
   return String(error?.code || '').replace(/^functions\//, '');
 }
 
+/**
+ * Classifica falhas transitórias de transporte, rede ou indisponibilidade de gateway
+ * para fins de tratamento de operação inconclusiva e reconciliação idempotente via gateway.
+ */
+export function isTransientCallableError(error: any): boolean {
+  if (!error) return false;
+  const code = callableErrorCode(error);
+
+  // Erros definitivos do backend/aplicação indicam recusa com resultado conhecido,
+  // NUNCA falha transitória de transporte ou estado inconclusivo
+  const definitiveAppCodes = [
+    'invalid-argument',
+    'permission-denied',
+    'unauthenticated',
+    'not-found',
+    'already-exists',
+    'failed-precondition',
+    'aborted',
+    'out-of-range',
+    'unimplemented',
+    'resource-exhausted',
+    'data-loss',
+  ];
+  if (definitiveAppCodes.includes(code)) {
+    return false;
+  }
+
+  // Códigos canônicos de indisponibilidade de transporte / timeout do SDK Firebase
+  if (['unavailable', 'deadline-exceeded', 'network-request-failed'].includes(code)) {
+    return true;
+  }
+
+  // Status HTTP em detalhes de resposta se disponíveis no erro
+  const status = Number(error?.status || error?.customData?.status || error?.response?.status);
+  if ([502, 503, 504, 520, 521, 522, 523, 524].includes(status)) {
+    return true;
+  }
+
+  // Mensagens de falha de transporte no navegador / borda da Cloudflare
+  const message = String(error?.message || '');
+
+  // Detecção conservadora de falha de rede/gateway:
+  // Evita falsos positivos com números arbitrários em mensagens de negócio
+  const hasGatewaySignal =
+    /failed to fetch|network\s*request\s*failed|network\s*error|load\s+failed|net::err/i.test(message) ||
+    /cloudflare|bad\s+gateway|gateway\s+timeout|connection\s+timed?\s*out/i.test(message) ||
+    /\b(502|503|504|520|521|522|523|524)\b.*(gateway|cloudflare|proxy|host|server)/i.test(message) ||
+    /(gateway|cloudflare|proxy|host|server).*\b(502|503|504|520|521|522|523|524)\b/i.test(message);
+
+  return hasGatewaySignal;
+}
+
+/** Alias para compatibilidade reversa */
+export const isGatewayUnavailableError = isTransientCallableError;
+
 function isUncertainCallableError(error: any): boolean {
   return ['deadline-exceeded', 'unavailable', 'internal', 'unknown', 'network-request-failed'].includes(callableErrorCode(error))
-    || /network|timeout|connection|failed to fetch/i.test(String(error?.message || ''));
+    || isTransientCallableError(error);
 }
 
 export class FirebaseOrderService {
@@ -521,14 +576,13 @@ export class FirebaseOrderService {
         throw err;
       }
 
-      // Em erro de rede/timeout real da Function, verificar no servidor se o documento foi gravado
+      // Em erro de rede/timeout real da Function, preservar estado incerto com chave da operação
       const isNetworkOrTimeout = isUncertainCallableError(err);
 
       if (isNetworkOrTimeout) {
-        // Se o documento não foi encontrado na leitura imediata OU a leitura falhou,
-        // NÃO se pode concluir que a Function não gravou (ela pode gravar segundos depois).
+        // Se a leitura falhou ou houve timeout, NÃO se pode concluir que a Function não gravou.
         // Preservamos a chave da operação no erro para que repetições usem o mesmo ID
-        // e informamos que o resultado não pôde ser confirmado.
+        // e informamos que o resultado precisa ser confirmado pelo gateway.
         const unconfirmedError: any = new Error(
           `A gravação do pedido não pôde ser confirmada devido ao tempo de resposta esgotado. ` +
           `A chave da operação (${effectiveOrderId}) foi preservada. ` +

@@ -4,9 +4,12 @@ const { callable, getDoc, getDocFromServer, runTransaction } = vi.hoisted(() => 
   callable: vi.fn(), getDoc: vi.fn(), getDocFromServer: vi.fn(), runTransaction: vi.fn(),
 }));
 vi.mock('../../src/lib/firebase', () => ({
-  db: {}, auth: { currentUser: { uid: 'user-1' } }, functions: { customDomain: 'api.luisices.com.br' },
+  db: {}, auth: { currentUser: { uid: 'user-1' } },
+  functions: { customDomain: 'api.luisices.com.br' },
 }));
-vi.mock('firebase/functions', () => ({ httpsCallable: vi.fn(() => callable) }));
+vi.mock('firebase/functions', () => ({
+  httpsCallable: vi.fn(() => callable),
+}));
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn((_db, coll) => ({ coll })),
   doc: vi.fn((_db, coll, id) => ({ coll, id: id || 'new-operation-id' })),
@@ -14,7 +17,11 @@ vi.mock('firebase/firestore', () => ({
   getDocs: vi.fn(), setDoc: vi.fn(), updateDoc: vi.fn(), deleteDoc: vi.fn(), addDoc: vi.fn(),
   query: vi.fn(), where: vi.fn(), orderBy: vi.fn(), Timestamp: { now: vi.fn() },
 }));
-import { firebaseOrderService } from '../../src/services/firebaseOrderService';
+import {
+  firebaseOrderService,
+  isTransientCallableError,
+  isGatewayUnavailableError,
+} from '../../src/services/firebaseOrderService';
 
 const order = { userId: 'user-1', customerName: 'Cliente', productName: 'Produto', quantity: 1,
   price: 100, deliveryDate: '2026-12-10', status: 'pending', version: 2 };
@@ -119,4 +126,113 @@ describe('Pedidos: confirmação autoritativa de operações pendentes', () => {
       expect(getDocFromServer).not.toHaveBeenCalled();
     },
   );
+
+  it('na criação, timeout ou falha de transporte preserva estado inconcluso com chave determinística para retry via gateway', async () => {
+    callable.mockRejectedValue(timeout());
+
+    await expect(firebaseOrderService.createOrder(order as any, undefined, undefined, 'my-idempotency-key'))
+      .rejects.toMatchObject({
+        code: 'unconfirmed-order',
+        idempotencyKey: 'my-idempotency-key',
+      });
+    expect(callable).toHaveBeenCalledOnce();
+  });
+
+  it('na edição, timeout preserva operação inconclusiva e não tenta uma rota alternativa', async () => {
+    callable.mockRejectedValue(timeout());
+
+    await expect(firebaseOrderService.updateOrder('order-1', { price: 200 }, 2, 'edit-timeout-op'))
+      .rejects.toMatchObject({
+        code: 'unconfirmed-update',
+        operationId: 'edit-timeout-op',
+        isUnconfirmed: true,
+      });
+    expect(callable).toHaveBeenCalledOnce();
+    expect(callable).toHaveBeenCalledWith(expect.objectContaining({
+      orderId: 'order-1',
+      expectedVersion: 2,
+      operationId: 'edit-timeout-op',
+    }));
+    expect(runTransaction).not.toHaveBeenCalled();
+  });
+
+  it('não altera fluxo para erro definitivo de validação ou permissão no gateway', async () => {
+    const error = Object.assign(new Error('Payload inválido'), { code: 'functions/invalid-argument' });
+    callable.mockRejectedValue(error);
+
+    await expect(firebaseOrderService.createOrder(order as any, undefined, undefined, 'my-idem-key'))
+      .rejects.toBe(error);
+    expect(callable).toHaveBeenCalledOnce();
+  });
+
+  it('erro interno genérico do backend preserva estado inconcluso com a chave da operação', async () => {
+    const internalBackendBug = Object.assign(new Error('Cannot read properties of undefined (reading calculateDiscount)'), {
+      code: 'functions/internal',
+    });
+    callable.mockRejectedValue(internalBackendBug);
+
+    await expect(firebaseOrderService.createOrder(order as any, undefined, undefined, 'my-idem-key'))
+      .rejects.toMatchObject({
+        code: 'unconfirmed-order',
+        idempotencyKey: 'my-idem-key',
+      });
+    expect(callable).toHaveBeenCalledOnce();
+  });
+
+  it('falha transitória 502/504 da Cloudflare preserva estado inconcluso para retry idempotente pelo gateway', async () => {
+    const cloudflare502 = Object.assign(new Error('502 Bad Gateway - Cloudflare proxy error'), {
+      code: 'functions/unavailable',
+      status: 502,
+    });
+    callable.mockRejectedValue(cloudflare502);
+
+    await expect(firebaseOrderService.createOrder(order as any, undefined, undefined, 'cf-idem-key'))
+      .rejects.toMatchObject({
+        code: 'unconfirmed-order',
+        idempotencyKey: 'cf-idem-key',
+      });
+    expect(callable).toHaveBeenCalledOnce();
+  });
+});
+
+describe('Classificação de Erros Transitórios de Callable (isTransientCallableError)', () => {
+  it('mantém isGatewayUnavailableError como alias para isTransientCallableError', () => {
+    expect(isGatewayUnavailableError).toBe(isTransientCallableError);
+  });
+
+  it('identifica códigos canônicos de indisponibilidade e timeout', () => {
+    expect(isTransientCallableError({ code: 'functions/unavailable' })).toBe(true);
+    expect(isTransientCallableError({ code: 'unavailable' })).toBe(true);
+    expect(isTransientCallableError({ code: 'functions/deadline-exceeded' })).toBe(true);
+    expect(isTransientCallableError({ code: 'functions/network-request-failed' })).toBe(true);
+  });
+
+  it('identifica falhas de rede típicas do navegador', () => {
+    expect(isTransientCallableError(new Error('Failed to fetch'))).toBe(true);
+    expect(isTransientCallableError(new Error('NetworkError when attempting to fetch resource'))).toBe(true);
+    expect(isTransientCallableError(new Error('net::ERR_CONNECTION_TIMED_OUT'))).toBe(true);
+    expect(isTransientCallableError(new Error('Network request failed'))).toBe(true);
+  });
+
+  it('identifica códigos e mensagens específicos de gateway/Cloudflare', () => {
+    expect(isTransientCallableError({ status: 502, message: 'Bad Gateway' })).toBe(true);
+    expect(isTransientCallableError({ customData: { status: 504 } })).toBe(true);
+    expect(isTransientCallableError(new Error('Cloudflare 524 A timeout occurred'))).toBe(true);
+    expect(isTransientCallableError(new Error('502 Bad Gateway from cloudflare edge'))).toBe(true);
+  });
+
+  it('NÃO classifica erros definitivos de aplicação/negócio como falha transitória', () => {
+    expect(isTransientCallableError({ code: 'functions/invalid-argument', message: 'Item 502 inválido' })).toBe(false);
+    expect(isTransientCallableError({ code: 'functions/permission-denied', message: 'Sem permissão' })).toBe(false);
+    expect(isTransientCallableError({ code: 'functions/unauthenticated', message: 'Faça login' })).toBe(false);
+    expect(isTransientCallableError({ code: 'functions/failed-precondition', message: 'Versão em conflito' })).toBe(false);
+    expect(isTransientCallableError({ code: 'functions/already-exists', message: 'Pedido já existe' })).toBe(false);
+    expect(isTransientCallableError({ code: 'functions/not-found', message: 'Pedido não encontrado' })).toBe(false);
+  });
+
+  it('NÃO classifica erro interno genérico do backend (sem sinal de gateway) como falha transitória de gateway', () => {
+    expect(isTransientCallableError({ code: 'functions/internal', message: 'Null pointer exception in handler' })).toBe(false);
+    expect(isTransientCallableError({ code: 'functions/unknown', message: 'Erro ao conectar ao banco de dados' })).toBe(false);
+    expect(isTransientCallableError({ code: 'functions/internal', message: 'Erro no cálculo do item 502' })).toBe(false);
+  });
 });
