@@ -43,6 +43,76 @@ const newOrder = (id: string) => ({
 });
 
 describe('Cloud Function: atualização segura de pedidos com muitos itens', () => {
+  describe('regressão: recibo durável e identidade independente do estado atual', () => {
+    async function setup(suffix: string) {
+      const uid = `receipt-owner-${suffix}-${Date.now()}`;
+      const id = `receipt-order-${suffix}-${Date.now()}`;
+      await adminDb.doc(`userProfiles/${uid}`).set({ role: 'user', active: true, permissions: { orders: { edit: true } } });
+      await adminDb.doc(`orders/${id}`).set({ ...newOrder(id), userId: uid });
+      const command = (operationId: string, expectedVersion: number, updates: any) => ({
+        auth: { uid, token: { auth_time: 1 } }, data: { orderId: id, operationId, expectedVersion, updates },
+      });
+      return { uid, id, command };
+    }
+
+    it('lê recibo sem customerId e confirma operação antiga após uma edição posterior', async () => {
+      const { id, command } = await setup('after-edit');
+      const first = command('first', 1, {
+        price: 5, items: [{ name: 'Item inicial', quantity: 1, unitPrice: 5, price: 5 }],
+      });
+      await handleUpdateComplexOrder(first, adminDb);
+      const eventsBefore = await adminDb.doc(`orders/${id}`).collection('paymentEvents').get();
+      await handleUpdateComplexOrder(command('second', 2, { notes: 'Edição posterior' }), adminDb);
+      expect(await handleUpdateComplexOrder(first, adminDb)).toMatchObject({ alreadyApplied: true, version: 2 });
+      expect((await adminDb.doc(`orders/${id}`).get()).data()).toMatchObject({ version: 3, notes: 'Edição posterior', price: 5 });
+      expect((await adminDb.doc(`orders/${id}`).collection('paymentEvents').get()).size).toBe(eventsBefore.size);
+    });
+
+    it('conversão em permuta pode ser repetida com o mesmo comando original', async () => {
+      const { command } = await setup('exchange');
+      const request = command('exchange', 1, { isExchange: true, price: 0,
+        items: [{ name: 'Item inicial', quantity: 1, unitPrice: 0, price: 0 }] });
+      await handleUpdateComplexOrder(request, adminDb);
+      expect(await handleUpdateComplexOrder(request, adminDb)).toMatchObject({ alreadyApplied: true, version: 2 });
+    });
+
+    it('duas chamadas concorrentes da mesma edição aplicam versão e eventos uma única vez', async () => {
+      const { id, command } = await setup('concurrent');
+      const request = command('concurrent', 1, { price: 20,
+        items: [{ name: 'Item inicial', quantity: 1, unitPrice: 20, price: 20 }] });
+      const results = await Promise.all([handleUpdateComplexOrder(request, adminDb), handleUpdateComplexOrder(request, adminDb)]);
+      expect(results.filter((result) => result.alreadyApplied)).toHaveLength(1);
+      expect((await adminDb.doc(`orders/${id}`).get()).data()?.version).toBe(2);
+      expect((await adminDb.doc(`orders/${id}`).collection('operationReceipts').get()).size).toBe(1);
+    });
+
+    it('lê cliente e recibo em posições fixas e não duplica estatísticas em replay', async () => {
+      const { uid, id, command } = await setup('customer');
+      const customerId = `customer-${id}`;
+      await adminDb.doc(`customers/${customerId}`).set({ userId: uid, name: 'Cliente', totalOrders: 0, totalSpent: 0 });
+      const request = command('with-customer', 1, { customerId });
+      await handleUpdateComplexOrder(request, adminDb);
+      expect(await handleUpdateComplexOrder(request, adminDb)).toMatchObject({ alreadyApplied: true });
+      expect((await adminDb.doc(`customers/${customerId}`).get()).data()).toMatchObject({ totalOrders: 1, totalSpent: 10 });
+      expect((await adminDb.doc(`orders/${id}`).get()).data()?.version).toBe(2);
+    });
+
+    it('não permite que outro administrador reutilize o recibo de outro usuário', async () => {
+      const { id, command } = await setup('admin-replay');
+      const request = command('owner-operation', 1, { notes: 'Alteração original' });
+      await handleUpdateComplexOrder(request, adminDb);
+      const adminUid = `another-admin-${id}`;
+      await adminDb.doc(`userProfiles/${adminUid}`).set({ role: 'admin', active: true });
+      await expect(handleUpdateComplexOrder({ ...request, auth: { uid: adminUid, token: { auth_time: 1 } } }, adminDb))
+        .rejects.toMatchObject({ code: 'permission-denied' });
+    });
+
+    it('informa que uma operação sem recibo e com versão antiga não foi aplicada', async () => {
+      const { command } = await setup('stale-version');
+      await expect(handleUpdateComplexOrder(command('stale', 2, { notes: 'Não aplicar' }), adminDb))
+        .rejects.toMatchObject({ code: 'failed-precondition', details: { operationState: 'not-applied' } });
+    });
+  });
   it.each(Array.from({ length: 10 }, (_, index) => index + 1))(
     'atualiza atomicamente pedido e salesLedger com %i item(ns)',
     async (itemCount) => {
@@ -76,6 +146,7 @@ describe('Cloud Function: atualização segura de pedidos com muitos itens', () 
         data: {
           orderId: id,
           expectedVersion: 1,
+          operationId: `items-${itemCount}`,
           updates: {
             items,
             quantity,
@@ -601,6 +672,180 @@ describe('Cloud Function: atualização segura de pedidos com muitos itens', () 
     expect((await orderRef.get()).data()).toMatchObject({ price: 15, customerId: newCustomerId });
     expect((await adminDb.doc(`salesLedger/${id}`).get()).data()).toMatchObject({
       amount: 15, customerId: newCustomerId,
+    });
+  });
+
+  describe('operationId e Idempotência em updateComplexOrder', () => {
+    it('persiste lastOperationId e responde já aplicado de forma idempotente em caso de repetição', async () => {
+      const id = `op-id-test-${Date.now()}`;
+      const orderRef = adminDb.doc(`orders/${id}`);
+      const saleRef = adminDb.doc(`salesLedger/${id}`);
+      const initial = newOrder(id);
+      await Promise.all([
+        orderRef.set(initial),
+        saleRef.set({
+          id, orderId: id, orderNumber: initial.orderNumber, userId: initial.userId,
+          amount: initial.price, quantity: initial.quantity, isExchange: false,
+          status: initial.status, paymentStatus: 'paid', paidAmount: initial.price,
+          paymentMethod: 'pix', customerName: initial.customerName,
+          productName: initial.productName, updatedAt: initial.createdAt,
+        }),
+      ]);
+
+      const opId = `op-token-${Date.now()}`;
+      const payload = {
+        auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+        data: {
+          orderId: id,
+          expectedVersion: 1,
+          operationId: opId,
+          updates: {
+            price: 25,
+            items: [{ name: 'Item inicial', quantity: 1, unitPrice: 25, price: 25 }],
+            payment: { status: 'pending', method: 'pix', totalAmount: 25, paidAmount: 0, remainingAmount: 25 },
+          },
+        },
+      };
+
+      // 1ª Execução: aplica a atualização
+      const result1 = await handleUpdateComplexOrder(payload, adminDb);
+      expect(result1.success).toBe(true);
+
+      const orderSnap1 = await orderRef.get();
+      expect(orderSnap1.data()?.version).toBe(2);
+      expect(orderSnap1.data()?.price).toBe(25);
+      expect(orderSnap1.data()?.lastOperationId).toBe(opId);
+
+      // 2ª Execução com a mesma operationId (ex: timeout de rede no cliente e repetição com expectedVersion 1)
+      const result2 = await handleUpdateComplexOrder(payload, adminDb);
+      expect(result2.success).toBe(true);
+      expect(result2.alreadyApplied).toBe(true);
+
+      // Não duplicou incremento de versão
+      const orderSnap2 = await orderRef.get();
+      expect(orderSnap2.data()?.version).toBe(2);
+      expect(orderSnap2.data()?.price).toBe(25);
+
+      // O recibo durável foi persistido na subcoleção operationReceipts
+      const receiptSnap = await adminDb.doc(`orders/${id}/operationReceipts/${opId}`).get();
+      expect(receiptSnap.exists).toBe(true);
+      expect(receiptSnap.data()?.version).toBe(2);
+      expect(receiptSnap.data()?.userId).toBe('complex-owner');
+    });
+
+    it('rejeita com conflito explícito quando o mesmo operationId é reutilizado com alterações diferentes', async () => {
+      const id = `op-id-conflict-${Date.now()}`;
+      const orderRef = adminDb.doc(`orders/${id}`);
+      const saleRef = adminDb.doc(`salesLedger/${id}`);
+      const initial = newOrder(id);
+      await Promise.all([
+        orderRef.set(initial),
+        saleRef.set({
+          id, orderId: id, orderNumber: initial.orderNumber, userId: initial.userId,
+          amount: initial.price, quantity: initial.quantity, isExchange: false,
+          status: initial.status, paymentStatus: 'paid', paidAmount: initial.price,
+          paymentMethod: 'pix', customerName: initial.customerName,
+          productName: initial.productName, updatedAt: initial.createdAt,
+        }),
+      ]);
+
+      const opId = `op-conflict-token-${Date.now()}`;
+      const payload1 = {
+        auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+        data: {
+          orderId: id,
+          expectedVersion: 1,
+          operationId: opId,
+          updates: {
+            price: 25,
+            items: [{ name: 'Item inicial', quantity: 1, unitPrice: 25, price: 25 }],
+            payment: { status: 'pending', method: 'pix', totalAmount: 25, paidAmount: 0, remainingAmount: 25 },
+          },
+        },
+      };
+
+      await handleUpdateComplexOrder(payload1, adminDb);
+
+      // Reenvio com o mesmo opId, mas alterando para price: 30
+      const payload2 = {
+        auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+        data: {
+          orderId: id,
+          expectedVersion: 1,
+          operationId: opId,
+          updates: {
+            price: 30,
+            items: [{ name: 'Item inicial', quantity: 1, unitPrice: 30, price: 30 }],
+            payment: { status: 'pending', method: 'pix', totalAmount: 30, paidAmount: 0, remainingAmount: 30 },
+          },
+        },
+      };
+
+      await expect(handleUpdateComplexOrder(payload2, adminDb)).rejects.toThrow(
+        'Este identificador de operação já foi utilizado com alterações diferentes.',
+      );
+    });
+
+    it('avalia autorização antes de responder ao replay idempotente', async () => {
+      const id = `op-auth-replay-${Date.now()}`;
+      const orderRef = adminDb.doc(`orders/${id}`);
+      const saleRef = adminDb.doc(`salesLedger/${id}`);
+      const userRef = adminDb.doc('userProfiles/revoked-employee');
+      const initial = { ...newOrder(id), userId: 'complex-owner', assignedTo: 'revoked-employee' };
+
+      await Promise.all([
+        orderRef.set(initial),
+        saleRef.set({
+          id, orderId: id, orderNumber: initial.orderNumber, userId: initial.userId,
+          amount: initial.price, quantity: initial.quantity, isExchange: false,
+          status: initial.status, paymentStatus: 'paid', paidAmount: initial.price,
+          paymentMethod: 'pix', customerName: initial.customerName,
+          productName: initial.productName, updatedAt: initial.createdAt,
+        }),
+        userRef.set({ role: 'funcionario', active: true, permissions: { orders: { edit: true } } }),
+      ]);
+
+      const opId = `op-auth-token-${Date.now()}`;
+      const payload = {
+        auth: { uid: 'revoked-employee', token: { auth_time: 1 } },
+        data: {
+          orderId: id,
+          expectedVersion: 1,
+          operationId: opId,
+          updates: {
+            price: 25,
+            items: [{ name: 'Item inicial', quantity: 1, unitPrice: 25, price: 25 }],
+            payment: { status: 'pending', method: 'pix', totalAmount: 25, paidAmount: 0, remainingAmount: 25 },
+          },
+        },
+      };
+
+      // 1ª Execução: bem sucedida pelo funcionário autorizado
+      await handleUpdateComplexOrder(payload, adminDb);
+
+      // Agora o perfil do funcionário é inativado
+      await userRef.set({ role: 'funcionario', active: false, permissions: { orders: { edit: false } } });
+
+      // Replay do mesmo opId DEVE SER RECUSADO por falta de autorização ativa
+      await expect(handleUpdateComplexOrder(payload, adminDb)).rejects.toThrow(
+        'Você não tem permissão para editar este pedido.',
+      );
+    });
+
+    it('rejeita operationId com formato ou tamanho inválido', async () => {
+      const id = `op-id-invalid-${Date.now()}`;
+      const orderRef = adminDb.doc(`orders/${id}`);
+      await orderRef.set(newOrder(id));
+
+      await expect(handleUpdateComplexOrder({
+        auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+        data: {
+          orderId: id,
+          expectedVersion: 1,
+          operationId: 'invalid operation id with spaces!',
+          updates: { price: 30 },
+        },
+      }, adminDb)).rejects.toThrow('Identificador de operação inválido.');
     });
   });
 });

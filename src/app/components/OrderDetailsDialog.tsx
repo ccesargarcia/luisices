@@ -21,6 +21,8 @@ import { toast } from 'sonner';
 import { parseDecimalMoneyInput } from '../utils/parseDecimalMoneyInput';
 import { formatDecimalMoneyInput } from '../utils/formatDecimalMoneyInput';
 import { reconstructOrderProducts } from '../utils/reconstructOrderProducts';
+import { secureRandomId } from '../utils/random';
+import { loadPendingOrderOperation, savePendingOrderOperation, clearPendingOrderOperation, isDefinitiveOrderRejection, PendingOrderOperation } from '../../services/pendingOrderOperations';
 import { OrderInfoView } from './orders/OrderInfoView';
 import { OrderEditForm, ProductItem, OrderEditState } from './orders/OrderEditForm';
 import { OrderAttachmentsSection } from './orders/OrderAttachmentsSection';
@@ -73,6 +75,8 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
     && (isAdmin || (hasPermission(p => p.orders?.view ?? false)
       && (order.userId === user?.uid || order.assignedTo === user?.uid))));
   const [isEditing, setIsEditing] = useState(false);
+  const [editOperationId, setEditOperationId] = useState<string | null>(null);
+  const [hasPendingEdit, setHasPendingEdit] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
@@ -237,9 +241,11 @@ Equipe ${settings?.businessName || 'Luisices'}`;
   // Resetar estado de edição sempre que o pedido aberto mudar
   useEffect(() => {
     setIsEditing(false);
+    setEditOperationId(null);
+    setHasPendingEdit(Boolean(user && order && loadPendingOrderOperation(user.uid, `edit:${order.id}`)));
     setGeneratedTrackingUrl('');
     setGeneratedTrackingExpiresAt(undefined);
-  }, [order?.id]);
+  }, [order?.id, user?.uid]);
 
   useEffect(() => {
     setTrackingLinkActive(Boolean(order?.hasPublicTracking));
@@ -393,12 +399,28 @@ Equipe ${settings?.businessName || 'Luisices'}`;
 
   const handleEditClick = () => {
     resetEditData();
+    const pending = user && loadPendingOrderOperation(user.uid, `edit:${order.id}`);
+    setHasPendingEdit(Boolean(pending));
+    setEditOperationId(pending ? pending.id : secureRandomId(20));
     setIsEditing(true);
   };
 
   const handleCancelEdit = () => {
     setIsEditing(false);
+    setEditOperationId(null);
     resetEditData();
+  };
+
+  const confirmEdit = async (operation: PendingOrderOperation<{ updates: Partial<Order>; expectedVersion: number }>) => {
+    await firebaseOrderService.updateOrder(order.id, operation.payload.updates, operation.payload.expectedVersion, operation.id);
+    // A replay may confirm an old version; show the actual current order instead
+    // of synthesizing version + 1 or overwriting a later concurrent edit locally.
+    const saved = await firebaseOrderService.getOrderByIdFromServer(order.id);
+    onOrderUpdated?.(saved);
+    if (user) clearPendingOrderOperation(user.uid, `edit:${order.id}`);
+    setHasPendingEdit(false);
+    setEditOperationId(null);
+    setIsEditing(false);
   };
 
   const handleAssign = async (value: string) => {
@@ -417,8 +439,14 @@ Equipe ${settings?.businessName || 'Luisices'}`;
   };
 
   const handleSaveEdit = async () => {
+    if (!user || isSaving) return;
+    const pending = loadPendingOrderOperation<{ updates: Partial<Order>; expectedVersion: number }>(user.uid, `edit:${order.id}`);
     setIsSaving(true);
     try {
+      if (pending) {
+        await confirmEdit(pending);
+        return;
+      }
       const validProducts = editProducts.filter(p => p.name.trim());
       if (validProducts.length === 0) {
         toast.error('Informe pelo menos um produto para o pedido.');
@@ -582,15 +610,23 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                 })
             : [],
         };
-      await firebaseOrderService.updateOrder(order.id, updates, order.version);
-      onOrderUpdated?.({
-        ...order,
-        ...updates,
-        version: (order.version || 1) + 1,
-        updatedAt: new Date().toISOString(),
-      });
-      setIsEditing(false);
+      const opId = editOperationId || secureRandomId(20);
+      if (!editOperationId) setEditOperationId(opId);
+      const operation = savePendingOrderOperation(user.uid, `edit:${order.id}`, {
+        updates, expectedVersion: order.version || 1,
+      }, opId);
+      setHasPendingEdit(true);
+      await confirmEdit(operation);
     } catch (error: any) {
+      if ((!pending && isDefinitiveOrderRejection(error)) || error?.details?.operationState === 'not-applied') {
+        clearPendingOrderOperation(user.uid, `edit:${order.id}`);
+        setHasPendingEdit(false);
+        setEditOperationId(null);
+        if (error?.details?.operationState === 'not-applied') {
+          setIsEditing(false);
+          try { onOrderUpdated?.(await firebaseOrderService.getOrderByIdFromServer(order.id)); } catch { /* The user can refresh later. */ }
+        }
+      }
       console.error('Erro ao atualizar pedido:', error);
       toast.error(error.message || 'Erro ao atualizar pedido');
     } finally {
@@ -599,10 +635,14 @@ Equipe ${settings?.businessName || 'Luisices'}`;
   };
 
   const handleDuplicate = async () => {
-    if (!order) return;
+    if (!order || !user || isDuplicating) return;
+    const scope = `duplicate:${order.id}`;
+    const operation = loadPendingOrderOperation(user.uid, scope)
+      || savePendingOrderOperation(user.uid, scope, { sourceId: order.id });
     setIsDuplicating(true);
     try {
-      await firebaseOrderService.duplicateOrder(order.id);
+      await firebaseOrderService.duplicateOrder(order.id, operation.id);
+      clearPendingOrderOperation(user.uid, scope);
       onOpenChange(false);
     } catch (error) {
       console.error('Erro ao duplicar pedido:', error);
@@ -843,6 +883,13 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         {isEditing ? (
           /* Modo de Edição */
           <DialogBody className="p-4 sm:p-6">
+            {hasPendingEdit ? (
+              <div className="space-y-4">
+                <p>A edição anterior ainda precisa ser confirmada. Confirme o resultado antes de fazer novas alterações.</p>
+                <Button onClick={handleSaveEdit} disabled={isSaving}>Confirmar edição pendente</Button>
+                <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving}>Fechar edição</Button>
+              </div>
+            ) : (
             <OrderEditForm
               editData={editData}
               onEditDataChange={setEditData}
@@ -859,6 +906,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
               onSave={handleSaveEdit}
               isSaving={isSaving}
             />
+            )}
           </DialogBody>
         ) : (
           /* Modo de Visualização */

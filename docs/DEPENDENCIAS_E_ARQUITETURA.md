@@ -1,6 +1,6 @@
 # Arquitetura e dependências
 
-Revisão estrutural inicial: **10/10/2026**. Organização e plano de manutenção atualizados em **12/10/2026**, na `develop`. Este mapa descreve relações verificáveis no repositório; não substitui inventário de serviços configurados na nuvem.
+Revisão estrutural inicial: **10/10/2026**. Fluxos de pedidos e publicação atualizados em **25/10/2026**, na `develop`. Este mapa descreve relações verificáveis no repositório; não substitui inventário de serviços configurados na nuvem.
 
 ## Entrypoints e execução
 
@@ -14,7 +14,8 @@ Revisão estrutural inicial: **10/10/2026**. Organização e plano de manutenç�
 flowchart TD
   UI["Aplicação React"] --> SDK["Firebase SDK"]
   SDK --> DATA["Auth, Firestore, RTDB e Storage"]
-  SDK --> FN["Cloud Functions por domínio"]
+  SDK --> PROXY["Cloudflare API Worker"]
+  PROXY --> FN["Cloud Functions por domínio"]
   FN --> DATA
   FN --> AI["Gemini"]
   FN --> MAIL["Resend"]
@@ -56,7 +57,7 @@ Um pacote listado não comprova que todos os seus recursos estejam habilitados. 
 | `src/hooks` e contextos | Assinaturas, autenticação e estado compartilhado |
 | `src/app/utils` | Cálculos, formatação e regras reutilizáveis |
 | `functions/users` | Contas, convites, claims, sessões e sincronização |
-| `functions/orders` | Recebimento de encomendas públicas e compatibilidade legada |
+| `functions/orders` | Criação autoritativa, edição financeira, ledger/estatísticas atômicos, recibos, encomendas públicas e acompanhamento |
 | `functions/email` | Envio, recebimento, anexos, idempotência e limpeza |
 | `functions/whatsapp` | Conversas, autorização, integração e persistência de eventos |
 | `functions/ai` | Prompt, schemas, repositórios, ferramentas, orçamento e telemetria |
@@ -79,6 +80,16 @@ Um pacote listado não comprova que todos os seus recursos estejam habilitados. 
 
 Este quadro não é uma concessão de acesso. Regras executáveis: [Firestore](../firestore.rules), [RTDB](../database.rules.json), [Storage](../storage.rules); operações privilegiadas também validam o chamador nas Functions.
 
+## Pedidos: gravação e recuperação
+
+Toda criação do painel, incluindo importações e duplicações, usa `createOrder`. A Function valida autorização/dados e grava pedido, ledger, contador, estatísticas e eventos iniciais na transação. O Firestore nega criação direta pelo cliente. Edições financeiras, alterações de itens e mudanças de cliente vinculado usam `updateComplexOrder`; a edição do modal também usa essa Function quando há `operationId`, mesmo se os valores já aparecem no documento. Outros fluxos não financeiros continuam nas regras de atualização permitidas.
+
+As mutações via Admin SDK não consomem avaliações das regras client-side. Isso retira esses cálculos do caminho sujeito ao limite CEL, mantendo as regras como barreira para acessos diretos. O limite funcional permanece de 1 a 10 itens estruturados; pedidos simples/legados sem lista são aceitos quando válidos.
+
+Na criação, o ID e o hash do comando distinguem repetição de nova compra. Na edição, `orders/{id}/operationReceipts/{operationId}` vincula usuário, comando e versão aplicada. Recibos são privados ao backend e preservados. O cliente conserva comandos pendentes por usuário/fluxo na mesma sessão e confirma pelo backend, em vez de inferir sucesso pelo estado atual. Ver [idempotência](IDEMPOTENCIA_PEDIDOS.md) e [segurança/CEL](SEGURANCA_LIMITE_CEL_PEDIDOS.md).
+
+Uploads, cadastro prévio do cliente e baixa de estoque da calculadora não pertencem à transação do pedido. A garantia de idempotência do pedido não torna esses processos atômicos.
+
 ## IA: fluxo e limites
 
 A UI envia mensagem, histórico limitado e imagem opcional a `aiAgentChat`. O backend valida a sessão, resolve escopo, reserva orçamento, prepara contexto autorizado e chama o modelo com as ferramentas declaradas. As ferramentas consultam dados ou retornam rascunhos; handlers montam boa parte das respostas de forma determinística.
@@ -89,7 +100,7 @@ O cache é em memória e não é compartilhado por todas as instâncias. Orçame
 
 ## Publicação e configuração
 
-A [configuração Firebase](../firebase.json) aponta para regras e índices versionados. O workflow [DEV](../.github/workflows/deploy-dev.yml) pode publicar Hosting, Functions, Firestore/RTDB/Storage e índices. O [workflow de produção](../.github/workflows/deploy.yml) publica o frontend por artefato no GitHub Pages e as regras do Firestore; o [workflow manual de Functions](../.github/workflows/deploy-functions-manual.yml) trata o backend.
+A [configuração Firebase](../firebase.json) aponta para regras e índices versionados. O workflow [DEV](../.github/workflows/deploy-dev.yml) pode publicar Hosting, Functions, Firestore/RTDB/Storage e índices. O frontend de DEV depende do sucesso do deploy de Functions quando ambos mudam. O [workflow de produção](../.github/workflows/deploy.yml) publica o frontend por artefato no GitHub Pages e regras; o [workflow de Functions](../.github/workflows/deploy-functions-manual.yml) publica automaticamente o backend quando `functions/**` ou `firebase.json` mudam na `main`, além da execução manual.
 
 Parâmetros secretos devem ser fornecidos pelos mecanismos de secrets do ambiente. Templates públicos devem conter somente nomes e placeholders. Rotação, permissões de contas de serviço e estado de deploy precisam ser verificados na infraestrutura; não são comprovados por este documento.
 
@@ -102,11 +113,11 @@ Parâmetros secretos devem ser fornecidos pelos mecanismos de secrets do ambient
 - Índices e resumos materializados exigem contratos de atualização, recomputação e definição de período.
 - Agrupar modelos sob uma única tarifa ou ignorar tentativas de fallback pode distorcer a estimativa de IA.
 
-A revisão documental executou **771 testes unitários em 73 arquivos**, todos aprovados. Não realizou teste de carga, validação de faturamento real, E2E remoto ou nova auditoria dos serviços publicados.
+Os **771 testes em 73 arquivos** pertencem à revisão documental anterior. Nesta revisão de pedidos, passaram 195 testes unitários/regressão focados e 171 de integração em emuladores, além de typecheck, build e sintaxe de 68 arquivos de Functions. A suíte unitária completa local teve 1.317 aprovações e uma falha de ambiente: `sharp` indisponível no Android. A CI Linux precisa confirmar a suíte completa; estes resultados não comprovam E2E remoto, carga ou publicação.
 
 ## Responsabilidades e refatoração gradual
 
-A [migração dos SDKs Firebase do backend](MIGRACAO_FIREBASE_SDK.md) registra o inventário de consumidores, a matriz de versões e os critérios de compatibilidade antes da atualização de dependências.
+As versões atuais e os critérios de instalação estão nos manifests e no [guia do backend](../functions/README.md); os resultados históricos da migração estão no [changelog](../CHANGELOG.md).
 
 O critério de modularização é a responsabilidade, não apenas a quantidade de linhas. Telas devem coordenar a interação; regras de domínio devem ser testáveis separadamente; consultas e gravações devem permanecer em componentes de acesso a dados identificáveis. Evite módulos genéricos de utilidades que misturem domínios distintos.
 

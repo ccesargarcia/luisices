@@ -1,6 +1,6 @@
 # Backend Firebase — Luisices
 
-Revisado em **22/10/2026**, branch `develop`. Runtime **Node.js 22**. O entrypoint público é [index.js](index.js); funções internas só ficam disponíveis remotamente quando exportadas e publicadas.
+Pedidos revisados em **25/10/2026**, branch `develop`. Runtime **Node.js 22**. O entrypoint público é [index.js](index.js); funções internas só ficam disponíveis remotamente quando exportadas e publicadas.
 
 ## Instalação e verificação
 
@@ -26,7 +26,7 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 | Acesso e sessões | `getUserAccountMetadata`, `registerDeviceSession`, `revokeAllSessions`, `revokeDeviceSession`, `repairUserClaims` |
 | E-mail | `sendCustomEmail`, `getEmailUsage`, `resendReceivingWebhook`, `cleanupEmailDrafts` |
 | WhatsApp | `sendWhatsAppDirectMessage`, `deleteWhatsAppMessage`, `syncWhatsAppChatMessages`, `getWhatsAppInstanceStatus`, `markWhatsAppChatRead`, `ensureWhatsAppConversation`, `evolutionWhatsAppWebhook` |
-| Loja/pedidos | `submitPublicCatalogOrder`, `getPublicCatalogProducts` |
+| Loja/pedidos | `createOrder`, `updateComplexOrder`, `submitPublicCatalogOrder`, `getPublicCatalogProducts` |
 | Acompanhamento público | `createOrderTrackingLink`, `listOrderTrackingLinks`, `revokeOrderTrackingLink`, `revokeOrderTrackingLinkById`, `deleteOrderTrackingLink`, `deleteOrderTrackingLinksBatch`, `getPublicOrderTracking` |
 | IA | `aiAgentChat`, `getAiUsage`, `enrichGalleryItemWithAi`, `enrichStoreProductWithAi` |
 | Alexa | `alexaWebhook`, `approveAlexaPairing`, `setAlexaPermission`, `revokeAlexaBinding`, `toggleGlobalAlexaIntegration`, `getAlexaIntegrationStatus`, `approveAlexaDraft`, `cancelAlexaDraft` |
@@ -38,6 +38,9 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 `cleanupEmailDrafts` é agendada. Webhooks têm validações próprias; não são chamadas de interface equivalentes aos callables autenticados.
 
 ## Contratos relevantes
+
+- `createOrder` é o caminho autoritativo para criar pedidos do painel; a regra nega criação direta. Grava contador, pedido, ledger, estatísticas e eventos financeiros atomicamente. A chave reutilizada exige mesmo usuário e hash do comando completo; diferenças produzem conflito.
+- `updateComplexOrder` valida a sessão, permissão atual, campos, 1–10 itens e versão; grava recibos duráveis na mesma transação. O replay verifica autorização antes do recibo e reconhece a operação original mesmo após outra edição. O cliente não pode alterar recibos. Ver [contrato de idempotência](../docs/IDEMPOTENCIA_PEDIDOS.md).
 
 - Administração de contas passa pelo módulo `users`, com autorização, sincronização e tratamento de estado pendente.
 - `revokeDeviceSession` solicita desconexão cooperativa; `revokeAllSessions` trata revogação global.
@@ -83,5 +86,7 @@ Configure o DSN do projeto Sentry de backend como secret de Actions `DEV_FUNCTIO
 O backend envia eventos sem dados pessoais padrão; remove conteúdo de requisição e identidade do usuário, oculta credenciais e sanitiza e-mail, telefone e CPF em mensagens e breadcrumbs. O tracing usa amostragem padrão de 5%, ajustável por `SENTRY_TRACES_SAMPLE_RATE` entre `0` e `1`.
 
 O workflow [DEV](../.github/workflows/deploy-dev.yml) seleciona os componentes a publicar. Há [workflow manual de Functions](../.github/workflows/deploy-functions-manual.yml). Para operação manual, selecione explicitamente o projeto e o conjunto de funções após revisão; não use comandos genéricos supondo o ambiente ativo.
+
+O escopo seletivo `orders` deve incluir `createOrder` e `updateComplexOrder`. Para essa entrega, publique backend compatível antes do frontend. O workflow de Functions também tem gatilho automático na `main` para mudanças no backend/configuração Firebase. Esta documentação descreve o código; o sucesso remoto deve ser confirmado no run do ambiente.
 
 Alterar documentação não exige deploy. `[skip tests]` não impede publicação; para commits exclusivamente documentais sem execução dos workflows de push, use `[skip ci]`. Análises gerenciadas pelo GitHub podem continuar.

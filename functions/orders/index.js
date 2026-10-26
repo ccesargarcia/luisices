@@ -10,6 +10,21 @@ const crypto = require('crypto');
 const { publicCatalogOrderLimiter, publicOrderTrackingLimiter } = require('../common/rateLimiters');
 const { getTrustedClientIp } = require('../originProtection');
 
+function canonicalStringify(value) {
+  if (value === null || value === undefined || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return '[' + value.map((entry) => canonicalStringify(entry ?? null)).join(',') + ']';
+  }
+  const keys = Object.keys(value).filter((key) => value[key] !== undefined).sort();
+  return '{' + keys.map((key) => JSON.stringify(key) + ':' + canonicalStringify(value[key])).join(',') + '}';
+}
+
+function computePayloadHash(data) {
+  return crypto.createHash('sha256').update(canonicalStringify(data)).digest('hex');
+}
+
 let publicCatalogCache = { expiresAt: 0, products: null };
 
 /** Retorna somente os campos necessários para montar a vitrine pública. */
@@ -418,25 +433,39 @@ function validateComplexOrderUpdate(updates, order, uid, profile) {
 async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para editar pedidos.');
-  const { orderId, expectedVersion, updates } = request.data || {};
+  const { orderId, expectedVersion, updates, operationId } = request.data || {};
   if (typeof orderId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(orderId)
     || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
     throw new HttpsError('invalid-argument', 'Pedido ou versão inválidos.');
   }
+  if (operationId !== undefined && operationId !== null) {
+    if (typeof operationId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(operationId)) {
+      throw new HttpsError('invalid-argument', 'Identificador de operação inválido.');
+    }
+  }
   if (typeof updates?.customerId === 'string' && !/^[A-Za-z0-9_-]{1,128}$/.test(updates.customerId)) {
     throw new HttpsError('invalid-argument', 'Cliente vinculado inválido.');
   }
+  if (!updates || typeof updates !== 'object' || Array.isArray(updates)
+    || !Object.keys(updates).length || Object.keys(updates).some((key) => !COMPLEX_ORDER_UPDATE_FIELDS.has(key))) {
+    throw new HttpsError('invalid-argument', 'A edição contém campos não permitidos.');
+  }
+  // Hash the command, never its effects on the current order or server-generated dates.
+  // Otherwise a retry after another edit can no longer match its original receipt.
+  const updatePayloadHash = computePayloadHash({ expectedVersion, updates });
   const db = firestore;
   const orderRef = db.doc(`orders/${orderId}`);
   const saleRef = db.doc(`salesLedger/${orderId}`);
   const profileRef = db.doc(`userProfiles/${uid}`);
   return db.runTransaction(async (transaction) => {
+    const receiptRef = operationId ? db.doc(`orders/${orderId}/operationReceipts/${operationId}`) : null;
     const requestedCustomerRef = typeof updates?.customerId === 'string'
       ? db.doc(`customers/${updates.customerId}`)
       : null;
-    const [orderSnap, saleSnap, profileSnap, requestedCustomerSnap] = await Promise.all([
+    const [orderSnap, saleSnap, profileSnap, requestedCustomerSnap, receiptSnap] = await Promise.all([
       transaction.get(orderRef), transaction.get(saleRef), transaction.get(profileRef),
-      ...(requestedCustomerRef ? [transaction.get(requestedCustomerRef)] : []),
+      requestedCustomerRef ? transaction.get(requestedCustomerRef) : null,
+      receiptRef ? transaction.get(receiptRef) : null,
     ]);
     if (!orderSnap.exists) throw new HttpsError('not-found', 'Pedido não encontrado.');
     if (!profileSnap.exists) throw new HttpsError('permission-denied', 'Perfil de usuário não encontrado.');
@@ -446,9 +475,29 @@ async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
       && (!Number.isFinite(request.auth.token.auth_time) || request.auth.token.auth_time <= profile.tokensValidAfterTime)) {
       throw new HttpsError('unauthenticated', 'Sua sessão expirou. Entre novamente.');
     }
+    const admin = profile.role === 'admin';
+    const owner = order.userId === uid;
+    const assignedEmployee = profile.role === 'funcionario' && order.assignedTo === uid;
+    if (profile.active === false || (!admin && !(owner || assignedEmployee))
+      || (!admin && !hasOrderPermission(profile, 'edit'))) {
+      throw new HttpsError('permission-denied', 'Você não tem permissão para editar este pedido.');
+    }
     const currentVersion = order.version === undefined ? 1 : order.version;
+    // Authorization above applies to every replay, including administrators.
+    if (receiptSnap?.exists) {
+      const receipt = receiptSnap.data() || {};
+      if (receipt.userId !== uid || receipt.orderId !== orderId) {
+        throw new HttpsError('permission-denied', 'Identificador de operação pertence a outro usuário ou pedido.');
+      }
+      if (receipt.hashVersion !== 2 || receipt.payloadHash !== updatePayloadHash) {
+        throw new HttpsError('failed-precondition', 'Este identificador de operação já foi utilizado com alterações diferentes.');
+      }
+      return { success: true, orderId, version: receipt.version, alreadyApplied: true };
+    }
     if (!Number.isSafeInteger(currentVersion) || currentVersion !== expectedVersion) {
-      throw new HttpsError('failed-precondition', 'O pedido foi alterado. Atualize a tela e tente novamente.');
+      throw new HttpsError('failed-precondition', 'O pedido foi alterado. Atualize a tela e tente novamente.', {
+        operationState: 'not-applied', orderId, operationId: operationId ?? null,
+      });
     }
     const normalizedUpdates = { ...updates };
     const now = new Date().toISOString();
@@ -538,11 +587,28 @@ async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
     if (!next.isExchange) {
       addCustomerDelta(nextCustomerId, 1, Math.round(Number(next.price || 0) * 100));
     }
-    const orderUpdate = { ...normalizedUpdates, version: currentVersion + 1, updatedAt: now };
+    const orderUpdate = {
+      ...normalizedUpdates,
+      version: currentVersion + 1,
+      updatedAt: now,
+      ...(operationId ? { lastOperationId: operationId, lastOperationPayloadHash: updatePayloadHash } : {}),
+    };
     const changesItemTotals = ['items', 'price', 'quantity', 'pricingMode', 'unitPrice']
       .some((key) => Object.prototype.hasOwnProperty.call(normalizedUpdates, key));
     if (changesItemTotals && Array.isArray(next.items)) orderUpdate.items = next.items;
     transaction.update(orderRef, orderUpdate);
+
+    if (receiptRef) {
+      transaction.set(receiptRef, {
+        operationId,
+        userId: uid,
+        orderId,
+        payloadHash: updatePayloadHash,
+        hashVersion: 2,
+        version: currentVersion + 1,
+        createdAt: now,
+      });
+    }
 
     // A subcoleção fornece uma trilha append-only gravada pelo Admin SDK. O
     // array payment.history permanece como espelho para relatórios existentes.
@@ -631,6 +697,11 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
   if (!orderData || typeof orderData !== 'object' || Array.isArray(orderData)) {
     throw new HttpsError('invalid-argument', 'Dados do pedido inválidos.');
   }
+  if (idempotencyKey !== undefined && idempotencyKey !== null) {
+    if (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(idempotencyKey)) {
+      throw new HttpsError('invalid-argument', 'Chave de idempotência inválida.');
+    }
+  }
 
   const db = firestore;
   const profileSnap = await db.doc(`userProfiles/${uid}`).get();
@@ -641,7 +712,8 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
   if (profile.active === false) {
     throw new HttpsError('permission-denied', 'Conta inativa.');
   }
-  if (profile.tokensValidAfterTime && request.auth?.token?.auth_time <= profile.tokensValidAfterTime) {
+  if (profile.tokensValidAfterTime != null
+    && (!Number.isFinite(request.auth?.token?.auth_time) || request.auth.token.auth_time <= profile.tokensValidAfterTime)) {
     throw new HttpsError('permission-denied', 'Sessão expirada. Faça login novamente.');
   }
   const admin = profile.role === 'admin';
@@ -833,10 +905,19 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
   };
   assertComplexOrderData(orderToValidate, isExchange);
 
+  // Include the entire submitted command (tags, assignment and card color included).
+  // Exclude transport identity and never hash a payment date defaulted to `now`.
+  const payloadToHash = {
+    orderData: { ...orderData, id: undefined, idempotencyKey: undefined },
+    catalogOrderId: catalogOrderId ?? null,
+    quoteId: quoteId ?? null,
+  };
+  const payloadHash = computePayloadHash(payloadToHash);
+
   // Execução atômica no Firestore
   return db.runTransaction(async (transaction) => {
     // 1. Idempotência por identificador
-    const candidateOrderId = idempotencyKey && typeof idempotencyKey === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(idempotencyKey)
+    const candidateOrderId = (idempotencyKey && typeof idempotencyKey === 'string')
       ? idempotencyKey
       : null;
     const orderRef = candidateOrderId ? db.doc(`orders/${candidateOrderId}`) : db.collection('orders').doc();
@@ -846,8 +927,11 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
       const existingSnap = await transaction.get(orderRef);
       if (existingSnap.exists) {
         const existingData = existingSnap.data() || {};
-        if (existingData.userId !== uid && !admin) {
+        if (existingData.userId !== uid) {
           throw new HttpsError('permission-denied', 'Identificador de pedido já utilizado por outro usuário.');
+        }
+        if (existingData.creationHashVersion !== 2 || existingData.payloadHash !== payloadHash) {
+          throw new HttpsError('failed-precondition', 'Esta chave de idempotência já foi utilizada com dados diferentes.');
         }
         return {
           success: true,
@@ -959,6 +1043,9 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
         startedAt: now,
       },
       version: 1,
+      payloadHash,
+      creationHashVersion: 2,
+      idempotencyKey: candidateOrderId ?? null,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,

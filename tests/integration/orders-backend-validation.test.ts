@@ -141,6 +141,15 @@ beforeEach(async () => {
 });
 
 describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () => {
+  it.each(['owner', 'admin'])('cliente %s não pode criar, alterar ou remover recibos de operação', async (uid) => {
+    const path = 'orders/order-receipt/operationReceipts/operation-one';
+    await assertFails(setDoc(doc(dbFor(uid), path), { userId: uid, payloadHash: 'forged', version: 2 }));
+    await env.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc(path).set({ userId: 'owner', payloadHash: 'server-only', version: 2 });
+    });
+    await assertFails(updateDoc(doc(dbFor(uid), path), { version: 100 }));
+    await assertFails(deleteDoc(doc(dbFor(uid), path)));
+  });
   describe('Bloqueio Estrito de Criação Direta pelo Cliente (allow create: if false)', () => {
     it('bloqueia criação direta individual de pedido simples, com itens ou permuta', async () => {
       const ownerDb = dbFor('owner');

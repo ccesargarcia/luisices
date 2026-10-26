@@ -8,7 +8,7 @@ Firestore/Storage; execute os dois comandos localmente para cobrir ambos os conj
 No CI, o workflow executa `test:presence` uma vez no shard 1, logo após as demais
 integrações de regras.
 
-Execute com Node 24 e Java 21 ou superior:
+Execute com Node 22, alinhado ao runtime das Functions e à CI, e Java 21 ou superior. Node 24 também pode ser usado para as verificações locais compatíveis:
 
 ```sh
 npm ci --legacy-peer-deps
@@ -18,6 +18,18 @@ npm run test:integration
 A suíte inicia Firestore e Storage locais com o projeto fictício `demo-luisices-review`, carrega as regras deste repositório e limpa os dados entre testes. Não exige credenciais de produção. As portas 8080 e 9199 devem estar livres.
 
 Cobertura: criação segura de perfil, perfis legados, contas desativadas, isolamento financeiro, galeria privada, criação de pedidos, atribuição individual/coletiva e remoção de atribuição, rollback, conversão concorrente/idempotente, relatórios acima de 200 vendas e pausa/retomada de vendas.
+
+## Pedidos e recuperação após timeout
+
+`create-order-function.test.ts` valida criação atômica de 1–10 itens, idempotência com dados completos, concorrência, permissões e efeitos únicos no contador/ledger/eventos. `complex-order-function.test.ts` valida recibos com/sem cliente vinculado, repetição após edição posterior, permuta, estatísticas e revogação de permissão. `orders-backend-validation.test.ts` também impede que proprietário ou administrador falsifiquem recibos pelo SDK cliente. A confirmação usa o contrato documentado em [Idempotência de pedidos](../../docs/IDEMPOTENCIA_PEDIDOS.md).
+
+Para a regressão focada:
+
+```sh
+npx firebase emulators:exec --config firebase.test.json --project demo-luisices-review --only firestore,storage "npx vitest run --config vitest.integration.config.ts tests/integration/create-order-function.test.ts tests/integration/complex-order-function.test.ts tests/integration/orders-backend-validation.test.ts tests/integration/firebase-regressions.test.ts"
+```
+
+Na revisão de 25/10/2026, esse conjunto teve 171 aprovações. Os testes chamam os handlers reais e o Firestore local, sem comprovar deploy, Worker remoto ou E2E de navegador. O conjunto unitário focado de pedidos teve 195 aprovações. A suíte unitária completa local teve 1.317 aprovações e uma falha do `sharp` no Android; a CI Linux deve validar a suíte completa. Não interpretar a limitação local como aprovação desse teste.
 
 O primeiro uso baixa os emuladores oficiais. Em ambientes onde o Node do sistema bloqueia MD5, use o Node 24 oficial: o emulador de Storage utiliza MD5 nos metadados dos objetos. Isso não requer mudar a configuração criptográfica do sistema.
 

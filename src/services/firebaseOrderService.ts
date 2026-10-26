@@ -9,6 +9,7 @@ import {
   doc,
   addDoc,
   getDoc,
+  getDocFromServer,
   getDocs,
   query,
   where,
@@ -23,10 +24,33 @@ import { parseDecimalMoneyInput } from '../app/utils/parseDecimalMoneyInput';
 import { MAX_ORDER_TAGS } from '../app/utils/orderLimits';
 import { firebaseLedgerService } from './firebaseLedgerService';
 import { firebaseCustomerService } from './firebaseCustomerService';
+import { loadPendingOrderOperation, savePendingOrderOperation, clearPendingOrderOperation } from './pendingOrderOperations';
 
 const ORDERS_COLLECTION = 'orders';
 
+function callableErrorCode(error: any): string {
+  return String(error?.code || '').replace(/^functions\//, '');
+}
+
+function isUncertainCallableError(error: any): boolean {
+  return ['deadline-exceeded', 'unavailable', 'internal', 'unknown', 'network-request-failed'].includes(callableErrorCode(error))
+    || /network|timeout|connection|failed to fetch/i.test(String(error?.message || ''));
+}
+
 export class FirebaseOrderService {
+  /** Executa leitura autoritativa diretamente no servidor Firestore, ignorando caches locais */
+  private async readDocFromServer(ref: any): Promise<any> {
+    if (typeof getDocFromServer === 'function') {
+      try {
+        return await getDocFromServer(ref);
+      } catch (err: any) {
+        // Se a leitura no servidor falhar (ex: rede fora), o erro é repassado para manter estado desconhecido
+        throw err;
+      }
+    }
+    return await getDoc(ref);
+  }
+
   /**
    * Obter usuário autenticado
    */
@@ -427,13 +451,21 @@ export class FirebaseOrderService {
     this.validateOrderPayload(orderData);
     const userId = this.getCurrentUserId();
 
-    // 1. Determina antecipadamente o identificador único e determinístico do pedido.
-    // Isso garante que se a chamada falhar no retorno de rede ou cair no fallback,
-    // o mesmo ID será reutilizado, prevenindo duplicação de pedidos, vendas ou contadores.
-    const effectiveOrderId = idempotencyKey
+    // 1. Determina antecipadamente o identificador único e estável da operação.
+    // Prioridade:
+    // a) idempotencyKey explícita
+    // b) orderData.id já existente
+    // c) novo ID determinístico gerado no Firestore
+    const candidateId = idempotencyKey
       || (typeof (orderData as any).id === 'string' && (orderData as any).id.trim()
         ? (orderData as any).id.trim()
-        : doc(collection(db, ORDERS_COLLECTION)).id);
+        : null)
+      || (typeof (orderData as any).idempotencyKey === 'string' && (orderData as any).idempotencyKey.trim()
+        ? (orderData as any).idempotencyKey.trim()
+        : null)
+      || doc(collection(db, ORDERS_COLLECTION)).id;
+
+    const effectiveOrderId = candidateId;
 
     const sanitizedData: Partial<Order> = {
       ...orderData,
@@ -442,7 +474,10 @@ export class FirebaseOrderService {
       exchangeItems: this.sanitizeExchangeItems(orderData.exchangeItems),
     };
 
-    // 2. Tentar criar via Cloud Function autoritativa (isolamento CEL total)
+    // Even on retry the backend must check authorization AND the original payload.
+    // Finding a document with this ID does not prove this command was accepted.
+
+    // 2. Tentar criar via Cloud Function autoritativa (isolamento CEL total e recuperação de estado)
     try {
       const callable = httpsCallable<{
         orderData: Partial<Order>;
@@ -460,28 +495,50 @@ export class FirebaseOrderService {
         idempotencyKey: effectiveOrderId,
       });
       if (response?.data?.orderId) {
-        return this.getOrderById(response.data.orderId);
+        try {
+          const saved = await this.readDocFromServer(doc(db, ORDERS_COLLECTION, response.data.orderId));
+          if (!saved?.exists()) throw new Error('Pedido ainda não disponível para leitura.');
+          return this.mapOrderDoc(saved);
+        } catch (_readErr: any) {
+          // Se a leitura no servidor falhar logo após a Function responder sucesso,
+          // preserva a chave idempotente no erro para que um retry recupere o mesmo pedido
+          const unconfirmedErr: any = new Error(
+            `O pedido foi processado pelo servidor, mas a confirmação da leitura falhou. ` +
+            `A chave (${response.data.orderId}) foi preservada. Repita a operação para carregar o pedido gravado.`
+          );
+          unconfirmedErr.code = 'unconfirmed-order';
+          unconfirmedErr.orderId = response.data.orderId;
+          unconfirmedErr.idempotencyKey = response.data.orderId;
+          unconfirmedErr.isUnconfirmed = true;
+          throw unconfirmedErr;
+        }
+      }
+      if (functions && Object.keys(functions).length > 0) {
+        throw Object.assign(new Error('Resposta de criação inválida recebida do servidor.'), { code: 'internal' });
       }
     } catch (err: any) {
-      if (err?.code && ['invalid-argument', 'permission-denied', 'not-found', 'failed-precondition', 'already-exists'].includes(err.code)) {
+      if (['invalid-argument', 'permission-denied', 'unauthenticated', 'not-found', 'failed-precondition', 'already-exists', 'unconfirmed-order'].includes(callableErrorCode(err))) {
         throw err;
       }
 
-      // Em erro de rede/timeout real da Function, verificar se o documento foi gravado no servidor (recuperação idempotente)
-      const isNetworkOrTimeout = err?.code === 'deadline-exceeded'
-        || err?.code === 'unavailable'
-        || err?.code === 'network-request-failed'
-        || (typeof err?.message === 'string' && /network|timeout|connection|failed to fetch/i.test(err.message));
+      // Em erro de rede/timeout real da Function, verificar no servidor se o documento foi gravado
+      const isNetworkOrTimeout = isUncertainCallableError(err);
 
       if (isNetworkOrTimeout) {
-        try {
-          const existingDoc = await getDoc(doc(db, ORDERS_COLLECTION, effectiveOrderId));
-          if (existingDoc && typeof existingDoc.exists === 'function' && existingDoc.exists()) {
-            return this.mapOrderDoc(existingDoc);
-          }
-        } catch (_checkErr) {
-          // Silencioso; prossegue para tratamento
-        }
+        // Se o documento não foi encontrado na leitura imediata OU a leitura falhou,
+        // NÃO se pode concluir que a Function não gravou (ela pode gravar segundos depois).
+        // Preservamos a chave da operação no erro para que repetições usem o mesmo ID
+        // e informamos que o resultado não pôde ser confirmado.
+        const unconfirmedError: any = new Error(
+          `A gravação do pedido não pôde ser confirmada devido ao tempo de resposta esgotado. ` +
+          `A chave da operação (${effectiveOrderId}) foi preservada. ` +
+          `Verifique a lista de pedidos ou tente novamente utilizando a mesma chave de operação.`
+        );
+        unconfirmedError.code = 'unconfirmed-order';
+        unconfirmedError.orderId = effectiveOrderId;
+        unconfirmedError.idempotencyKey = effectiveOrderId;
+        unconfirmedError.isUnconfirmed = true;
+        throw unconfirmedError;
       }
 
       // Se a Function está configurada (produção / ambiente real), nunca contorna o fluxo autoritativo
@@ -496,6 +553,7 @@ export class FirebaseOrderService {
       if (typeof err?.message === 'string' && (err.message.includes('_url is not a function') || err.message.includes('No "functions" export'))) {
         isUnconfiguredMock = true;
       }
+      isUnconfiguredMock = import.meta.env.MODE === 'test' && isUnconfiguredMock;
 
       if (!isUnconfiguredMock) {
         console.error('[firebaseOrderService] Falha ao criar pedido via Cloud Function:', err);
@@ -619,6 +677,15 @@ export class FirebaseOrderService {
     }
 
     return this.mapOrderDoc(orderSnap);
+  }
+
+  async getOrderByIdFromServer(orderId: string): Promise<Order> {
+    const uid = this.getCurrentUserId();
+    const snapshot = await this.readDocFromServer(doc(db, ORDERS_COLLECTION, orderId));
+    if (!snapshot?.exists() || !(await this.canAccessAssignedOrder(snapshot.data(), uid))) {
+      throw new Error('Pedido não encontrado ou sem permissão para leitura.');
+    }
+    return this.mapOrderDoc(snapshot);
   }
 
   private mapOrderDoc(doc: any): Order {
@@ -908,7 +975,8 @@ export class FirebaseOrderService {
   async updateOrder(
     orderId: string,
     updates: Partial<Omit<Order, 'id' | 'userId' | 'createdAt' | 'orderNumber'>>,
-    expectedVersion?: number
+    expectedVersion?: number,
+    operationId?: string
   ): Promise<void> {
     this.validateOrderPayload(updates);
     const userId = this.getCurrentUserId();
@@ -935,25 +1003,73 @@ export class FirebaseOrderService {
       && (updates.customerId ?? null) !== (initialOrderData.customerId ?? null);
     // Todas as alterações financeiras/itens passam pela Function. Isso evita
     // depender do custo CEL até mesmo para listas pequenas ou pedidos legados.
-    const requiresBackend = paymentChanged || exchangeChanged || customerChanged || affectsItemTotals;
+    const requiresBackend = Boolean(operationId) || paymentChanged || exchangeChanged || customerChanged || affectsItemTotals;
     if (requiresBackend) {
-      const callable = httpsCallable<{
-        orderId: string;
-        expectedVersion: number;
-        updates: typeof updates;
-      }, { success: boolean }>(
-        functions,
-        'updateComplexOrder',
-      );
       const sanitizedUpdates = {
         ...updates,
         ...(updates.items !== undefined ? { items: this.sanitizeOrderItems(updates.items) } : {}),
       };
-      await callable({
-        orderId,
-        expectedVersion: expectedVersion ?? this.currentOrderVersion(initialOrderData),
-        updates: sanitizedUpdates,
-      });
+      const targetVersion = expectedVersion ?? this.currentOrderVersion(initialOrderData);
+      const effectiveOperationId = operationId
+        || doc(collection(db, ORDERS_COLLECTION)).id;
+
+      try {
+        const callable = httpsCallable<{
+          orderId: string;
+          expectedVersion: number;
+          updates: typeof updates;
+          operationId?: string;
+        }, { success: boolean; alreadyApplied?: boolean }>(
+          functions,
+          'updateComplexOrder',
+        );
+        const response = await callable({
+          orderId,
+          expectedVersion: targetVersion,
+          updates: sanitizedUpdates,
+          operationId: effectiveOperationId,
+        });
+        if (response?.data?.success !== true) {
+          throw Object.assign(new Error('Não foi possível confirmar a resposta da edição.'), { code: 'internal' });
+        }
+        return;
+      } catch (err: any) {
+        if (['invalid-argument', 'permission-denied', 'not-found', 'unauthenticated', 'failed-precondition', 'already-exists'].includes(callableErrorCode(err))) {
+          throw err;
+        }
+
+        if (isUncertainCallableError(err)) {
+          // A matching field or lastOperationId is insufficient: another command
+          // may have reused that ID. Only the backend receipt confirms the retry.
+
+          // Se a leitura falhou ou o resultado for inconclusivo sob timeout (ex: versão não avançou ainda):
+          // mantém o estado como desconhecido e informa que não foi possível confirmar, sem retentar automaticamente.
+          const unconfirmedError: any = new Error(
+            'A alteração do pedido não pôde ser confirmada devido ao tempo de resposta esgotado. ' +
+            'Verifique os dados atuais do pedido antes de tentar novamente.'
+          );
+          unconfirmedError.code = 'unconfirmed-update';
+          unconfirmedError.operationId = effectiveOperationId;
+          unconfirmedError.isUnconfirmed = true;
+          throw unconfirmedError;
+        }
+
+        let isUnconfiguredMock = false;
+        try {
+          isUnconfiguredMock = !functions
+            || (typeof functions === 'object' && Object.keys(functions).length === 0);
+        } catch {
+          isUnconfiguredMock = true;
+        }
+        if (typeof err?.message === 'string' && (err.message.includes('_url is not a function') || err.message.includes('No "functions" export'))) {
+          isUnconfiguredMock = true;
+        }
+        isUnconfiguredMock = import.meta.env.MODE === 'test' && isUnconfiguredMock;
+
+        if (!isUnconfiguredMock) {
+          throw err;
+        }
+      }
       return;
     }
 
@@ -1206,8 +1322,15 @@ export class FirebaseOrderService {
   /**
    * Duplicar pedido
    */
-  async duplicateOrder(orderId: string): Promise<Order> {
+  async duplicateOrder(orderId: string, idempotencyKey?: string): Promise<Order> {
     const userId = this.getCurrentUserId();
+    const scope = `duplicate-payload:${idempotencyKey || orderId}`;
+    const pending = idempotencyKey ? loadPendingOrderOperation<Partial<Order>>(userId, scope) : null;
+    if (pending) {
+      const saved = await this.createOrder(pending.payload, undefined, undefined, pending.id);
+      clearPendingOrderOperation(userId, scope);
+      return saved;
+    }
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
     const orderSnap = await getDoc(orderRef);
 
@@ -1247,7 +1370,10 @@ export class FirebaseOrderService {
       cardColor: data.cardColor || null,
     };
 
-    return this.createOrder(duplicatedPayload);
+    const operation = savePendingOrderOperation(userId, scope, duplicatedPayload, idempotencyKey);
+    const saved = await this.createOrder(operation.payload, undefined, undefined, operation.id);
+    clearPendingOrderOperation(userId, scope);
+    return saved;
   }
 
   /**

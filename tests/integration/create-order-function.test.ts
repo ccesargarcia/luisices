@@ -19,6 +19,37 @@ afterAll(async () => {
 });
 
 describe('Cloud Function: criação atômica de pedidos no backend (handleCreateOrder)', () => {
+  describe('regressão: hash completo do comando original', () => {
+    async function setup(suffix: string) {
+      const uid = `create-command-${suffix}-${Date.now()}`;
+      const key = `create-command-key-${suffix}-${Date.now()}`;
+      await adminDb.doc(`userProfiles/${uid}`).set({ role: 'user', active: true, permissions: { orders: { create: true } } });
+      const orderData = { customerName: 'Cliente', productName: 'Produto', quantity: 1,
+        price: 100, deliveryDate: '2026-12-10', payment: { paidAmount: 100, method: 'pix' } };
+      const request = (data: any = orderData) => ({ auth: { uid, token: { auth_time: 1 } }, data: { orderData: data, idempotencyKey: key } });
+      return { uid, key, orderData, request };
+    }
+
+    it('pagamento sem data explícita continua idempotente em chamadas concorrentes', async () => {
+      const { uid, key, request } = await setup('concurrent');
+      const results = await Promise.all([handleCreateOrder(request(), adminDb), handleCreateOrder(request(), adminDb)]);
+      expect(results.every((result) => result.orderId === key)).toBe(true);
+      expect((await adminDb.doc(`users/${uid}/metadata/counters`).get()).data()?.orderCounter).toBe(1);
+      expect((await adminDb.doc(`orders/${key}`).collection('paymentEvents').get()).size).toBe(1);
+      expect((await adminDb.collection('salesLedger').where('userId', '==', uid).get()).size).toBe(1);
+    });
+
+    it.each([
+      { tags: [{ name: 'Urgente', color: '#123456' }] },
+      { assignedTo: 'employee-2' },
+      { cardColor: '#123456' },
+    ])('rejeita reutilização da chave quando um campo antes omitido muda: %j', async (change) => {
+      const { key, orderData, request } = await setup(Object.keys(change)[0]);
+      await handleCreateOrder(request(), adminDb);
+      await expect(handleCreateOrder(request({ ...orderData, ...change }), adminDb)).rejects.toMatchObject({ code: 'failed-precondition' });
+      expect((await adminDb.doc(`orders/${key}`).get()).data()?.version).toBe(1);
+    });
+  });
   it.each(Array.from({ length: 10 }, (_, index) => index + 1))(
     'cria atomicamente pedido, salesLedger e contador com %i item(ns)',
     async (itemCount) => {
@@ -757,6 +788,93 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
         auth: { uid, token: { auth_time: 1 } },
         data: { orderData },
       }, adminDb)).rejects.toThrow('A quantidade e o total do pedido devem corresponder à soma dos itens.');
+    });
+
+    it('rejeita chave de idempotência com formato ou tamanho inválido', async () => {
+      const uid = await setupUser('invalid-idem-key');
+      const orderData = {
+        customerName: 'Cliente Idem Invalida',
+        productName: 'Produto Teste',
+        quantity: 1,
+        price: 50,
+        deliveryDate: '2026-11-20',
+      };
+
+      // Caracteres proibidos (ex: espaço, barra, etc.)
+      await expect(handleCreateOrder({
+        auth: { uid, token: { auth_time: 1 } },
+        data: { orderData, idempotencyKey: 'chave invalida com espacos!' },
+      }, adminDb)).rejects.toThrow('Chave de idempotência inválida.');
+
+      // Tamanho excessivo (> 128 chars)
+      const oversizedKey = 'a'.repeat(129);
+      await expect(handleCreateOrder({
+        auth: { uid, token: { auth_time: 1 } },
+        data: { orderData, idempotencyKey: oversizedKey },
+      }, adminDb)).rejects.toThrow('Chave de idempotência inválida.');
+    });
+
+    it('impede que outro usuário reutilize ou acesse chave de idempotência alheia', async () => {
+      const ownerUid = await setupUser('owner-idem-protect');
+      const attackerUid = await setupUser('attacker-idem-protect');
+      const sharedKey = `shared-idem-${Date.now()}`;
+
+      const orderData = {
+        customerName: 'Cliente Protegido',
+        productName: 'Produto Original',
+        quantity: 1,
+        price: 80,
+        deliveryDate: '2026-11-20',
+      };
+
+      // Owner cria o pedido com sucesso com essa chave
+      const created = await handleCreateOrder({
+        auth: { uid: ownerUid, token: { auth_time: 1 } },
+        data: { orderData, idempotencyKey: sharedKey },
+      }, adminDb);
+      expect(created.success).toBe(true);
+      expect(created.orderId).toBe(sharedKey);
+
+      // Usuário atacante tenta usar a mesma chave de idempotência
+      await expect(handleCreateOrder({
+        auth: { uid: attackerUid, token: { auth_time: 1 } },
+        data: { orderData, idempotencyKey: sharedKey },
+      }, adminDb)).rejects.toThrow('Identificador de pedido já utilizado por outro usuário.');
+    });
+
+    it('rejeita com conflito explícito quando a mesma chave é reutilizada com payload diferente', async () => {
+      const uid = await setupUser('conflict-payload-key');
+      const key = `conflict-key-${Date.now()}`;
+
+      const initialOrder = {
+        customerName: 'Cliente Original',
+        productName: 'Produto Original',
+        quantity: 1,
+        price: 100,
+        deliveryDate: '2026-11-20',
+      };
+
+      const firstCall = await handleCreateOrder({
+        auth: { uid, token: { auth_time: 1 } },
+        data: { orderData: initialOrder, idempotencyKey: key },
+      }, adminDb);
+      expect(firstCall.success).toBe(true);
+
+      // Segunda chamada com a mesma chave, mas alterando o preço para 200
+      const conflictingOrder = {
+        ...initialOrder,
+        price: 200,
+      };
+
+      await expect(handleCreateOrder({
+        auth: { uid, token: { auth_time: 1 } },
+        data: { orderData: conflictingOrder, idempotencyKey: key },
+      }, adminDb)).rejects.toThrow('Esta chave de idempotência já foi utilizada com dados diferentes.');
+
+      // O pedido gravado permanece inalterado
+      const snap = await adminDb.doc(`orders/${key}`).get();
+      expect(snap.data()?.price).toBe(100);
+      expect(snap.data()?.customerName).toBe('Cliente Original');
     });
   });
 });
