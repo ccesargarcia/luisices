@@ -478,7 +478,6 @@ export function NewOrderDialog({
         orderData = operation.payload.orderData;
         pendingCreation.current = orderData;
       }
-      setHasUnconfirmedDraft(true);
       const createdOrder = await firebaseOrderService.createOrder(orderData, undefined, undefined, idempotencyKey);
       const customerId = orderData.customerId || undefined;
 

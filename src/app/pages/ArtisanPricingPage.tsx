@@ -868,7 +868,6 @@ export function ArtisanPricingPage() {
         };
         pending = savePendingOrderOperation(user.uid, 'pricing-sale', { orderData, items: compositionItems, quantity: numEncomendadas });
       }
-      setHasPendingSale(true);
       const order = await firebaseOrderService.createOrder(pending.payload.orderData, undefined, undefined, pending.id);
 
       // Abate do estoque físico dos insumos utilizados
@@ -899,6 +898,8 @@ export function ArtisanPricingPage() {
       if (!hadPending && isDefinitiveOrderRejection(err)) {
         clearPendingOrderOperation(user.uid, 'pricing-sale');
         setHasPendingSale(false);
+      } else {
+        setHasPendingSale(Boolean(loadPendingOrderOperation(user.uid, 'pricing-sale')));
       }
       toast.error(err.message || 'Erro ao lançar pedido oficial.');
     } finally {

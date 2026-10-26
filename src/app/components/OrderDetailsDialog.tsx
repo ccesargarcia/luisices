@@ -4,7 +4,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Order, OrderItem, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile, canAccessArchivedOrders, canAccessEmails } from '../types';
-import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore, Mail, Loader2, Link2, Link2Off, MoreHorizontal } from 'lucide-react';
+import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore, Mail, Loader2, Link2, Link2Off, MoreHorizontal, AlertTriangle } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
@@ -615,7 +615,6 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       const operation = savePendingOrderOperation(user.uid, `edit:${order.id}`, {
         updates, expectedVersion: order.version || 1,
       }, opId);
-      setHasPendingEdit(true);
       await confirmEdit(operation);
     } catch (error: any) {
       if ((!pending && isDefinitiveOrderRejection(error)) || error?.details?.operationState === 'not-applied') {
@@ -626,6 +625,8 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           setIsEditing(false);
           try { onOrderUpdated?.(await firebaseOrderService.getOrderByIdFromServer(order.id)); } catch { /* The user can refresh later. */ }
         }
+      } else {
+        setHasPendingEdit(true);
       }
       console.error('Erro ao atualizar pedido:', error);
       toast.error(error.message || 'Erro ao atualizar pedido');
@@ -885,9 +886,19 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           <DialogBody className="p-4 sm:p-6">
             {hasPendingEdit ? (
               <div className="space-y-4">
-                <p>A edição anterior ainda precisa ser confirmada. Confirme o resultado antes de fazer novas alterações.</p>
-                <Button onClick={handleSaveEdit} disabled={isSaving}>Confirmar edição pendente</Button>
-                <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving}>Fechar edição</Button>
+                <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm text-amber-900 dark:text-amber-200 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="size-4 text-amber-600 flex-shrink-0" />
+                    <span>A tentativa anterior de salvar este pedido ainda está pendente de confirmação. Clique em Confirmar para validar o resultado.</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={handleSaveEdit} disabled={isSaving}>
+                    {isSaving && <Loader2 className="size-4 mr-2 animate-spin" />}
+                    {isSaving ? 'Confirmando...' : 'Confirmar edição pendente'}
+                  </Button>
+                  <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving}>Fechar edição</Button>
+                </div>
               </div>
             ) : (
             <OrderEditForm
