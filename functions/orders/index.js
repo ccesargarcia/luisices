@@ -702,6 +702,8 @@ function withFirstInvocationSpan(functionId, handler) {
     return Sentry.startSpan({
       name: `firebase.function.${functionId}.first_invocation`,
       op: 'function.cold_start',
+      parentSpan: null,
+      forceTransaction: true,
       attributes: {
         'firebase.function.id': functionId,
         'firebase.function.first_invocation': true,

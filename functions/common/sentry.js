@@ -83,12 +83,20 @@ function sanitizeSpan(span) {
 const dsn = process.env.SENTRY_DSN;
 if (dsn) {
   const sampleRate = Number(process.env.SENTRY_TRACES_SAMPLE_RATE);
+  const defaultTraceSampleRate = Number.isFinite(sampleRate) && sampleRate >= 0 && sampleRate <= 1
+    ? sampleRate
+    : 0.05;
   Sentry.init({
     dsn,
     environment: process.env.SENTRY_ENVIRONMENT || (process.env.GCLOUD_PROJECT === 'luisices-dev' ? 'development' : 'production'),
     release: process.env.K_REVISION || undefined,
     sendDefaultPii: false,
-    tracesSampleRate: Number.isFinite(sampleRate) && sampleRate >= 0 && sampleRate <= 1 ? sampleRate : 0.05,
+    tracesSampler({ name, attributes, inheritOrSampleWith }) {
+      const isFunctionFirstInvocation = attributes?.['sentry.op'] === 'function.cold_start'
+        || name?.startsWith('firebase.function.') && name.endsWith('.first_invocation');
+      if (isFunctionFirstInvocation) return 1;
+      return inheritOrSampleWith(defaultTraceSampleRate);
+    },
     beforeSend: sanitizeEvent,
     beforeSendSpan: sanitizeSpan,
     beforeBreadcrumb(breadcrumb) {
