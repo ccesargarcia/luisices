@@ -29,7 +29,9 @@ Para a regressão focada:
 npx firebase emulators:exec --config firebase.test.json --project demo-luisices-review --only firestore,storage "npx vitest run --config vitest.integration.config.ts tests/integration/create-order-function.test.ts tests/integration/complex-order-function.test.ts tests/integration/orders-backend-validation.test.ts tests/integration/firebase-regressions.test.ts"
 ```
 
-Na revisão de 25/10/2026, esse conjunto teve 171 aprovações. Os testes chamam os handlers reais e o Firestore local, sem comprovar deploy, Worker remoto ou E2E de navegador. O conjunto unitário focado de pedidos teve 195 aprovações. A suíte unitária completa local teve 1.317 aprovações e uma falha do `sharp` no Android; a CI Linux deve validar a suíte completa. Não interpretar a limitação local como aprovação desse teste.
+Na revisão de 25/10/2026, esse conjunto teve 171 aprovações. Após alinhar `import-orders-security.test.ts` ao caminho autoritativo, a suíte completa de Firestore/Storage teve 266 aprovações, zero falhas e seis casos de RTDB ignorados por exigirem `test:presence`. O transporte callable da importação chama o handler real `handleCreateOrder` e mantém o SDK cliente nas verificações de acesso: os testes não usam mais fallback de criação direta. Isso não comprova deploy ou Worker remoto.
+
+O conjunto unitário focado de pedidos teve 195 aprovações. A suíte unitária completa local teve 1.317 aprovações e uma falha do `sharp` no Android; na CI Linux, os 1.318 unitários passaram. O shard 2 de navegador teve 92 aprovações no primeiro run; o shard 1 foi bloqueado pela integração antiga antes de chegar ao navegador e precisa ser reexecutado com a correção. Esses resultados são evidências por etapa, não indicação de deploy concluído.
 
 O primeiro uso baixa os emuladores oficiais. Em ambientes onde o Node do sistema bloqueia MD5, use o Node 24 oficial: o emulador de Storage utiliza MD5 nos metadados dos objetos. Isso não requer mudar a configuração criptográfica do sistema.
 

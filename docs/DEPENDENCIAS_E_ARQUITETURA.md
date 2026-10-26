@@ -113,7 +113,7 @@ Parâmetros secretos devem ser fornecidos pelos mecanismos de secrets do ambient
 - Índices e resumos materializados exigem contratos de atualização, recomputação e definição de período.
 - Agrupar modelos sob uma única tarifa ou ignorar tentativas de fallback pode distorcer a estimativa de IA.
 
-Os **771 testes em 73 arquivos** pertencem à revisão documental anterior. Nesta revisão de pedidos, passaram 195 testes unitários/regressão focados e 171 de integração em emuladores, além de typecheck, build e sintaxe de 68 arquivos de Functions. A suíte unitária completa local teve 1.317 aprovações e uma falha de ambiente: `sharp` indisponível no Android. A CI Linux precisa confirmar a suíte completa; estes resultados não comprovam E2E remoto, carga ou publicação.
+Os **771 testes em 73 arquivos** pertencem à revisão documental anterior. Nesta revisão de pedidos, passaram 195 testes unitários/regressão focados e 171 de integração focada, além de typecheck, build e sintaxe de 68 arquivos de Functions. Após adaptar os testes de importação à Function, a integração completa local teve 266 aprovações, zero falhas e seis testes RTDB reservados ao comando próprio. A suíte unitária completa local teve 1.317 aprovações e uma falha de ambiente do `sharp` no Android; a CI Linux confirmou os 1.318 unitários. Esses resultados não comprovam carga ou publicação. O estado de cada run é a fonte para E2E e deploy.
 
 ## Responsabilidades e refatoração gradual
 
