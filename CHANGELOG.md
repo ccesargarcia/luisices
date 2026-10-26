@@ -8,6 +8,8 @@ O registro começou em 12/10/2026 com as entregas recentes verificadas em produ�
 
 ### Alterado
 
+- Pipeline DEV seleciona Functions por dependências desde a última publicação bem-sucedida, publica nomes explícitos em grupos de até seis e não amplia automaticamente o deploy após falha. Auditoria de secrets exibe somente presença, sem trechos dos valores.
+
 - Criação de pedidos do painel centralizada em `createOrder`, com autorização, validação de 1–10 itens, contador, ledger, estatísticas e eventos financeiros na transação; criação direta no Firestore bloqueada.
 - Edição financeira e de itens encaminhada a `updateComplexOrder`, preservando etiquetas e acompanhamento público sem somatórios de itens nas regras CEL.
 - Histórico financeiro mantém a contagem de pagamentos após consolidação; relatórios e métricas usam os dados preservados.

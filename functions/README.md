@@ -87,6 +87,21 @@ O backend envia eventos sem dados pessoais padrão; remove conteúdo de requisi�
 
 O workflow [DEV](../.github/workflows/deploy-dev.yml) seleciona os componentes a publicar. Há [workflow manual de Functions](../.github/workflows/deploy-functions-manual.yml). Para operação manual, selecione explicitamente o projeto e o conjunto de funções após revisão; não use comandos genéricos supondo o ambiente ativo.
 
-O escopo seletivo `orders` deve incluir `createOrder` e `updateComplexOrder`. Para essa entrega, publique backend compatível antes do frontend. O workflow de Functions também tem gatilho automático na `main` para mudanças no backend/configuração Firebase. Esta documentação descreve o código; o sucesso remoto deve ser confirmado no run do ambiente.
+O seletor de dependências inclui todos os endpoints exportados pelo módulo de pedidos, inclusive `createOrder` e `updateComplexOrder`. Para essa entrega, publique backend compatível antes do frontend. O workflow de Functions também tem gatilho automático na `main` para mudanças no backend/configuração Firebase. Esta documentação descreve o código; o sucesso remoto deve ser confirmado no run do ambiente.
 
 Alterar documentação não exige deploy. `[skip tests]` não impede publicação; para commits exclusivamente documentais sem execução dos workflows de push, use `[skip ci]`. Análises gerenciadas pelo GitHub podem continuar.
+
+## Deploy seletivo em DEV
+
+O workflow `deploy-dev.yml` usa `scripts/select-functions-deploy.mjs` para comparar o código atual com o SHA do último job de Functions publicado com sucesso. Uma tentativa com falha não se torna referência; uma publicação do backend com frontend posterior com falha continua sendo referência válida. Runs que só executaram testes ou purgaram cache não são referências de backend.
+
+- Alteração em um módulo publica todos os seus endpoints exportados; não há análise do corpo individual de cada handler.
+- Helpers locais são percorridos transitivamente. Alterar uma dependência compartilhada publica todos os consumidores.
+- Alterações no entrypoint, bootstrap, dependências npm, configuração de Functions ou sincronização de secrets podem selecionar todo o backend. Um arquivo de runtime não reconhecido no grafo também seleciona tudo, por segurança.
+- Documentação e configurações exclusivas do Hosting não selecionam Functions. A análise é estática: não executa o backend nem lê credenciais.
+- Sem publicação de referência entre os últimos 90 runs completos, seleciona todo o backend atual. Falha de acesso à API de histórico interrompe o job, sem assumir uma referência incorreta.
+- Imports dinâmicos e dependências locais não resolvidas interrompem a seleção e exigem revisão do seletor. O formato suportado de exports é o atual de `functions/index.js` (objeto com aliases e atribuições nomeadas).
+- O deploy usa nomes explícitos, em grupos de até seis, e repete somente o grupo que falhou. Não tenta primeiro `--only functions` nem amplia os alvos após uma falha. Uma Function removida do código é reportada, sem exclusão remota automática.
+- `[deploy all]`, `[only functions]` ou execução manual com alvo `auto`, `all` ou `functions-only` forçam a publicação de todos os exports atuais. Use quando mudar secrets/configuração externa sem alteração de código.
+
+O plano (SHA e nomes, sem secrets) aparece no log de detecção. Os testes do seletor rodam com `node --test tests/scripts/functions-deploy-selection.test.mjs`, sem instalação de dependências. Essa seleção é específica de DEV; o workflow de produção/manual mantém sua política atual. O tempo de Cloud Build de cada Function selecionada continua existindo.

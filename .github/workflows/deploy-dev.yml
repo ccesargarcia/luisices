@@ -53,11 +53,14 @@ jobs:
   detect-changes:
     name: 🔍 Detectar Alterações
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     outputs:
       frontend: ${{ steps.targets.outputs.frontend }}
       functions: ${{ steps.targets.outputs.functions }}
-      functions_scope: ${{ steps.targets.outputs.functions_scope }}
+      functions_chunks: ${{ steps.functions_plan.outputs.chunks }}
       rules: ${{ steps.targets.outputs.rules }}
       need_e2e: ${{ steps.targets.outputs.need_e2e }}
       need_functions_validation: ${{ steps.targets.outputs.need_functions_validation }}
@@ -69,6 +72,56 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Setup Node for deploy selection
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Testar seleção de Functions
+        run: node --test tests/scripts/functions-deploy-selection.test.mjs
+
+      - name: Localizar última publicação bem-sucedida das Functions
+        id: functions_base
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // A failed frontend job does not undo a successful backend deploy.
+            // Conversely, a successful docs/test run is not a backend baseline.
+            for (let page = 1; page <= 3; page++) {
+              const { data } = await github.rest.actions.listWorkflowRuns({
+                ...context.repo, workflow_id: 'deploy-dev.yml', branch: 'develop',
+                status: 'completed', per_page: 30, page
+              });
+              for (const run of data.workflow_runs) {
+                const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                  ...context.repo, run_id: run.id, per_page: 100
+                });
+                if (jobs.some(job => job.name === '🚀 Deploy Firebase Functions (Dev)' &&
+                  job.conclusion === 'success' && job.steps?.some(step =>
+                    step.name === 'Deploy Firebase Functions (Dev)' && step.conclusion === 'success'))) {
+                  core.setOutput('sha', run.head_sha);
+                  core.info(`Backend publicado: ${run.head_sha} (run ${run.id})`);
+                  return;
+                }
+              }
+              if (data.workflow_runs.length < 30) break;
+            }
+            // First deployment / unavailable history: select all explicit exports.
+            core.warning('Sem referência de backend: será selecionado todo o backend atual.');
+            core.setOutput('sha', '');
+
+      - name: Selecionar Functions por dependências desde a última publicação
+        id: functions_plan
+        env:
+          FUNCTIONS_BASE_SHA: ${{ steps.functions_base.outputs.sha }}
+          FORCE_FUNCTIONS: ${{ github.event_name == 'workflow_dispatch' && (inputs.deploy_target == 'auto' || inputs.deploy_target == 'all' || inputs.deploy_target == 'functions-only') }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if echo "$COMMIT_MSG" | grep -qiE '\[deploy all\]|\[all\]|\[only functions\]|\[only-functions\]'; then
+            export FORCE_FUNCTIONS=true
+          fi
+          node scripts/select-functions-deploy.mjs
 
       - name: Path Filter
         id: filter
@@ -85,10 +138,6 @@ jobs:
               - 'vite.config.*'
               - 'package*.json'
               - 'tsconfig*.json'
-            functions:
-              - 'functions/**'
-              # Este script é executado durante o deploy para sincronizar secrets.
-              - 'scripts/sync-secrets-safe.mjs'
             rules:
               - 'firestore.rules'
               - 'firestore.indexes.json'
@@ -100,6 +149,7 @@ jobs:
               - 'playwright.config.*'
             unit_tests:
               - 'tests/unit/**'
+              - 'tests/scripts/**'
               - 'vitest*.ts'
             integration_tests:
               - 'tests/integration/**'
@@ -114,6 +164,7 @@ jobs:
               - 'scripts/fix-negative-values.mjs'
               - 'scripts/audit-order-integrity.mjs'
               - 'scripts/order-integrity-audit-core.mjs'
+              - 'scripts/select-functions-deploy.mjs'
 
       - name: Resolver Alvos e Estratégia de Testes
         id: targets
@@ -123,9 +174,8 @@ jobs:
           INPUT_SKIP_TESTS: ${{ inputs.skip_tests }}
           INPUT_RUN_E2E: ${{ inputs.run_e2e || false }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
-          BASE_SHA: ${{ github.event.before }}
           FILTER_FRONTEND: ${{ steps.filter.outputs.frontend }}
-          FILTER_FUNCTIONS: ${{ steps.filter.outputs.functions }}
+          FILTER_FUNCTIONS: ${{ steps.functions_plan.outputs.has_targets }}
           FILTER_RULES: ${{ steps.filter.outputs.rules }}
           FILTER_E2E: ${{ steps.filter.outputs.e2e }}
           FILTER_UNIT_TESTS: ${{ steps.filter.outputs.unit_tests }}
@@ -190,22 +240,8 @@ jobs:
             fi
           fi
 
-          # Determinar escopo de functions alteradas (seletivo por módulo para evitar gargalo do Cloud Build)
-          FUNCTIONS_SCOPE=none
-          if [ "$DEPLOY_FUNCTIONS" = "true" ]; then
-            FUNCTIONS_SCOPE=all
-            if [ "$EVENT_NAME" = "push" ] && [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
-              CHANGED_FUNCTION_FILES=$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA" -- functions/)
-              if [ "$CHANGED_FUNCTION_FILES" = "functions/orders/superfrete.js" ]; then
-                FUNCTIONS_SCOPE=superfrete
-              elif ! echo "$CHANGED_FUNCTION_FILES" | grep -qvE '^functions/(email|whatsapp|alexa|users|mcp|orders)/'; then
-                MODULES=$(echo "$CHANGED_FUNCTION_FILES" | sed -E 's|^functions/([^/]+)/.*|\1|' | sort -u)
-                if [ $(echo "$MODULES" | wc -l) -eq 1 ]; then
-                  FUNCTIONS_SCOPE="$MODULES"
-                fi
-              fi
-            fi
-          fi
+          # O plano usa a última publicação bem-sucedida, incluindo alterações
+          # pendentes de runs que falharam. Hosting/rules-only continuam explícitos.
 
           # 3. Determinar se testes E2E do Playwright são necessários
           NEED_E2E=false
@@ -243,7 +279,6 @@ jobs:
 
           echo "frontend=$DEPLOY_FRONTEND" >> "$GITHUB_OUTPUT"
           echo "functions=$DEPLOY_FUNCTIONS" >> "$GITHUB_OUTPUT"
-          echo "functions_scope=$FUNCTIONS_SCOPE" >> "$GITHUB_OUTPUT"
           echo "rules=$DEPLOY_RULES" >> "$GITHUB_OUTPUT"
           echo "need_e2e=$NEED_E2E" >> "$GITHUB_OUTPUT"
           echo "need_functions_validation=$NEED_FUNCTIONS_VALIDATION" >> "$GITHUB_OUTPUT"
@@ -255,7 +290,6 @@ jobs:
           echo "🎯 Estratégia de Execução da Pipeline:"
           echo " - Deploy Frontend: $DEPLOY_FRONTEND"
           echo " - Deploy Functions: $DEPLOY_FUNCTIONS"
-          echo " - Escopo Functions: $FUNCTIONS_SCOPE"
           echo " - Deploy Rules: $DEPLOY_RULES"
           echo " - Executar E2E (Playwright): $NEED_E2E"
           echo " - Executar Validação Rápida: $NEED_FUNCTIONS_VALIDATION"
@@ -572,12 +606,7 @@ jobs:
           for (const item of checks) {
             const hasVal = typeof item.val === 'string' && item.val.trim().length > 0;
             if (hasVal) {
-              const preview = item.name.includes('ORIGIN_SECRET')
-                ? `(${item.val.length} chars; valor oculto)`
-                : item.val.length > 8
-                ? `${item.val.substring(0, 14)}...${item.val.substring(item.val.length - 4)} (${item.val.length} chars)`
-                : `(${item.val.length} chars)`;
-              console.log(`✅ ${item.name.padEnd(44)}: PRESENTE ${preview}`);
+              console.log(`✅ ${item.name.padEnd(44)}: PRESENTE (valor oculto)`);
             } else {
               if (item.required) {
                 console.log(`❌ ${item.name.padEnd(44)}: AUSENTE (OBRIGATÓRIO)`);
@@ -628,7 +657,7 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
           SENTRY_DSN: ${{ secrets.DEV_FUNCTIONS_SENTRY_DSN || secrets.DEV_SENTRY_DSN || secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN || secrets.SENTRY_DSN }}
-          FUNCTIONS_DEPLOY_SCOPE: ${{ needs.detect-changes.outputs.functions_scope }}
+          FUNCTIONS_DEPLOY_CHUNKS: ${{ needs.detect-changes.outputs.functions_chunks }}
           GCLOUD_PROJECT: luisices-dev
         run: |
           trap 'rm -f functions/.env.luisices-dev' EXIT
@@ -649,40 +678,12 @@ jobs:
             fi
           }
 
-          if [ "$FUNCTIONS_DEPLOY_SCOPE" = "superfrete" ]; then
-            echo "🚚 Deploy seletivo das Functions da SuperFrete..."
-            deploy_chunk "SuperFrete" "functions:calculateSuperfreteShipping,functions:createSuperfreteLabel"
-          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "email" ]; then
-            echo "📧 Deploy seletivo das Functions de E-mail..."
-            deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
-          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "whatsapp" ]; then
-            echo "💬 Deploy seletivo das Functions do WhatsApp..."
-            deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
-          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "alexa" ]; then
-            echo "🗣️ Deploy seletivo das Functions da Alexa..."
-            deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
-          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "users" ]; then
-            echo "👥 Deploy seletivo das Functions de Usuários..."
-            deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
-          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "orders" ]; then
-            echo "📦 Deploy seletivo das Functions de Pedidos e Acompanhamento..."
-            deploy_chunk "Pedidos" "functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia"
-            deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
-          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "mcp" ]; then
-            echo "🤖 Deploy seletivo das Functions do MCP..."
-            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint"
-          elif ! npx --yes firebase-tools@15.32.1 deploy --only functions --project luisices-dev --non-interactive; then
-            echo "⚠️ Deploy em lote geral atingiu limite de concorrência. Aguardando 20s para drenagem de workers..."
-            sleep 20
-            echo "Executando deploy particionado resiliente por módulos..."
-            deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
-            deploy_chunk "IA e Pedidos" "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia"
-            deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
-            deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
-            deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
-            deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
-            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint"
-          fi
+          # No generic `--only functions`, no automatic expansion after failure.
+          # Removed remote endpoints require a separate, reviewed deletion.
+          while IFS= read -r targets; do
+            [ -n "$targets" ] || continue
+            deploy_chunk "Functions afetadas" "$targets"
+          done < <(node -e 'for (const chunk of JSON.parse(process.env.FUNCTIONS_DEPLOY_CHUNKS)) console.log(chunk)')
 
           echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Dev)..."
           npx --yes firebase-tools@15.32.1 functions:secrets:prune --project luisices-dev --force --non-interactive
