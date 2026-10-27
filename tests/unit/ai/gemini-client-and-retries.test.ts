@@ -60,7 +60,7 @@ describe('IA-06: Cliente Gemini, Resiliência e Política de Tentativas', () => 
 
     const res = await client.generateContent({ contents: [] });
     expect(callCount).toBe(2);
-    expect(res.modelUsed).toBe('gemini-3.1-flash-lite');
+    expect(res.modelUsed).toBe('gemini-3.6-flash');
     expect(res.tokens.totalTokens).toBe(120);
   });
 
