@@ -8,13 +8,15 @@ Reduzir o trabalho de inicialização, mantendo a escala para zero e a validaç�
 
 Cold start não desaparece: o provisionamento do container, a inicialização dos SDKs, autenticação e rede ainda fazem parte do primeiro acesso. Uma medição local de importação não prevê quanto dos aproximadamente cinco segundos percebidos pelo usuário será eliminado.
 
-## Sentry: primeira chamada dos pedidos
+## Sentry: primeira chamada e inicialização do módulo
 
-`createOrder` e `updateComplexOrder` emitem um span `function.cold_start` na primeira chamada de cada processo. O span inclui o tempo do handler e atributos de baixo risco para identificar a função, a revisão e o tempo de avaliação do módulo `orders` (`runtime.module_init_ms`). Ele não inclui necessariamente o provisionamento do container ou toda a espera da plataforma antes de iniciar o handler.
+As Functions instrumentadas emitem um span `function.first_invocation` uma vez por processo. A duração desse span é o tempo completo do handler na primeira chamada; para `aiAgentChat`, por exemplo, inclui autenticação, Firestore e espera pelo modelo de IA. **Não deve ser interpretado como duração de cold start.**
 
-No Sentry, filtre a operação `function.cold_start` e compare os spans com a operação normal do handler. A amostragem de tracing segue `SENTRY_TRACES_SAMPLE_RATE`, cujo padrão atual é **5%**; portanto, a ausência de um span não prova que não houve cold start. A instrumentação só acrescenta spans às duas Functions de pedidos e não faz chamada de rede síncrona nem mantém a resposta aberta para enviar telemetria.
+O tempo de avaliação do módulo (`runtime.module_init_ms`) é registrado separadamente como distribuição `firebase.function.module_init_ms`, com identificadores da Function e revisão. Essa medição cobre o carregamento síncrono do módulo JavaScript e dependências importadas durante a inicialização do módulo. Não cobre o provisionamento do container nem a espera da plataforma antes de iniciar o handler.
 
-Use as métricas e os logs do Cloud Run/Cloud Functions para confirmar o tempo de inicialização da plataforma. O Sentry serve para relacionar a primeira execução observada à latência e aos spans da aplicação; não substitui a métrica de inicialização do Google Cloud. A documentação do Google confirma que o carregamento de módulos contribui para cold starts e recomenda reduzir dependências e trabalho de inicialização ([boas práticas](https://docs.cloud.google.com/run/docs/tips/functions-best-practices?hl=en)); os logs da plataforma registram execuções e identificadores de execução ([platform logs](https://docs.cloud.google.com/logging/docs/api/platform-logs)).
+No Sentry, use `function.first_invocation` para investigar a duração da primeira execução e `firebase.function.module_init_ms` para acompanhar a avaliação do módulo. A amostragem das distribuições não é a mesma coisa que amostragem de tracing; a ausência de uma amostra não prova que não houve inicialização de processo. A instrumentação não faz chamada de rede síncrona nem mantém a resposta aberta para enviar telemetria.
+
+Use as métricas e os logs do Cloud Run/Cloud Functions para medir a inicialização da plataforma e a latência total vista pelo cliente. O Sentry separa a duração da primeira execução e o tempo local de avaliação do módulo, mas não substitui métricas da plataforma. A documentação do Google confirma que o carregamento de módulos contribui para cold starts e recomenda reduzir dependências e trabalho de inicialização ([boas práticas](https://docs.cloud.google.com/run/docs/tips/functions-best-practices?hl=en)); os logs da plataforma registram execuções e identificadores de execução ([platform logs](https://docs.cloud.google.com/logging/docs/api/platform-logs)).
 
 ## O que mudou
 

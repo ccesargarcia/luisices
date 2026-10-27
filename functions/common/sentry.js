@@ -5,7 +5,7 @@
 const Sentry = require('@sentry/node');
 const firstInvocationSpans = new Set();
 
-/** Instrumenta apenas a primeira chamada por processo; não mede o provisionamento do container. */
+/** Mede a primeira execução do handler e registra o tempo de avaliação do módulo separadamente. */
 function withFirstInvocationSpan(functionId, handler, getModuleInitializationMs = () => null) {
   return function firstInvocationObserved(...args) {
     if (firstInvocationSpans.has(functionId)) return handler.apply(this, args);
@@ -13,15 +13,32 @@ function withFirstInvocationSpan(functionId, handler, getModuleInitializationMs 
 
     if (!Sentry.getClient()) return handler.apply(this, args);
 
+    const moduleInitializationMs = typeof getModuleInitializationMs === 'function'
+      ? getModuleInitializationMs()
+      : null;
+    if (Number.isFinite(moduleInitializationMs) && moduleInitializationMs >= 0) {
+      try {
+        Sentry.metrics.distribution('firebase.function.module_init_ms', moduleInitializationMs, {
+          unit: 'millisecond',
+          attributes: {
+            'firebase.function.id': functionId,
+            'runtime.revision': process.env.K_REVISION || 'local',
+          },
+        });
+      } catch {
+        // Uma falha de telemetria nunca deve impedir a execução da Function.
+      }
+    }
+
     return Sentry.startSpan({
       name: `firebase.function.${functionId}.first_invocation`,
-      op: 'function.cold_start',
+      op: 'function.first_invocation',
       parentSpan: null,
       forceTransaction: true,
       attributes: {
         'firebase.function.id': functionId,
         'firebase.function.first_invocation': true,
-        'runtime.module_init_ms': typeof getModuleInitializationMs === 'function' ? getModuleInitializationMs() : null,
+        'runtime.module_init_ms': moduleInitializationMs,
         'runtime.node_major': Number(process.versions.node.split('.')[0]),
         'runtime.revision': process.env.K_REVISION || 'local',
       },
