@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 const {
   formatDatePtBr,
   formatCurrencyPtBr,
@@ -6,6 +6,13 @@ const {
   searchUserCatalog,
   handleAlexaDialog,
 } = require('../../../functions/alexa/dialog');
+
+// Mantém 25/10/2026 no futuro durante os cenários Alexa, independente da data
+// em que a suíte rode na máquina local ou no CI.
+beforeEach(() => {
+  vi.useFakeTimers({ now: new Date('2026-10-24T15:00:00.000Z'), toFake: ['Date'] });
+});
+afterEach(() => vi.useRealTimers());
 
 describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 5)', () => {
   const baseConfig = {
