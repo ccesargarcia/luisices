@@ -4,20 +4,12 @@ const { downloadImageAsBase64 } = require('../../../functions/ai/handlers');
 const { AiBudgetManager } = require('../../../functions/ai/budget');
 
 describe('Regressões Críticas e Validação da Fábrica de Serviços (Revisão 2)', () => {
-  it('1. Deve criar serviços pela fábrica createAiServices e executar chat sem ReferenceError gravando telemetria', async () => {
-    const mockDailySet = vi.fn().mockResolvedValue(true);
-    const mockMonthlySet = vi.fn().mockResolvedValue(true);
+  it('1. Deve criar serviços pela fábrica e executar chat sem ReferenceError nem gravar analytics detalhados', async () => {
     const mockLogsAdd = vi.fn().mockResolvedValue({ id: 'log-1' });
     const mockBudgetDocs = new Map<string, any>();
 
     const mockDb = {
       doc: (path: string) => {
-        if (path.startsWith('ai_usage_daily/')) {
-          return { set: mockDailySet, get: async () => ({ exists: true, data: () => ({ totalRequests: 5, totalTokens: 1200 }) }) };
-        }
-        if (path.startsWith('ai_usage_monthly/')) {
-          return { set: mockMonthlySet, get: async () => ({ exists: true, data: () => ({ totalRequests: 15, totalTokens: 4500 }) }) };
-        }
         if (path.startsWith('ai_budget_daily/')) {
           return { path, get: async () => ({ exists: mockBudgetDocs.has(path), data: () => mockBudgetDocs.get(path) }) };
         }
@@ -84,10 +76,7 @@ describe('Regressões Críticas e Validação da Fábrica de Serviços (Revisão
 
     expect(res.success).toBe(true);
     expect(res.reply).toContain('Olá!');
-    expect(mockLogsAdd).toHaveBeenCalled();
-    expect(mockLogsAdd.mock.calls[0][0].reasoningTokens).toBe(10);
-    expect(mockLogsAdd.mock.calls[0][0].attempts).toHaveLength(1);
-    expect(mockDailySet).toHaveBeenCalled();
+    expect(mockLogsAdd).not.toHaveBeenCalled();
   });
 
   it('2. Deve bloquear SSRF em URLs locais ou privadas no download de imagens', async () => {

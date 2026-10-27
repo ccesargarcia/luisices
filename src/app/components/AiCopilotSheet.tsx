@@ -536,9 +536,6 @@ export function AiCopilotSheet({
       };
 
       setMessages(prev => [...prev, assistantMsg]);
-      if (isAdmin) {
-        fetchQuota();
-      }
     } catch (err: any) {
       console.error('[AiCopilot] Erro ao enviar mensagem:', err);
       toast.error(err.message || 'Erro ao comunicar com o Copiloto de IA.');
