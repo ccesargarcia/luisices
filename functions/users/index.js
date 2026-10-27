@@ -865,7 +865,7 @@ const updateUser = onCall(async (request) => {
   }
 });
 
-/** Registra o dispositivo e captura o IP e Localização do usuário. */
+/** Registra o dispositivo e o IP sem bloquear a sessão com consultas de geolocalização externas. */
 const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Requer autenticação.');
   
@@ -895,42 +895,6 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
   if (ip && typeof ip === 'string' && ip.startsWith('::ffff:')) ip = ip.substring(7);
   ip = (ip && typeof ip === 'string' && ip.trim()) ? ip.trim() : 'Desconhecido';
 
-  let resolvedLocationString = null;
-  if (ip !== 'Desconhecido' && ip !== '127.0.0.1' && ip !== '::1') {
-    try {
-      const response = await fetch(`https://ipinfo.io/${ip}/json`, { signal: AbortSignal.timeout(3000) });
-      if (response.ok) {
-        const geo = await response.json();
-        if (geo && (geo.city || geo.region || geo.country)) {
-          const parts = [geo.city, geo.region].filter(Boolean);
-          resolvedLocationString = parts.length > 0 ? parts.join(', ') : 'Região Desconhecida';
-          if (geo.country) {
-            resolvedLocationString = parts.length > 0 ? `${resolvedLocationString} - ${geo.country}` : `${geo.country}`;
-          }
-        } else {
-          throw new Error('ipinfo não retornou dados úteis de localização');
-        }
-      } else {
-        throw new Error(`ipinfo HTTP error: ${response.status}`);
-      }
-    } catch (error) {
-      console.warn('[registerDeviceSession] Falha ao buscar localização via ipinfo. Usando fallback (geoip-lite):', error.message);
-      try {
-        const geoip = require('geoip-lite');
-        const geo = geoip.lookup(ip);
-        if (geo) {
-          const parts = [geo.city, geo.region].filter(Boolean);
-          resolvedLocationString = parts.length > 0 ? parts.join(', ') : 'Região Desconhecida';
-          if (geo.country) {
-            resolvedLocationString = parts.length > 0 ? `${resolvedLocationString} - ${geo.country}` : `${geo.country}`;
-          }
-        }
-      } catch (fallbackError) {
-        console.warn('[registerDeviceSession] Falha ao buscar localização no fallback:', fallbackError.message);
-      }
-    }
-  }
-
   const uid = request.auth.uid;
   const db = getFirestore();
   const profileRef = db.doc(`userProfiles/${uid}`);
@@ -954,7 +918,7 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
       throw new HttpsError('unauthenticated', 'Sessão revogada. Faça login novamente.');
     }
 
-    let locationString = 'Localização Desconhecida';
+    let locationString = 'Localização não verificada';
 
     if (deviceSnap.exists) {
       // Dispositivo existente: atualiza sem consultar toda a coleção (Otimização C1)
@@ -967,10 +931,6 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
       }
       if (existingData.ip === ip && existingData.location) {
         locationString = existingData.location;
-      } else if (resolvedLocationString) {
-        locationString = resolvedLocationString;
-      } else if (existingData.location) {
-        locationString = existingData.location;
       }
 
       transaction.update(deviceRef, {
@@ -982,10 +942,6 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
       });
     } else {
       // Novo dispositivo: agora sim consulta a coleção para garantir o teto de 10 dispositivos
-      if (resolvedLocationString) {
-        locationString = resolvedLocationString;
-      }
-
       const devicesSnap = await transaction.get(userDevicesRef);
       if (devicesSnap.size >= 10) {
         let oldestDevice = null;

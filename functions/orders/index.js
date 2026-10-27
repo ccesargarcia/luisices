@@ -1261,6 +1261,77 @@ const listOrderTrackingLinks = onCall({ cors: true, maxInstances: 10, memory: '5
   if (!canViewOrders) throw new HttpsError('permission-denied', 'Você não tem permissão para consultar links de pedidos.');
   getTrackingEncryptionKey();
 
+  // O Dashboard consulta um link individual somente quando alguém abre/copiar
+  // o link de um pedido. Isso evita percorrer o histórico inteiro no page load.
+  const requestedOrderId = request.data?.orderId;
+  if (requestedOrderId !== undefined) {
+    if (typeof requestedOrderId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(requestedOrderId)) {
+      throw new HttpsError('invalid-argument', 'Pedido inválido.');
+    }
+
+    const db = getFirestore();
+    const orderSnap = await db.doc(`orders/${requestedOrderId}`).get();
+    if (!orderSnap.exists) throw new HttpsError('not-found', 'Pedido não encontrado.');
+    const order = orderSnap.data() || {};
+    const linkId = order.publicTrackingLinkId;
+    let linkDoc = null;
+    if (typeof linkId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(linkId)) {
+      const linkSnap = await db.doc(`orderTrackingLinks/${linkId}`).get();
+      if (linkSnap.exists) linkDoc = linkSnap;
+    }
+    // Compatibilidade com links antigos, anteriores ao campo publicTrackingLinkId.
+    if (!linkDoc) {
+      const legacyLinks = await db.collection('orderTrackingLinks')
+        .where('orderId', '==', requestedOrderId)
+        .get();
+      const eligible = legacyLinks.docs
+        .filter((doc) => {
+          const data = doc.data() || {};
+          if (data.revokedAt || (!isAdmin && data.createdByUid !== uid)) return false;
+          const expiration = data.expiresAt?.toDate?.()?.getTime?.() ??
+            (typeof data.expiresAt === 'string' ? Date.parse(data.expiresAt) : null);
+          return expiration === null || (Number.isFinite(expiration) && expiration > Date.now());
+        })
+        .sort((a, b) => (b.data().createdAt?.toMillis?.() || 0) - (a.data().createdAt?.toMillis?.() || 0));
+      linkDoc = eligible[0] || null;
+    }
+    if (!linkDoc) return { link: null };
+    const linkData = linkDoc.data() || {};
+    if (linkData.orderId !== requestedOrderId || (!isAdmin && linkData.createdByUid !== uid)) {
+      throw new HttpsError('permission-denied', 'Você não pode consultar este link.');
+    }
+    if (linkData.revokedAt) return { link: null };
+
+    const expiresAt = linkData.expiresAt?.toDate?.()?.toISOString?.() ||
+      (typeof linkData.expiresAt === 'string' ? linkData.expiresAt : null);
+    if (expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now())) {
+      return { link: null };
+    }
+
+    let token = null;
+    try {
+      token = decryptTrackingToken(linkData.tokenCiphertext);
+    } catch (error) {
+      console.error('[listOrderTrackingLinks] Não foi possível descriptografar o token:', linkDoc.id, error?.message);
+    }
+
+    return {
+      link: token ? {
+        id: linkDoc.id,
+        orderId: requestedOrderId,
+        orderNumber: linkData.orderNumber || order.orderNumber || '',
+        customerName: linkData.customerName || order.customerName || '',
+        status: linkData.status || order.status || 'pending',
+        token,
+        expiresAt,
+        createdAt: linkData.createdAt?.toDate?.()?.toISOString?.() || null,
+        revokedAt: null,
+        createdByUid: linkData.createdByUid || '',
+        createdByName: linkData.createdByName || linkData.createdByUid || '',
+      } : null,
+    };
+  }
+
   const cursorId = request.data?.cursor;
   if (cursorId !== undefined && cursorId !== null && (typeof cursorId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(cursorId))) {
     throw new HttpsError('invalid-argument', 'Cursor de paginação inválido.');

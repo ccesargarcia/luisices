@@ -84,6 +84,15 @@ export const orderTrackingService = {
     return result.data;
   },
 
+  async getLinkForOrder(orderId: string): Promise<OrderTrackingLinkRecord | null> {
+    const callable = httpsCallable<{ orderId: string }, { link: OrderTrackingLinkRecord | null }>(
+      functions,
+      'listOrderTrackingLinks'
+    );
+    const result = await callable({ orderId });
+    return result.data.link;
+  },
+
   async getPublicStatus(token: string): Promise<PublicOrderTracking> {
     const callable = httpsCallable<{ token: string }, PublicOrderTracking>(functions, 'getPublicOrderTracking');
     const result = await callable({ token });

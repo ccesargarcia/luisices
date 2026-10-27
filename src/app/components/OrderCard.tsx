@@ -25,6 +25,7 @@ function hexToRgba(hex: string, alpha: number) {
 interface OrderCardProps {
   order: Order;
   trackingUrl?: string;
+  onLoadTrackingUrl?: (orderId: string) => Promise<string | null>;
   onClick?: () => void;
   isSelected?: boolean;
   onToggleSelect?: (orderId: string, selected: boolean) => void;
@@ -44,10 +45,11 @@ const statusLabels = {
   cancelled: 'Cancelado',
 };
 
-export function OrderCard({ order, trackingUrl, onClick, isSelected = false, onToggleSelect }: OrderCardProps) {
+export function OrderCard({ order, trackingUrl, onLoadTrackingUrl, onClick, isSelected = false, onToggleSelect }: OrderCardProps) {
   const { settings } = useUserSettings();
   const { user, isAdmin, hasPermission } = useAuth();
   const [creatingTrackingLink, setCreatingTrackingLink] = useState(false);
+  const [loadingTrackingUrl, setLoadingTrackingUrl] = useState(false);
   const [generatedTrackingUrl, setGeneratedTrackingUrl] = useState('');
   const trackingLinkActive = Boolean(order.hasPublicTracking || trackingUrl || generatedTrackingUrl);
   const compact = settings?.compactCards ?? false;
@@ -118,6 +120,36 @@ export function OrderCard({ order, trackingUrl, onClick, isSelected = false, onT
     }
   };
 
+  const copyTrackingUrl = async () => {
+    let url = currentTrackingUrl;
+    if (!url && order.hasPublicTracking) {
+      setLoadingTrackingUrl(true);
+      try {
+        if (onLoadTrackingUrl) {
+          url = await onLoadTrackingUrl(order.id) || '';
+        } else {
+          const link = await orderTrackingService.getLinkForOrder(order.id);
+          if (link?.token && !link.revokedAt && (!link.expiresAt || Date.parse(link.expiresAt) > Date.now())) {
+            const base = import.meta.env.BASE_URL || '/';
+            url = new URL(`${base.replace(/\/$/, '')}/acompanhar/${link.token}`, window.location.origin).toString();
+          }
+        }
+        if (url) setGeneratedTrackingUrl(url);
+      } catch (error) {
+        console.warn('Não foi possível recuperar o link de acompanhamento do pedido:', error);
+      } finally {
+        setLoadingTrackingUrl(false);
+      }
+    }
+    if (!url) {
+      toast.error('Não foi possível recuperar o link ativo deste pedido.');
+      return;
+    }
+    void navigator.clipboard.writeText(url)
+      .then(() => toast.success('Link copiado.'))
+      .catch(() => toast.error('Não foi possível copiar o link.'));
+  };
+
   const trackingControl = canShareTracking && !order.isArchived && ['pending', 'in-progress'].includes(order.status) ? (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5" onClick={event => event.stopPropagation()}>
       {trackingLinkActive ? (
@@ -125,16 +157,12 @@ export function OrderCard({ order, trackingUrl, onClick, isSelected = false, onT
           type="button"
           size="sm"
           variant="secondary"
-          disabled={!currentTrackingUrl || creatingTrackingLink}
-          title={currentTrackingUrl ? 'Copiar o link de acompanhamento já criado' : 'Carregando o link de acompanhamento'}
-          onClick={() => {
-            void navigator.clipboard.writeText(currentTrackingUrl)
-              .then(() => toast.success('Link copiado.'))
-              .catch(() => toast.error('Não foi possível copiar o link.'));
-          }}
+          disabled={creatingTrackingLink || loadingTrackingUrl}
+          title={currentTrackingUrl ? 'Copiar o link de acompanhamento já criado' : 'Buscar e copiar o link de acompanhamento'}
+          onClick={() => void copyTrackingUrl()}
           className="h-7 gap-1 px-2 text-[11px]"
         >
-          {creatingTrackingLink ? <Loader2 className="size-3.5 animate-spin" /> : <Copy className="size-3.5" />}
+          {creatingTrackingLink || loadingTrackingUrl ? <Loader2 className="size-3.5 animate-spin" /> : <Copy className="size-3.5" />}
           Copiar link gerado
         </Button>
       ) : (

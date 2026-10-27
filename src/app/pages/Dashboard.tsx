@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef, Fragment } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { Link } from 'react-router';
 import { Order, OrderStatus, UserProfile, canAccessArchivedOrders } from '../types';
 import { OrderCard } from '../components/OrderCard';
@@ -124,6 +124,7 @@ export function Dashboard() {
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
   const [creatorProfiles, setCreatorProfiles] = useState<UserProfile[]>([]);
   const [trackingLinksByOrderId, setTrackingLinksByOrderId] = useState<Record<string, string>>({});
+  const trackingLinkRequestsRef = useRef(new Map<string, Promise<string | null>>());
   const [viewMode, setViewMode] = useState<'grid' | 'table'>(() => {
     try {
       const saved = localStorage.getItem('orders_view_mode');
@@ -149,34 +150,35 @@ export function Dashboard() {
   }, [userProfile?.role]);
 
   useEffect(() => {
-    let cancelled = false;
-    if (!user || !hasPermission(p => p.orders?.view ?? false)) {
-      setTrackingLinksByOrderId({});
-      return;
-    }
-    void (async () => {
-      try {
-        const activeLinks: Record<string, string> = {};
-        let cursor: string | null = null;
-        do {
-          const page = await orderTrackingService.listLinks(cursor);
-          for (const link of page.links) {
-            const notExpired = !link.expiresAt || Date.parse(link.expiresAt) > Date.now();
-            if (!activeLinks[link.orderId] && link.token && !link.revokedAt && notExpired) {
-              const base = import.meta.env.BASE_URL || '/';
-              activeLinks[link.orderId] = new URL(`${base.replace(/\/$/, '')}/acompanhar/${link.token}`, window.location.origin).toString();
-            }
-          }
-          cursor = page.nextCursor;
-        } while (cursor);
-        if (!cancelled) setTrackingLinksByOrderId(activeLinks);
-      } catch (error) {
-        console.warn('Não foi possível carregar links compartilhados para os cards:', error);
-        if (!cancelled) setTrackingLinksByOrderId({});
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [user?.uid, userProfile?.role, hasPermission]);
+    setTrackingLinksByOrderId({});
+    trackingLinkRequestsRef.current.clear();
+  }, [user?.uid]);
+
+  const loadTrackingUrlForOrder = useCallback((orderId: string): Promise<string | null> => {
+    const cachedUrl = trackingLinksByOrderId[orderId];
+    if (cachedUrl) return Promise.resolve(cachedUrl);
+
+    const pending = trackingLinkRequestsRef.current.get(orderId);
+    if (pending) return pending;
+
+    const requestingUid = user?.uid;
+    const request = orderTrackingService.getLinkForOrder(orderId)
+      .then((link) => {
+        if (user?.uid !== requestingUid || !link?.token || link.revokedAt || (link.expiresAt && Date.parse(link.expiresAt) <= Date.now())) return null;
+        const base = import.meta.env.BASE_URL || '/';
+        const url = new URL(`${base.replace(/\/$/, '')}/acompanhar/${link.token}`, window.location.origin).toString();
+        setTrackingLinksByOrderId(current => ({ ...current, [orderId]: url }));
+        return url;
+      })
+      .catch((error) => {
+        console.warn('Não foi possível carregar o link de acompanhamento do pedido:', error);
+        return null;
+      })
+      .finally(() => trackingLinkRequestsRef.current.delete(orderId));
+
+    trackingLinkRequestsRef.current.set(orderId, request);
+    return request;
+  }, [trackingLinksByOrderId, user?.uid]);
 
   const currentMonthName = useMemo(() => {
     const name = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date());
@@ -196,6 +198,9 @@ export function Dashboard() {
       createdByName: creatorName,
     });
     setDetailsOpen(true);
+    if (order.hasPublicTracking && !trackingLinksByOrderId[order.id]) {
+      void loadTrackingUrlForOrder(order.id);
+    }
   };
 
   // Rotina silenciosa e idempotente de auto-arquivamento de pedidos concluídos expirados (Hot/Cold Data)
@@ -627,6 +632,7 @@ export function Dashboard() {
             key={order.id}
             order={order}
             trackingUrl={trackingLinksByOrderId[order.id]}
+            onLoadTrackingUrl={loadTrackingUrlForOrder}
             isSelected={selectedOrderIds.includes(order.id)}
             onToggleSelect={toggleOrderSelection}
             onClick={() => handleOrderClick(order)}

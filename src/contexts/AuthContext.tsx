@@ -100,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (u) {
         let heartbeatTimer: any = null;
         let onlineHandler: (() => void) | null = null;
+        let deviceSessionSyncInFlight: Promise<void> | null = null;
         try {
           // Garante que o token de autenticação está válido antes de conectar os listeners do Firestore
           await u.getIdToken();
@@ -113,22 +114,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
 
           const syncDeviceSession = async () => {
-            if (!isCurrentTransition()) return;
-            const devId = localStorage.getItem('luisices_device_id') || deviceId;
-            if (!devId) return;
-            try {
-              await firebaseUserService.registerDeviceSession(devId, navigator.userAgent);
+            if (deviceSessionSyncInFlight) return deviceSessionSyncInFlight;
+            const syncPromise = (async () => {
               if (!isCurrentTransition()) return;
-              localStorage.setItem('luisices_device_last_reg', String(Date.now()));
-            } catch (err: any) {
-              if (!isCurrentTransition()) return;
-              console.warn('[AuthContext] Erro ao sincronizar sessão do dispositivo:', err);
-              if (String(err?.message || '').toLowerCase().includes('revogada') && !isLoggingInRef.current) {
-                toast.error('Esta sessão foi revogada remotamente.');
-                localStorage.removeItem('luisices_device_id');
-                localStorage.removeItem('luisices_device_last_reg');
-                handleLogout(true, u.uid);
+              const devId = localStorage.getItem('luisices_device_id') || deviceId;
+              if (!devId) return;
+              try {
+                await firebaseUserService.registerDeviceSession(devId, navigator.userAgent);
+                if (!isCurrentTransition()) return;
+                localStorage.setItem('luisices_device_last_reg', String(Date.now()));
+              } catch (err: any) {
+                if (!isCurrentTransition()) return;
+                console.warn('[AuthContext] Erro ao sincronizar sessão do dispositivo:', err);
+                if (String(err?.message || '').toLowerCase().includes('revogada') && !isLoggingInRef.current) {
+                  toast.error('Esta sessão foi revogada remotamente.');
+                  localStorage.removeItem('luisices_device_id');
+                  localStorage.removeItem('luisices_device_last_reg');
+                  handleLogout(true, u.uid);
+                }
               }
+            })();
+            deviceSessionSyncInFlight = syncPromise;
+            try {
+              await syncPromise;
+            } finally {
+              if (deviceSessionSyncInFlight === syncPromise) deviceSessionSyncInFlight = null;
             }
           };
 
@@ -181,7 +191,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   handleLogout(true, u.uid);
                 } else if (!initialCheckCompleted) {
                   initialCheckCompleted = true;
-                  syncDeviceSession();
+                  const lastReg = Number(localStorage.getItem('luisices_device_last_reg') || '0');
+                  if (Date.now() - lastReg > 30 * 1000) syncDeviceSession();
                 }
               }
             }, (err) => {

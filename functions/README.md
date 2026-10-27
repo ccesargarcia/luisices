@@ -55,6 +55,8 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 - O WhatsApp valida proprietário e conversa; veja a limitação atual para telefone compartilhado entre parceiros.
 - `getPublicCatalogProducts` publica somente os campos do catálogo necessários à vitrine e exclui produtos ocultos. A coleção interna `storeProducts` requer usuário autorizado do painel.
 - `submitPublicCatalogOrder` recebe encomendas da vitrine, valida disponibilidade, preço oficial e pedido mínimo no servidor. Cloudflare aplica rate limit aos endpoints públicos de leitura e checkout.
+- `listOrderTrackingLinks` mantém a listagem paginada da área administrativa; com `orderId`, retorna um único link. O Dashboard busca links existentes sob demanda, sem percorrer o histórico na abertura.
+- `registerDeviceSession` mantém as validações de perfil, revogação e limite de dispositivos na transação, mas não consulta serviços de geolocalização. Preserva a localização já registrada quando o IP não muda; em IP novo registra `Localização não verificada`. `geoip-lite` foi removido para evitar consulta externa e a grande base de dados que vinha com a dependência.
 - O Copiloto consulta dados e prepara rascunhos; o envio de WhatsApp pela UI é uma operação posterior, separada.
 - A análise de uma arte da galeria pode persistir seu enriquecimento. Não confundir esse endpoint visual com as ferramentas de consulta do chat.
 - A análise de consumo detalhada foi retirada da interface e deixou de gerar novas gravações em `ai_usage_*`. O callable `getAiUsage` permanece temporariamente publicado para evitar exclusão remota implícita no deploy; ele só pode ler dados históricos. Os limites operacionais continuam em `ai/budget.js` e não dependem desse relatório.
