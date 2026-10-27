@@ -25,7 +25,7 @@ function createAiServices(adminInstance, apiKey) {
   const client = new geminiClient.GeminiClient({
     apiKey: apiKey || (typeof process.env.GEMINI_API_KEY === 'string' ? process.env.GEMINI_API_KEY : ''),
     primaryModel: config.MODEL_CONFIG.PRIMARY_CHAT_MODEL,
-    fallbackModel: config.MODEL_CONFIG.FALLBACK_CHAT_MODEL,
+    fallbackModels: config.MODEL_CONFIG.FALLBACK_CHAT_MODELS,
   });
 
   const repos = new repositories.AiDataRepositories(db, auth);

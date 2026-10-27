@@ -42,7 +42,6 @@ import { CardDensitySection } from '../components/settings/CardDensitySection';
 import { HeaderFooterCustomizationSection } from '../components/settings/HeaderFooterCustomizationSection';
 import { WhatsAppTemplateSection } from '../components/settings/WhatsAppTemplateSection';
 import { OrderTrackingTemplateSection } from '../components/settings/OrderTrackingTemplateSection';
-import { AiSettingsSection } from '../components/settings/AiSettingsSection';
 import { AlexaSettingsSection } from '../components/settings/AlexaSettingsSection';
 import { McpSettingsSection } from '../components/settings/McpSettingsSection';
 import { SuperfreteSettingsSection } from '../components/settings/SuperfreteSettingsSection';
@@ -712,9 +711,6 @@ export function Settings() {
               </CardHeader>
             </Card>
           )}
-
-          {/* Monitoramento de IA */}
-          <AiSettingsSection isAdmin={isAdmin} />
 
           {/* Alexa Skill */}
           <AlexaSettingsSection isAdmin={isAdmin} />

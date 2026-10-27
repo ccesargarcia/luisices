@@ -60,7 +60,7 @@ Um pacote listado não comprova que todos os seus recursos estejam habilitados. 
 | `functions/orders` | Criação autoritativa, edição financeira, ledger/estatísticas atômicos, recibos, encomendas públicas e acompanhamento |
 | `functions/email` | Envio, recebimento, anexos, idempotência e limpeza |
 | `functions/whatsapp` | Conversas, autorização, integração e persistência de eventos |
-| `functions/ai` | Prompt, schemas, repositórios, ferramentas, orçamento e telemetria |
+| `functions/ai` | Prompt, schemas, repositórios, ferramentas e orçamento de uso |
 | `functions/alexa` | Identidade, diálogo, rascunhos e criação confirmada |
 | `functions/common` | Utilitários, limites e parâmetros compartilhados |
 
@@ -96,7 +96,7 @@ A UI envia mensagem, histórico limitado e imagem opcional a `aiAgentChat`. O ba
 
 Quando várias ferramentas são chamadas, pode haver uma rodada adicional de síntese. A configuração limita o trabalho por solicitação. Consultas de pedidos percorrem páginas até um teto operacional; limitar a lista exibida não garante uma quantidade equivalente de leituras no Firestore.
 
-O cache é em memória e não é compartilhado por todas as instâncias. Orçamento e telemetria possuem persistência própria. Veja [Copiloto](COPILOTO_IA.md).
+O cache é em memória e não é compartilhado por todas as instâncias. O orçamento possui persistência própria; a telemetria detalhada de consumo de tokens no Firestore foi desativada. Veja [Copiloto](COPILOTO_IA.md).
 
 ## Publicação e configuração
 

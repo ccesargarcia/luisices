@@ -53,14 +53,12 @@ const aiAgentChat = onCall(
 );
 
 /**
- * Consulta a cota e o consumo do subsistema de IA
+ * Compatibilidade temporária: consulta apenas analytics históricos de IA.
  */
 const getAiUsage = onCall(
-  { cors: true, maxInstances: 5, secrets: [GEMINI_API_KEY] },
+  { cors: true, maxInstances: 5 },
   withFirstInvocationSpan('getAiUsage', async (request) => {
-    const rawKey =
-      (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
-    const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth, storage: getStorage }, rawKey);
+    const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth, storage: getStorage });
     try {
       const { profile } = await assertActiveSession(request);
       request.authProfile = profile;

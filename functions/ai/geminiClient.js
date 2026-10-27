@@ -1,7 +1,7 @@
 /**
  * Cliente Resiliente da API Gemini - Luisices
  *
- * Gerencia chamadas HTTP seguras com fallback controlado (máx 1 tentativa),
+ * Gerencia chamadas HTTP seguras com fallback Gemini 3.x limitado por tempo,
  * circuit breaker por modelo, timeout compartilhado cobrindo body stream e
  * extração sanitizada de tokens.
  */
@@ -10,6 +10,23 @@ const { TIMEOUTS, MODEL_CONFIG } = require('./config');
 
 // Estado compartilhado de falhas dos modelos no processo Node
 const SHARED_MODEL_FAILURES = new Map(); // model -> { count, lastFailedAt }
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function isTransientStatus(status) {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function isGemini3Model(model) {
+  return typeof model === 'string' && /^gemini-3(?:[.-])/.test(model);
+}
+
+function getFallbackDelayMs(baseMs, attempts, totalTimeoutMs, startTime) {
+  const remainingBudget = Math.max(0, totalTimeoutMs - (Date.now() - startTime) - 1000);
+  const exponentialDelay = baseMs * (2 ** Math.max(0, attempts - 1));
+  const jitteredDelay = Math.floor(exponentialDelay * (0.75 + Math.random() * 0.5));
+  return Math.min(jitteredDelay, remainingBudget);
+}
 
 class GeminiClient {
   constructor(options = {}) {
@@ -71,16 +88,28 @@ class GeminiClient {
     }
 
     const totalTimeoutMs = options.totalTimeoutMs || TIMEOUTS.CHAT_TOTAL_MS;
+    const primaryAttemptTimeoutMs = options.primaryAttemptTimeoutMs || TIMEOUTS.CHAT_ATTEMPT_MS;
+    const fallbackAttemptTimeoutMs = options.fallbackAttemptTimeoutMs || TIMEOUTS.CHAT_FALLBACK_ATTEMPT_MS;
+    const fallbackDelayMs = options.fallbackDelayMs ?? TIMEOUTS.CHAT_FALLBACK_DELAY_MS;
     const startTime = Date.now();
 
-    const candidateModels = [
+    const configuredModels = [
       options.primaryModel || this.primaryModel,
       ...(options.fallbackModels || this.fallbackModels || [this.fallbackModel]),
-    ].filter((m, i, arr) => Boolean(m) && arr.indexOf(m) === i && this.isModelHealthy(m));
+    ].filter((m, i, arr) => Boolean(m) && arr.indexOf(m) === i);
+    const unsupportedModels = configuredModels.filter((model) => !isGemini3Model(model));
+    if (unsupportedModels.length > 0) {
+      const err = new Error(`Modelos fora da família Gemini 3.x não são permitidos: ${unsupportedModels.join(', ')}.`);
+      err.code = 'failed-precondition';
+      err.isNonRetryable = true;
+      throw err;
+    }
+    let candidateModels = configuredModels.filter((model) => this.isModelHealthy(model));
 
     if (candidateModels.length === 0) {
-      // Se todos os modelos saudáveis estiverem suspensos, tenta a lista toda
-      candidateModels.push(this.primaryModel, ...this.fallbackModels);
+      // Se todos estiverem suspensos, faz uma tentativa controlada na ordem
+      // configurada em vez de deixar a lista vazia ou duplicar modelos.
+      candidateModels = configuredModels;
     }
 
     let lastError = null;
@@ -96,14 +125,18 @@ class GeminiClient {
       if (remainingTime <= 1000) {
         const timeoutErr = new Error(`Tempo total de execução excedido (${totalTimeoutMs}ms).`);
         timeoutErr.code = 'deadline-exceeded';
+        timeoutErr.attempts = attemptLog;
+        timeoutErr.providerAttempted = attemptLog.length > 0;
         throw timeoutErr;
       }
 
       const controller = new AbortController();
-      const perAttemptTimeout = Math.min(remainingTime, TIMEOUTS.FETCH_STREAM_MS || 35000);
+      const configuredAttemptTimeout = attempts === 1 ? primaryAttemptTimeoutMs : fallbackAttemptTimeoutMs;
+      const perAttemptTimeout = Math.min(remainingTime, configuredAttemptTimeout || TIMEOUTS.FETCH_STREAM_MS || 35000);
       const timeoutId = setTimeout(() => controller.abort(), perAttemptTimeout);
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+      const attemptStartedAt = Date.now();
       const attempt = { model, status: 'started', usageKnown: false };
       let attemptRecorded = false;
 
@@ -125,6 +158,7 @@ class GeminiClient {
           const error = new Error(`Gemini API error (Status ${status}): ${errBody.slice(0, 300)}`);
           error.status = status;
           attempt.status = `http_${status}`;
+          attempt.durationMs = Date.now() - attemptStartedAt;
           attemptRecorded = true;
           attemptLog.push({ ...attempt });
 
@@ -135,10 +169,22 @@ class GeminiClient {
             throw error;
           }
 
-          // Se status for 404 (modelo específico inexistente/descontinuado) ou 429 ou 5xx:
-          // Grava a falha do modelo e tenta imediatamente o próximo da cascata
+          // Repetir ou trocar modelo não corrige payloads inválidos nem erros
+          // de cobrança. Evita chamadas redundantes e não marca o modelo como
+          // indisponível por um erro causado pelo cliente.
+          if ([400, 402, 422].includes(status)) {
+            error.isNonRetryable = true;
+            throw error;
+          }
+
+          // 404 pode indicar um modelo removido; erros transitórios aguardam
+          // um backoff curto com jitter antes de tentar o próximo modelo.
           this.recordModelFailure(model, error);
           lastError = error;
+          if (isTransientStatus(status) && attempts < candidateModels.length && fallbackDelayMs > 0) {
+            const delay = getFallbackDelayMs(fallbackDelayMs, attempts, totalTimeoutMs, startTime);
+            if (delay > 0) await sleep(delay);
+          }
           continue;
         }
 
@@ -150,6 +196,7 @@ class GeminiClient {
         if (!candidate) {
           const noCandidateErr = new Error('A API Gemini não retornou nenhum candidato de resposta.');
           attempt.status = 'empty_response';
+          attempt.durationMs = Date.now() - attemptStartedAt;
           attemptRecorded = true;
           attemptLog.push({ ...attempt });
           this.recordModelFailure(model, noCandidateErr);
@@ -174,6 +221,7 @@ class GeminiClient {
         const reasoningTokens = meta.thoughtsTokenCount || meta.candidatesTokenDetails?.[0]?.thoughtsTokenCount || 0;
         const totalTokens = meta.totalTokenCount || meta.totalTokens || (promptTokens + candidatesTokens + reasoningTokens);
         attempt.status = isTruncated ? 'truncated' : 'success';
+        attempt.durationMs = Date.now() - attemptStartedAt;
         attempt.usageKnown = Boolean(meta.totalTokenCount || meta.totalTokens || promptTokens || candidatesTokens || reasoningTokens);
         Object.assign(attempt, { promptTokens, candidatesTokens, reasoningTokens, totalTokens });
         attemptRecorded = true;
@@ -196,6 +244,7 @@ class GeminiClient {
       } catch (err) {
         if (!attemptRecorded) {
           attempt.status = err?.name === 'AbortError' || err?.code === 'ABORT_ERR' ? 'timeout' : 'network_or_parse_error';
+          attempt.durationMs = Date.now() - attemptStartedAt;
           attemptLog.push({ ...attempt });
           attemptRecorded = true;
         }
@@ -213,6 +262,12 @@ class GeminiClient {
         } else {
           this.recordModelFailure(model, err);
           lastError = err;
+        }
+
+        const isNetworkFailure = err?.status === undefined && !err?.isNonRetryable;
+        if ((isTimeout || isNetworkFailure) && attempts < candidateModels.length && fallbackDelayMs > 0) {
+          const delay = getFallbackDelayMs(fallbackDelayMs, attempts, totalTimeoutMs, startTime);
+          if (delay > 0) await sleep(delay);
         }
       } finally {
         clearTimeout(timeoutId);

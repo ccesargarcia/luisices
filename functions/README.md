@@ -28,7 +28,7 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 | WhatsApp | `sendWhatsAppDirectMessage`, `deleteWhatsAppMessage`, `syncWhatsAppChatMessages`, `getWhatsAppInstanceStatus`, `markWhatsAppChatRead`, `ensureWhatsAppConversation`, `evolutionWhatsAppWebhook` |
 | Loja/pedidos | `createOrder`, `updateComplexOrder`, `submitPublicCatalogOrder`, `getPublicCatalogProducts` |
 | Acompanhamento público | `createOrderTrackingLink`, `listOrderTrackingLinks`, `revokeOrderTrackingLink`, `revokeOrderTrackingLinkById`, `deleteOrderTrackingLink`, `deleteOrderTrackingLinksBatch`, `getPublicOrderTracking` |
-| IA | `aiAgentChat`, `getAiUsage`, `enrichGalleryItemWithAi`, `enrichStoreProductWithAi` |
+| IA | `aiAgentChat`, `getAiUsage` (legado), `enrichGalleryItemWithAi`, `enrichStoreProductWithAi` |
 | Alexa | `alexaWebhook`, `approveAlexaPairing`, `setAlexaPermission`, `revokeAlexaBinding`, `toggleGlobalAlexaIntegration`, `getAlexaIntegrationStatus`, `approveAlexaDraft`, `cancelAlexaDraft` |
 | MCP/ChatGPT | `getMcpSettingsStatus`, `createMcpApiKey`, `updateMcpApiKeyScopes`, `toggleMcpApiKey`, `revokeMcpApiKey`, `toggleGlobalMcp`, `setUserMcpEligibility`, `revokeMcpSession`, `getMcpAuditLogs`, `getMcpOpenApiSchema`, `chatGptToolsEndpoint` |
 | Mídia | `galleryMedia` |
@@ -57,7 +57,7 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 - `submitPublicCatalogOrder` recebe encomendas da vitrine, valida disponibilidade, preço oficial e pedido mínimo no servidor. Cloudflare aplica rate limit aos endpoints públicos de leitura e checkout.
 - O Copiloto consulta dados e prepara rascunhos; o envio de WhatsApp pela UI é uma operação posterior, separada.
 - A análise de uma arte da galeria pode persistir seu enriquecimento. Não confundir esse endpoint visual com as ferramentas de consulta do chat.
-- `getAiUsage` é destinado à administração. Limites e referências de custo estão em `ai/config.js`.
+- A análise de consumo detalhada foi retirada da interface e deixou de gerar novas gravações em `ai_usage_*`. O callable `getAiUsage` permanece temporariamente publicado para evitar exclusão remota implícita no deploy; ele só pode ler dados históricos. Os limites operacionais continuam em `ai/budget.js` e não dependem desse relatório.
 - Alexa possui diálogo, identidade, rascunhos e confirmação independentes do Copiloto.
 
 Detalhes: [Funcionalidades](../docs/FUNCIONALIDADES.md), [Arquitetura](../docs/DEPENDENCIAS_E_ARQUITETURA.md), [Copiloto](../docs/COPILOTO_IA.md).
