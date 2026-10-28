@@ -86,17 +86,17 @@ expose('approveAlexaDraft', () => require('./alexa').approveAlexaDraft);
 expose('cancelAlexaDraft', () => require('./alexa').cancelAlexaDraft);
 
 // ─── Integração MCP & ChatGPT Actions ─────────────────────────────────────
-expose('getMcpSettingsStatus', () => require('./mcp').getMcpSettingsStatus);
-expose('createMcpApiKey', () => require('./mcp').createMcpApiKey);
-expose('updateMcpApiKeyScopes', () => require('./mcp').updateMcpApiKeyScopes);
-expose('toggleMcpApiKey', () => require('./mcp').toggleMcpApiKey);
-expose('revokeMcpApiKey', () => require('./mcp').revokeMcpApiKey);
-expose('toggleGlobalMcp', () => require('./mcp').toggleGlobalMcp);
-expose('setUserMcpEligibility', () => require('./mcp').setUserMcpEligibility);
-expose('revokeMcpSession', () => require('./mcp').revokeMcpSession);
-expose('getMcpAuditLogs', () => require('./mcp').getMcpAuditLogs);
-expose('getMcpOpenApiSchema', () => require('./mcp').getMcpOpenApiSchema);
-expose('chatGptToolsEndpoint', () => require('./mcp').chatGptToolsEndpoint);
+expose('getMcpSettingsStatus', () => require('./mcp/callables').getMcpSettingsStatus);
+expose('createMcpApiKey', () => require('./mcp/callables').createMcpApiKey);
+expose('updateMcpApiKeyScopes', () => require('./mcp/callables').updateMcpApiKeyScopes);
+expose('toggleMcpApiKey', () => require('./mcp/callables').toggleMcpApiKey);
+expose('revokeMcpApiKey', () => require('./mcp/callables').revokeMcpApiKey);
+expose('toggleGlobalMcp', () => require('./mcp/callables').toggleGlobalMcp);
+expose('setUserMcpEligibility', () => require('./mcp/callables').setUserMcpEligibility);
+expose('revokeMcpSession', () => require('./mcp/callables').revokeMcpSession);
+expose('getMcpAuditLogs', () => require('./mcp/callables').getMcpAuditLogs);
+expose('getMcpOpenApiSchema', () => require('./mcp/callables').getMcpOpenApiSchema);
+expose('chatGptToolsEndpoint', () => require('./mcp/endpoint').chatGptToolsEndpoint);
 expose('galleryMedia', () => require('./media/gallery').galleryMedia);
 
 // Preserve a mesma fronteira: SuperFrete sandbox não é publicado em produção.

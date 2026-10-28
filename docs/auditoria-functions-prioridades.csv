@@ -1,0 +1,11 @@
+Prioridade;Trabalho;Alcance atual;Ganhos esperados;Perdas ou riscos;Complexidade
+P1;Desacoplar endpoint MCP das callables administrativas;11 Functions MCP;Mudanças do endpoint deixam de redeployar administração e reduzem módulos carregados;Primeira migração republica grupo MCP e exige checar exports;Média
+P1;Fábricas IA por capacidade e handlers isolados;4 Functions IA mais MCP;getAiUsage sem tools/Gemini e enrichments com dependências menores;Risco de duplicação de configuração e mudança de ciclo de vida;Alta
+P1;Medição de inicialização por endpoint;Todas;Distingue module init cold start de plataforma e duração do handler;Instrumentação gera ruído e não reduz latência por si só;Média
+P2;Separar pedidos em mutations catálogo tracking Superfrete DEV;13 DEV 11 produção;Mudanças de catálogo/tracking deixam de republicar mutations financeiras;Risco alto para atomicidade autorização secrets e idempotência;Alta
+P2;Separar webhook Alexa das callables administrativas;8;Reduz redeploy e carregamento cruzado;Risco de assinatura ASK pareamento dedupe e rascunhos;Média/Alta
+P2;Separar webhook Evolution de operações WhatsApp;7;Isola webhook de envio e consultas;Risco de duplicar autorização escopo e persistência;Média/Alta
+P2;Separar envio webhook e consultas/limpeza de e-mail;4;Consultas deixam de carregar anexos spam e idempotência de envio;Risco de envio duplicado anexos e assinatura webhook;Média
+P3;Separar usuários por convite identidade/perfil e sessões;15;Mudança em senha não reinicia sessões e claims sem necessidade;Risco de concorrência claims e revogação;Alta
+P3;Manter mídia isolada como padrão;1;Preserva isolamento que já funciona;Benefício incremental baixo;Baixa
+P0 contínuo;Preservar bootstrap global e seletor fail-closed;Todas;Evita omissão de Functions e protege inicialização compartilhada;Mudanças reais no bootstrap seguem globais;Baixa para manter alta consequência se quebrado

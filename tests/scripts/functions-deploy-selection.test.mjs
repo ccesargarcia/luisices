@@ -159,3 +159,61 @@ test('adding a new expose entry to index.js only selects new/changed endpoint', 
   assert.deepEqual(plan.targets, ['extra']);
 });
 
+const mcpFixture = () => {
+  const callableNames = [
+    'getMcpSettingsStatus', 'createMcpApiKey', 'updateMcpApiKeyScopes',
+    'toggleMcpApiKey', 'revokeMcpApiKey', 'toggleGlobalMcp',
+    'setUserMcpEligibility', 'revokeMcpSession', 'getMcpAuditLogs',
+    'getMcpOpenApiSchema',
+  ];
+  return {
+    'functions/index.js': [
+      "require('./bootstrap');",
+      'function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }',
+      ...callableNames.map((name) => `expose('${name}', () => require('./mcp/callables').${name});`),
+      "expose('chatGptToolsEndpoint', () => require('./mcp/endpoint').chatGptToolsEndpoint);",
+    ].join('\n'),
+    'functions/bootstrap.js': 'module.exports = {};',
+    'functions/mcp/callables.js': "require('./constants'); module.exports = {};",
+    'functions/mcp/endpoint.js': "require('./constants'); require('../ai/index'); module.exports = {};",
+    'functions/mcp/index.js': "require('./callables'); require('./endpoint'); module.exports = {};",
+    'functions/mcp/constants.js': 'module.exports = {};',
+    'functions/ai/index.js': 'module.exports = {};',
+    'functions/package.json': '{"engines":{"node":"22"}}',
+    'functions/package-lock.json': '{}',
+    'firebase.json': '{"functions":{"runtime":"nodejs22"}}',
+  };
+};
+const mcpCallableNames = [
+  'getMcpSettingsStatus', 'createMcpApiKey', 'updateMcpApiKeyScopes',
+  'toggleMcpApiKey', 'revokeMcpApiKey', 'toggleGlobalMcp',
+  'setUserMcpEligibility', 'revokeMcpSession', 'getMcpAuditLogs',
+  'getMcpOpenApiSchema',
+];
+const mcpEndpointName = ['chatGptToolsEndpoint'];
+
+test('MCP endpoint and admin callables have independent deploy graphs', () => {
+  const before = mcpFixture();
+  const callableChange = mcpFixture();
+  callableChange['functions/mcp/callables.js'] += '\n// changed admin callable';
+  assert.deepEqual(selectFunctions(before, callableChange).targets, mcpCallableNames);
+
+  const endpointChange = mcpFixture();
+  endpointChange['functions/mcp/endpoint.js'] += '\n// changed MCP protocol endpoint';
+  assert.deepEqual(selectFunctions(before, endpointChange).targets, mcpEndpointName);
+});
+
+test('MCP dependency shared by endpoint and callables selects both groups', () => {
+  const before = mcpFixture();
+  const after = mcpFixture();
+  after['functions/mcp/constants.js'] += '\n// shared MCP contract changed';
+  assert.deepEqual(selectFunctions(before, after).targets, [...mcpCallableNames, ...mcpEndpointName]);
+});
+
+test('removing the obsolete MCP aggregate remains fail-closed for that deploy', () => {
+  const before = mcpFixture();
+  const after = mcpFixture();
+  delete after['functions/mcp/index.js'];
+  assert.deepEqual(selectFunctions(before, after).targets, [...mcpCallableNames, ...mcpEndpointName]);
+});
+
