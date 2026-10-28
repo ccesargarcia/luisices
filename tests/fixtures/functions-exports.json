@@ -60,7 +60,7 @@
     "approveAlexaDraft",
     "cancelAlexaDraft"
   ],
-  "./mcp": [
+  "./mcp/callables": [
     "getMcpSettingsStatus",
     "createMcpApiKey",
     "updateMcpApiKeyScopes",
@@ -70,7 +70,9 @@
     "setUserMcpEligibility",
     "revokeMcpSession",
     "getMcpAuditLogs",
-    "getMcpOpenApiSchema",
+    "getMcpOpenApiSchema"
+  ],
+  "./mcp/endpoint": [
     "chatGptToolsEndpoint"
   ],
   "./media/gallery": [
