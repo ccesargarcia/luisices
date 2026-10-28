@@ -1,7 +1,7 @@
 # Auditoria de dependências e plano de modularização das Cloud Functions
 
 **Revisado em:** 28/10/2026
-**Branch/commit analisado:** `develop` / `868e3a2`
+**Branch/commit analisado:** `develop` / `2b9af2b`
 **Deploy DEV observado:** workflow [40628205038](https://github.com/ccesargarcia/luisices/actions/runs/40628205038), concluído com sucesso.
 
 ## Objetivo e limites
@@ -13,12 +13,13 @@ O mapa é estático e baseado no código do repositório. Ele não mede o tempo 
 ## Resumo executivo
 
 - Há **63 exports** no entrypoint: 61 endpoints gerais e 2 endpoints exclusivos de DEV/emulador.
-- Esses exports formam **8 grafos locais distintos** porque os exports de cada domínio apontam para um mesmo módulo principal. Uma mudança em um arquivo desse módulo seleciona os demais exports que compartilham o grafo.
+- Esses exports formam **10 módulos de entrada**: os grupos de MCP e IA agora têm entradas separadas para protocolo/gestão e para `getAiUsage`. Mudanças em dependências compartilhadas ainda selecionam todos os consumidores correspondentes.
 - O maior agrupamento é Usuários (**15 endpoints**), seguido de Pedidos (**13 em DEV, 11 em produção**), MCP (**11**), Alexa (**8**), WhatsApp (**7**), IA (**4**), E-mail (**4**) e Mídia (**1**).
-- No deploy DEV mais recente, o CI passou e publicou Functions com sucesso, mas o seletor escolheu **63 Functions** após a remoção do agregador MCP. O custo foi uma publicação ampla; não houve falha funcional reportada.
+- No deploy DEV [40737383806](https://github.com/ccesargarcia/luisices/actions/runs/40737383806), o CI passou e o seletor publicou **5 Functions** para a separação de `getAiUsage`: quatro exports de IA e o endpoint MCP que compartilha a fábrica de IA. A etapa de atualização das Functions levou cerca de 2min09s.
+- No deploy anterior [40628205038](https://github.com/ccesargarcia/luisices/actions/runs/40628205038), o seletor havia escolhido **63 Functions** após a remoção do agregador MCP. A correção do seletor foi validada no run [40735963324](https://github.com/ccesargarcia/luisices/actions/runs/40735963324).
 - Os exports MCP agora são registrados diretamente por `functions/mcp/callables.js` e `functions/mcp/endpoint.js`. O antigo `functions/mcp/index.js` foi removido. Os testes já cobrem deploy seletivo entre os dois grupos.
-- O próximo ajuste é ensinar o seletor a reconhecer arquivos removidos que pertenciam ao grafo do commit implantado, mantendo seleção global para arquivos de runtime realmente não rastreáveis.
-- A fábrica de IA constrói serviços e closures de todos os handlers mesmo quando o chamador só precisa de um, inclusive `getAiUsage`. No MCP, a fábrica completa também é usada embora o endpoint precise principalmente do executor e dos repositórios das ferramentas.
+- A correção do seletor reconhece arquivos removidos que pertenciam ao grafo do commit implantado, mantendo seleção global para arquivos de runtime realmente não rastreáveis.
+- `getAiUsage` não usa mais a fábrica geral; chat, enrichments e MCP ainda compartilham `functions/ai/index.js` e as dependências necessárias a essa fábrica.
 - Recomendo começar por **MCP/IA**, medir a redução no número de Functions e nos tempos de inicialização, depois decompor Pedidos. E-mail, WhatsApp, Alexa e Usuários vêm em lotes separados.
 
 ## Como o deploy funciona hoje
@@ -44,17 +45,20 @@ Os grupos abaixo representam os grafos estáticos identificados, não a quantida
 |---|---:|---:|---|---|
 | Usuários — `functions/users/index.js` | 15 | 15 | `sendAdminPasswordReset`, `createUserInvitation`, `validateUserInvitation`, `completeUserInvitation`, `sendVerificationEmail`, `sendPasswordResetEmail`, `getUserAccountMetadata`, `recordUserPasswordChange`, `deleteUser`, `createUser`, `updateUser`, `registerDeviceSession`, `revokeAllSessions`, `revokeDeviceSession`, `repairUserClaims` | Um módulo contém endpoints administrativos, convites, autenticação e sessões. As dependências locais alcançadas são pequenas, mas o arquivo de entrada compartilha toda a implementação. |
 | Pedidos — `functions/orders/index.js` | 13 | 11 | `submitPublicCatalogOrder`, `updateComplexOrder`, `createOrder`, `getPublicCatalogProducts`, `createOrderTrackingLink`, `listOrderTrackingLinks`, `revokeOrderTrackingLink`, `revokeOrderTrackingLinkById`, `deleteOrderTrackingLink`, `deleteOrderTrackingLinksBatch`, `getPublicOrderTracking`, `calculateSuperfreteShipping` (DEV), `createSuperfreteLabel` (DEV) | Arquivo principal extenso e sensível; criação, transações financeiras, catálogo público, rastreamento e SuperFrete compartilham o mesmo grafo. |
-| IA — `functions/ai/callables.js` | 4 | 4 | `aiAgentChat`, `getAiUsage`, `enrichGalleryItemWithAi`, `enrichStoreProductWithAi` | Cada callable alcança 14 módulos locais via entrypoint/fábrica compartilhada. O índice da IA importa tools, Gemini, handlers, schemas, orçamento e repositórios. |
-| MCP — `functions/mcp/index.js` | 11 | 11 | `getMcpSettingsStatus`, `createMcpApiKey`, `updateMcpApiKeyScopes`, `toggleMcpApiKey`, `revokeMcpApiKey`, `toggleGlobalMcp`, `setUserMcpEligibility`, `revokeMcpSession`, `getMcpAuditLogs`, `getMcpOpenApiSchema`, `chatGptToolsEndpoint` | `index.js` carrega callables administrativos e endpoint público juntos. O endpoint puxa a fábrica completa de IA. Este é o principal ponto de redução de alcance para a refatoração atual. |
+| IA — `functions/ai/callables.js` e `functions/ai/usageCallable.js` | 4 | 4 | `aiAgentChat`, `getAiUsage`, `enrichGalleryItemWithAi`, `enrichStoreProductWithAi` | `getAiUsage` tem entrada própria e não carrega Gemini, tools ou handlers de chat. As outras três callables ainda compartilham a fábrica de IA. |
+| MCP — `functions/mcp/callables.js` e `functions/mcp/endpoint.js` | 11 | 11 | `getMcpSettingsStatus`, `createMcpApiKey`, `updateMcpApiKeyScopes`, `toggleMcpApiKey`, `revokeMcpApiKey`, `toggleGlobalMcp`, `setUserMcpEligibility`, `revokeMcpSession`, `getMcpAuditLogs`, `getMcpOpenApiSchema`, `chatGptToolsEndpoint` | Callables administrativas e endpoint público têm entradas separadas. O endpoint ainda usa a fábrica geral de IA. |
 | Alexa — `functions/alexa/index.js` | 8 | 8 | `alexaWebhook`, `approveAlexaPairing`, `setAlexaPermission`, `revokeAlexaBinding`, `toggleGlobalAlexaIntegration`, `getAlexaIntegrationStatus`, `approveAlexaDraft`, `cancelAlexaDraft` | O webhook e as callables administrativas compartilham 18 módulos locais, inclusive diálogo, pareamento e serviços relacionados. |
 | WhatsApp — `functions/whatsapp/index.js` | 7 | 7 | `sendWhatsAppDirectMessage`, `deleteWhatsAppMessage`, `syncWhatsAppChatMessages`, `getWhatsAppInstanceStatus`, `markWhatsAppChatRead`, `ensureWhatsAppConversation`, `evolutionWhatsAppWebhook` | Um módulo de cerca de 760 linhas agrupa operações de usuário, manutenção de conversa e webhook. Tem instrumentação de inicialização. |
 | E-mail — `functions/email/index.js` | 4 | 4 | `sendCustomEmail`, `getEmailUsage`, `resendReceivingWebhook`, `cleanupEmailDrafts` | Envio, anexos, idempotência, filtro de spam, webhook e limpeza estão no mesmo grafo de sete módulos locais. |
 | Mídia — `functions/media/gallery.js` | 1 | 1 | `galleryMedia` | Já tem fronteira isolada e núcleo separado (`galleryCore.js`); bom padrão para preservar. |
 | **Total** | **63** | **61** | **63 nomes** | Os 2 endpoints de diferença são exclusivos de DEV/emulador. |
 
-### Evidência concreta do último deploy
+### Evidência de deploys recentes
 
-No run `40625320812`, a matriz de seleção gerou três listas, com **15 Functions ao todo**:
+No run [40737383806](https://github.com/ccesargarcia/luisices/actions/runs/40737383806), a separação inicial de `getAiUsage` selecionou e atualizou cinco Functions: `aiAgentChat`, `chatGptToolsEndpoint`, `enrichGalleryItemWithAi`, `enrichStoreProductWithAi` e `getAiUsage`. A atualização levou cerca de 2min09s. As outras três callables e o endpoint MCP ainda dependem de `functions/ai/index.js`, que também precisou ser alterado para remover o handler legado.
+
+O deploy anterior de [40625320812](https://github.com/ccesargarcia/luisices/actions/runs/40625320812) selecionou 15 Functions durante a etapa anterior de MCP/IA:
+
 
 | Lote | Functions |
 |---|---|
@@ -70,7 +74,7 @@ As 15 foram implantadas com sucesso. O workflow completo terminou com sucesso; o
 
 O antigo `functions/mcp/index.js` importava estaticamente `./callables` e `./endpoint`, fazendo callables administrativos herdarem parte do grafo do endpoint público. A entrada já foi separada: exports administrativos apontam para `functions/mcp/callables.js`, e `chatGptToolsEndpoint` para `functions/mcp/endpoint.js`. O endpoint ainda chama `getSharedAiServices()`, que usa `createAiServices()` de `functions/ai/index.js`.
 
-`functions/ai/index.js` importa no topo `tools`, `handlers`, `geminiClient`, `repositories`, `budget`, `usage`, `schemas`, `cache` e configurações. `createAiServices()` cria `GeminiClient`, repositórios, executor de ferramentas, gerenciador de orçamento e closures para os handlers de chat, usage e enriquecimento. `functions/ai/callables.js` chama essa fábrica dentro de cada handler; `getAiUsage` também monta o pacote completo de serviços para chamar apenas o handler de leitura de uso.
+`functions/ai/index.js` importa no topo `tools`, `handlers`, `geminiClient`, `repositories`, `budget`, `usage`, `schemas`, `cache` e configurações. `createAiServices()` cria `GeminiClient`, repositórios, executor de ferramentas, gerenciador de orçamento e closures para os handlers de chat e enriquecimento. `functions/ai/callables.js` chama essa fábrica dentro de cada handler. Desde a separação documentada na Fase 2, `getAiUsage` usa `usageCallable.js` e `usageHandler.js`, sem carregar esse índice.
 
 Consequências verificáveis:
 
@@ -80,7 +84,7 @@ Consequências verificáveis:
 - A construção da fábrica dentro do handler repete criação de objetos/closures por invocação, embora o cache de módulos e processos do Node continue aplicável. A fábrica deve ser medida antes de mover objetos para estado global; estado de usuário nunca pode ser compartilhado entre requisições.
 - `GeminiClient` é baseado em `fetch` e não mostra import de SDK externo no arquivo; mesmo assim, o pacote de IA inteiro fica acoplado pelo grafo, e sua construção sem chave/modelo não é necessária para operações MCP que apenas executam ferramentas.
 
-**Direção recomendada:** manter regras de domínio compartilhadas, mas deixar adaptadores e fábricas por capacidade. O endpoint MCP deveria depender explicitamente apenas de autorização MCP, repositórios necessários e executor de ferramentas. Callables administrativas MCP não deveriam importar o endpoint. `getAiUsage` não deveria carregar tools/Gemini; enrichments não deveriam carregar tools de pedidos, salvo dependência comprovada. O chat continua podendo compartilhar o executor de ferramentas completo com o MCP enquanto ambos oferecem essas mesmas operações.
+**Direção recomendada:** manter regras de domínio compartilhadas, mas deixar adaptadores e fábricas por capacidade. O endpoint MCP deveria depender explicitamente apenas de autorização MCP, repositórios necessários e executor de ferramentas. Callables administrativas MCP não deveriam importar o endpoint. `getAiUsage` já não carrega tools/Gemini; enrichments ainda devem ser avaliados para evitar dependências de ferramentas de pedidos sem necessidade comprovada. O chat continua podendo compartilhar o executor de ferramentas completo com o MCP enquanto ambos oferecem essas mesmas operações.
 
 ### 2. Pedidos: alto valor, maior cuidado de regressão
 
@@ -124,8 +128,8 @@ Complexidade é relativa ao repositório: **Baixa** = fronteira clara e poucos c
 
 | Prioridade | Trabalho | Alcance atual | Ganhos esperados | Perdas / riscos | Complexidade |
 |---|---|---|---|---|---|
-| **Concluída / validar** | Desacoplar o endpoint MCP das callables administrativas; apontar exports diretamente aos módulos apropriados | 11 MCP | Mudanças no endpoint podem deixar de republicar as callables de administração; menor carga de módulos em operações administrativas; menor área de regressão | Primeira publicação atualizou 63 Functions devido ao tratamento fail-closed de arquivo removido; confirmar seleção menor em mudança futura | **Média** |
-| **P1** | Substituir `createAiServices` monolítica por fábricas por capacidade e separar callables/handlers independentes | 4 IA + MCP | `getAiUsage` deixa de depender do executor/Gemini; enrichments carregam só as capacidades necessárias; menor grafo de deploy e potencial redução de inicialização | Pode duplicar configuração se desenho for apressado; risco de alterar handler, segredo ou ciclo de vida/cache; exige manter contrato do chat | **Alta** |
+| **Concluída / validar** | Desacoplar o endpoint MCP das callables administrativas; apontar exports diretamente aos módulos apropriados | 11 MCP | Mudanças no endpoint podem deixar de republicar as callables de administração; menor carga de módulos em operações administrativas; menor área de regressão | Primeira publicação atualizou 63 Functions devido ao tratamento fail-closed de arquivo removido; o grafo seletivo tem teste próprio | **Média** |
+| **Em andamento** | Substituir `createAiServices` monolítica por fábricas por capacidade e separar callables/handlers independentes | 4 IA + MCP | `getAiUsage` isolado do executor/Gemini; próxima oportunidade: enrichments carregarem só as capacidades necessárias | A separação inicial publicou 5 Functions; demais alterações exigem cuidado com autorização, secrets e ciclo de vida/cache | **Alta** |
 | **P1** | Medir inicialização/primeira chamada por endpoint, com cobertura uniforme antes/depois | Todos | Evidência separa carga de módulo, cold start de plataforma e duração do handler; evita otimização por suposição | Instrumentação adiciona ruído/volume; dados ausentes ou amostrados não equivalem a zero; não reduz latência por si só | **Média** |
 | **P2** | Separar `orders/index.js` em core mutations, catálogo público, tracking e SuperFrete DEV | 13 DEV / 11 prod | Mudança de catálogo ou tracking deixa de republicar mutations financeiras sem relação; menores lotes; SuperFrete não contamina caminho de produção | Primeira migração pode publicar muitos endpoints; maior risco de quebrar atomicidade, auth, secrets, versionamento ou regra de transição de pedido | **Alta** |
 | **P2** | Separar webhook Alexa das callables administrativas; manter domínio comum | 8 | Mudança de diálogo/assinatura não republica todas as ações administrativas; menor acoplamento de inicialização | Risco de assinatura ASK, dedupe, pareamento e rascunhos se handlers forem movidos sem testes de contrato | **Média/Alta** |
@@ -147,26 +151,28 @@ A mesma matriz está no arquivo CSV [`auditoria-functions-prioridades.csv`](audi
 4. Tratar `getAiUsage` como legado de leitura até confirmar consumidores; não remover endpoint/contrato nesta refatoração.
 5. Estabelecer critérios: mesmos nomes e payloads, autorizações/secrets e região; sem novas regras Firestore, sem perda de idempotência, sem operação financeira cliente-direta.
 
-**Estado:** baseline de código e CI registrado. O deploy [40628205038](https://github.com/ccesargarcia/luisices/actions/runs/40628205038) publicou 63 Functions em DEV; portanto, a redução de deploy ainda não foi demonstrada.
+**Estado:** baseline registrado. Depois do deploy amplo de 63 Functions em [40628205038](https://github.com/ccesargarcia/luisices/actions/runs/40628205038), a correção do seletor passou e o deploy seguinte de IA atualizou cinco Functions, demonstrando redução de escopo.
 
 ### Fase 1 — MCP: primeira redução segura
 
-1. Separar registros MCP no root para que `chatGptToolsEndpoint` carregue o endpoint e as callables administrativas carreguem apenas o módulo de callables. Não deixar `mcp/index.js` importar os dois grupos para todos os consumidores.
+1. ✅ Separar registros MCP no root para que `chatGptToolsEndpoint` carregue o endpoint e as callables administrativas carreguem apenas o módulo de callables. Não deixar `mcp/index.js` importar os dois grupos para todos os consumidores.
 2. Criar uma fábrica mínima para o runtime MCP que receba Firestore/Auth necessários e construa `AiDataRepositories` + `AiToolsExecutor`; não instanciar `GeminiClient`, todos os handlers de IA ou os serviços de enriquecimento no endpoint MCP sem necessidade comprovada.
 3. Manter compartilhados os contratos de ferramenta, autorização/escopo, operações financeiras e validações determinísticas. Separar adaptador/protocolo de regra de negócio, não copiar regra.
-4. Estender `functions-deploy-selection.test.mjs` com expectativas de grafo: mudança em `mcp/presentation.js` afeta o endpoint, não as callables administrativas; mudança em callables não afeta o endpoint; mudança num serviço de domínio usado por ambos afeta ambos.
+4. ✅ Estender `functions-deploy-selection.test.mjs` com expectativas de grafo: mudanças exclusivas em callables e endpoint afetam seus próprios grupos; uma dependência compartilhada afeta ambos.
 5. Executar unitários MCP, testes de permissão/escopo, integração com Firestore Emulator para preview → confirmação → idempotência e fluxos de itens (incluindo 1–4 e 5–10). Validar regressão via ChatGPT Web e cliente Android quando disponível.
 6. Publicar somente após os alvos esperados serem revisados no log. Conferir `tools/list`, OpenAPI, OAuth/manifests e cache MCP no DEV; depois testar uma mutação real controlada e verificar auditoria/ledger.
 
-**Estado:** a separação dos exports e os testes de grafos MCP foram entregues. A criação de uma fábrica mínima para o endpoint e a validação funcional em ChatGPT Web/Android ainda estão pendentes. A remoção do módulo agregado ocasionou seleção global no deploy mais recente; corrigir e provar o comportamento do seletor antes de avançar para a Fase 2.
+**Estado:** exports MCP isolados, testes do grafo passando e remoção do agregado tratada com seleção conhecida em vez de deploy global. Uma consulta somente de leitura foi confirmada pelo conector MCP de DEV. Ainda falta uma mutação controlada de pedido, com procedimento de limpeza, antes de considerar a validação funcional completa. A fábrica mínima MCP permanece pendente.
 
 ### Fase 2 — IA: fábricas e handlers por capacidade
 
-1. Separar `getAiUsage` para depender apenas de autorização, Firestore e leitura agregada histórica.
+1. ✅ Separar `getAiUsage` para depender apenas de autorização, Firestore e leitura agregada histórica.
 2. Separar factories para chat e cada tipo de enrichment, com configuração explícita de secrets e dependências.
 3. Desmembrar `handlers.js` só nos pontos necessários para reduzir os imports transitivos; evitar uma decomposição puramente por tamanho.
 4. Garantir que `aiAgentChat` continua sendo o único caminho que inicializa contexto, executor de ferramentas e orçamento do chat. Vision/enrichment continuam com seus próprios limites e budget.
 5. Validar respostas, chamadas/fallback do Gemini, permissões, chamadas de ferramenta e métricas Sentry. Comparar módulo/handler antes/depois no mesmo endpoint.
+
+**Estado:** `getAiUsage` foi separado em `functions/ai/usageCallable.js` e `functions/ai/usageHandler.js`; não carrega `ai/index`, Gemini, tools ou handlers de chat. A autorização de sessão e a restrição de administrador foram preservadas. A CI [40737383806](https://github.com/ccesargarcia/luisices/actions/runs/40737383806) passou com lint e 1.349 testes unitários/regressivos. O deploy DEV atualizou cinco Functions (incluindo os consumidores que ainda compartilham `ai/index.js`). Mudanças futuras em `usageHandler.js` devem selecionar apenas `getAiUsage`; factories específicas para enrichment continuam pendentes.
 
 ### Fase 3 — Pedidos: isolamento sem mudar a transação
 
