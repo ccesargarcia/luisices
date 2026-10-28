@@ -78,9 +78,9 @@ describe('inicialização das Functions com SDK real', () => {
       assert.ok(require.cache[require.resolve('./common/sentry')]);
       const fs = require('node:fs');
       const enrichmentSource = fs.readFileSync(require.resolve('./ai/enrichmentCallables'), 'utf8');
-      assert.match(enrichmentSource, /withFirstInvocationSpan\('enrichGalleryItemWithAi'/);
-      assert.match(enrichmentSource, /withFirstInvocationSpan\('enrichStoreProductWithAi'/);
-      assert.match(enrichmentSource, /\(\) => moduleInitializationMs/);
+      assert.ok(enrichmentSource.includes("withFirstInvocationSpan('enrichGalleryItemWithAi'"));
+      assert.ok(enrichmentSource.includes("withFirstInvocationSpan('enrichStoreProductWithAi'"));
+      assert.ok(enrichmentSource.includes('() => moduleInitializationMs'));
     `);
   });
 
