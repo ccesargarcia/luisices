@@ -46,7 +46,7 @@ function createFirestore(seed: Record<string, any> = {}) {
       },
     }),
   };
-  return { db, documents, writes, timestamp };
+  return { db, documents, writes };
 }
 
 const request = (overrides: Record<string, any> = {}) => ({
