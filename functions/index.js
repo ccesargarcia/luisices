@@ -71,7 +71,7 @@ expose('getPublicOrderTracking', () => require('./orders').getPublicOrderTrackin
 
 // ─── Inteligência Artificial (Google Gemini) ────────────────────────────────
 expose('aiAgentChat', () => require('./ai/callables').aiAgentChat);
-expose('getAiUsage', () => require('./ai/callables').getAiUsage);
+expose('getAiUsage', () => require('./ai/usageCallable').getAiUsage);
 expose('enrichGalleryItemWithAi', () => require('./ai/callables').enrichGalleryItemWithAi);
 expose('enrichStoreProductWithAi', () => require('./ai/callables').enrichStoreProductWithAi);
 

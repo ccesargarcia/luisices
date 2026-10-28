@@ -235,3 +235,43 @@ test('removing a formerly reachable aggregate selects only its remapped endpoint
   assert.deepEqual(selectFunctions(before, after).targets, [...mcpCallableNames, ...mcpEndpointName].sort());
 });
 
+const aiFixture = () => ({
+  'functions/index.js': [
+    "require('./bootstrap');",
+    'function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }',
+    "expose('aiAgentChat', () => require('./ai/callables').aiAgentChat);",
+    "expose('enrichGalleryItemWithAi', () => require('./ai/callables').enrichGalleryItemWithAi);",
+    "expose('enrichStoreProductWithAi', () => require('./ai/callables').enrichStoreProductWithAi);",
+    "expose('getAiUsage', () => require('./ai/usageCallable').getAiUsage);",
+    "expose('chatGptToolsEndpoint', () => require('./mcp/endpoint').chatGptToolsEndpoint);",
+  ].join('\n'),
+  'functions/bootstrap.js': 'module.exports = {};',
+  'functions/ai/callables.js': "require('./index'); require('./httpsError'); module.exports = {};",
+  'functions/ai/usageCallable.js': "require('./usageHandler'); require('./httpsError'); module.exports = {};",
+  'functions/ai/usageHandler.js': "require('./authorization'); require('./usage'); module.exports = {};",
+  'functions/ai/authorization.js': 'module.exports = {};',
+  'functions/ai/usage.js': 'module.exports = {};',
+  'functions/ai/httpsError.js': 'module.exports = {};',
+  'functions/ai/index.js': "require('./handlers'); require('./geminiClient'); require('./tools'); module.exports = {};",
+  'functions/ai/handlers.js': 'module.exports = {};',
+  'functions/ai/geminiClient.js': 'module.exports = {};',
+  'functions/ai/tools.js': 'module.exports = {};',
+  'functions/mcp/endpoint.js': "require('../ai/index'); module.exports = {};",
+  'functions/package.json': '{"engines":{"node":"22"}}',
+  'functions/package-lock.json': '{}',
+  'firebase.json': '{"functions":{"runtime":"nodejs22"}}',
+});
+
+test('getAiUsage tem grafo independente da fábrica de chat e Gemini', () => {
+  const before = aiFixture();
+  const after = aiFixture();
+  after['functions/ai/usageHandler.js'] += '\n// change historical usage handler';
+  assert.deepEqual(selectFunctions(before, after).targets, ['getAiUsage']);
+
+  const aiCoreChange = aiFixture();
+  aiCoreChange['functions/ai/index.js'] += '\n// chat and enrichment services changed';
+  assert.deepEqual(selectFunctions(before, aiCoreChange).targets, [
+    'aiAgentChat', 'chatGptToolsEndpoint', 'enrichGalleryItemWithAi', 'enrichStoreProductWithAi',
+  ]);
+});
+

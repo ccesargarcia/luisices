@@ -5,7 +5,6 @@
 const { getCallerScope, validateAiAccess, validateGalleryAccess } = require('./authorization');
 const { TOOLS_DECLARATIONS, COPILOT_SYSTEM_INSTRUCTION, GALLERY_VISION_PROMPT, STORE_PRODUCT_VISION_PROMPT } = require('./schemas');
 const { INPUT_LIMITS, TIMEOUTS, MODEL_CONFIG, TOOL_LIMITS, BUSINESS_TIMEZONE } = require('./config');
-const { getAiUsageSummary } = require('./usage');
 
 function cleanAiOutput(text = '') {
   if (!text || typeof text !== 'string') return '';
@@ -556,32 +555,6 @@ function createAiAgentChatHandler(deps = {}) {
 }
 
 /**
- * Handler legado de leitura dos analytics históricos; não recebe novas gravações.
- */
-function createGetAiUsageHandler(deps = {}) {
-  const { db } = deps;
-
-  return async function handleGetAiUsage(request) {
-    const callerUid = request?.auth?.uid;
-    if (!callerUid) {
-      const err = new Error('Usuário não autenticado.');
-      err.code = 'unauthenticated';
-      throw err;
-    }
-
-    const callerProfile = request?.authProfile || (db ? (await db.doc(`userProfiles/${callerUid}`).get().then(d => d.exists ? d.data() : null)) : null);
-    const scope = getCallerScope(callerUid, callerProfile);
-    if (!scope.isAdmin) {
-      const err = new Error('Acesso restrito a administradores.');
-      err.code = 'permission-denied';
-      throw err;
-    }
-
-    return getAiUsageSummary(db);
-  };
-}
-
-/**
  * Cria o handler para enrichGalleryItemWithAi (R02 & R10)
  */
 function createEnrichGalleryItemHandler(deps = {}) {
@@ -848,7 +821,6 @@ function createStoreCustomizationCopyHandler(deps = {}) {
 
 module.exports = {
   createAiAgentChatHandler,
-  createGetAiUsageHandler,
   createEnrichGalleryItemHandler,
   createEnrichStoreProductHandler,
   createStoreCustomizationCopyHandler,

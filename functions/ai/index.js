@@ -52,7 +52,6 @@ function createAiServices(adminInstance, apiKey) {
         cache: cache.globalAiCache,
         db,
       }),
-      getAiUsage: handlers.createGetAiUsageHandler({ db }),
       enrichGalleryItemWithAi: handlers.createEnrichGalleryItemHandler({
         geminiClient: client,
         db,

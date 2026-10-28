@@ -46,9 +46,11 @@
   ],
   "./ai/callables": [
     "aiAgentChat",
-    "getAiUsage",
     "enrichGalleryItemWithAi",
     "enrichStoreProductWithAi"
+  ],
+  "./ai/usageCallable": [
+    "getAiUsage"
   ],
   "./alexa": [
     "alexaWebhook",

@@ -7,31 +7,14 @@ const moduleInitializationStartedAt = process.hrtime.bigint();
 const { getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { getStorage } = require('firebase-admin/storage');
-const { HttpsError } = require('firebase-functions/v2/https');
 const { onCall } = require('../common/sentryFunctions');
 const { GEMINI_API_KEY } = require('../common/secrets');
 const { assertActiveSession } = require('../common/helpers');
 const { createAiServices } = require('./index');
+const { mapToHttpsError } = require('./httpsError');
 const { withFirstInvocationSpan } = require('../common/sentry');
 
 let moduleInitializationMs = null;
-
-const mapToHttpsError = (err) => {
-  if (err && err.code && typeof err.code === 'string' && err.message) {
-    const codeMap = {
-      unauthenticated: 'unauthenticated',
-      'permission-denied': 'permission-denied',
-      'invalid-argument': 'invalid-argument',
-      'resource-exhausted': 'resource-exhausted',
-      'not-found': 'not-found',
-      'failed-precondition': 'failed-precondition',
-      'deadline-exceeded': 'deadline-exceeded',
-    };
-    const httpsCode = codeMap[err.code] || 'internal';
-    return new HttpsError(httpsCode, err.message);
-  }
-  return new HttpsError('internal', err?.message || 'Erro ao processar requisição de IA.');
-};
 
 /**
  * Endpoint Callable Seguro do Copiloto de IA Interno (Luisices)
@@ -46,23 +29,6 @@ const aiAgentChat = onCall(
       const { profile } = await assertActiveSession(request);
       request.authProfile = profile;
       return await aiServices.handlers.aiAgentChat(request);
-    } catch (err) {
-      throw mapToHttpsError(err);
-    }
-  }, () => moduleInitializationMs)
-);
-
-/**
- * Compatibilidade temporária: consulta apenas analytics históricos de IA.
- */
-const getAiUsage = onCall(
-  { cors: true, maxInstances: 5 },
-  withFirstInvocationSpan('getAiUsage', async (request) => {
-    const aiServices = createAiServices({ firestore: getFirestore, auth: getAuth, storage: getStorage });
-    try {
-      const { profile } = await assertActiveSession(request);
-      request.authProfile = profile;
-      return await aiServices.handlers.getAiUsage(request);
     } catch (err) {
       throw mapToHttpsError(err);
     }
@@ -111,7 +77,6 @@ moduleInitializationMs = Number((Number(process.hrtime.bigint() - moduleInitiali
 
 module.exports = {
   aiAgentChat,
-  getAiUsage,
   enrichGalleryItemWithAi,
   enrichStoreProductWithAi,
 };

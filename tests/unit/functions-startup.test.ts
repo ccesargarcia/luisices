@@ -27,6 +27,19 @@ function checkStartup(script: string, extraEnv: Record<string, string> = {}) {
 }
 
 describe('inicialização das Functions com SDK real', () => {
+  it('getAiUsage não carrega fábricas ou dependências do chat/Gemini', () => {
+    checkStartup(`
+      const handler = functions.getAiUsage;
+      assert.equal(handler, require('./ai/usageCallable').getAiUsage);
+      for (const modulePath of [
+        './ai/callables', './ai/index', './ai/handlers', './ai/geminiClient', './ai/tools',
+      ]) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
+      }
+      assert.ok(!handler.__endpoint.secretEnvironmentVariables?.some(item => item.key === 'GEMINI_API_KEY'));
+    `);
+  });
+
   it.each(['createOrder', 'updateComplexOrder'])(
     '%s carrega apenas o domínio necessário e reutiliza o handler protegido', (target) => {
       checkStartup(`
