@@ -20,7 +20,7 @@ const {
 const { TOOL_SCOPE_MAP, MCP_SCOPES } = require('./constants');
 const { buildOpenApiSchema, TOOLS_METADATA } = require('./openapi');
 const { validateToolArguments } = require('./validation');
-const { createAiServices } = require('../ai/index');
+const { createMcpAiServices } = require('./aiServices');
 const { ORIGIN_SECRET } = require('../common/secrets');
 const { validateOriginSecret } = require('../originProtection');
 const { captureApiError } = require('../common/sentry');
@@ -221,15 +221,12 @@ function recordMcpAuditLog(db, {
     });
 }
 
-let sharedAiServices = null;
-function getSharedAiServices(db) {
-  if (!sharedAiServices) {
-    sharedAiServices = createAiServices({
-      firestore: () => db,
-      auth: () => getAuth(),
-    });
+let sharedMcpServices = null;
+function getSharedMcpServices(db) {
+  if (!sharedMcpServices) {
+    sharedMcpServices = createMcpAiServices({ firestore: db, auth: getAuth() });
   }
-  return sharedAiServices;
+  return sharedMcpServices;
 }
 
 /**
@@ -738,7 +735,7 @@ const chatGptToolsEndpoint = onRequest(
 
         const startTime = Date.now();
         try {
-          const aiServices = traceMcpStep('services', () => getSharedAiServices(db));
+          const aiServices = traceMcpStep('services', () => getSharedMcpServices(db));
           const { toolsExecutor } = aiServices;
           const result = await executeScopedToolByName(toolsExecutor, toolName, toolArgs, scope, keyScopes);
           const executionTimeMs = Date.now() - startTime;
@@ -877,7 +874,7 @@ const chatGptToolsEndpoint = onRequest(
       } catch (validationError) {
         return res.status(400).json({ error: 'INVALID_ARGUMENT', message: publicErrorMessage(validationError) });
       }
-      const aiServices = traceMcpStep('services', () => getSharedAiServices(db));
+      const aiServices = traceMcpStep('services', () => getSharedMcpServices(db));
       const { toolsExecutor } = aiServices;
 
       const startTime = Date.now();

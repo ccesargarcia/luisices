@@ -40,6 +40,21 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
+  it('MCP carrega executor e repositórios sem inicializar a fábrica de chat/Gemini', () => {
+    checkStartup(`
+      const handler = functions.chatGptToolsEndpoint;
+      assert.equal(handler, require('./mcp/endpoint').chatGptToolsEndpoint);
+      for (const modulePath of [
+        './ai/index', './ai/callables', './ai/handlers', './ai/geminiClient',
+        './ai/budget', './ai/cache',
+      ]) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
+      }
+      assert.ok(require.cache[require.resolve('./ai/repositories')]);
+      assert.ok(require.cache[require.resolve('./ai/tools')]);
+    `);
+  });
+
   it.each(['createOrder', 'updateComplexOrder'])(
     '%s carrega apenas o domínio necessário e reutiliza o handler protegido', (target) => {
       checkStartup(`

@@ -1,7 +1,7 @@
 # Auditoria de dependências e plano de modularização das Cloud Functions
 
 **Revisado em:** 28/10/2026
-**Branch/commit analisado:** `develop` / `2b9af2b`
+**Branch/commit analisado:** `develop` / mudança local da fábrica MCP após `60ca1a6`
 **Deploy DEV observado:** workflow [40628205038](https://github.com/ccesargarcia/luisices/actions/runs/40628205038), concluído com sucesso.
 
 ## Objetivo e limites
@@ -19,7 +19,7 @@ O mapa é estático e baseado no código do repositório. Ele não mede o tempo 
 - No deploy anterior [40628205038](https://github.com/ccesargarcia/luisices/actions/runs/40628205038), o seletor havia escolhido **63 Functions** após a remoção do agregador MCP. A correção do seletor foi validada no run [40735963324](https://github.com/ccesargarcia/luisices/actions/runs/40735963324).
 - Os exports MCP agora são registrados diretamente por `functions/mcp/callables.js` e `functions/mcp/endpoint.js`. O antigo `functions/mcp/index.js` foi removido. Os testes já cobrem deploy seletivo entre os dois grupos.
 - A correção do seletor reconhece arquivos removidos que pertenciam ao grafo do commit implantado, mantendo seleção global para arquivos de runtime realmente não rastreáveis.
-- `getAiUsage` não usa mais a fábrica geral; chat, enrichments e MCP ainda compartilham `functions/ai/index.js` e as dependências necessárias a essa fábrica.
+- `getAiUsage` não usa mais a fábrica geral. MCP está desacoplado de `functions/ai/index.js` por uma fábrica mínima; chat e enrichments ainda compartilham a fábrica de IA.
 - Recomendo começar por **MCP/IA**, medir a redução no número de Functions e nos tempos de inicialização, depois decompor Pedidos. E-mail, WhatsApp, Alexa e Usuários vêm em lotes separados.
 
 ## Como o deploy funciona hoje
@@ -214,3 +214,9 @@ O compartilhamento de **regras de negócio puras** é desejável. O problema enc
 Após o commit-base desta auditoria, o working tree passou a registrar diretamente as 10 callables MCP por `functions/mcp/callables.js` e `chatGptToolsEndpoint` por `functions/mcp/endpoint.js`. O agregado antigo `functions/mcp/index.js`, que carregava os dois grupos juntos, foi removido por não ter outros consumidores. Os contratos e nomes públicos dos 11 exports foram preservados.
 
 Foram acrescentados testes do seletor para mudanças exclusivas em callables, endpoint, dependências MCP compartilhadas e remoção de agregado antes alcançável. O deploy [40628205038](https://github.com/ccesargarcia/luisices/actions/runs/40628205038) passou na CI, mas selecionou todas as 63 Functions após a remoção do agregado. A alteração seguinte reconhece arquivos removidos quando eram alcançáveis no grafo do commit implantado; arquivos de runtime sem referência conhecida continuam acionando seleção global. A validação [40735963324](https://github.com/ccesargarcia/luisices/actions/runs/40735963324) passou: teste de seleção, lint e 1.345 testes unitários/regressivos. E2E e publicação foram ignorados por não haver mudanças de produto ou Functions. Os testes locais seguem bloqueados porque o Node do Termux falha ao iniciar por incompatibilidade de biblioteca.
+
+## Atualização: fábrica enxuta do MCP (28/10/2026)
+
+Esta seção substitui as observações anteriores que diziam que o endpoint MCP ainda importava `functions/ai/index.js`. A mudança local troca essa fábrica pela nova `functions/mcp/aiServices.js`, que instancia somente `AiDataRepositories` e `AiToolsExecutor`. Assim, o endpoint deixa de carregar `GeminiClient`, orçamento, cache e handlers de chat/enrichment. O MCP continua compartilhando `ai/tools.js` e `ai/repositories.js` com as operações de chat que usam essas mesmas capacidades; alterações nesses dois módulos devem seguir selecionando todos os consumidores.
+
+Foram acrescentados testes de inicialização do endpoint, composição da fábrica e seletor de deploy. O alvo esperado para mudanças exclusivas em `mcp/aiServices.js` é somente `chatGptToolsEndpoint`; alterações exclusivas em `ai/index.js` ou `ai/geminiClient.js` selecionam as três callables de chat/enrichment, sem o endpoint MCP. A mudança ainda não foi executada pela CI nem implantada. O teste de mutação de pedido no MCP em DEV continua sendo validação manual pendente.

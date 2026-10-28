@@ -175,7 +175,13 @@ const mcpFixture = () => {
     ].join('\n'),
     'functions/bootstrap.js': 'module.exports = {};',
     'functions/mcp/callables.js': "require('./constants'); module.exports = {};",
-    'functions/mcp/endpoint.js': "require('./constants'); require('../ai/index'); module.exports = {};",
+    'functions/mcp/endpoint.js': "require('./constants'); require('./aiServices'); module.exports = {};",
+    'functions/mcp/aiServices.js': "require('../ai/repositories'); require('../ai/tools'); module.exports = {};",
+    'functions/ai/repositories.js': "require('./authorization'); module.exports = {};",
+    'functions/ai/tools.js': "require('./config'); require('./pricing/pricingCalculator'); require('./authorization'); module.exports = {};",
+    'functions/ai/config.js': 'module.exports = {};',
+    'functions/ai/authorization.js': 'module.exports = {};',
+    'functions/ai/pricing/pricingCalculator.js': 'module.exports = {};',
     'functions/mcp/index.js': "require('./callables'); require('./endpoint'); module.exports = {};",
     'functions/mcp/constants.js': 'module.exports = {};',
     'functions/ai/index.js': 'module.exports = {};',
@@ -252,11 +258,13 @@ const aiFixture = () => ({
   'functions/ai/authorization.js': 'module.exports = {};',
   'functions/ai/usage.js': 'module.exports = {};',
   'functions/ai/httpsError.js': 'module.exports = {};',
-  'functions/ai/index.js': "require('./handlers'); require('./geminiClient'); require('./tools'); module.exports = {};",
+  'functions/ai/index.js': "require('./handlers'); require('./geminiClient'); require('./tools'); require('./repositories'); module.exports = {};",
   'functions/ai/handlers.js': 'module.exports = {};',
   'functions/ai/geminiClient.js': 'module.exports = {};',
   'functions/ai/tools.js': 'module.exports = {};',
-  'functions/mcp/endpoint.js': "require('../ai/index'); module.exports = {};",
+  'functions/mcp/endpoint.js': "require('./aiServices'); module.exports = {};",
+  'functions/mcp/aiServices.js': "require('../ai/tools'); require('../ai/repositories'); module.exports = {};",
+  'functions/ai/repositories.js': 'module.exports = {};',
   'functions/package.json': '{"engines":{"node":"22"}}',
   'functions/package-lock.json': '{}',
   'firebase.json': '{"functions":{"runtime":"nodejs22"}}',
@@ -271,7 +279,16 @@ test('getAiUsage tem grafo independente da fábrica de chat e Gemini', () => {
   const aiCoreChange = aiFixture();
   aiCoreChange['functions/ai/index.js'] += '\n// chat and enrichment services changed';
   assert.deepEqual(selectFunctions(before, aiCoreChange).targets, [
-    'aiAgentChat', 'chatGptToolsEndpoint', 'enrichGalleryItemWithAi', 'enrichStoreProductWithAi',
+    'aiAgentChat', 'enrichGalleryItemWithAi', 'enrichStoreProductWithAi',
+  ]);
+});
+
+test('MCP service factory excludes changes exclusive to the Gemini factory', () => {
+  const before = aiFixture();
+  const after = aiFixture();
+  after['functions/ai/geminiClient.js'] += '\n// Gemini transport changed';
+  assert.deepEqual(selectFunctions(before, after).targets, [
+    'aiAgentChat', 'enrichGalleryItemWithAi', 'enrichStoreProductWithAi',
   ]);
 });
 
