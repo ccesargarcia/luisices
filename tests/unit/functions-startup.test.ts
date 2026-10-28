@@ -152,10 +152,11 @@ describe('inicialização das Functions com SDK real', () => {
     checkStartup(`
       (async () => {
         const domains = ${JSON.stringify(exportsByDomain)};
-        const expected = Object.values(domains).flat();
-        if (${sandbox}) expected.push('calculateSuperfreteShipping', 'createSuperfreteLabel');
+        const domainEntries = Object.entries(domains).filter(([domain]) =>
+          domain !== './orders/superfrete' || ${sandbox});
+        const expected = domainEntries.flatMap(([, names]) => names);
         assert.deepEqual(Object.keys(functions).sort(), expected.sort());
-        for (const [domain, names] of Object.entries(domains)) {
+        for (const [domain, names] of domainEntries) {
           for (const name of names) assert.equal(functions[name], require(domain)[name], name);
         }
         // Loader real do SDK: é o que o Firebase CLI usa para construir o manifest.
