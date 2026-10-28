@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const { markWhatsAppChatReadCore, ensureWhatsAppConversationCore } = require('../../functions/whatsapp/conversationCore.js');
-const normalizePhone = (value: string) => value.replace(/\D/g, '').replace(/^/, (digits: string) => digits.startsWith('55') ? '' : '55');
+const normalizePhone = (value: string) => {
+  const digits = value.replace(/\D/g, '');
+  return digits.startsWith('55') ? digits : `55${digits}`;
+};
 const serverTimestamp = () => 'server-time';
 
 function database({ customerExists = true, customerPhone = '(11) 99999-8888' } = {}) {

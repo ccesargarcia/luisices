@@ -142,8 +142,8 @@ describe('inicialização das Functions com SDK real', () => {
   it('conversas WhatsApp isolam leitura e abertura sem carregar envio/sincronização', () => {
     checkStartup(`
       for (const [name, telemetry] of [
-        ['markWhatsAppChatRead', "withFirstInvocationSpan('markWhatsAppChatRead'"],
-        ['ensureWhatsAppConversation', "withFirstInvocationSpan('ensureWhatsAppConversation'"],
+        ['markWhatsAppChatRead', "withWhatsAppAuthorization('markWhatsAppChatRead'"],
+        ['ensureWhatsAppConversation', "withWhatsAppAuthorization('ensureWhatsAppConversation'"],
       ]) {
         const handler = functions[name];
         assert.equal(handler, require('./whatsapp/conversations')[name]);
