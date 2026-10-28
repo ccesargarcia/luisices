@@ -185,10 +185,10 @@ const mcpFixture = () => {
   };
 };
 const mcpCallableNames = [
-  'getMcpSettingsStatus', 'createMcpApiKey', 'updateMcpApiKeyScopes',
-  'toggleMcpApiKey', 'revokeMcpApiKey', 'toggleGlobalMcp',
-  'setUserMcpEligibility', 'revokeMcpSession', 'getMcpAuditLogs',
-  'getMcpOpenApiSchema',
+  'createMcpApiKey', 'getMcpAuditLogs', 'getMcpOpenApiSchema',
+  'getMcpSettingsStatus', 'revokeMcpApiKey', 'revokeMcpSession',
+  'setUserMcpEligibility', 'toggleGlobalMcp', 'toggleMcpApiKey',
+  'updateMcpApiKeyScopes',
 ];
 const mcpEndpointName = ['chatGptToolsEndpoint'];
 
@@ -207,13 +207,13 @@ test('MCP dependency shared by endpoint and callables selects both groups', () =
   const before = mcpFixture();
   const after = mcpFixture();
   after['functions/mcp/constants.js'] += '\n// shared MCP contract changed';
-  assert.deepEqual(selectFunctions(before, after).targets, [...mcpCallableNames, ...mcpEndpointName]);
+  assert.deepEqual(selectFunctions(before, after).targets, [...mcpCallableNames, ...mcpEndpointName].sort());
 });
 
 test('removing the obsolete MCP aggregate remains fail-closed for that deploy', () => {
   const before = mcpFixture();
   const after = mcpFixture();
   delete after['functions/mcp/index.js'];
-  assert.deepEqual(selectFunctions(before, after).targets, [...mcpCallableNames, ...mcpEndpointName]);
+  assert.deepEqual(selectFunctions(before, after).targets, [...mcpCallableNames, ...mcpEndpointName].sort());
 });
 
