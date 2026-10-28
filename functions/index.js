@@ -54,7 +54,7 @@ expose('syncWhatsAppChatMessages', () => require('./whatsapp').syncWhatsAppChatM
 expose('getWhatsAppInstanceStatus', () => require('./whatsapp').getWhatsAppInstanceStatus);
 expose('markWhatsAppChatRead', () => require('./whatsapp').markWhatsAppChatRead);
 expose('ensureWhatsAppConversation', () => require('./whatsapp').ensureWhatsAppConversation);
-expose('evolutionWhatsAppWebhook', () => require('./whatsapp').evolutionWhatsAppWebhook);
+expose('evolutionWhatsAppWebhook', () => require('./whatsapp/webhook').evolutionWhatsAppWebhook);
 
 // ─── Pedidos e Vitrine Pública ─────────────────────────────────────────────
 expose('submitPublicCatalogOrder', () => require('./orders').submitPublicCatalogOrder);

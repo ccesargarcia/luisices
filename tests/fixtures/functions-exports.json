@@ -28,9 +28,9 @@
     "syncWhatsAppChatMessages",
     "getWhatsAppInstanceStatus",
     "markWhatsAppChatRead",
-    "ensureWhatsAppConversation",
-    "evolutionWhatsAppWebhook"
+    "ensureWhatsAppConversation"
   ],
+  "./whatsapp/webhook": ["evolutionWhatsAppWebhook"],
   "./orders": [
     "submitPublicCatalogOrder",
     "updateComplexOrder",

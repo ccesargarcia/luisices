@@ -102,6 +102,25 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
+  it('webhook Evolution carrega isolado das operações do painel e mantém autenticação/telemetria', () => {
+    checkStartup(`
+      const handler = functions.evolutionWhatsAppWebhook;
+      assert.equal(handler, require('./whatsapp/webhook').evolutionWhatsAppWebhook);
+      assert.equal(require.cache[require.resolve('./whatsapp')], undefined,
+        'o webhook não deve carregar as operações de usuário do WhatsApp');
+      for (const dependency of ['./whatsapp/persistMessage']) {
+        assert.ok(require.cache[require.resolve(dependency)], dependency + ' deveria estar carregado');
+      }
+      for (const secret of ['EVOLUTION_API_KEY', 'ORIGIN_SECRET']) {
+        assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === secret), secret);
+      }
+      const fs = require('node:fs');
+      const source = fs.readFileSync(require.resolve('./whatsapp/webhook'), 'utf8');
+      assert.ok(source.includes("withFirstInvocationSpan('evolutionWhatsAppWebhook'"));
+      assert.ok(source.includes('() => moduleInitializationMs'));
+    `);
+  });
+
   it('MCP carrega executor e repositórios sem inicializar a fábrica de chat/Gemini', () => {
     checkStartup(`
       const handler = functions.chatGptToolsEndpoint;
