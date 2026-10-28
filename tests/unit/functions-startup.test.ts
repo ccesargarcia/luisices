@@ -98,6 +98,7 @@ describe('inicialização das Functions com SDK real', () => {
       for (const secret of ['RESEND_API_KEY', 'RESEND_WEBHOOK_SECRET', 'ORIGIN_SECRET']) {
         assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === secret), secret);
       }
+      assert.ok(require.cache[require.resolve('./email/webhookSecurity')]);
     `);
   });
 

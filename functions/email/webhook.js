@@ -1,11 +1,11 @@
 /** Recebimento e validação de eventos do Resend. */
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
 const { onRequest } = require('../common/sentryFunctions');
-const crypto = require('crypto');
 const { RESEND_API_KEY, RESEND_WEBHOOK_SECRET, ORIGIN_SECRET } = require('../common/secrets');
 const { getResend } = require('../common/helpers');
 const { validateOriginSecret, getOriginSecretValue } = require('../originProtection');
 const { evaluateSpam } = require('./spamFilter');
+const { isValidSvixSignature } = require('./webhookSecurity');
 
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
 
@@ -73,39 +73,13 @@ const resendReceivingWebhook = onRequest(
       }
 
       try {
-        const candidateSecrets = Array.from(new Set(
-          String(webhookSecret)
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-        ));
-
         const rawContent = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
-        const signedContent = `${svixId}.${svixTimestamp}.${rawContent}`;
-
-        const providedSignatures = String(svixSignature)
-          .split(' ')
-          .map((s) => s.split(',')[1])
-          .filter(Boolean);
-
-        const signatureValid = candidateSecrets.some((sec) => {
-          try {
-            const secretBytes = sec.startsWith('whsec_')
-              ? Buffer.from(sec.slice(6), 'base64')
-              : Buffer.from(sec);
-            const computedSignature = crypto.createHmac('sha256', secretBytes).update(signedContent).digest('base64');
-            return providedSignatures.some((sig) => {
-              try {
-                const a = Buffer.from(sig, 'base64');
-                const b = Buffer.from(computedSignature, 'base64');
-                return a.length === b.length && crypto.timingSafeEqual(a, b);
-              } catch {
-                return false;
-              }
-            });
-          } catch {
-            return false;
-          }
+        const signatureValid = isValidSvixSignature({
+          secret: webhookSecret,
+          svixId,
+          svixTimestamp,
+          rawContent,
+          signature: svixSignature,
         });
 
         if (!signatureValid) {

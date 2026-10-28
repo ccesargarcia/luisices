@@ -194,10 +194,11 @@ expose('getEmailUsage', () => require('./email/usage').getEmailUsage);
 expose('resendReceivingWebhook', () => require('./email/webhook').resendReceivingWebhook);
 expose('cleanupEmailDrafts', () => require('./email/cleanup').cleanupEmailDrafts);`,
     'functions/email/send.js': "require('./attachments'); module.exports = {};",
-    'functions/email/webhook.js': "require('./spamFilter'); module.exports = {};",
+    'functions/email/webhook.js': "require('./spamFilter'); require('./webhookSecurity'); module.exports = {};",
     'functions/email/cleanup.js': "require('./cleanupCore'); module.exports = {};",
     'functions/email/attachments.js': 'module.exports = {};',
     'functions/email/spamFilter.js': 'module.exports = {};',
+    'functions/email/webhookSecurity.js': 'module.exports = {};',
     'functions/email/cleanupCore.js': 'module.exports = {};',
     'functions/email/usage.js': 'module.exports = {};',
     'functions/bootstrap.js': 'module.exports = {};',
@@ -206,6 +207,7 @@ expose('cleanupEmailDrafts', () => require('./email/cleanup').cleanupEmailDrafts
     ['functions/email/send.js', ['sendCustomEmail']],
     ['functions/email/usage.js', ['getEmailUsage']],
     ['functions/email/webhook.js', ['resendReceivingWebhook']],
+    ['functions/email/webhookSecurity.js', ['resendReceivingWebhook']],
     ['functions/email/cleanup.js', ['cleanupEmailDrafts']],
   ]) {
     const changed = { ...fixture, [file]: `${fixture[file]}\n// changed` };
