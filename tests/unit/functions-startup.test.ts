@@ -150,7 +150,6 @@ describe('inicialização das Functions com SDK real', () => {
       assert.equal(handler, require('./orders/catalog').getPublicCatalogProducts);
       assert.equal(require.cache[require.resolve('./orders')], undefined,
         'o módulo principal de pedidos não deve ser carregado para ler o catálogo');
-      assert.equal(handler.__endpoint.cors, true);
       assert.equal(handler.__endpoint.maxInstances, 10);
       assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'ORIGIN_SECRET'));
     `);

@@ -1,46 +1,35 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => {
-  const settings = vi.fn();
-  const products = vi.fn();
-  const db = {
-    doc: vi.fn(() => ({ get: settings })),
-    collection: vi.fn(() => ({ select: vi.fn(() => ({ get: products })) })),
-  };
-  return { db, settings, products };
-});
-
-vi.mock('firebase-admin/firestore', () => ({ getFirestore: () => mocks.db }));
-vi.mock('../../../functions/common/sentryFunctions', () => ({
-  onCall: (...args: any[]) => ({ run: args.length === 1 ? args[0] : args[1] }),
+const { handleGetPublicCatalogProducts } = require('../../../functions/orders/catalog');
+const mocks = vi.hoisted(() => ({
+  settings: vi.fn(), products: vi.fn(), select: vi.fn(), getFirestore: vi.fn(),
 }));
-
-const { getPublicCatalogProducts } = require('../../../functions/orders/catalog');
-const previousEmulatorFlag = process.env.FUNCTIONS_EMULATOR;
+const db = {
+  doc: vi.fn(() => ({ get: mocks.settings })),
+  collection: vi.fn(() => ({ select: mocks.select })),
+};
 
 describe('getPublicCatalogProducts callable', () => {
   beforeEach(() => {
-    vi.stubEnv('FUNCTIONS_EMULATOR', 'true');
     mocks.settings.mockReset().mockResolvedValue({
       exists: true,
       data: () => ({ storePublished: true }),
     });
     mocks.products.mockReset().mockResolvedValue({ docs: [] });
-    mocks.db.doc.mockClear();
-    mocks.db.collection.mockClear();
-  });
-
-  afterAll(() => {
-    vi.unstubAllEnvs();
-    if (previousEmulatorFlag === undefined) delete process.env.FUNCTIONS_EMULATOR;
-    else process.env.FUNCTIONS_EMULATOR = previousEmulatorFlag;
+    mocks.select.mockReset().mockImplementation(() => ({ get: mocks.products }));
+    mocks.getFirestore.mockReset().mockReturnValue(db);
+    db.doc.mockClear();
+    db.collection.mockClear();
   });
 
   it('returns no products and skips the product query when the store is unpublished', async () => {
     mocks.settings.mockResolvedValueOnce({ exists: false, data: () => ({}) });
 
-    await expect(getPublicCatalogProducts.run({})).resolves.toEqual({ products: [] });
-    expect(mocks.db.collection).not.toHaveBeenCalled();
+    await expect(handleGetPublicCatalogProducts({}, {
+      getFirestore: mocks.getFirestore,
+      isEmulator: true,
+    })).resolves.toEqual({ products: [] });
+    expect(db.collection).not.toHaveBeenCalled();
   });
 
   it('returns only valid active/paused products with safe fields and cent precision', async () => {
@@ -64,7 +53,10 @@ describe('getPublicCatalogProducts callable', () => {
       ],
     });
 
-    await expect(getPublicCatalogProducts.run({})).resolves.toEqual({
+    await expect(handleGetPublicCatalogProducts({}, {
+      getFirestore: mocks.getFirestore,
+      isEmulator: true,
+    })).resolves.toEqual({
       products: [
         {
           id: 'active-product',
@@ -96,8 +88,8 @@ describe('getPublicCatalogProducts callable', () => {
         },
       ],
     });
-    expect(mocks.db.collection).toHaveBeenCalledWith('storeProducts');
-    expect(mocks.db.collection().select).toHaveBeenCalledWith(
+    expect(db.collection).toHaveBeenCalledWith('storeProducts');
+    expect(mocks.select).toHaveBeenCalledWith(
       'name', 'price', 'unitPrice', 'category', 'description', 'imageUrl', 'photoUrl', 'images',
       'leadTimeDays', 'badge', 'isCustomizable', 'active', 'status', 'order', 'createdAt',
     );

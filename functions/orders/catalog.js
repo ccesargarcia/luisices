@@ -5,12 +5,15 @@ const { onCall } = require('../common/sentryFunctions');
 
 let publicCatalogCache = { expiresAt: 0, products: null };
 
-/** Retorna somente os campos necessários para montar a vitrine pública. */
-const getPublicCatalogProducts = onCall({ cors: true, maxInstances: 10 }, async () => {
-  const db = getFirestore();
+/** Handler separado para validar projeção e disponibilidade com um Firestore controlado. */
+async function handleGetPublicCatalogProducts(_request, {
+  getFirestore: getDb = getFirestore,
+  isEmulator = process.env.FUNCTIONS_EMULATOR === 'true',
+} = {}) {
+  const db = getDb();
   const settings = await db.doc('storeSettings/public').get();
   if (!settings.exists || settings.data()?.storePublished === false) return { products: [] };
-  if (process.env.FUNCTIONS_EMULATOR !== 'true' && publicCatalogCache.products && publicCatalogCache.expiresAt > Date.now()) {
+  if (!isEmulator && publicCatalogCache.products && publicCatalogCache.expiresAt > Date.now()) {
     return { products: publicCatalogCache.products };
   }
   const snapshot = await db.collection('storeProducts')
@@ -44,10 +47,16 @@ const getPublicCatalogProducts = onCall({ cors: true, maxInstances: 10 }, async 
       createdAt: data.createdAt?.toDate?.()?.toISOString?.() || (typeof data.createdAt === 'string' ? data.createdAt : undefined),
     }];
   });
-  if (process.env.FUNCTIONS_EMULATOR !== 'true') {
+  if (!isEmulator) {
     publicCatalogCache = { products, expiresAt: Date.now() + 60_000 };
   }
   return { products };
-});
+}
 
-module.exports = { getPublicCatalogProducts };
+/** Retorna somente os campos necessários para montar a vitrine pública. */
+const getPublicCatalogProducts = onCall(
+  { cors: true, maxInstances: 10 },
+  (request) => handleGetPublicCatalogProducts(request),
+);
+
+module.exports = { getPublicCatalogProducts, handleGetPublicCatalogProducts };
