@@ -106,8 +106,10 @@ describe('inicialização das Functions com SDK real', () => {
     checkStartup(`
       const handler = functions.evolutionWhatsAppWebhook;
       assert.equal(handler, require('./whatsapp/webhook').evolutionWhatsAppWebhook);
-      assert.equal(require.cache[require.resolve('./whatsapp')], undefined,
-        'o webhook não deve carregar as operações de usuário do WhatsApp');
+      for (const modulePath of ['./whatsapp/send', './whatsapp/delete', './whatsapp/sync']) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined,
+          'o webhook não deve carregar ' + modulePath);
+      }
       for (const dependency of ['./whatsapp/persistMessage']) {
         assert.ok(require.cache[require.resolve(dependency)], dependency + ' deveria estar carregado');
       }
@@ -125,8 +127,10 @@ describe('inicialização das Functions com SDK real', () => {
     checkStartup(`
       const handler = functions.getWhatsAppInstanceStatus;
       assert.equal(handler, require('./whatsapp/status').getWhatsAppInstanceStatus);
-      assert.equal(require.cache[require.resolve('./whatsapp')], undefined,
-        'consulta do status não deve carregar operações do painel');
+      for (const modulePath of ['./whatsapp/send', './whatsapp/delete', './whatsapp/sync']) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined,
+          'consulta do status não deve carregar ' + modulePath);
+      }
       assert.equal(require.cache[require.resolve('./whatsapp/webhook')], undefined);
       assert.ok(require.cache[require.resolve('./whatsapp/authorization')]);
       assert.ok(require.cache[require.resolve('./whatsapp/statusCore')]);
@@ -151,13 +155,52 @@ describe('inicialização das Functions com SDK real', () => {
         const source = require('node:fs').readFileSync(require.resolve('./whatsapp/conversations'), 'utf8');
         assert.ok(source.includes(telemetry));
       }
-      assert.equal(require.cache[require.resolve('./whatsapp')], undefined,
-        'operações de conversa não devem carregar envio ou sincronização');
+      for (const modulePath of ['./whatsapp/send', './whatsapp/delete', './whatsapp/sync']) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined,
+          'operações de conversa não devem carregar ' + modulePath);
+      }
       assert.equal(require.cache[require.resolve('./whatsapp/status')], undefined);
       assert.equal(require.cache[require.resolve('./whatsapp/webhook')], undefined);
       assert.ok(require.cache[require.resolve('./whatsapp/chatScope')],
         'a autorização por parceiro e conversa deve continuar sendo aplicada');
       assert.ok(require.cache[require.resolve('./whatsapp/authorization')]);
+    `);
+  });
+
+  it('envio WhatsApp carrega isolado com secret, limite e telemetria', () => {
+    checkStartup(`
+      const handler = functions.sendWhatsAppDirectMessage;
+      assert.equal(handler, require('./whatsapp/send').sendWhatsAppDirectMessage);
+      assert.equal(handler.__endpoint.maxInstances, 5);
+      assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'EVOLUTION_API_KEY'));
+      for (const modulePath of ['./whatsapp/delete', './whatsapp/sync', './whatsapp/conversations', './whatsapp/status', './whatsapp/webhook']) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
+      }
+      assert.ok(require.cache[require.resolve('./common/rateLimiters')], 'o rate limit do envio deve continuar ativo');
+      assert.ok(require.cache[require.resolve('./whatsapp/authorization')]);
+      assert.ok(require.cache[require.resolve('./whatsapp/chatScope')]);
+      const source = require('node:fs').readFileSync(require.resolve('./whatsapp/send'), 'utf8');
+      assert.ok(source.includes("withFirstInvocationSpan('sendWhatsAppDirectMessage'"));
+      assert.ok(source.includes('() => moduleInitializationMs'));
+    `);
+  });
+
+  it('exclusão WhatsApp carrega isolada com secret e telemetria', () => {
+    checkStartup(`
+      const handler = functions.deleteWhatsAppMessage;
+      assert.equal(handler, require('./whatsapp/delete').deleteWhatsAppMessage);
+      assert.equal(handler.__endpoint.maxInstances, 5);
+      assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'EVOLUTION_API_KEY'));
+      for (const modulePath of ['./whatsapp/send', './whatsapp/sync', './whatsapp/conversations', './whatsapp/status', './whatsapp/webhook']) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
+      }
+      assert.equal(require.cache[require.resolve('./common/rateLimiters')], undefined,
+        'exclusão não deve carregar limitador específico de envio');
+      assert.ok(require.cache[require.resolve('./whatsapp/authorization')]);
+      assert.ok(require.cache[require.resolve('./whatsapp/chatScope')]);
+      const source = require('node:fs').readFileSync(require.resolve('./whatsapp/delete'), 'utf8');
+      assert.ok(source.includes("withFirstInvocationSpan('deleteWhatsAppMessage'"));
+      assert.ok(source.includes('() => moduleInitializationMs'));
     `);
   });
 
@@ -167,7 +210,7 @@ describe('inicialização das Functions com SDK real', () => {
       assert.equal(handler, require('./whatsapp/sync').syncWhatsAppChatMessages);
       assert.equal(handler.__endpoint.maxInstances, 5);
       assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'EVOLUTION_API_KEY'));
-      for (const modulePath of ['./whatsapp', './whatsapp/status', './whatsapp/conversations', './whatsapp/webhook']) {
+      for (const modulePath of ['./whatsapp/send', './whatsapp/delete', './whatsapp/status', './whatsapp/conversations', './whatsapp/webhook']) {
         assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
       }
       for (const modulePath of ['./whatsapp/authorization', './whatsapp/chatScope', './whatsapp/syncCore']) {

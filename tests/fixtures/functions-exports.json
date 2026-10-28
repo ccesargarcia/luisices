@@ -22,10 +22,8 @@
   "./email/usage": [
     "getEmailUsage"
   ],
-  "./whatsapp": [
-    "sendWhatsAppDirectMessage",
-    "deleteWhatsAppMessage"
-  ],
+  "./whatsapp/send": ["sendWhatsAppDirectMessage"],
+  "./whatsapp/delete": ["deleteWhatsAppMessage"],
   "./whatsapp/sync": ["syncWhatsAppChatMessages"],
   "./whatsapp/status": ["getWhatsAppInstanceStatus"],
   "./whatsapp/conversations": ["markWhatsAppChatRead", "ensureWhatsAppConversation"],
