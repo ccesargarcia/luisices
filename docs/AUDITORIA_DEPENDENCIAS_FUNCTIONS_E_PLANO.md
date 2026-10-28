@@ -1,8 +1,8 @@
 # Auditoria de dependências e plano de modularização das Cloud Functions
 
 **Revisado em:** 28/10/2026
-**Branch/commit analisado:** `develop` / `74c8e54`
-**Deploy DEV observado:** workflow [40625320812](https://github.com/ccesargarcia/luisices/actions/runs/40625320812), concluído com sucesso.
+**Branch/commit analisado:** `develop` / `868e3a2`
+**Deploy DEV observado:** workflow [40628205038](https://github.com/ccesargarcia/luisices/actions/runs/40628205038), concluído com sucesso.
 
 ## Objetivo e limites
 
@@ -15,8 +15,9 @@ O mapa é estático e baseado no código do repositório. Ele não mede o tempo 
 - Há **63 exports** no entrypoint: 61 endpoints gerais e 2 endpoints exclusivos de DEV/emulador.
 - Esses exports formam **8 grafos locais distintos** porque os exports de cada domínio apontam para um mesmo módulo principal. Uma mudança em um arquivo desse módulo seleciona os demais exports que compartilham o grafo.
 - O maior agrupamento é Usuários (**15 endpoints**), seguido de Pedidos (**13 em DEV, 11 em produção**), MCP (**11**), Alexa (**8**), WhatsApp (**7**), IA (**4**), E-mail (**4**) e Mídia (**1**).
-- No deploy observado, a alteração em IA/MCP selecionou **15 Functions**: as 4 de IA e as 11 de MCP. O log dividiu as 15 em três lotes; as seis Functions mostradas inicialmente eram apenas o primeiro lote.
-- As mudanças de MCP são especialmente acopladas: `functions/mcp/index.js` importa ao mesmo tempo `callables.js` e `endpoint.js`; o endpoint importa `createAiServices` de `functions/ai/index.js`; e esse índice carrega `tools.js`, Gemini, handlers, orçamento e repositórios.
+- No deploy DEV mais recente, o CI passou e publicou Functions com sucesso, mas o seletor escolheu **63 Functions** após a remoção do agregador MCP. O custo foi uma publicação ampla; não houve falha funcional reportada.
+- Os exports MCP agora são registrados diretamente por `functions/mcp/callables.js` e `functions/mcp/endpoint.js`. O antigo `functions/mcp/index.js` foi removido. Os testes já cobrem deploy seletivo entre os dois grupos.
+- O próximo ajuste é ensinar o seletor a reconhecer arquivos removidos que pertenciam ao grafo do commit implantado, mantendo seleção global para arquivos de runtime realmente não rastreáveis.
 - A fábrica de IA constrói serviços e closures de todos os handlers mesmo quando o chamador só precisa de um, inclusive `getAiUsage`. No MCP, a fábrica completa também é usada embora o endpoint precise principalmente do executor e dos repositórios das ferramentas.
 - Recomendo começar por **MCP/IA**, medir a redução no número de Functions e nos tempos de inicialização, depois decompor Pedidos. E-mail, WhatsApp, Alexa e Usuários vêm em lotes separados.
 
@@ -67,7 +68,7 @@ As 15 foram implantadas com sucesso. O workflow completo terminou com sucesso; o
 
 ### 1. MCP e IA: prioridade mais alta
 
-`functions/mcp/index.js` faz imports estáticos de `./callables` e `./endpoint`. Assim, um callable de administração MCP pode herdar o grafo do endpoint público. O endpoint chama `getSharedAiServices()`, que usa `createAiServices()` de `functions/ai/index.js`.
+O antigo `functions/mcp/index.js` importava estaticamente `./callables` e `./endpoint`, fazendo callables administrativos herdarem parte do grafo do endpoint público. A entrada já foi separada: exports administrativos apontam para `functions/mcp/callables.js`, e `chatGptToolsEndpoint` para `functions/mcp/endpoint.js`. O endpoint ainda chama `getSharedAiServices()`, que usa `createAiServices()` de `functions/ai/index.js`.
 
 `functions/ai/index.js` importa no topo `tools`, `handlers`, `geminiClient`, `repositories`, `budget`, `usage`, `schemas`, `cache` e configurações. `createAiServices()` cria `GeminiClient`, repositórios, executor de ferramentas, gerenciador de orçamento e closures para os handlers de chat, usage e enriquecimento. `functions/ai/callables.js` chama essa fábrica dentro de cada handler; `getAiUsage` também monta o pacote completo de serviços para chamar apenas o handler de leitura de uso.
 
@@ -123,7 +124,7 @@ Complexidade é relativa ao repositório: **Baixa** = fronteira clara e poucos c
 
 | Prioridade | Trabalho | Alcance atual | Ganhos esperados | Perdas / riscos | Complexidade |
 |---|---|---|---|---|---|
-| **P1** | Desacoplar o endpoint MCP das callables administrativas; apontar exports diretamente aos módulos apropriados | 11 MCP | Mudanças no endpoint podem deixar de republicar as callables de administração; menor carga de módulos em operações administrativas; menor área de regressão | Mudança de mapeamento provoca uma publicação inicial do grupo MCP; risco de export não descoberto ou alvo incorreto se esquecer getter enumerável | **Média** |
+| **Concluída / validar** | Desacoplar o endpoint MCP das callables administrativas; apontar exports diretamente aos módulos apropriados | 11 MCP | Mudanças no endpoint podem deixar de republicar as callables de administração; menor carga de módulos em operações administrativas; menor área de regressão | Primeira publicação atualizou 63 Functions devido ao tratamento fail-closed de arquivo removido; confirmar seleção menor em mudança futura | **Média** |
 | **P1** | Substituir `createAiServices` monolítica por fábricas por capacidade e separar callables/handlers independentes | 4 IA + MCP | `getAiUsage` deixa de depender do executor/Gemini; enrichments carregam só as capacidades necessárias; menor grafo de deploy e potencial redução de inicialização | Pode duplicar configuração se desenho for apressado; risco de alterar handler, segredo ou ciclo de vida/cache; exige manter contrato do chat | **Alta** |
 | **P1** | Medir inicialização/primeira chamada por endpoint, com cobertura uniforme antes/depois | Todos | Evidência separa carga de módulo, cold start de plataforma e duração do handler; evita otimização por suposição | Instrumentação adiciona ruído/volume; dados ausentes ou amostrados não equivalem a zero; não reduz latência por si só | **Média** |
 | **P2** | Separar `orders/index.js` em core mutations, catálogo público, tracking e SuperFrete DEV | 13 DEV / 11 prod | Mudança de catálogo ou tracking deixa de republicar mutations financeiras sem relação; menores lotes; SuperFrete não contamina caminho de produção | Primeira migração pode publicar muitos endpoints; maior risco de quebrar atomicidade, auth, secrets, versionamento ou regra de transição de pedido | **Alta** |
@@ -146,6 +147,8 @@ A mesma matriz está no arquivo CSV [`auditoria-functions-prioridades.csv`](audi
 4. Tratar `getAiUsage` como legado de leitura até confirmar consumidores; não remover endpoint/contrato nesta refatoração.
 5. Estabelecer critérios: mesmos nomes e payloads, autorizações/secrets e região; sem novas regras Firestore, sem perda de idempotência, sem operação financeira cliente-direta.
 
+**Estado:** baseline de código e CI registrado. O deploy [40628205038](https://github.com/ccesargarcia/luisices/actions/runs/40628205038) publicou 63 Functions em DEV; portanto, a redução de deploy ainda não foi demonstrada.
+
 ### Fase 1 — MCP: primeira redução segura
 
 1. Separar registros MCP no root para que `chatGptToolsEndpoint` carregue o endpoint e as callables administrativas carreguem apenas o módulo de callables. Não deixar `mcp/index.js` importar os dois grupos para todos os consumidores.
@@ -154,6 +157,8 @@ A mesma matriz está no arquivo CSV [`auditoria-functions-prioridades.csv`](audi
 4. Estender `functions-deploy-selection.test.mjs` com expectativas de grafo: mudança em `mcp/presentation.js` afeta o endpoint, não as callables administrativas; mudança em callables não afeta o endpoint; mudança num serviço de domínio usado por ambos afeta ambos.
 5. Executar unitários MCP, testes de permissão/escopo, integração com Firestore Emulator para preview → confirmação → idempotência e fluxos de itens (incluindo 1–4 e 5–10). Validar regressão via ChatGPT Web e cliente Android quando disponível.
 6. Publicar somente após os alvos esperados serem revisados no log. Conferir `tools/list`, OpenAPI, OAuth/manifests e cache MCP no DEV; depois testar uma mutação real controlada e verificar auditoria/ledger.
+
+**Estado:** a separação dos exports e os testes de grafos MCP foram entregues. A criação de uma fábrica mínima para o endpoint e a validação funcional em ChatGPT Web/Android ainda estão pendentes. A remoção do módulo agregado ocasionou seleção global no deploy mais recente; corrigir e provar o comportamento do seletor antes de avançar para a Fase 2.
 
 ### Fase 2 — IA: fábricas e handlers por capacidade
 
@@ -202,4 +207,4 @@ O compartilhamento de **regras de negócio puras** é desejável. O problema enc
 
 Após o commit-base desta auditoria, o working tree passou a registrar diretamente as 10 callables MCP por `functions/mcp/callables.js` e `chatGptToolsEndpoint` por `functions/mcp/endpoint.js`. O agregado antigo `functions/mcp/index.js`, que carregava os dois grupos juntos, foi removido por não ter outros consumidores. Os contratos e nomes públicos dos 11 exports foram preservados.
 
-Foi acrescentado um teste do seletor para assegurar que mudanças exclusivas em callables ou no endpoint atinjam somente seu grupo, enquanto mudança num módulo MCP compartilhado atinja ambos. A execução local ainda está pendente: o executável Node deste ambiente não inicia por erro de vínculo com uma biblioteca do Termux. Como o seletor trata código runtime removido sem referência estática como ambíguo, a remoção do agregado também fará esta publicação selecionar todas as Functions; a seleção conservadora deve permanecer até os testes de CI confirmarem a mudança.
+Foram acrescentados testes do seletor para mudanças exclusivas em callables, endpoint e dependências MCP compartilhadas. O deploy [40628205038](https://github.com/ccesargarcia/luisices/actions/runs/40628205038) passou na CI, mas selecionou todas as 63 Functions após a remoção do agregado. A alteração atual reconhece arquivo removido quando ele era alcançável no grafo do commit implantado; arquivos de runtime sem referência conhecida continuam acionando seleção global. Foi adicionado um teste para a migração do agregado ao registro direto. A execução local dos testes ainda está bloqueada porque o Node do Termux falha ao iniciar por incompatibilidade de biblioteca; validar a alteração na CI antes de publicar qualquer mudança de runtime.

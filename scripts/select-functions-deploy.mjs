@@ -207,11 +207,15 @@ export function selectFunctions(before, after, { force = false, env = 'dev' } = 
     }
   }
   const tracked = new Set([entry, ...bootstrap, ...[...graphs.values()].flatMap((set) => [...set])]);
-  // Files read through fs/templates cannot be inferred from require(). An
-  // unreferenced runtime file change must conservatively select every endpoint.
+  const previouslyTracked = new Set([entry, ...[...previousGraphs.values()].flatMap((set) => [...set])]);
+  // A file removed from the current graph is still understood when it was
+  // reachable from the deployed graph. Changes to its consumers (including
+  // entrypoint remapping) select the current endpoints above. Unreferenced
+  // runtime files may be loaded through fs/templates, so keep those fail-closed.
   const unknownRuntimeChange = [...changed].some((name) => name.startsWith('functions/')
     && !['functions/package.json', 'functions/package-lock.json'].includes(name)
-    && /\.(js|json|mjs|cjs|html|hbs|txt)$/.test(name) && !tracked.has(name));
+    && /\.(js|json|mjs|cjs|html|hbs|txt)$/.test(name)
+    && !tracked.has(name) && !previouslyTracked.has(name));
   const targets = [...current].filter(([name]) => {
     if (env === 'prod' && DEV_ONLY_FUNCTIONS.has(name)) return false;
     return force || globalChange || unknownRuntimeChange || packageConsumers.has(name) || mappingChanged(name)

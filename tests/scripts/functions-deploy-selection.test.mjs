@@ -192,6 +192,17 @@ const mcpCallableNames = [
 ];
 const mcpEndpointName = ['chatGptToolsEndpoint'];
 
+const mcpAggregateFixture = () => {
+  const fixture = mcpFixture();
+  const names = [...mcpCallableNames, ...mcpEndpointName];
+  fixture['functions/index.js'] = [
+    "require('./bootstrap');",
+    'function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }',
+    ...names.map((name) => `expose('${name}', () => require('./mcp').${name});`),
+  ].join('\n');
+  return fixture;
+};
+
 test('MCP endpoint and admin callables have independent deploy graphs', () => {
   const before = mcpFixture();
   const callableChange = mcpFixture();
@@ -212,6 +223,13 @@ test('MCP dependency shared by endpoint and callables selects both groups', () =
 
 test('removing the obsolete MCP aggregate remains fail-closed for that deploy', () => {
   const before = mcpFixture();
+  const after = mcpFixture();
+  delete after['functions/mcp/index.js'];
+  assert.deepEqual(selectFunctions(before, after).targets, [...mcpCallableNames, ...mcpEndpointName].sort());
+});
+
+test('removing a formerly reachable aggregate selects only its remapped endpoints', () => {
+  const before = mcpAggregateFixture();
   const after = mcpFixture();
   delete after['functions/mcp/index.js'];
   assert.deepEqual(selectFunctions(before, after).targets, [...mcpCallableNames, ...mcpEndpointName].sort());
