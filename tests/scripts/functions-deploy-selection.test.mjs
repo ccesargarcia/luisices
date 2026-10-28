@@ -127,7 +127,9 @@ test('migration to lazy exports preserves all endpoints including sandbox', () =
   const plan = selectFunctions(fixture(), lazyFixture());
   assert.deepEqual(plan.targets, allLazyNames);
   assert.deepEqual(plan.removed, []);
-  assert.deepEqual(selectFunctions(lazyFixture(), fixture()).removed, []);
+  const rollbackPlan = selectFunctions(lazyFixture(), fixture());
+  assert.deepEqual(rollbackPlan.removed, ['getPublicCatalogProducts']);
+  assert.deepEqual(rollbackPlan.targets, allNames);
 });
 test('lazy imports retain selective deploy and shared bootstrap dependencies', () => {
   assert.deepEqual(selectFunctions(lazyFixture(), lazyFixture()).targets, []);
