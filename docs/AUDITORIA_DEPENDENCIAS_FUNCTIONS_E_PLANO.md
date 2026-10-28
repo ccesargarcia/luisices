@@ -1,7 +1,7 @@
 # Auditoria de dependências e plano de modularização das Cloud Functions
 
 **Revisado em:** 28/10/2026
-**Branch/commit analisado:** `develop` / mudança local da fábrica MCP após `60ca1a6`
+**Branch/commit analisado:** `develop` / `b78cc51` (extração de `getEmailUsage`)
 **Deploy DEV observado:** workflow [40628205038](https://github.com/ccesargarcia/luisices/actions/runs/40628205038), concluído com sucesso.
 
 ## Objetivo e limites
@@ -234,6 +234,6 @@ A CI [40742861524](https://github.com/ccesargarcia/luisices/actions/runs/4074286
 
 **Estado atual desta alteração:** os sete handlers foram movidos sem alteração no texto das implementações para `functions/orders/tracking.js`; os exports de `functions/index.js` apontam diretamente para esse módulo. A CI [40749435427](https://github.com/ccesargarcia/luisices/actions/runs/40749435427) e o deploy DEV terminaram com sucesso. Os logs comprovam que sete exports de tracking e três mutations foram atualizados, sem mudança de Rules ou Hosting. Faltam regressões específicas para paginação e exclusão em lote.
 
-**Etapa em andamento:** `getEmailUsage` foi movida para `functions/email/usage.js`. A extração mantém a autorização, o retorno, a dependência explícita de `RESEND_API_KEY` e adiciona a medição Sentry de primeira execução usada em outras entradas isoladas. A primeira publicação também selecionará os outros três exports que ainda compartilham o índice alterado; após essa transição, uma alteração exclusiva em `usage.js` selecionará só `getEmailUsage`. Os testes verificam o grafo de inicialização, seleção de deploy, acesso negado e consulta autorizada com respostas do Resend simuladas. O efeito sobre latência ainda não foi medido; a dependência de chamadas de rede ao Resend continua.
+**Etapa concluída em DEV:** `getEmailUsage` foi movida para `functions/email/usage.js`. A extração mantém a autorização, o retorno e a dependência explícita de `RESEND_API_KEY`, e adiciona a medição Sentry de primeira execução usada em outras entradas isoladas. A CI [40752421042](https://github.com/ccesargarcia/luisices/actions/runs/40752421042) passou lint, testes unitários e seleção do deploy, e publicou em 2min21s os quatro exports de E-mail; a primeira publicação atualizou os outros três que ainda compartilham o índice alterado. Daqui em diante, mudanças exclusivas em `usage.js` selecionam apenas `getEmailUsage`. O cenário autorizado/negado com resposta Resend simulada passou no emulator SDK. A execução completa do SDK [40752738060](https://github.com/ccesargarcia/luisices/actions/runs/40752738060) encontrou outras duas falhas: fixture de contratos com 39 exports frente aos 61 atuais e teste do webhook Alexa que esperava 403, mas recebeu 400. A duração em produção e o impacto na latência ainda não foram medidos; a consulta continua aguardando duas respostas de rede do Resend.
 
 **Próxima etapa após CI e DEV:** separar o webhook Resend e `cleanupEmailDrafts` do caminho de envio, começando por testes de assinatura/idempotência e mantendo a superfície pública dos exports.
