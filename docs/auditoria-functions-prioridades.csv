@@ -1,7 +1,7 @@
 Prioridade;Trabalho;Alcance atual;Ganhos esperados;Perdas ou riscos;Complexidade
 P0 próximo;Corrigir seletor para remoções rastreáveis e provar seleção estreita;Todas;Evita redeploy global quando arquivo removido era conhecido pelo grafo anterior;Falha de análise deve continuar selecionando tudo;Média
 Concluída validar;Desacoplar endpoint MCP das callables administrativas;11 Functions MCP;Mudanças do endpoint deixam de redeployar administração e reduzem módulos carregados;Deploy inicial atualizou 63 Functions por cautela do seletor;Média
-Em andamento;Fábricas IA por capacidade e handlers isolados;4 Functions IA mais MCP;getAiUsage e MCP isolados de Gemini;enrichments ainda podem reduzir dependências;Mudanças em tools/repos continuam compartilhadas entre IA e MCP;Alta
+Em andamento;Fábricas IA por capacidade e handlers isolados;4 Functions IA mais MCP;chat enrichment analytics e MCP têm entradas isoladas por capacidade;chat/enrichments compartilham handlers e Gemini e MCP/IA compartilham tools/repos;Alta
 P1;Medição de inicialização por endpoint;Todas;Distingue module init cold start de plataforma e duração do handler;Instrumentação gera ruído e não reduz latência por si só;Média
 P2;Separar pedidos em mutations catálogo tracking Superfrete DEV;13 DEV 11 produção;Mudanças de catálogo/tracking deixam de republicar mutations financeiras;Risco alto para atomicidade autorização secrets e idempotência;Alta
 P2;Separar webhook Alexa das callables administrativas;8;Reduz redeploy e carregamento cruzado;Risco de assinatura ASK pareamento dedupe e rascunhos;Média/Alta

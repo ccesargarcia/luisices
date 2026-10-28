@@ -45,7 +45,9 @@
     "getPublicOrderTracking"
   ],
   "./ai/callables": [
-    "aiAgentChat",
+    "aiAgentChat"
+  ],
+  "./ai/enrichmentCallables": [
     "enrichGalleryItemWithAi",
     "enrichStoreProductWithAi"
   ],

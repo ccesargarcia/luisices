@@ -246,13 +246,17 @@ const aiFixture = () => ({
     "require('./bootstrap');",
     'function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }',
     "expose('aiAgentChat', () => require('./ai/callables').aiAgentChat);",
-    "expose('enrichGalleryItemWithAi', () => require('./ai/callables').enrichGalleryItemWithAi);",
-    "expose('enrichStoreProductWithAi', () => require('./ai/callables').enrichStoreProductWithAi);",
+    "expose('enrichGalleryItemWithAi', () => require('./ai/enrichmentCallables').enrichGalleryItemWithAi);",
+    "expose('enrichStoreProductWithAi', () => require('./ai/enrichmentCallables').enrichStoreProductWithAi);",
     "expose('getAiUsage', () => require('./ai/usageCallable').getAiUsage);",
     "expose('chatGptToolsEndpoint', () => require('./mcp/endpoint').chatGptToolsEndpoint);",
   ].join('\n'),
   'functions/bootstrap.js': 'module.exports = {};',
   'functions/ai/callables.js': "require('./index'); require('./httpsError'); module.exports = {};",
+  'functions/ai/enrichmentCallables.js': "require('./enrichmentServices'); require('./httpsError'); module.exports = {};",
+  'functions/ai/enrichmentServices.js': "require('./config'); require('./budget'); require('./geminiClient'); require('./handlers'); module.exports = {};",
+  'functions/ai/config.js': 'module.exports = {};',
+  'functions/ai/budget.js': 'module.exports = {};',
   'functions/ai/usageCallable.js': "require('./usageHandler'); require('./httpsError'); module.exports = {};",
   'functions/ai/usageHandler.js': "require('./authorization'); require('./usage'); module.exports = {};",
   'functions/ai/authorization.js': 'module.exports = {};',
@@ -279,7 +283,7 @@ test('getAiUsage tem grafo independente da fábrica de chat e Gemini', () => {
   const aiCoreChange = aiFixture();
   aiCoreChange['functions/ai/index.js'] += '\n// chat and enrichment services changed';
   assert.deepEqual(selectFunctions(before, aiCoreChange).targets, [
-    'aiAgentChat', 'enrichGalleryItemWithAi', 'enrichStoreProductWithAi',
+    'aiAgentChat',
   ]);
 });
 
@@ -290,5 +294,18 @@ test('MCP service factory excludes changes exclusive to the Gemini factory', () 
   assert.deepEqual(selectFunctions(before, after).targets, [
     'aiAgentChat', 'enrichGalleryItemWithAi', 'enrichStoreProductWithAi',
   ]);
+});
+
+test('fábrica e handlers de enrichment não republicam chat ou endpoint MCP', () => {
+  const before = aiFixture();
+  const after = aiFixture();
+  after['functions/ai/enrichmentServices.js'] += '\n// vision service changed';
+  assert.deepEqual(selectFunctions(before, after).targets, [
+    'enrichGalleryItemWithAi', 'enrichStoreProductWithAi',
+  ]);
+
+  const chatOnlyChange = aiFixture();
+  chatOnlyChange['functions/ai/callables.js'] += '\n// chat callable changed';
+  assert.deepEqual(selectFunctions(before, chatOnlyChange).targets, ['aiAgentChat']);
 });
 

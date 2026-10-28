@@ -72,8 +72,8 @@ expose('getPublicOrderTracking', () => require('./orders').getPublicOrderTrackin
 // ─── Inteligência Artificial (Google Gemini) ────────────────────────────────
 expose('aiAgentChat', () => require('./ai/callables').aiAgentChat);
 expose('getAiUsage', () => require('./ai/usageCallable').getAiUsage);
-expose('enrichGalleryItemWithAi', () => require('./ai/callables').enrichGalleryItemWithAi);
-expose('enrichStoreProductWithAi', () => require('./ai/callables').enrichStoreProductWithAi);
+expose('enrichGalleryItemWithAi', () => require('./ai/enrichmentCallables').enrichGalleryItemWithAi);
+expose('enrichStoreProductWithAi', () => require('./ai/enrichmentCallables').enrichStoreProductWithAi);
 
 // ─── Integração Alexa (Voice Order Creation) ───────────────────────────────
 expose('alexaWebhook', () => require('./alexa').alexaWebhook);

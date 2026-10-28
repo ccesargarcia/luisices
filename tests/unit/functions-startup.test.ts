@@ -55,6 +55,45 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
+  it('enrichments preservam a telemetria Sentry e não carregam tools ou repositórios', () => {
+    checkStartup(`
+      const gallery = functions.enrichGalleryItemWithAi;
+      const product = functions.enrichStoreProductWithAi;
+      assert.equal(gallery, require('./ai/enrichmentCallables').enrichGalleryItemWithAi);
+      assert.equal(product, require('./ai/enrichmentCallables').enrichStoreProductWithAi);
+      for (const handler of [gallery, product]) {
+        assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'GEMINI_API_KEY'));
+        assert.equal(handler.__endpoint.timeoutSeconds, 120);
+        assert.equal(handler.__endpoint.maxInstances, 5);
+        assert.equal(handler.__endpoint.memory, '1GiB');
+      }
+      for (const modulePath of [
+        './ai/index', './ai/callables', './ai/tools', './ai/repositories',
+        './ai/cache', './ai/usage',
+      ]) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
+      }
+      assert.ok(require.cache[require.resolve('./ai/enrichmentServices')]);
+      assert.ok(require.cache[require.resolve('./ai/handlers')]);
+      assert.ok(require.cache[require.resolve('./common/sentry')]);
+      const fs = require('node:fs');
+      const enrichmentSource = fs.readFileSync(require.resolve('./ai/enrichmentCallables'), 'utf8');
+      assert.match(enrichmentSource, /withFirstInvocationSpan\('enrichGalleryItemWithAi'/);
+      assert.match(enrichmentSource, /withFirstInvocationSpan\('enrichStoreProductWithAi'/);
+      assert.match(enrichmentSource, /\(\) => moduleInitializationMs/);
+    `);
+  });
+
+  it('chat não inicializa as entradas de enriquecimento', () => {
+    checkStartup(`
+      const handler = functions.aiAgentChat;
+      assert.equal(handler, require('./ai/callables').aiAgentChat);
+      assert.equal(require.cache[require.resolve('./ai/enrichmentCallables')], undefined);
+      assert.ok(require.cache[require.resolve('./ai/index')]);
+      assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'GEMINI_API_KEY'));
+    `);
+  });
+
   it.each(['createOrder', 'updateComplexOrder'])(
     '%s carrega apenas o domínio necessário e reutiliza o handler protegido', (target) => {
       checkStartup(`
