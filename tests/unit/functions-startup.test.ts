@@ -139,6 +139,28 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
+  it('conversas WhatsApp isolam leitura e abertura sem carregar envio/sincronização', () => {
+    checkStartup(`
+      for (const [name, telemetry] of [
+        ['markWhatsAppChatRead', "withFirstInvocationSpan('markWhatsAppChatRead'"],
+        ['ensureWhatsAppConversation', "withFirstInvocationSpan('ensureWhatsAppConversation'"],
+      ]) {
+        const handler = functions[name];
+        assert.equal(handler, require('./whatsapp/conversations')[name]);
+        assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'ORIGIN_SECRET'));
+        const source = require('node:fs').readFileSync(require.resolve('./whatsapp/conversations'), 'utf8');
+        assert.ok(source.includes(telemetry));
+      }
+      assert.equal(require.cache[require.resolve('./whatsapp')], undefined,
+        'operações de conversa não devem carregar envio ou sincronização');
+      assert.equal(require.cache[require.resolve('./whatsapp/status')], undefined);
+      assert.equal(require.cache[require.resolve('./whatsapp/webhook')], undefined);
+      assert.ok(require.cache[require.resolve('./whatsapp/chatScope')],
+        'a autorização por parceiro e conversa deve continuar sendo aplicada');
+      assert.ok(require.cache[require.resolve('./whatsapp/authorization')]);
+    `);
+  });
+
   it('MCP carrega executor e repositórios sem inicializar a fábrica de chat/Gemini', () => {
     checkStartup(`
       const handler = functions.chatGptToolsEndpoint;

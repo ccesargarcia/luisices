@@ -514,66 +514,6 @@ const syncWhatsAppChatMessages = onCall(
   }, () => moduleInitializationMs)
 );
 
-const markWhatsAppChatRead = onCall(withFirstInvocationSpan('markWhatsAppChatRead', async (request) => {
-  if (!(await isAuthorizedForWhatsApp(request))) {
-    throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
-  }
-  const { phone } = request.data || {};
-  if (typeof phone !== 'string' || !phone.trim()) {
-    throw new HttpsError('invalid-argument', 'Telefone do chat é obrigatório.');
-  }
-  const cleanPhone = normalizeWhatsAppNumber(phone);
-  if (!/^55\d{10,11}$/.test(cleanPhone)) {
-    throw new HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
-  }
-  await chatScope(request, cleanPhone);
-  await getFirestore().collection('whatsapp_chats').doc(cleanPhone).update({
-    unreadCount: 0,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-  return { success: true };
-}, () => moduleInitializationMs));
-
-const ensureWhatsAppConversation = onCall(withFirstInvocationSpan('ensureWhatsAppConversation', async (request) => {
-  if (!(await isAuthorizedForWhatsApp(request))) {
-    throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
-  }
-  const { phone, customerName, customerId } = request.data || {};
-  if (typeof phone !== 'string' || !phone.trim()) {
-    throw new HttpsError('invalid-argument', 'Telefone do chat é obrigatório.');
-  }
-  if (customerName != null && (typeof customerName !== 'string' || customerName.length > 200)) {
-    throw new HttpsError('invalid-argument', 'Nome do cliente inválido.');
-  }
-  if (customerId != null && (typeof customerId !== 'string' || customerId.length > 128)) {
-    throw new HttpsError('invalid-argument', 'Cliente inválido.');
-  }
-  const cleanPhone = normalizeWhatsAppNumber(phone);
-  if (!/^55\d{10,11}$/.test(cleanPhone)) {
-    throw new HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
-  }
-  if (customerId) {
-    const customer = await getFirestore().collection('customers').doc(customerId).get();
-    if (!customer.exists) {
-      throw new HttpsError('invalid-argument', 'Cliente não encontrado.');
-    }
-    const customerPhone = normalizeWhatsAppNumber(customer.data().phone);
-    if (customerPhone !== cleanPhone) {
-      throw new HttpsError('invalid-argument', 'Cliente não corresponde ao telefone informado.');
-    }
-  }
-  const chatOwner = await chatScope(request, cleanPhone, { customerId, create: true });
-  await getFirestore().collection('whatsapp_chats').doc(cleanPhone).set({
-    userId: chatOwner,
-    id: cleanPhone,
-    phone: cleanPhone,
-    customerName: customerName || cleanPhone,
-    customerId: customerId || null,
-    updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
-  return { success: true };
-}, () => moduleInitializationMs));
-
 moduleInitializationMs = Number((Number(process.hrtime.bigint() - moduleInitializationStartedAt) / 1e6).toFixed(2));
 
 module.exports = {
@@ -581,6 +521,4 @@ module.exports = {
   sendWhatsAppDirectMessage,
   deleteWhatsAppMessage,
   syncWhatsAppChatMessages,
-  markWhatsAppChatRead,
-  ensureWhatsAppConversation,
 };

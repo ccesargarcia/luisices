@@ -25,11 +25,10 @@
   "./whatsapp": [
     "sendWhatsAppDirectMessage",
     "deleteWhatsAppMessage",
-    "syncWhatsAppChatMessages",
-    "markWhatsAppChatRead",
-    "ensureWhatsAppConversation"
+    "syncWhatsAppChatMessages"
   ],
   "./whatsapp/status": ["getWhatsAppInstanceStatus"],
+  "./whatsapp/conversations": ["markWhatsAppChatRead", "ensureWhatsAppConversation"],
   "./whatsapp/webhook": ["evolutionWhatsAppWebhook"],
   "./orders": [
     "submitPublicCatalogOrder",

@@ -221,11 +221,16 @@ test('webhook, status e operações do WhatsApp têm deploys independentes', () 
 function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }
 expose('sendWhatsAppDirectMessage', () => require('./whatsapp').sendWhatsAppDirectMessage);
 expose('getWhatsAppInstanceStatus', () => require('./whatsapp/status').getWhatsAppInstanceStatus);
+expose('markWhatsAppChatRead', () => require('./whatsapp/conversations').markWhatsAppChatRead);
+expose('ensureWhatsAppConversation', () => require('./whatsapp/conversations').ensureWhatsAppConversation);
 expose('evolutionWhatsAppWebhook', () => require('./whatsapp/webhook').evolutionWhatsAppWebhook);`,
     'functions/whatsapp/index.js': "require('./authorization'); require('../common/helpers'); module.exports = {};",
     'functions/whatsapp/authorization.js': "require('../common/helpers'); module.exports = {};",
     'functions/whatsapp/status.js': "require('./authorization'); require('./statusCore'); module.exports = {};",
     'functions/whatsapp/statusCore.js': 'module.exports = {};',
+    'functions/whatsapp/conversations.js': "require('./authorization'); require('./chatScope'); require('./conversationCore'); module.exports = {};",
+    'functions/whatsapp/chatScope.js': "require('../common/helpers'); module.exports = {};",
+    'functions/whatsapp/conversationCore.js': 'module.exports = {};',
     'functions/whatsapp/webhook.js': "require('./persistMessage'); module.exports = {};",
     'functions/whatsapp/persistMessage.js': 'module.exports = {};',
     'functions/common/helpers.js': 'module.exports = {};',
@@ -235,7 +240,10 @@ expose('evolutionWhatsAppWebhook', () => require('./whatsapp/webhook').evolution
     ['functions/whatsapp/index.js', ['sendWhatsAppDirectMessage']],
     ['functions/whatsapp/status.js', ['getWhatsAppInstanceStatus']],
     ['functions/whatsapp/statusCore.js', ['getWhatsAppInstanceStatus']],
-    ['functions/whatsapp/authorization.js', ['getWhatsAppInstanceStatus', 'sendWhatsAppDirectMessage']],
+    ['functions/whatsapp/conversations.js', ['ensureWhatsAppConversation', 'markWhatsAppChatRead']],
+    ['functions/whatsapp/chatScope.js', ['ensureWhatsAppConversation', 'markWhatsAppChatRead', 'sendWhatsAppDirectMessage']],
+    ['functions/whatsapp/conversationCore.js', ['ensureWhatsAppConversation', 'markWhatsAppChatRead']],
+    ['functions/whatsapp/authorization.js', ['ensureWhatsAppConversation', 'getWhatsAppInstanceStatus', 'markWhatsAppChatRead', 'sendWhatsAppDirectMessage']],
     ['functions/whatsapp/webhook.js', ['evolutionWhatsAppWebhook']],
     ['functions/whatsapp/persistMessage.js', ['evolutionWhatsAppWebhook']],
   ]) {

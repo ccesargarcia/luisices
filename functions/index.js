@@ -52,8 +52,8 @@ expose('sendWhatsAppDirectMessage', () => require('./whatsapp').sendWhatsAppDire
 expose('deleteWhatsAppMessage', () => require('./whatsapp').deleteWhatsAppMessage);
 expose('syncWhatsAppChatMessages', () => require('./whatsapp').syncWhatsAppChatMessages);
 expose('getWhatsAppInstanceStatus', () => require('./whatsapp/status').getWhatsAppInstanceStatus);
-expose('markWhatsAppChatRead', () => require('./whatsapp').markWhatsAppChatRead);
-expose('ensureWhatsAppConversation', () => require('./whatsapp').ensureWhatsAppConversation);
+expose('markWhatsAppChatRead', () => require('./whatsapp/conversations').markWhatsAppChatRead);
+expose('ensureWhatsAppConversation', () => require('./whatsapp/conversations').ensureWhatsAppConversation);
 expose('evolutionWhatsAppWebhook', () => require('./whatsapp/webhook').evolutionWhatsAppWebhook);
 
 // ─── Pedidos e Vitrine Pública ─────────────────────────────────────────────
