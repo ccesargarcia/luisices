@@ -79,6 +79,18 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
+  it('validateUserInvitation carrega isolada e mantém callable pública sem secrets', () => {
+    checkStartup(`
+      const handler = functions.validateUserInvitation;
+      assert.equal(handler, require('./users/validateUserInvitation').validateUserInvitation);
+      assert.equal(require.cache[require.resolve('./users')], undefined,
+        'validação pública do convite não deve carregar o módulo amplo de usuários');
+      assert.ok(require.cache[require.resolve('./users/validateUserInvitationCore')]);
+      assert.equal(handler.__endpoint.secretEnvironmentVariables?.some(item =>
+        item.key === 'RESEND_API_KEY' || item.key === 'EVOLUTION_API_KEY'), false);
+    `);
+  });
+
   it('limpeza de rascunhos carrega isolada do envio e do webhook e mantém agenda', () => {
     checkStartup(`
       const handler = functions.cleanupEmailDrafts;

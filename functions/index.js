@@ -27,7 +27,7 @@ function expose(name, load) {
 // ─── Gestão de Usuários e Convites ─────────────────────────────────────────
 expose('sendAdminPasswordReset', () => require('./users').sendAdminPasswordReset);
 expose('createUserInvitation', () => require('./users').createUserInvitation);
-expose('validateUserInvitation', () => require('./users').validateUserInvitation);
+expose('validateUserInvitation', () => require('./users/validateUserInvitation').validateUserInvitation);
 expose('completeUserInvitation', () => require('./users').completeUserInvitation);
 expose('sendVerificationEmail', () => require('./users').sendVerificationEmail);
 expose('sendPasswordResetEmail', () => require('./users').sendPasswordResetEmail);

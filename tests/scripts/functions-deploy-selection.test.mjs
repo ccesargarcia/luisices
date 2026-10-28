@@ -212,6 +212,28 @@ expose('registerDeviceSession', () => require('./users/registerDeviceSession').r
   assert.deepEqual(selectFunctions(before, entryChange).targets, ['registerDeviceSession']);
 });
 
+test('validateUserInvitation tem entrada isolada e alteração no core seleciona só essa callable', () => {
+  const fixture = () => ({
+    ...lazyFixture(),
+    'functions/index.js': `require('./bootstrap');
+function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }
+expose('createUser', () => require('./users').createUser);
+expose('validateUserInvitation', () => require('./users/validateUserInvitation').validateUserInvitation);`,
+    'functions/users/validateUserInvitation.js': "require('../common/sentryFunctions'); require('./validateUserInvitationCore'); module.exports = {};",
+    'functions/users/validateUserInvitationCore.js': 'module.exports = {};',
+    'functions/common/sentryFunctions.js': 'module.exports = {};',
+  });
+
+  const before = fixture();
+  const after = fixture();
+  after['functions/users/validateUserInvitationCore.js'] += '\n// changed invitation validation';
+  assert.deepEqual(selectFunctions(before, after).targets, ['validateUserInvitation']);
+
+  const entryChange = fixture();
+  entryChange['functions/users/validateUserInvitation.js'] += '\n// changed callable configuration';
+  assert.deepEqual(selectFunctions(before, entryChange).targets, ['validateUserInvitation']);
+});
+
 test('handlers de e-mail têm deploys independentes por fluxo', () => {
   const fixture = {
     'functions/index.js': `require('./bootstrap');

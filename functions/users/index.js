@@ -320,21 +320,6 @@ const createUserInvitation = onCall(
   }
 );
 
-/** Valida um convite sem expor o token armazenado. */
-const validateUserInvitation = onCall(async (request) => {
-  const { token } = request.data || {};
-  if (!token || typeof token !== 'string') {
-    throw new HttpsError('invalid-argument', 'Convite inválido.');
-  }
-  const snapshot = await getFirestore().collection('invitations').doc(hashToken(token)).get();
-  if (!snapshot.exists) throw new HttpsError('not-found', 'Convite inválido ou expirado.');
-  const data = snapshot.data();
-  if (data.status !== 'pending' || data.expiresAt.toDate() <= new Date()) {
-    throw new HttpsError('failed-precondition', 'Convite inválido ou expirado.');
-  }
-  return { email: data.email, expiresAt: data.expiresAt.toDate().toISOString() };
-});
-
 /** Conclui o cadastro convidado e inicializa o perfil do usuário. */
 const completeUserInvitation = onCall(async (request) => {
   const { token } = request.data || {};
@@ -908,7 +893,6 @@ const revokeDeviceSession = onCall(async (request) => requestDeviceLogout(reques
 module.exports = {
   sendAdminPasswordReset,
   createUserInvitation,
-  validateUserInvitation,
   completeUserInvitation,
   sendVerificationEmail,
   sendPasswordResetEmail,
