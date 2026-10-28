@@ -50,7 +50,7 @@ expose('cleanupEmailDrafts', () => require('./email/cleanup').cleanupEmailDrafts
 // ─── WhatsApp (Evolution API e Webhooks) ───────────────────────────────────
 expose('sendWhatsAppDirectMessage', () => require('./whatsapp').sendWhatsAppDirectMessage);
 expose('deleteWhatsAppMessage', () => require('./whatsapp').deleteWhatsAppMessage);
-expose('syncWhatsAppChatMessages', () => require('./whatsapp').syncWhatsAppChatMessages);
+expose('syncWhatsAppChatMessages', () => require('./whatsapp/sync').syncWhatsAppChatMessages);
 expose('getWhatsAppInstanceStatus', () => require('./whatsapp/status').getWhatsAppInstanceStatus);
 expose('markWhatsAppChatRead', () => require('./whatsapp/conversations').markWhatsAppChatRead);
 expose('ensureWhatsAppConversation', () => require('./whatsapp/conversations').ensureWhatsAppConversation);

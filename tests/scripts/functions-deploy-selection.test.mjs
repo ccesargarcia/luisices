@@ -220,11 +220,15 @@ test('webhook, status e operações do WhatsApp têm deploys independentes', () 
     'functions/index.js': `require('./bootstrap');
 function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }
 expose('sendWhatsAppDirectMessage', () => require('./whatsapp').sendWhatsAppDirectMessage);
+expose('deleteWhatsAppMessage', () => require('./whatsapp').deleteWhatsAppMessage);
+expose('syncWhatsAppChatMessages', () => require('./whatsapp/sync').syncWhatsAppChatMessages);
 expose('getWhatsAppInstanceStatus', () => require('./whatsapp/status').getWhatsAppInstanceStatus);
 expose('markWhatsAppChatRead', () => require('./whatsapp/conversations').markWhatsAppChatRead);
 expose('ensureWhatsAppConversation', () => require('./whatsapp/conversations').ensureWhatsAppConversation);
 expose('evolutionWhatsAppWebhook', () => require('./whatsapp/webhook').evolutionWhatsAppWebhook);`,
     'functions/whatsapp/index.js': "require('./authorization'); require('./chatScope'); require('../common/helpers'); module.exports = {};",
+    'functions/whatsapp/sync.js': "require('./authorization'); require('./chatScope'); require('./syncCore'); require('../common/helpers'); require('../common/secrets'); require('../common/sentry'); require('../common/sentryFunctions'); module.exports = {};",
+    'functions/whatsapp/syncCore.js': "require('firebase-functions/v2/https'); module.exports = {};",
     'functions/whatsapp/authorization.js': "require('../common/helpers'); module.exports = {};",
     'functions/whatsapp/status.js': "require('./authorization'); require('./statusCore'); module.exports = {};",
     'functions/whatsapp/statusCore.js': 'module.exports = {};',
@@ -234,16 +238,21 @@ expose('evolutionWhatsAppWebhook', () => require('./whatsapp/webhook').evolution
     'functions/whatsapp/webhook.js': "require('./persistMessage'); module.exports = {};",
     'functions/whatsapp/persistMessage.js': 'module.exports = {};',
     'functions/common/helpers.js': 'module.exports = {};',
+    'functions/common/secrets.js': 'module.exports = {};',
+    'functions/common/sentry.js': 'module.exports = {};',
+    'functions/common/sentryFunctions.js': 'module.exports = {};',
     'functions/bootstrap.js': 'module.exports = {};',
   };
   for (const [file, expected] of [
-    ['functions/whatsapp/index.js', ['sendWhatsAppDirectMessage']],
+    ['functions/whatsapp/index.js', ['deleteWhatsAppMessage', 'sendWhatsAppDirectMessage']],
+    ['functions/whatsapp/sync.js', ['syncWhatsAppChatMessages']],
+    ['functions/whatsapp/syncCore.js', ['syncWhatsAppChatMessages']],
     ['functions/whatsapp/status.js', ['getWhatsAppInstanceStatus']],
     ['functions/whatsapp/statusCore.js', ['getWhatsAppInstanceStatus']],
     ['functions/whatsapp/conversations.js', ['ensureWhatsAppConversation', 'markWhatsAppChatRead']],
-    ['functions/whatsapp/chatScope.js', ['ensureWhatsAppConversation', 'markWhatsAppChatRead', 'sendWhatsAppDirectMessage']],
+    ['functions/whatsapp/chatScope.js', ['deleteWhatsAppMessage', 'ensureWhatsAppConversation', 'markWhatsAppChatRead', 'sendWhatsAppDirectMessage', 'syncWhatsAppChatMessages']],
     ['functions/whatsapp/conversationCore.js', ['ensureWhatsAppConversation', 'markWhatsAppChatRead']],
-    ['functions/whatsapp/authorization.js', ['ensureWhatsAppConversation', 'getWhatsAppInstanceStatus', 'markWhatsAppChatRead', 'sendWhatsAppDirectMessage']],
+    ['functions/whatsapp/authorization.js', ['deleteWhatsAppMessage', 'ensureWhatsAppConversation', 'getWhatsAppInstanceStatus', 'markWhatsAppChatRead', 'sendWhatsAppDirectMessage', 'syncWhatsAppChatMessages']],
     ['functions/whatsapp/webhook.js', ['evolutionWhatsAppWebhook']],
     ['functions/whatsapp/persistMessage.js', ['evolutionWhatsAppWebhook']],
   ]) {

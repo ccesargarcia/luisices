@@ -161,6 +161,25 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
+  it('sincronização WhatsApp carrega isolada e preserva autorização, secret e telemetria', () => {
+    checkStartup(`
+      const handler = functions.syncWhatsAppChatMessages;
+      assert.equal(handler, require('./whatsapp/sync').syncWhatsAppChatMessages);
+      assert.equal(handler.__endpoint.maxInstances, 5);
+      assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'EVOLUTION_API_KEY'));
+      for (const modulePath of ['./whatsapp', './whatsapp/status', './whatsapp/conversations', './whatsapp/webhook']) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
+      }
+      for (const modulePath of ['./whatsapp/authorization', './whatsapp/chatScope', './whatsapp/syncCore']) {
+        assert.ok(require.cache[require.resolve(modulePath)], modulePath + ' deveria estar carregado');
+      }
+      const fs = require('node:fs');
+      const source = fs.readFileSync(require.resolve('./whatsapp/sync'), 'utf8');
+      assert.ok(source.includes("withFirstInvocationSpan('syncWhatsAppChatMessages'"));
+      assert.ok(source.includes('() => moduleInitializationMs'));
+    `);
+  });
+
   it('MCP carrega executor e repositórios sem inicializar a fábrica de chat/Gemini', () => {
     checkStartup(`
       const handler = functions.chatGptToolsEndpoint;

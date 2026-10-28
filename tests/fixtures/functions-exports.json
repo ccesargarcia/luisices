@@ -24,9 +24,9 @@
   ],
   "./whatsapp": [
     "sendWhatsAppDirectMessage",
-    "deleteWhatsAppMessage",
-    "syncWhatsAppChatMessages"
+    "deleteWhatsAppMessage"
   ],
+  "./whatsapp/sync": ["syncWhatsAppChatMessages"],
   "./whatsapp/status": ["getWhatsAppInstanceStatus"],
   "./whatsapp/conversations": ["markWhatsAppChatRead", "ensureWhatsAppConversation"],
   "./whatsapp/webhook": ["evolutionWhatsAppWebhook"],
