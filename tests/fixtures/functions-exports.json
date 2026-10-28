@@ -34,7 +34,9 @@
   "./orders": [
     "submitPublicCatalogOrder",
     "updateComplexOrder",
-    "createOrder",
+    "createOrder"
+  ],
+  "./orders/tracking": [
     "createOrderTrackingLink",
     "listOrderTrackingLinks",
     "revokeOrderTrackingLink",

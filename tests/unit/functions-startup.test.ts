@@ -155,6 +155,28 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
+  it('tracking carrega isolado do núcleo e preserva secrets, opções e telemetria', () => {
+    checkStartup(`
+      const names = ${JSON.stringify(exportsByDomain['./orders/tracking'])};
+      for (const name of names) {
+        const handler = functions[name];
+        assert.equal(handler, require('./orders/tracking')[name]);
+        assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'ORIGIN_SECRET'));
+      }
+      assert.equal(functions.createOrderTrackingLink.__endpoint.maxInstances, 10);
+      assert.ok(functions.createOrderTrackingLink.__endpoint.secretEnvironmentVariables.some(
+        item => item.key === 'ORDER_TRACKING_ENCRYPTION_KEY'));
+      assert.equal(functions.getPublicOrderTracking.__endpoint.maxInstances, 20);
+      assert.equal(require.cache[require.resolve('./orders')], undefined,
+        'tracking não deve carregar as mutations transacionais');
+      assert.ok(require.cache[require.resolve('./orders/tracking')]);
+      const fs = require('node:fs');
+      const source = fs.readFileSync(require.resolve('./orders/tracking'), 'utf8');
+      for (const name of names) assert.ok(source.includes("withFirstInvocationSpan('" + name + "'"));
+      assert.ok(source.includes('() => moduleInitializationMs'));
+    `);
+  });
+
   it.each([
     { project: 'demo-luisices-startup', emulator: '', sandbox: false },
     { project: 'luisices-dev', emulator: '', sandbox: true },

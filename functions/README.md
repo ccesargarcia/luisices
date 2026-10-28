@@ -1,6 +1,6 @@
 # Backend Firebase — Luisices
 
-Pedidos revisados em **25/10/2026**; inicialização atualizada em **26/10/2026**, branch `develop`. Runtime **Node.js 22**. O entrypoint público é [index.js](index.js); funções internas só ficam disponíveis remotamente quando exportadas e publicadas.
+Pedidos e inicialização revisados em **28/10/2026**, branch `develop`. Runtime **Node.js 22**. O entrypoint público é [index.js](index.js); funções internas só ficam disponíveis remotamente quando exportadas e publicadas.
 
 ## Instalação e verificação
 
@@ -26,14 +26,17 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 | Acesso e sessões | `getUserAccountMetadata`, `registerDeviceSession`, `revokeAllSessions`, `revokeDeviceSession`, `repairUserClaims` |
 | E-mail | `sendCustomEmail`, `getEmailUsage`, `resendReceivingWebhook`, `cleanupEmailDrafts` |
 | WhatsApp | `sendWhatsAppDirectMessage`, `deleteWhatsAppMessage`, `syncWhatsAppChatMessages`, `getWhatsAppInstanceStatus`, `markWhatsAppChatRead`, `ensureWhatsAppConversation`, `evolutionWhatsAppWebhook` |
-| Loja/pedidos | `createOrder`, `updateComplexOrder`, `submitPublicCatalogOrder`, `getPublicCatalogProducts` |
-| Acompanhamento público | `createOrderTrackingLink`, `listOrderTrackingLinks`, `revokeOrderTrackingLink`, `revokeOrderTrackingLinkById`, `deleteOrderTrackingLink`, `deleteOrderTrackingLinksBatch`, `getPublicOrderTracking` |
+| Pedidos (núcleo transacional) | `createOrder`, `updateComplexOrder`, `submitPublicCatalogOrder` |
+| Catálogo público | `getPublicCatalogProducts` (`orders/catalog.js`) |
+| Acompanhamento público | `createOrderTrackingLink`, `listOrderTrackingLinks`, `revokeOrderTrackingLink`, `revokeOrderTrackingLinkById`, `deleteOrderTrackingLink`, `deleteOrderTrackingLinksBatch`, `getPublicOrderTracking` (`orders/tracking.js`) |
 | IA | `aiAgentChat`, `getAiUsage` (legado), `enrichGalleryItemWithAi`, `enrichStoreProductWithAi` |
 | Alexa | `alexaWebhook`, `approveAlexaPairing`, `setAlexaPermission`, `revokeAlexaBinding`, `toggleGlobalAlexaIntegration`, `getAlexaIntegrationStatus`, `approveAlexaDraft`, `cancelAlexaDraft` |
 | MCP/ChatGPT | `getMcpSettingsStatus`, `createMcpApiKey`, `updateMcpApiKeyScopes`, `toggleMcpApiKey`, `revokeMcpApiKey`, `toggleGlobalMcp`, `setUserMcpEligibility`, `revokeMcpSession`, `getMcpAuditLogs`, `getMcpOpenApiSchema`, `chatGptToolsEndpoint` |
 | Mídia | `galleryMedia` |
 
 `calculateSuperfreteShipping` e `createSuperfreteLabel` são exportadas apenas no projeto `luisices-dev` e no emulador; não fazem parte do deploy de produção.
+
+O catálogo público, SuperFrete e acompanhamento têm módulos de entrada próprios. O catálogo mantém sua callable e cache em `orders/catalog.js`; SuperFrete fica em `orders/superfrete.js` e não carrega o módulo principal de pedidos; os sete handlers de acompanhamento ficam em `orders/tracking.js`. A suíte de integração usa o Firestore Emulator para cobrir escopo de acesso, criação, token/hash, projeção pública, revogação e expiração. Paginação e exclusão em lote ainda precisam de regressões específicas.
 
 `cleanupEmailDrafts` é agendada. Webhooks têm validações próprias; não são chamadas de interface equivalentes aos callables autenticados.
 

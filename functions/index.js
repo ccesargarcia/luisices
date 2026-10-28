@@ -61,13 +61,13 @@ expose('submitPublicCatalogOrder', () => require('./orders').submitPublicCatalog
 expose('updateComplexOrder', () => require('./orders').updateComplexOrder);
 expose('createOrder', () => require('./orders').createOrder);
 expose('getPublicCatalogProducts', () => require('./orders/catalog').getPublicCatalogProducts);
-expose('createOrderTrackingLink', () => require('./orders').createOrderTrackingLink);
-expose('listOrderTrackingLinks', () => require('./orders').listOrderTrackingLinks);
-expose('revokeOrderTrackingLink', () => require('./orders').revokeOrderTrackingLink);
-expose('revokeOrderTrackingLinkById', () => require('./orders').revokeOrderTrackingLinkById);
-expose('deleteOrderTrackingLink', () => require('./orders').deleteOrderTrackingLink);
-expose('deleteOrderTrackingLinksBatch', () => require('./orders').deleteOrderTrackingLinksBatch);
-expose('getPublicOrderTracking', () => require('./orders').getPublicOrderTracking);
+expose('createOrderTrackingLink', () => require('./orders/tracking').createOrderTrackingLink);
+expose('listOrderTrackingLinks', () => require('./orders/tracking').listOrderTrackingLinks);
+expose('revokeOrderTrackingLink', () => require('./orders/tracking').revokeOrderTrackingLink);
+expose('revokeOrderTrackingLinkById', () => require('./orders/tracking').revokeOrderTrackingLinkById);
+expose('deleteOrderTrackingLink', () => require('./orders/tracking').deleteOrderTrackingLink);
+expose('deleteOrderTrackingLinksBatch', () => require('./orders/tracking').deleteOrderTrackingLinksBatch);
+expose('getPublicOrderTracking', () => require('./orders/tracking').getPublicOrderTracking);
 
 // ─── Inteligência Artificial (Google Gemini) ────────────────────────────────
 expose('aiAgentChat', () => require('./ai/callables').aiAgentChat);

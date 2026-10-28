@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const { onCall } = require('../../functions/common/sentryFunctions.js');
-const { createOrder, updateComplexOrder, createOrderTrackingLink } = require('../../functions/orders/index.js');
+const { createOrder, updateComplexOrder } = require('../../functions/orders/index.js');
+const { createOrderTrackingLink } = require('../../functions/orders/tracking.js');
 
 describe('Segurança Estrita de Origem (Gateway Exclusivo)', () => {
   const originalOriginSecret = process.env.ORIGIN_SECRET;

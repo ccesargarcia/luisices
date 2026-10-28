@@ -20,7 +20,7 @@ if (process.env.GCLOUD_PROJECT === 'luisices-dev') { module.exports.sandbox = or
 const orderNames = ['createOrder', 'sandbox', 'updateOrder'];
 const coreOrderNames = ['createOrder', 'updateOrder'];
 const allNames = ['createOrder', 'createUser', 'sandbox', 'updateOrder'];
-const allLazyNames = [...allNames, 'getPublicCatalogProducts'].sort();
+const allLazyNames = [...allNames, 'getPublicCatalogProducts', 'tracking'].sort();
 
 test('no runtime changes selects nothing', () => {
   assert.deepEqual(selectFunctions(fixture(), fixture()).targets, []);
@@ -118,9 +118,11 @@ expose('createOrder', () => require('./orders').createOrder);
 expose('updateOrder', () => require('./orders').updateOrder);
 expose('createUser', () => require('./users').createUser);
 expose('getPublicCatalogProducts', () => require('./orders/catalog').getPublicCatalogProducts);
+expose('tracking', () => require('./orders/tracking').tracking);
 if (process.env.GCLOUD_PROJECT === 'luisices-dev') { expose('sandbox', () => require('./orders/superfrete').sandbox); }`,
   'functions/orders/superfrete.js': "require('../common/auth'); module.exports = {};",
   'functions/orders/catalog.js': 'module.exports = {};',
+  'functions/orders/tracking.js': "require('../common/auth'); module.exports = {};",
 });
 
 test('migration to lazy exports preserves all endpoints including sandbox', () => {
@@ -128,7 +130,7 @@ test('migration to lazy exports preserves all endpoints including sandbox', () =
   assert.deepEqual(plan.targets, allLazyNames);
   assert.deepEqual(plan.removed, []);
   const rollbackPlan = selectFunctions(lazyFixture(), fixture());
-  assert.deepEqual(rollbackPlan.removed, ['getPublicCatalogProducts']);
+  assert.deepEqual(rollbackPlan.removed, ['getPublicCatalogProducts', 'tracking'].sort());
   assert.deepEqual(rollbackPlan.targets, allNames);
 });
 test('lazy imports retain selective deploy and shared bootstrap dependencies', () => {
@@ -136,9 +138,10 @@ test('lazy imports retain selective deploy and shared bootstrap dependencies', (
   for (const [file, expected] of [
     ['functions/orders/index.js', coreOrderNames],
     ['functions/orders/catalog.js', ['getPublicCatalogProducts']],
+    ['functions/orders/tracking.js', ['tracking']],
     ['functions/orders/superfrete.js', ['sandbox']],
     ['functions/common/payment.js', coreOrderNames],
-    ['functions/common/auth.js', allNames],
+    ['functions/common/auth.js', [...allNames, 'tracking'].sort()],
     ['functions/bootstrap.js', allLazyNames],
   ]) {
     const after = lazyFixture();
@@ -173,6 +176,13 @@ test('Catálogo público e Superfrete Sandbox têm grafos independentes das muta
   const ordersChange = lazyFixture();
   ordersChange['functions/orders/index.js'] += '\n// changed transactional order service';
   assert.deepEqual(selectFunctions(before, ordersChange).targets, coreOrderNames);
+});
+
+test('tracking change selects its own callable group only', () => {
+  const before = lazyFixture();
+  const after = lazyFixture();
+  after['functions/orders/tracking.js'] += '\n// changed tracking token lifecycle';
+  assert.deepEqual(selectFunctions(before, after).targets, ['tracking']);
 });
 
 test('adding a new expose entry to index.js only selects new/changed endpoint', () => {

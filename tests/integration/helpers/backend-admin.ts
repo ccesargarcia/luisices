@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 // firebase-admin da raiz (que pode ter outra versão).
 const backendRequire = createRequire(new URL('../../../functions/package.json', import.meta.url));
 export const { initializeApp, deleteApp } = backendRequire('firebase-admin/app') as typeof import('firebase-admin/app');
-export const { initializeFirestore } = backendRequire('firebase-admin/firestore') as typeof import('firebase-admin/firestore');
+export const { initializeFirestore, getFirestore } = backendRequire('firebase-admin/firestore') as typeof import('firebase-admin/firestore');
 
 export function initializeRestEmulator(app: import('firebase-admin/app').App) {
   if (app.options.projectId !== 'demo-luisices-review'
