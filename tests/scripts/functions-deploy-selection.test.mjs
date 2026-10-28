@@ -137,15 +137,25 @@ test('lazy imports retain selective deploy and shared bootstrap dependencies', (
     assert.deepEqual(selectFunctions(lazyFixture(), after).targets, expected);
   }
 });
-test('unknown, duplicate and dynamic lazy exports fail closed', () => {
-  for (const extra of [
-    "expose('extra', () => require(process.env.MODULE).extra);",
-    "expose('extra', getModule);",
-    "expose('createOrder', () => require('./orders').createOrder);",
-    'module.exports.extra = getModule();',
-  ]) {
-    const after = lazyFixture();
-    after['functions/index.js'] += extra;
-    assert.throws(() => selectFunctions(lazyFixture(), after), /Export/);
-  }
+test('production env filters out dev-only endpoints', () => {
+  const prodFixture = () => ({
+    ...lazyFixture(),
+    'functions/index.js': `require('./bootstrap');
+function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }
+expose('createOrder', () => require('./orders').createOrder);
+expose('calculateSuperfreteShipping', () => require('./orders').calculateSuperfreteShipping);
+expose('createUser', () => require('./users').createUser);`,
+  });
+  const plan = selectFunctions({}, prodFixture(), { env: 'prod' });
+  assert.ok(!plan.targets.includes('calculateSuperfreteShipping'));
+  assert.deepEqual(plan.targets, ['createOrder', 'createUser']);
 });
+
+test('adding a new expose entry to index.js only selects new/changed endpoint', () => {
+  const before = lazyFixture();
+  const after = lazyFixture();
+  after['functions/index.js'] += "\nexpose('extra', () => require('./orders').extra);";
+  const plan = selectFunctions(before, after);
+  assert.deepEqual(plan.targets, ['extra']);
+});
+

@@ -66,21 +66,47 @@ function dependencies(files, entry, seen = new Set()) {
   return seen;
 }
 
-export function selectFunctions(before, after, { force = false } = {}) {
+const DEV_ONLY_FUNCTIONS = new Set([
+  'calculateSuperfreteShipping',
+  'createSuperfreteLabel',
+]);
+
+export function selectFunctions(before, after, { force = false, env = 'dev' } = {}) {
   const entry = 'functions/index.js';
   const current = endpoints(after[entry] || '');
   const previous = before[entry] ? endpoints(before[entry]) : new Map();
   const removed = [...previous.keys()].filter((name) => !current.has(name)).sort();
   const changed = new Set([...new Set([...Object.keys(before), ...Object.keys(after)])]
     .filter((name) => before[name] !== after[name]));
+
+  const entryChanged = changed.has(entry);
+  let rootCodeChanged = false;
+  if (entryChanged && before[entry] && after[entry]) {
+    const isLazy = (src) => /\bexpose\s*\(/.test(src);
+    if (isLazy(before[entry]) && isLazy(after[entry])) {
+      const stripExpose = (src) => src
+        .replace(/\bexpose\(\s*['"]\w+['"]\s*,\s*\(\)\s*=>\s*require\(['"]\.[^'"]+['"]\)\.\w+\s*\);/g, '')
+        .replace(/\/\/[^\n]*/g, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .trim();
+      if (stripExpose(before[entry]) !== stripExpose(after[entry])) {
+        rootCodeChanged = true;
+      }
+    } else {
+      rootCodeChanged = true;
+    }
+  }
+
+  const mappingChanged = (name) => !previous.has(name) || previous.get(name) !== current.get(name);
+
   const firebaseConfig = (files) => JSON.stringify(JSON.parse(files['firebase.json'] || '{}').functions);
-  const globalChange = !before[entry] || changed.has(entry)
+  const globalChange = !before[entry] || rootCodeChanged
     || changed.has('functions/package.json') || changed.has('functions/package-lock.json')
     || changed.has('scripts/sync-secrets-safe.mjs') || firebaseConfig(before) !== firebaseConfig(after);
   // Root side effects (Sentry, initialization) run for every endpoint.
   const aliases = new Set(current.values());
   const bootstrap = new Set();
-  for (const match of after[entry].matchAll(/require\(\s*['"](\.[^'"]+)['"]\s*\)/g)) {
+  for (const match of (after[entry] || '').matchAll(/require\(\s*['"](\.[^'"]+)['"]\s*\)/g)) {
     if (!aliases.has(match[1])) {
       for (const dependency of dependencies(after, resolveModule(after, entry, match[1]))) bootstrap.add(dependency);
     }
@@ -93,7 +119,8 @@ export function selectFunctions(before, after, { force = false } = {}) {
   const unknownRuntimeChange = [...changed].some((name) => name.startsWith('functions/')
     && /\.(js|json|mjs|cjs|html|hbs|txt)$/.test(name) && !tracked.has(name));
   const targets = [...current].filter(([name]) => {
-    return force || globalChange || unknownRuntimeChange
+    if (env === 'prod' && DEV_ONLY_FUNCTIONS.has(name)) return false;
+    return force || globalChange || unknownRuntimeChange || mappingChanged(name)
       || [...bootstrap, ...graphs.get(name)].some((dependency) => changed.has(dependency));
   }).map(([name]) => name).sort();
   return { targets, removed, reason: force ? 'forced' : globalChange || unknownRuntimeChange ? 'shared-runtime' : 'dependencies' };
@@ -111,14 +138,20 @@ function snapshot(ref) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const envArg = process.argv.find((arg) => arg.startsWith('--env='))?.split('=')[1];
+  const env = process.env.TARGET_ENV || envArg || (process.env.GCLOUD_PROJECT === 'papelaria-dashboard' ? 'prod' : 'dev');
   const base = process.env.FUNCTIONS_BASE_SHA || '';
   const head = process.env.GITHUB_SHA;
-  const plan = selectFunctions(snapshot(base), snapshot(head), { force: process.env.FORCE_FUNCTIONS === 'true' });
+  const plan = selectFunctions(snapshot(base), snapshot(head), {
+    force: process.env.FORCE_FUNCTIONS === 'true',
+    env,
+  });
   const chunks = [];
   for (let offset = 0; offset < plan.targets.length; offset += 6) {
     chunks.push(plan.targets.slice(offset, offset + 6).map((name) => `functions:${name}`).join(','));
   }
-  console.log(JSON.stringify({ base: base || null, head, ...plan, chunks }, null, 2));
+  console.log(JSON.stringify({ base: base || null, head, env, ...plan, chunks }, null, 2));
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT,
     `has_targets=${plan.targets.length > 0}\nchunks=${JSON.stringify(chunks)}\n`);
 }
+

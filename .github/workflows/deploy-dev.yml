@@ -115,13 +115,15 @@ jobs:
         id: functions_plan
         env:
           FUNCTIONS_BASE_SHA: ${{ steps.functions_base.outputs.sha }}
-          FORCE_FUNCTIONS: ${{ github.event_name == 'workflow_dispatch' && (inputs.deploy_target == 'auto' || inputs.deploy_target == 'all' || inputs.deploy_target == 'functions-only') }}
+          TARGET_ENV: dev
+          FORCE_FUNCTIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'all' }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          if echo "$COMMIT_MSG" | grep -qiE '\[deploy all\]|\[all\]|\[only functions\]|\[only-functions\]'; then
+          if echo "$COMMIT_MSG" | grep -qiE '\[deploy all\]|\[all\]'; then
             export FORCE_FUNCTIONS=true
           fi
           node scripts/select-functions-deploy.mjs
+
 
       - name: Path Filter
         id: filter
