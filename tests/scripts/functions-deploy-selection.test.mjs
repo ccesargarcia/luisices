@@ -20,7 +20,7 @@ if (process.env.GCLOUD_PROJECT === 'luisices-dev') { module.exports.sandbox = or
 const orderNames = ['createOrder', 'sandbox', 'updateOrder'];
 const coreOrderNames = ['createOrder', 'updateOrder'];
 const allNames = ['createOrder', 'createUser', 'sandbox', 'updateOrder'];
-const allLazyNames = [...allNames, 'getPublicCatalogProducts'];
+const allLazyNames = [...allNames, 'getPublicCatalogProducts'].sort();
 
 test('no runtime changes selects nothing', () => {
   assert.deepEqual(selectFunctions(fixture(), fixture()).targets, []);
