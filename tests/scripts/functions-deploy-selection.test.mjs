@@ -185,6 +185,34 @@ test('tracking change selects its own callable group only', () => {
   assert.deepEqual(selectFunctions(before, after).targets, ['tracking']);
 });
 
+test('consulta de cota de e-mail fica isolada do módulo de envio', () => {
+  const before = {
+    'functions/index.js': `require('./bootstrap');
+function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }
+expose('sendCustomEmail', () => require('./email').sendCustomEmail);
+expose('getEmailUsage', () => require('./email').getEmailUsage);`,
+    'functions/email/index.js': "require('./attachments'); module.exports = {};",
+    'functions/email/attachments.js': 'module.exports = {};',
+    'functions/bootstrap.js': 'module.exports = {};',
+  };
+  const after = {
+    ...before,
+    'functions/index.js': before['functions/index.js'].replace(
+      "expose('getEmailUsage', () => require('./email').getEmailUsage);",
+      "expose('getEmailUsage', () => require('./email/usage').getEmailUsage);",
+    ),
+    'functions/email/index.js': 'module.exports = {};',
+    'functions/email/usage.js': 'module.exports = {};',
+  };
+  assert.deepEqual(selectFunctions(before, after).targets, ['getEmailUsage']);
+
+  const usageChange = { ...after, 'functions/email/usage.js': 'module.exports = { changed: true };' };
+  assert.deepEqual(selectFunctions(after, usageChange).targets, ['getEmailUsage']);
+
+  const sendChange = { ...after, 'functions/email/index.js': "require('./attachments'); module.exports = {};" };
+  assert.deepEqual(selectFunctions(after, sendChange).targets, ['sendCustomEmail']);
+});
+
 test('adding a new expose entry to index.js only selects new/changed endpoint', () => {
   const before = lazyFixture();
   const after = lazyFixture();

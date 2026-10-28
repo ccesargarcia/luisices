@@ -40,6 +40,27 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
+  it('getEmailUsage carrega isolado do envio, anexos e webhook e mantém telemetria/secrets', () => {
+    checkStartup(`
+      const handler = functions.getEmailUsage;
+      assert.equal(handler, require('./email/usage').getEmailUsage);
+      assert.equal(require.cache[require.resolve('./email')], undefined,
+        'consulta de uso não deve carregar o módulo completo de e-mail');
+      for (const modulePath of [
+        './email/attachments', './email/cleanup', './email/spamFilter', './email/sendIdempotency',
+      ]) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
+      }
+      assert.equal(handler.__endpoint.maxInstances, 5);
+      assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'RESEND_API_KEY'));
+      assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'ORIGIN_SECRET'));
+      const fs = require('node:fs');
+      const source = fs.readFileSync(require.resolve('./email/usage'), 'utf8');
+      assert.ok(source.includes("withFirstInvocationSpan('getEmailUsage'"));
+      assert.ok(source.includes('() => moduleInitializationMs'));
+    `);
+  });
+
   it('MCP carrega executor e repositórios sem inicializar a fábrica de chat/Gemini', () => {
     checkStartup(`
       const handler = functions.chatGptToolsEndpoint;

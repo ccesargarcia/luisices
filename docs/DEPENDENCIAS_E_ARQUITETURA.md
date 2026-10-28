@@ -137,7 +137,7 @@ Ordem sugerida para os próximos grupos:
 | Prioridade | Área | Próxima separação | Critério de validação |
 |---|---|---|---|
 | 1 | Diálogo de voz | Consultas de catálogo e pedidos, seguidas dos handlers por intenção | Preservar transições, respostas, autorização e gravações com testes de cenário |
-| 2 | E-mails | Estado e ciclo do compositor, envio e anexos; ações em lote em responsabilidade própria | Preservar recuperação de envio, seleção, conteúdo e comportamento em telas menores |
+| 2 | E-mails | Separar envio, webhook e limpeza em módulos próprios após isolar `getEmailUsage` | Preservar idempotência, anexos, assinatura do webhook, autorização e limpeza de dados |
 | 3 | Catálogo público | Seleção/sacola, envio da encomenda e apresentação dos produtos | Preservar valores, dados enviados e validação do formulário |
 | 4 | Personalização da loja | Estado e persistência separados dos componentes de apresentação | Preservar o resultado salvo e a prévia da loja |
 

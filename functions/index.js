@@ -43,7 +43,7 @@ expose('repairUserClaims', () => require('./users').repairUserClaims);
 
 // ─── E-mail (Resend API e Webhooks) ────────────────────────────────────────
 expose('sendCustomEmail', () => require('./email').sendCustomEmail);
-expose('getEmailUsage', () => require('./email').getEmailUsage);
+expose('getEmailUsage', () => require('./email/usage').getEmailUsage);
 expose('resendReceivingWebhook', () => require('./email').resendReceivingWebhook);
 expose('cleanupEmailDrafts', () => require('./email').cleanupEmailDrafts);
 

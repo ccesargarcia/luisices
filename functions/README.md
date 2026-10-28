@@ -24,7 +24,7 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 | Contas e convites | `createUser`, `updateUser`, `deleteUser`, `createUserInvitation`, `validateUserInvitation`, `completeUserInvitation` |
 | Recuperação/verificação | `sendAdminPasswordReset`, `sendPasswordResetEmail`, `sendVerificationEmail`, `recordUserPasswordChange` |
 | Acesso e sessões | `getUserAccountMetadata`, `registerDeviceSession`, `revokeAllSessions`, `revokeDeviceSession`, `repairUserClaims` |
-| E-mail | `sendCustomEmail`, `getEmailUsage`, `resendReceivingWebhook`, `cleanupEmailDrafts` |
+| E-mail | `sendCustomEmail`, `resendReceivingWebhook`, `cleanupEmailDrafts` (`email/index.js`); `getEmailUsage` (`email/usage.js`) |
 | WhatsApp | `sendWhatsAppDirectMessage`, `deleteWhatsAppMessage`, `syncWhatsAppChatMessages`, `getWhatsAppInstanceStatus`, `markWhatsAppChatRead`, `ensureWhatsAppConversation`, `evolutionWhatsAppWebhook` |
 | Pedidos (núcleo transacional) | `createOrder`, `updateComplexOrder`, `submitPublicCatalogOrder` |
 | Catálogo público | `getPublicCatalogProducts` (`orders/catalog.js`) |
@@ -36,7 +36,7 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 
 `calculateSuperfreteShipping` e `createSuperfreteLabel` são exportadas apenas no projeto `luisices-dev` e no emulador; não fazem parte do deploy de produção.
 
-O catálogo público, SuperFrete e acompanhamento têm módulos de entrada próprios. O catálogo mantém sua callable e cache em `orders/catalog.js`; SuperFrete fica em `orders/superfrete.js` e não carrega o módulo principal de pedidos; os sete handlers de acompanhamento ficam em `orders/tracking.js`. A suíte de integração usa o Firestore Emulator para cobrir escopo de acesso, criação, token/hash, projeção pública, revogação e expiração. Paginação e exclusão em lote ainda precisam de regressões específicas. A extração de tracking passou na CI [40749435427](https://github.com/ccesargarcia/luisices/actions/runs/40749435427) e foi publicada em DEV.
+O catálogo público, SuperFrete e acompanhamento têm módulos de entrada próprios. O catálogo mantém sua callable e cache em `orders/catalog.js`; SuperFrete fica em `orders/superfrete.js` e não carrega o módulo principal de pedidos; os sete handlers de acompanhamento ficam em `orders/tracking.js`. `getEmailUsage` tem entrada própria em `email/usage.js`, separada de envio, anexos, webhook e limpeza, mantendo autorização, chave Resend e telemetria Sentry. A suíte de integração cobre autorização e consulta com o Resend simulado; implantação deve ser confirmada no CI do commit que contém esta mudança.
 
 `cleanupEmailDrafts` é agendada. Webhooks têm validações próprias; não são chamadas de interface equivalentes aos callables autenticados.
 

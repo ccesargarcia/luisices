@@ -18,9 +18,11 @@
   ],
   "./email": [
     "sendCustomEmail",
-    "getEmailUsage",
     "resendReceivingWebhook",
     "cleanupEmailDrafts"
+  ],
+  "./email/usage": [
+    "getEmailUsage"
   ],
   "./whatsapp": [
     "sendWhatsAppDirectMessage",

@@ -14,13 +14,13 @@ O mapa é estático e baseado no código do repositório. Ele não mede o tempo 
 
 - Há **63 exports** no entrypoint: 61 endpoints gerais e 2 endpoints exclusivos de DEV/emulador.
 - Esses exports formam módulos de entrada independentes por domínio/capacidade: MCP separa gestão e endpoint; IA separa chat, enrichments e `getAiUsage`; Pedidos já separa catálogo público e SuperFrete DEV do núcleo transacional. Mudanças em dependências compartilhadas ainda selecionam todos os consumidores correspondentes.
-- O maior agrupamento é Usuários (**15 endpoints**), seguido de Pedidos (**13 em DEV, 11 em produção**, divididos entre core, catálogo, tracking e SuperFrete DEV), MCP (**11**), Alexa (**8**), WhatsApp (**7**), IA (**4**), E-mail (**4**) e Mídia (**1**).
+- O maior agrupamento é Usuários (**15 endpoints**), seguido de Pedidos (**13 em DEV, 11 em produção**, divididos entre core, catálogo, tracking e SuperFrete DEV), MCP (**11**), Alexa (**8**), WhatsApp (**7**), IA (**4**), E-mail (**4**, agora dividido entre entrada de uso e módulo de envio/webhook/limpeza) e Mídia (**1**).
 - No deploy DEV [40737383806](https://github.com/ccesargarcia/luisices/actions/runs/40737383806), o CI passou e o seletor publicou **5 Functions** para a separação de `getAiUsage`: quatro exports de IA e o endpoint MCP que compartilha a fábrica de IA. A etapa de atualização das Functions levou cerca de 2min09s.
 - No deploy anterior [40628205038](https://github.com/ccesargarcia/luisices/actions/runs/40628205038), o seletor havia escolhido **63 Functions** após a remoção do agregador MCP. A correção do seletor foi validada no run [40735963324](https://github.com/ccesargarcia/luisices/actions/runs/40735963324).
 - Os exports MCP agora são registrados diretamente por `functions/mcp/callables.js` e `functions/mcp/endpoint.js`. O antigo `functions/mcp/index.js` foi removido. Os testes já cobrem deploy seletivo entre os dois grupos.
 - A correção do seletor reconhece arquivos removidos que pertenciam ao grafo do commit implantado, mantendo seleção global para arquivos de runtime realmente não rastreáveis.
 - `getAiUsage` e MCP não usam a fábrica geral de chat. Chat e enrichments agora têm entradas/fábricas separadas, com `handlers.js`, Gemini e orçamento ainda compartilhados onde necessários.
-- MCP e IA já foram decompostos; em Pedidos, catálogo, SuperFrete e tracking têm entradas próprias, preservando o núcleo transacional. Esta alteração aguarda CI antes do deploy DEV. E-mail, WhatsApp, Alexa e Usuários vêm em lotes separados.
+- MCP e IA já foram decompostos; em Pedidos, catálogo, SuperFrete e tracking têm entradas próprias, preservando o núcleo transacional. O isolamento de tracking já foi publicado em DEV. E-mail está em decomposição; WhatsApp, Alexa e Usuários permanecem como etapas futuras.
 
 ## Como o deploy funciona hoje
 
@@ -51,7 +51,7 @@ Os grupos abaixo representam os grafos estáticos identificados, não a quantida
 | MCP — `functions/mcp/callables.js`, `functions/mcp/endpoint.js` e `functions/mcp/aiServices.js` | 11 | 11 | `getMcpSettingsStatus`, `createMcpApiKey`, `updateMcpApiKeyScopes`, `toggleMcpApiKey`, `revokeMcpApiKey`, `toggleGlobalMcp`, `setUserMcpEligibility`, `revokeMcpSession`, `getMcpAuditLogs`, `getMcpOpenApiSchema`, `chatGptToolsEndpoint` | Callables administrativas e endpoint público têm entradas separadas. O endpoint cria somente repositórios e executor determinístico, sem Gemini/handlers de chat. |
 | Alexa — `functions/alexa/index.js` | 8 | 8 | `alexaWebhook`, `approveAlexaPairing`, `setAlexaPermission`, `revokeAlexaBinding`, `toggleGlobalAlexaIntegration`, `getAlexaIntegrationStatus`, `approveAlexaDraft`, `cancelAlexaDraft` | O webhook e as callables administrativas compartilham 18 módulos locais, inclusive diálogo, pareamento e serviços relacionados. |
 | WhatsApp — `functions/whatsapp/index.js` | 7 | 7 | `sendWhatsAppDirectMessage`, `deleteWhatsAppMessage`, `syncWhatsAppChatMessages`, `getWhatsAppInstanceStatus`, `markWhatsAppChatRead`, `ensureWhatsAppConversation`, `evolutionWhatsAppWebhook` | Um módulo de cerca de 760 linhas agrupa operações de usuário, manutenção de conversa e webhook. Tem instrumentação de inicialização. |
-| E-mail — `functions/email/index.js` | 4 | 4 | `sendCustomEmail`, `getEmailUsage`, `resendReceivingWebhook`, `cleanupEmailDrafts` | Envio, anexos, idempotência, filtro de spam, webhook e limpeza estão no mesmo grafo de sete módulos locais. |
+| E-mail — `functions/email/index.js` e `functions/email/usage.js` | 4 | 4 | `sendCustomEmail`, `getEmailUsage`, `resendReceivingWebhook`, `cleanupEmailDrafts` | `getEmailUsage` está isolada do grafo de envio/anexos, webhook e limpeza. Ainda usa Firestore, helper de sessão compartilhado, `RESEND_API_KEY` e duas chamadas à API do Resend; a extração não garante redução de latência. |
 | Mídia — `functions/media/gallery.js` | 1 | 1 | `galleryMedia` | Já tem fronteira isolada e núcleo separado (`galleryCore.js`); bom padrão para preservar. |
 | **Total** | **63** | **61** | **63 nomes** | Os 2 endpoints de diferença são exclusivos de DEV/emulador. |
 
@@ -108,9 +108,9 @@ Os sete exports compartilham `whatsapp/index.js` e seus imports locais. O arquiv
 
 ### 5. E-mail
 
-Os quatro endpoints compartilham um índice que importa anexos, limpeza, spam filter e idempotência de envio. `getEmailUsage` e cleanup não precisam carregar a cadeia inteira de envio. O webhook Resend precisa preservar verificação de assinatura/segredo.
+Os quatro endpoints continuam no mesmo domínio público, mas `getEmailUsage` agora aponta para `email/usage.js`, sem carregar anexos, limpeza, spam filter ou idempotência. O módulo restante ainda agrupa envio, webhook Resend e limpeza; a validação de assinatura/segredo do webhook precisa ser preservada.
 
-**Direção recomendada:** separar envio, consultas de uso/limpeza e webhook em entradas próprias; manter serviços de idempotência, segurança e normalização comuns somente onde realmente usados.
+**Direção recomendada:** separar em seguida o webhook e a limpeza do envio; manter idempotência, segurança e normalização comuns somente onde realmente usados. A separação de consulta está em implementação nesta etapa e precisa passar pela CI antes de ser considerada entregue.
 
 ### 6. Usuários
 
@@ -137,7 +137,7 @@ Complexidade é relativa ao repositório: **Baixa** = fronteira clara e poucos c
 | **Concluída** | Isolar os sete handlers de tracking do núcleo de Pedidos | 7 exports | Mudanças exclusivas em links não republicam mutations financeiras | Primeira publicação também atualizou o núcleo pelo grafo anterior; paginação e exclusão em lote ainda precisam de regressões próprias | **Alta** |
 | **P2** | Separar webhook Alexa das callables administrativas; manter domínio comum | 8 | Mudança de diálogo/assinatura não republica todas as ações administrativas; menor acoplamento de inicialização | Risco de assinatura ASK, dedupe, pareamento e rascunhos se handlers forem movidos sem testes de contrato | **Média/Alta** |
 | **P2** | Separar webhook Evolution de operações de conversa/usuário no WhatsApp | 7 | Alterações em webhook ou leitura/status não afetam envio/sincronização sem necessidade | Risco de duplicar autorização, escopo por telefone, dedupe e persistência de eventos | **Média/Alta** |
-| **P2** | Separar envio de e-mail, webhook Resend e consultas/limpeza | 4 | Consultas simples deixam de carregar anexos/spam/idempotência de envio; alteração de webhook fica isolada | Risco de envio duplicado, anexos quebrados ou webhook sem validação de assinatura | **Média** |
+| **Em andamento** | Separar `getEmailUsage` do módulo de envio; depois separar webhook e limpeza | 1 agora, 3 restantes | Consulta deixa de carregar anexos, spam, idempotência e limpeza; próximos passos podem isolar deploys | Ainda há Firestore, helper de sessão, secret Resend e chamadas externas; riscos futuros de envio, anexos e assinatura | **Média** |
 | **P3** | Separar endpoints de Usuários por convites, identidade/perfil e sessões | 15 | Reduz redeploy de operações de senha quando muda sessão/claim, e vice-versa; fronteiras de segurança mais claras | Grande número de contratos administrativos; alto risco em concorrência, claims, revogação e compatibilidade | **Alta** |
 | **P3** | Preservar Mídia como padrão e aplicar análise seletiva a novos módulos | 1 | Evita regressão estrutural e mantém um exemplo simples de domínio com core isolado | Benefício incremental baixo porque já está isolado | **Baixa** |
 | **P0 contínuo** | Preservar bootstrap global, resolução segura e comportamento fail-closed do seletor | Todos | Evita Functions ausentes no deploy e mantém observabilidade/inicialização consistente | Mudanças globais continuarão selecionando tudo; esse custo é correto quando o bootstrap realmente muda | **Baixa para manter; alta consequência se quebrado** |
@@ -234,4 +234,6 @@ A CI [40742861524](https://github.com/ccesargarcia/luisices/actions/runs/4074286
 
 **Estado atual desta alteração:** os sete handlers foram movidos sem alteração no texto das implementações para `functions/orders/tracking.js`; os exports de `functions/index.js` apontam diretamente para esse módulo. A CI [40749435427](https://github.com/ccesargarcia/luisices/actions/runs/40749435427) e o deploy DEV terminaram com sucesso. Os logs comprovam que sete exports de tracking e três mutations foram atualizados, sem mudança de Rules ou Hosting. Faltam regressões específicas para paginação e exclusão em lote.
 
-**Próxima etapa recomendada:** separar `getEmailUsage` do módulo geral de E-mail. Esse callable é usado pelo Dashboard e pode deixar de carregar envio, anexos e idempotência. Antes da extração, mapear os imports reais e a autorização; testar inicialização seletiva e leitura/permissão no Firestore Emulator; preservar retorno e medição Sentry; confirmar que não herda secrets de envio.
+**Etapa em andamento:** `getEmailUsage` foi movida para `functions/email/usage.js`. A extração mantém a autorização, o retorno, a dependência explícita de `RESEND_API_KEY` e adiciona a mesma medição Sentry de primeira execução usada em outras entradas isoladas. Os testes verificam o grafo de inicialização, seleção de deploy, acesso negado e consulta autorizada com respostas do Resend simuladas. O efeito sobre latência ainda não foi medido; a dependência de chamadas de rede ao Resend continua.
+
+**Próxima etapa após CI e DEV:** separar o webhook Resend e `cleanupEmailDrafts` do caminho de envio, começando por testes de assinatura/idempotência e mantendo a superfície pública dos exports.
