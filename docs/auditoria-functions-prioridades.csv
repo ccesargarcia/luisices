@@ -4,7 +4,7 @@ Concluída validar;Desacoplar endpoint MCP das callables administrativas;11 Func
 Concluída;Fábricas IA por capacidade e handlers isolados;4 Functions IA mais MCP;chat enrichment analytics e MCP têm entradas isoladas por capacidade;chat/enrichments compartilham handlers e Gemini e MCP/IA compartilham tools/repos sem comparação suficiente para declarar redução de latência;Alta
 P1;Medição de inicialização por endpoint;Todas;Distingue module init cold start de plataforma e duração do handler;Instrumentação gera ruído e não reduz latência por si só;Média
 Concluída;Isolar catálogo e SuperFrete DEV do núcleo de Pedidos;3 Functions;Mudanças de catálogo/SuperFrete não republicam mutations financeiras;Manter cache secrets e gating DEV;Média
-Em validação;Isolar tracking com regressão backend;7 Functions;Mudanças em links deixam de republicar mutations financeiras;Cobertura de paginação e exclusão em lote pendente até completar a matriz;Alta
+Concluída;Isolar tracking com regressão backend;7 Functions;Mudanças exclusivas em links deixam de republicar mutations financeiras;Primeira publicação também atualizou o core pelo grafo anterior; paginação e exclusão em lote sem regressão específica;Alta
 P2;Separar webhook Alexa das callables administrativas;8;Reduz redeploy e carregamento cruzado;Risco de assinatura ASK pareamento dedupe e rascunhos;Média/Alta
 P2;Separar webhook Evolution de operações WhatsApp;7;Isola webhook de envio e consultas;Risco de duplicar autorização escopo e persistência;Média/Alta
 P2;Separar envio webhook e consultas/limpeza de e-mail;4;Consultas deixam de carregar anexos spam e idempotência de envio;Risco de envio duplicado anexos e assinatura webhook;Média

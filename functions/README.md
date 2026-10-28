@@ -36,7 +36,7 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 
 `calculateSuperfreteShipping` e `createSuperfreteLabel` são exportadas apenas no projeto `luisices-dev` e no emulador; não fazem parte do deploy de produção.
 
-O catálogo público, SuperFrete e acompanhamento têm módulos de entrada próprios. O catálogo mantém sua callable e cache em `orders/catalog.js`; SuperFrete fica em `orders/superfrete.js` e não carrega o módulo principal de pedidos; os sete handlers de acompanhamento ficam em `orders/tracking.js`. A suíte de integração usa o Firestore Emulator para cobrir escopo de acesso, criação, token/hash, projeção pública, revogação e expiração. Paginação e exclusão em lote ainda precisam de regressões específicas.
+O catálogo público, SuperFrete e acompanhamento têm módulos de entrada próprios. O catálogo mantém sua callable e cache em `orders/catalog.js`; SuperFrete fica em `orders/superfrete.js` e não carrega o módulo principal de pedidos; os sete handlers de acompanhamento ficam em `orders/tracking.js`. A suíte de integração usa o Firestore Emulator para cobrir escopo de acesso, criação, token/hash, projeção pública, revogação e expiração. Paginação e exclusão em lote ainda precisam de regressões específicas. A extração de tracking passou na CI [40749435427](https://github.com/ccesargarcia/luisices/actions/runs/40749435427) e foi publicada em DEV.
 
 `cleanupEmailDrafts` é agendada. Webhooks têm validações próprias; não são chamadas de interface equivalentes aos callables autenticados.
 
