@@ -21,6 +21,7 @@ import { db, auth, functions } from '../lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { Order, OrderItem, OrderStatus, ProductionStep, ProductionWorkflow } from '../app/types';
 import { parseDecimalMoneyInput } from '../app/utils/parseDecimalMoneyInput';
+import { normalizeOrderItems } from '../app/utils/normalizeOrderItems';
 import { MAX_ORDER_TAGS } from '../app/utils/orderLimits';
 import { firebaseLedgerService } from './firebaseLedgerService';
 import { firebaseCustomerService } from './firebaseCustomerService';
@@ -755,7 +756,7 @@ export class FirebaseOrderService {
       price: data.price,
       pricingMode: data.pricingMode,
       unitPrice: typeof data.unitPrice === 'number' ? data.unitPrice : null,
-      items: Array.isArray(data.items) ? data.items : (data.items === null ? null : undefined),
+      items: Array.isArray(data.items) ? normalizeOrderItems(data.items) : (data.items === null ? null : undefined),
       status: data.status,
       deliveryDate: data.deliveryDate,
       notes: data.notes,
@@ -1403,7 +1404,7 @@ export class FirebaseOrderService {
       price,
       pricingMode: data.pricingMode || null,
       unitPrice: typeof data.unitPrice === 'number' ? data.unitPrice : null,
-      items: Array.isArray(data.items) ? data.items : null,
+      items: Array.isArray(data.items) ? normalizeOrderItems(data.items) : null,
       status: 'pending',
       deliveryDate: data.deliveryDate,
       notes: data.notes || null,

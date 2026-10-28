@@ -1,6 +1,7 @@
 import { formatDecimalMoneyInput } from './formatDecimalMoneyInput';
 import { parseDecimalMoneyInput } from './parseDecimalMoneyInput';
 import { OrderItem } from '../types';
+import { normalizeOrderItems } from './normalizeOrderItems';
 
 export interface EditableOrderProduct {
   name: string;
@@ -18,7 +19,7 @@ export function reconstructOrderProducts(
 ): EditableOrderProduct[] {
   // If structured items exist in storage, use them directly with exact unit prices
   if (storedItems && Array.isArray(storedItems) && storedItems.length > 0) {
-    return storedItems.map(item => {
+    return normalizeOrderItems(storedItems).map(item => {
       let unitPriceStr = '';
       if (typeof item.unitPrice === 'number' && Number.isFinite(item.unitPrice)) {
         unitPriceStr = formatDecimalMoneyInput(item.unitPrice);

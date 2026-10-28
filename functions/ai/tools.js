@@ -36,6 +36,22 @@ function isConfirmed(value) {
   return value === true || value === 'true';
 }
 
+function getStoredItemUnitPrice(item) {
+  const unitPrice = Number(item?.unitPrice);
+  if (Number.isFinite(unitPrice) && unitPrice > 0) return unitPrice;
+
+  const quantity = Number(item?.quantity);
+  const subtotal = Number(item?.price);
+  if (unitPrice === 0 && Number.isSafeInteger(quantity) && quantity > 0
+    && Number.isFinite(subtotal) && subtotal > 0) {
+    const subtotalCents = Math.round(subtotal * 100);
+    if (Math.abs(subtotal * 100 - subtotalCents) <= 0.001 && subtotalCents % quantity === 0) {
+      return (subtotalCents / quantity) / 100;
+    }
+  }
+  return Number.isFinite(unitPrice) ? unitPrice : 0;
+}
+
 /**
  * Calcula intervalos de data no fuso do negócio (America/Sao_Paulo - UTC-3)
  */
@@ -1364,7 +1380,7 @@ class AiToolsExecutor {
           name: String(item.name || item.productName || '').slice(0, 200),
           quantity: Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
           unitPrice: item.unitPrice !== null && item.unitPrice !== undefined && item.unitPrice !== '' && Number.isFinite(Number(item.unitPrice))
-            ? Number(item.unitPrice)
+            ? getStoredItemUnitPrice(item)
             : (Number(item.quantity) > 0 ? Number(item.price || 0) / Number(item.quantity) : Number(item.price || 0)),
         })) : [],
         quantity: Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
@@ -1532,7 +1548,7 @@ class AiToolsExecutor {
           const before = sourceIndex === null ? null : currentItems[sourceIndex];
           const beforeQuantity = Number(before?.quantity) || 1;
           const beforeUnitPrice = before?.unitPrice !== null && before?.unitPrice !== undefined && Number.isFinite(Number(before.unitPrice))
-            ? Number(before.unitPrice)
+            ? getStoredItemUnitPrice(before)
             : Number(before?.price || 0) / beforeQuantity;
           const same = before && before.name === after.name && beforeQuantity === after.quantity && Math.round(beforeUnitPrice * 100) === Math.round(after.unitPrice * 100);
           const metadataPreserved = Boolean(before && Object.keys(before).some((key) => !['name', 'quantity', 'unitPrice', 'price', 'existingIndex'].includes(key)));
