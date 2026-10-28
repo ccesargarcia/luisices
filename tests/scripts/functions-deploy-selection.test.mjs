@@ -215,21 +215,27 @@ expose('cleanupEmailDrafts', () => require('./email/cleanup').cleanupEmailDrafts
   }
 });
 
-test('webhook Evolution e callables do WhatsApp têm deploys independentes', () => {
+test('webhook, status e operações do WhatsApp têm deploys independentes', () => {
   const fixture = {
     'functions/index.js': `require('./bootstrap');
 function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }
 expose('sendWhatsAppDirectMessage', () => require('./whatsapp').sendWhatsAppDirectMessage);
-expose('getWhatsAppInstanceStatus', () => require('./whatsapp').getWhatsAppInstanceStatus);
+expose('getWhatsAppInstanceStatus', () => require('./whatsapp/status').getWhatsAppInstanceStatus);
 expose('evolutionWhatsAppWebhook', () => require('./whatsapp/webhook').evolutionWhatsAppWebhook);`,
-    'functions/whatsapp/index.js': "require('../common/helpers'); module.exports = {};",
+    'functions/whatsapp/index.js': "require('./authorization'); require('../common/helpers'); module.exports = {};",
+    'functions/whatsapp/authorization.js': "require('../common/helpers'); module.exports = {};",
+    'functions/whatsapp/status.js': "require('./authorization'); require('./statusCore'); module.exports = {};",
+    'functions/whatsapp/statusCore.js': 'module.exports = {};',
     'functions/whatsapp/webhook.js': "require('./persistMessage'); module.exports = {};",
     'functions/whatsapp/persistMessage.js': 'module.exports = {};',
     'functions/common/helpers.js': 'module.exports = {};',
     'functions/bootstrap.js': 'module.exports = {};',
   };
   for (const [file, expected] of [
-    ['functions/whatsapp/index.js', ['getWhatsAppInstanceStatus', 'sendWhatsAppDirectMessage']],
+    ['functions/whatsapp/index.js', ['sendWhatsAppDirectMessage']],
+    ['functions/whatsapp/status.js', ['getWhatsAppInstanceStatus']],
+    ['functions/whatsapp/statusCore.js', ['getWhatsAppInstanceStatus']],
+    ['functions/whatsapp/authorization.js', ['getWhatsAppInstanceStatus', 'sendWhatsAppDirectMessage']],
     ['functions/whatsapp/webhook.js', ['evolutionWhatsAppWebhook']],
     ['functions/whatsapp/persistMessage.js', ['evolutionWhatsAppWebhook']],
   ]) {

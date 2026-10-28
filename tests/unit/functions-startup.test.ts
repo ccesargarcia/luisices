@@ -121,6 +121,24 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
+  it('status WhatsApp carrega isolado do painel e preserva autorização, secret e telemetria', () => {
+    checkStartup(`
+      const handler = functions.getWhatsAppInstanceStatus;
+      assert.equal(handler, require('./whatsapp/status').getWhatsAppInstanceStatus);
+      assert.equal(require.cache[require.resolve('./whatsapp')], undefined,
+        'consulta do status não deve carregar operações do painel');
+      assert.equal(require.cache[require.resolve('./whatsapp/webhook')], undefined);
+      assert.ok(require.cache[require.resolve('./whatsapp/authorization')]);
+      assert.ok(require.cache[require.resolve('./whatsapp/statusCore')]);
+      assert.equal(handler.__endpoint.maxInstances, 5);
+      assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'EVOLUTION_API_KEY'));
+      const fs = require('node:fs');
+      const source = fs.readFileSync(require.resolve('./whatsapp/status'), 'utf8');
+      assert.ok(source.includes("withFirstInvocationSpan('getWhatsAppInstanceStatus'"));
+      assert.ok(source.includes('() => moduleInitializationMs'));
+    `);
+  });
+
   it('MCP carrega executor e repositórios sem inicializar a fábrica de chat/Gemini', () => {
     checkStartup(`
       const handler = functions.chatGptToolsEndpoint;

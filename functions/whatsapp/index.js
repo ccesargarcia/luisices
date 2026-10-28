@@ -21,19 +21,7 @@ const { authorizeChat } = require('./chatScope');
 let moduleInitializationMs = null;
 const chatScope = (request, phone, options = {}) => authorizeChat(request, phone, { db: getFirestore(), assertActiveSession, ...options });
 
-/**
- * Validador de autorização operacional para WhatsApp (admin, user com permissão ou funcionário com permissão)
- */
-const isAuthorizedForWhatsApp = async (request) => {
-  try {
-    const { profile: data } = await assertActiveSession(request);
-    if (data.role === 'admin') return true;
-    if (data.role === 'user') return data.permissions?.whatsapp === true;
-    return data.role === 'funcionario' && data.permissions?.whatsapp === true;
-  } catch {
-    return false;
-  }
-};
+const { isAuthorizedForWhatsApp } = require('./authorization');
 
 /**
  * Dispara uma mensagem WhatsApp diretamente para o cliente via Evolution API e armazena na base do chat.
@@ -526,67 +514,6 @@ const syncWhatsAppChatMessages = onCall(
   }, () => moduleInitializationMs)
 );
 
-/**
- * Consulta o status da conexão da instância com o WhatsApp (open, connecting, close).
- */
-const getWhatsAppInstanceStatus = onCall(
-  { maxInstances: 5, secrets: [EVOLUTION_API_KEY] },
-  withFirstInvocationSpan('getWhatsAppInstanceStatus', async (request) => {
-    if (!(await isAuthorizedForWhatsApp(request))) {
-      throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
-    }
-
-    const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
-    if (!rawKey) {
-      return {
-        connected: false,
-        state: 'missing_key',
-        instance: EVOLUTION_INSTANCE,
-        message: 'Chave de integração não configurada.',
-      };
-    }
-
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 6000);
-
-      const response = await fetch(
-        `${EVOLUTION_API_URL}/instance/connectionState/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
-        {
-          method: 'GET',
-          headers: { apikey: rawKey },
-          signal: controller.signal,
-        }
-      );
-      clearTimeout(timeout);
-
-      if (response.ok) {
-        const data = await response.json().catch(() => ({}));
-        const state = data?.instance?.state || data?.state || 'unknown';
-        return {
-          connected: state === 'open',
-          state,
-          instance: EVOLUTION_INSTANCE,
-        };
-      }
-
-      return {
-        connected: false,
-        state: 'error',
-        status: response.status,
-        instance: EVOLUTION_INSTANCE,
-      };
-    } catch (err) {
-      return {
-        connected: false,
-        state: 'unreachable',
-        error: err.message,
-        instance: EVOLUTION_INSTANCE,
-      };
-    }
-  }, () => moduleInitializationMs)
-);
-
 const markWhatsAppChatRead = onCall(withFirstInvocationSpan('markWhatsAppChatRead', async (request) => {
   if (!(await isAuthorizedForWhatsApp(request))) {
     throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
@@ -654,7 +581,6 @@ module.exports = {
   sendWhatsAppDirectMessage,
   deleteWhatsAppMessage,
   syncWhatsAppChatMessages,
-  getWhatsAppInstanceStatus,
   markWhatsAppChatRead,
   ensureWhatsAppConversation,
 };

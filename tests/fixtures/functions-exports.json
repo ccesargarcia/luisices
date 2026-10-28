@@ -26,10 +26,10 @@
     "sendWhatsAppDirectMessage",
     "deleteWhatsAppMessage",
     "syncWhatsAppChatMessages",
-    "getWhatsAppInstanceStatus",
     "markWhatsAppChatRead",
     "ensureWhatsAppConversation"
   ],
+  "./whatsapp/status": ["getWhatsAppInstanceStatus"],
   "./whatsapp/webhook": ["evolutionWhatsAppWebhook"],
   "./orders": [
     "submitPublicCatalogOrder",
