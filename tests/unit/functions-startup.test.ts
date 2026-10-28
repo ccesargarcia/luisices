@@ -144,6 +144,18 @@ describe('inicialização das Functions com SDK real', () => {
     `, { GCLOUD_PROJECT: 'luisices-dev' });
   });
 
+  it('catálogo público carrega isolado e preserva a configuração da callable', () => {
+    checkStartup(`
+      const handler = functions.getPublicCatalogProducts;
+      assert.equal(handler, require('./orders/catalog').getPublicCatalogProducts);
+      assert.equal(require.cache[require.resolve('./orders')], undefined,
+        'o módulo principal de pedidos não deve ser carregado para ler o catálogo');
+      assert.equal(handler.__endpoint.cors, true);
+      assert.equal(handler.__endpoint.maxInstances, 10);
+      assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'ORIGIN_SECRET'));
+    `);
+  });
+
   it.each([
     { project: 'demo-luisices-startup', emulator: '', sandbox: false },
     { project: 'luisices-dev', emulator: '', sandbox: true },

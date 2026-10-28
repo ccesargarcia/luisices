@@ -20,6 +20,7 @@ if (process.env.GCLOUD_PROJECT === 'luisices-dev') { module.exports.sandbox = or
 const orderNames = ['createOrder', 'sandbox', 'updateOrder'];
 const coreOrderNames = ['createOrder', 'updateOrder'];
 const allNames = ['createOrder', 'createUser', 'sandbox', 'updateOrder'];
+const allLazyNames = [...allNames, 'getPublicCatalogProducts'];
 
 test('no runtime changes selects nothing', () => {
   assert.deepEqual(selectFunctions(fixture(), fixture()).targets, []);
@@ -116,13 +117,15 @@ function expose(name, load) { Object.defineProperty(module.exports, name, { enum
 expose('createOrder', () => require('./orders').createOrder);
 expose('updateOrder', () => require('./orders').updateOrder);
 expose('createUser', () => require('./users').createUser);
+expose('getPublicCatalogProducts', () => require('./orders/catalog').getPublicCatalogProducts);
 if (process.env.GCLOUD_PROJECT === 'luisices-dev') { expose('sandbox', () => require('./orders/superfrete').sandbox); }`,
   'functions/orders/superfrete.js': "require('../common/auth'); module.exports = {};",
+  'functions/orders/catalog.js': 'module.exports = {};',
 });
 
 test('migration to lazy exports preserves all endpoints including sandbox', () => {
   const plan = selectFunctions(fixture(), lazyFixture());
-  assert.deepEqual(plan.targets, allNames);
+  assert.deepEqual(plan.targets, allLazyNames);
   assert.deepEqual(plan.removed, []);
   assert.deepEqual(selectFunctions(lazyFixture(), fixture()).removed, []);
 });
@@ -130,10 +133,11 @@ test('lazy imports retain selective deploy and shared bootstrap dependencies', (
   assert.deepEqual(selectFunctions(lazyFixture(), lazyFixture()).targets, []);
   for (const [file, expected] of [
     ['functions/orders/index.js', coreOrderNames],
+    ['functions/orders/catalog.js', ['getPublicCatalogProducts']],
     ['functions/orders/superfrete.js', ['sandbox']],
     ['functions/common/payment.js', coreOrderNames],
     ['functions/common/auth.js', allNames],
-    ['functions/bootstrap.js', allNames],
+    ['functions/bootstrap.js', allLazyNames],
   ]) {
     const after = lazyFixture();
     after[file] += '\n// changed';
@@ -154,8 +158,12 @@ expose('createUser', () => require('./users').createUser);`,
   assert.deepEqual(plan.targets, ['createOrder', 'createUser']);
 });
 
-test('Superfrete Sandbox tem grafo de deploy independente das mutations de pedidos', () => {
+test('Catálogo público e Superfrete Sandbox têm grafos independentes das mutations', () => {
   const before = lazyFixture();
+  const catalogChange = lazyFixture();
+  catalogChange['functions/orders/catalog.js'] += '\n// changed public catalog';
+  assert.deepEqual(selectFunctions(before, catalogChange).targets, ['getPublicCatalogProducts']);
+
   const superfreteChange = lazyFixture();
   superfreteChange['functions/orders/superfrete.js'] += '\n// changed sandbox integration';
   assert.deepEqual(selectFunctions(before, superfreteChange).targets, ['sandbox']);
