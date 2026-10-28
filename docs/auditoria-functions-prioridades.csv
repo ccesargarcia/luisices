@@ -7,7 +7,7 @@ Concluída;Isolar catálogo e SuperFrete DEV do núcleo de Pedidos;3 Functions;M
 Concluída;Isolar tracking com regressão backend;7 Functions;Mudanças exclusivas em links deixam de republicar mutations financeiras;Primeira publicação também atualizou o core pelo grafo anterior; paginação e exclusão em lote sem regressão específica;Alta
 P2;Separar webhook Alexa das callables administrativas;8;Reduz redeploy e carregamento cruzado;Risco de assinatura ASK pareamento dedupe e rascunhos;Média/Alta
 P2;Separar webhook Evolution de operações WhatsApp;7;Isola webhook de envio e consultas;Risco de duplicar autorização escopo e persistência;Média/Alta
-Em andamento;Separar consulta de cota do envio de e-mail;1 de 4;`getEmailUsage` deixa de carregar anexos, filtro de spam, idempotência de envio e limpeza;Permanece dependente de Firestore, helpers compartilhados, chave Resend e chamadas externas;Média
+Em andamento;Separar consulta de cota do envio de e-mail;1 de 4;`getEmailUsage` deixa de carregar anexos, filtro de spam, idempotência de envio e limpeza;Primeiro deploy também atualiza os outros três exports do índice alterado; segue dependente de Firestore, helper de sessão, chave Resend e chamadas externas;Média
 P2;Separar envio e webhook de recebimento de e-mail;3;Isolar envio, anexos, idempotência, webhook e limpeza em entradas menores;Risco de envio duplicado, anexos, assinatura e limpeza de dados;Média/Alta
 P3;Separar usuários por convite identidade/perfil e sessões;15;Mudança em senha não reinicia sessões e claims sem necessidade;Risco de concorrência claims e revogação;Alta
 P3;Manter mídia isolada como padrão;1;Preserva isolamento que já funciona;Benefício incremental baixo;Baixa

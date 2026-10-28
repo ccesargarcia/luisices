@@ -190,7 +190,9 @@ test('consulta de cota de e-mail fica isolada do módulo de envio', () => {
     'functions/index.js': `require('./bootstrap');
 function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }
 expose('sendCustomEmail', () => require('./email').sendCustomEmail);
-expose('getEmailUsage', () => require('./email').getEmailUsage);`,
+expose('getEmailUsage', () => require('./email').getEmailUsage);
+expose('resendReceivingWebhook', () => require('./email').resendReceivingWebhook);
+expose('cleanupEmailDrafts', () => require('./email').cleanupEmailDrafts);`,
     'functions/email/index.js': "require('./attachments'); module.exports = {};",
     'functions/email/attachments.js': 'module.exports = {};',
     'functions/bootstrap.js': 'module.exports = {};',
@@ -204,13 +206,19 @@ expose('getEmailUsage', () => require('./email').getEmailUsage);`,
     'functions/email/index.js': 'module.exports = {};',
     'functions/email/usage.js': 'module.exports = {};',
   };
-  assert.deepEqual(selectFunctions(before, after).targets, ['getEmailUsage']);
+  // A remoção do handler legado altera o índice ainda compartilhado pelos
+  // outros três exports. Esse redeploy é esperado apenas nesta transição.
+  assert.deepEqual(selectFunctions(before, after).targets, [
+    'cleanupEmailDrafts', 'getEmailUsage', 'resendReceivingWebhook', 'sendCustomEmail',
+  ]);
 
   const usageChange = { ...after, 'functions/email/usage.js': 'module.exports = { changed: true };' };
   assert.deepEqual(selectFunctions(after, usageChange).targets, ['getEmailUsage']);
 
   const sendChange = { ...after, 'functions/email/index.js': "require('./attachments'); module.exports = {};" };
-  assert.deepEqual(selectFunctions(after, sendChange).targets, ['sendCustomEmail']);
+  assert.deepEqual(selectFunctions(after, sendChange).targets, [
+    'cleanupEmailDrafts', 'resendReceivingWebhook', 'sendCustomEmail',
+  ]);
 });
 
 test('adding a new expose entry to index.js only selects new/changed endpoint', () => {
