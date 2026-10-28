@@ -1,7 +1,4 @@
-import type { OrderItem } from '../types';
-
-type OrderItemLike = Partial<OrderItem> & {
-  name?: string;
+type OrderItemLike = {
   quantity?: number | string;
   unitPrice?: number | string | null;
   price?: number | string | null;
