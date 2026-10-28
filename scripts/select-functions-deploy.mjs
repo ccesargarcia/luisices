@@ -66,6 +66,84 @@ function dependencies(files, entry, seen = new Set()) {
   return seen;
 }
 
+function externalPackages(files, graph) {
+  const packages = new Set();
+  for (const file of graph) {
+    if (!file.endsWith('.js')) continue;
+    const source = files[file] || '';
+    for (const match of source.matchAll(/\brequire\(\s*['"]([^'"]+)['"]\s*\)|\bfrom\s*['"]([^'"]+)['"]/g)) {
+      const specifier = match[1] || match[2];
+      if (specifier.startsWith('.') || specifier.startsWith('/')) continue;
+      const parts = specifier.split('/');
+      packages.add(specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]);
+    }
+  }
+  return packages;
+}
+
+function sameJson(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+// Scope only pure dependency removals. Additions, upgrades, lockfile
+// re-resolution, or other package metadata changes stay fail-closed/global.
+function removedDependenciesOnly(before, after) {
+  try {
+    const oldManifest = JSON.parse(before['functions/package.json']);
+    const newManifest = JSON.parse(after['functions/package.json']);
+    const oldLock = JSON.parse(before['functions/package-lock.json']);
+    const newLock = JSON.parse(after['functions/package-lock.json']);
+    const oldRoot = oldLock.packages?.[''];
+    const newRoot = newLock.packages?.[''];
+    if (!oldRoot || !newRoot || !oldLock.packages || !newLock.packages) return null;
+
+    const oldDeps = oldManifest.dependencies || {};
+    const newDeps = newManifest.dependencies || {};
+    if (Object.keys(newDeps).some((name) => !Object.hasOwn(oldDeps, name) || oldDeps[name] !== newDeps[name])) return null;
+    const removed = new Set(Object.keys(oldDeps).filter((name) => !Object.hasOwn(newDeps, name)));
+    if (!removed.size) return null;
+
+    const stripDeps = (value) => {
+      const copy = { ...value };
+      delete copy.dependencies;
+      return copy;
+    };
+    if (!sameJson(stripDeps(oldManifest), stripDeps(newManifest))) return null;
+
+    const oldRootDeps = oldRoot.dependencies || {};
+    const newRootDeps = newRoot.dependencies || {};
+    const lockRemoved = new Set(Object.keys(oldRootDeps).filter((name) => !Object.hasOwn(newRootDeps, name)));
+    if (!sameJson(stripDeps(oldRoot), stripDeps(newRoot))
+      || !sameJson([...removed].sort(), [...lockRemoved].sort())
+      || Object.keys(newRootDeps).some((name) => !Object.hasOwn(oldRootDeps, name) || !sameJson(oldRootDeps[name], newRootDeps[name]))) return null;
+
+    const oldMetadata = { ...oldLock };
+    const newMetadata = { ...newLock };
+    delete oldMetadata.packages;
+    delete newMetadata.packages;
+    delete oldMetadata.dependencies;
+    delete newMetadata.dependencies;
+    if (!sameJson(oldMetadata, newMetadata)) return null;
+
+    for (const [path, current] of Object.entries(newLock.packages)) {
+      if (!Object.hasOwn(oldLock.packages, path)) return null;
+      if (path === '') {
+        if (!sameJson(stripDeps(oldLock.packages[path]), stripDeps(current))) return null;
+      } else if (!sameJson(oldLock.packages[path], current)) return null;
+    }
+    const removedLockPackages = Object.keys(oldLock.packages).filter((path) => !Object.hasOwn(newLock.packages, path)
+      && path !== '' && !path.includes('/node_modules/'));
+    if (removedLockPackages.some((path) => !path.startsWith('node_modules/'))) return null;
+    for (const path of removedLockPackages) {
+      const parts = path.slice('node_modules/'.length).split('/');
+      removed.add(parts[0].startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]);
+    }
+    return removed;
+  } catch {
+    return null;
+  }
+}
+
 const DEV_ONLY_FUNCTIONS = new Set([
   'calculateSuperfreteShipping',
   'createSuperfreteLabel',
@@ -78,6 +156,8 @@ export function selectFunctions(before, after, { force = false, env = 'dev' } = 
   const removed = [...previous.keys()].filter((name) => !current.has(name)).sort();
   const changed = new Set([...new Set([...Object.keys(before), ...Object.keys(after)])]
     .filter((name) => before[name] !== after[name]));
+  const packageFilesChanged = changed.has('functions/package.json') || changed.has('functions/package-lock.json');
+  const removedPackages = packageFilesChanged ? removedDependenciesOnly(before, after) : null;
 
   const entryChanged = changed.has(entry);
   let rootCodeChanged = false;
@@ -101,7 +181,7 @@ export function selectFunctions(before, after, { force = false, env = 'dev' } = 
 
   const firebaseConfig = (files) => JSON.stringify(JSON.parse(files['firebase.json'] || '{}').functions);
   const globalChange = !before[entry] || rootCodeChanged
-    || changed.has('functions/package.json') || changed.has('functions/package-lock.json')
+    || (packageFilesChanged && !removedPackages)
     || changed.has('scripts/sync-secrets-safe.mjs') || firebaseConfig(before) !== firebaseConfig(after);
   // Root side effects (Sentry, initialization) run for every endpoint.
   const aliases = new Set(current.values());
@@ -113,14 +193,28 @@ export function selectFunctions(before, after, { force = false, env = 'dev' } = 
   }
   const graphs = new Map([...current].map(([name, module]) =>
     [name, dependencies(after, resolveModule(after, entry, module))]));
+  const previousGraphs = new Map([...previous].map(([name, module]) =>
+    [name, dependencies(before, resolveModule(before, entry, module))]));
+  const packageConsumers = new Set();
+  if (removedPackages) {
+    for (const [name, graph] of graphs) {
+      const currentPackages = externalPackages(after, graph);
+      const previousPackages = externalPackages(before, previousGraphs.get(name) || new Set());
+      if ([...removedPackages].some((pkg) => currentPackages.has(pkg))) {
+        throw new Error(`Dependência removida ainda é usada pela Function ${name}.`);
+      }
+      if ([...removedPackages].some((pkg) => previousPackages.has(pkg))) packageConsumers.add(name);
+    }
+  }
   const tracked = new Set([entry, ...bootstrap, ...[...graphs.values()].flatMap((set) => [...set])]);
   // Files read through fs/templates cannot be inferred from require(). An
   // unreferenced runtime file change must conservatively select every endpoint.
   const unknownRuntimeChange = [...changed].some((name) => name.startsWith('functions/')
+    && !['functions/package.json', 'functions/package-lock.json'].includes(name)
     && /\.(js|json|mjs|cjs|html|hbs|txt)$/.test(name) && !tracked.has(name));
   const targets = [...current].filter(([name]) => {
     if (env === 'prod' && DEV_ONLY_FUNCTIONS.has(name)) return false;
-    return force || globalChange || unknownRuntimeChange || mappingChanged(name)
+    return force || globalChange || unknownRuntimeChange || packageConsumers.has(name) || mappingChanged(name)
       || [...bootstrap, ...graphs.get(name)].some((dependency) => changed.has(dependency));
   }).map(([name]) => name).sort();
   return { targets, removed, reason: force ? 'forced' : globalChange || unknownRuntimeChange ? 'shared-runtime' : 'dependencies' };
