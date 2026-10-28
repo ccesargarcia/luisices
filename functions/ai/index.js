@@ -7,7 +7,6 @@ const authorization = require('./authorization');
 const pricing = require('./pricing/pricingCalculator');
 const cache = require('./cache');
 const budget = require('./budget');
-const usage = require('./usage');
 const schemas = require('./schemas');
 const geminiClient = require('./geminiClient');
 const repositories = require('./repositories');
@@ -38,7 +37,6 @@ function createAiServices(adminInstance, apiKey) {
     pricing,
     cache: cache.globalAiCache,
     budgetManager: budgetMgr,
-    usage,
     schemas,
     geminiClient: client,
     repositories: repos,
@@ -76,7 +74,6 @@ module.exports = {
   pricing,
   cache,
   budget,
-  usage,
   schemas,
   geminiClient,
   repositories,
