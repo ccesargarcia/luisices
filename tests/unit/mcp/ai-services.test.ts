@@ -1,4 +1,4 @@
-const { describe, expect, it, vi } = require('vitest');
+import { describe, expect, it, vi } from 'vitest';
 const { createMcpAiServices } = require('../../../functions/mcp/aiServices');
 const { AiDataRepositories } = require('../../../functions/ai/repositories');
 const { AiToolsExecutor } = require('../../../functions/ai/tools');
