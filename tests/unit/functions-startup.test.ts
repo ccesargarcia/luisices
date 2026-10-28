@@ -130,6 +130,20 @@ describe('inicialização das Functions com SDK real', () => {
     `, { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' });
   });
 
+  it('SuperFrete Sandbox é carregado diretamente e não inicializa o módulo principal de pedidos', () => {
+    checkStartup(`
+      const quote = functions.calculateSuperfreteShipping;
+      const label = functions.createSuperfreteLabel;
+      const sandbox = require('./orders/superfrete');
+      assert.equal(quote, sandbox.calculateSuperfreteShipping);
+      assert.equal(label, sandbox.createSuperfreteLabel);
+      assert.equal(require.cache[require.resolve('./orders')], undefined,
+        'o módulo principal de pedidos não deve ser carregado pelo Superfrete');
+      assert.ok(quote.__endpoint.secretEnvironmentVariables.some(item => item.key === 'SUPERFRETE_SANDBOX_TOKEN'));
+      assert.ok(label.__endpoint.secretEnvironmentVariables.some(item => item.key === 'SUPERFRETE_SANDBOX_TOKEN'));
+    `, { GCLOUD_PROJECT: 'luisices-dev' });
+  });
+
   it.each([
     { project: 'demo-luisices-startup', emulator: '', sandbox: false },
     { project: 'luisices-dev', emulator: '', sandbox: true },

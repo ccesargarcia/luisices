@@ -18,6 +18,7 @@ if (process.env.GCLOUD_PROJECT === 'luisices-dev') { module.exports.sandbox = or
   'firebase.json': '{"functions":{"runtime":"nodejs22"},"hosting":{"public":"dist"}}',
 });
 const orderNames = ['createOrder', 'sandbox', 'updateOrder'];
+const coreOrderNames = ['createOrder', 'updateOrder'];
 const allNames = ['createOrder', 'createUser', 'sandbox', 'updateOrder'];
 
 test('no runtime changes selects nothing', () => {
@@ -115,7 +116,8 @@ function expose(name, load) { Object.defineProperty(module.exports, name, { enum
 expose('createOrder', () => require('./orders').createOrder);
 expose('updateOrder', () => require('./orders').updateOrder);
 expose('createUser', () => require('./users').createUser);
-if (process.env.GCLOUD_PROJECT === 'luisices-dev') { expose('sandbox', () => require('./orders').sandbox); }`,
+if (process.env.GCLOUD_PROJECT === 'luisices-dev') { expose('sandbox', () => require('./orders/superfrete').sandbox); }`,
+  'functions/orders/superfrete.js': "require('../common/auth'); module.exports = {};",
 });
 
 test('migration to lazy exports preserves all endpoints including sandbox', () => {
@@ -127,8 +129,9 @@ test('migration to lazy exports preserves all endpoints including sandbox', () =
 test('lazy imports retain selective deploy and shared bootstrap dependencies', () => {
   assert.deepEqual(selectFunctions(lazyFixture(), lazyFixture()).targets, []);
   for (const [file, expected] of [
-    ['functions/orders/index.js', orderNames],
-    ['functions/common/payment.js', orderNames],
+    ['functions/orders/index.js', coreOrderNames],
+    ['functions/orders/superfrete.js', ['sandbox']],
+    ['functions/common/payment.js', coreOrderNames],
     ['functions/common/auth.js', allNames],
     ['functions/bootstrap.js', allNames],
   ]) {
@@ -143,12 +146,23 @@ test('production env filters out dev-only endpoints', () => {
     'functions/index.js': `require('./bootstrap');
 function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }
 expose('createOrder', () => require('./orders').createOrder);
-expose('calculateSuperfreteShipping', () => require('./orders').calculateSuperfreteShipping);
+expose('calculateSuperfreteShipping', () => require('./orders/superfrete').calculateSuperfreteShipping);
 expose('createUser', () => require('./users').createUser);`,
   });
   const plan = selectFunctions({}, prodFixture(), { env: 'prod' });
   assert.ok(!plan.targets.includes('calculateSuperfreteShipping'));
   assert.deepEqual(plan.targets, ['createOrder', 'createUser']);
+});
+
+test('Superfrete Sandbox tem grafo de deploy independente das mutations de pedidos', () => {
+  const before = lazyFixture();
+  const superfreteChange = lazyFixture();
+  superfreteChange['functions/orders/superfrete.js'] += '\n// changed sandbox integration';
+  assert.deepEqual(selectFunctions(before, superfreteChange).targets, ['sandbox']);
+
+  const ordersChange = lazyFixture();
+  ordersChange['functions/orders/index.js'] += '\n// changed transactional order service';
+  assert.deepEqual(selectFunctions(before, ordersChange).targets, coreOrderNames);
 });
 
 test('adding a new expose entry to index.js only selects new/changed endpoint', () => {

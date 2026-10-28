@@ -44,6 +44,10 @@
     "deleteOrderTrackingLinksBatch",
     "getPublicOrderTracking"
   ],
+  "./orders/superfrete": [
+    "calculateSuperfreteShipping",
+    "createSuperfreteLabel"
+  ],
   "./ai/callables": [
     "aiAgentChat"
   ],

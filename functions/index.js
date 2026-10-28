@@ -101,6 +101,6 @@ expose('galleryMedia', () => require('./media/gallery').galleryMedia);
 
 // Preserve a mesma fronteira: SuperFrete sandbox não é publicado em produção.
 if (process.env.GCLOUD_PROJECT === 'luisices-dev' || process.env.FUNCTIONS_EMULATOR === 'true') {
-  expose('calculateSuperfreteShipping', () => require('./orders').calculateSuperfreteShipping);
-  expose('createSuperfreteLabel', () => require('./orders').createSuperfreteLabel);
+  expose('calculateSuperfreteShipping', () => require('./orders/superfrete').calculateSuperfreteShipping);
+  expose('createSuperfreteLabel', () => require('./orders/superfrete').createSuperfreteLabel);
 }

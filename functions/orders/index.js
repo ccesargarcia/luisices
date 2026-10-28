@@ -1937,21 +1937,6 @@ async function handleSubmitPublicCatalogOrder(request, dependencies = {}) {
 
 const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, handleSubmitPublicCatalogOrder);
 
-// A integração SuperFrete Sandbox é restrita a dev/emulador.
-const isDevOrEmulator =
-  process.env.GCLOUD_PROJECT === 'luisices-dev' ||
-  process.env.FUNCTIONS_EMULATOR === 'true' ||
-  !process.env.GCLOUD_PROJECT;
-
-let calculateSuperfreteShipping;
-let createSuperfreteLabel;
-
-if (isDevOrEmulator) {
-  const superfrete = require('./superfrete');
-  calculateSuperfreteShipping = superfrete.calculateSuperfreteShipping;
-  createSuperfreteLabel = superfrete.createSuperfreteLabel;
-}
-
 const moduleInitializationMs = Number(
   (Number(process.hrtime.bigint() - moduleInitializationStartedAt) / 1e6).toFixed(2),
 );
@@ -1974,6 +1959,4 @@ module.exports = {
   handleUpdateComplexOrder,
   createOrder,
   handleCreateOrder,
-  calculateSuperfreteShipping,
-  createSuperfreteLabel,
 };
