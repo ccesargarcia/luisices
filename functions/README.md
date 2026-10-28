@@ -24,7 +24,7 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 | Contas e convites | `createUser`, `updateUser`, `deleteUser`, `createUserInvitation`, `validateUserInvitation`, `completeUserInvitation` |
 | Recuperação/verificação | `sendAdminPasswordReset`, `sendPasswordResetEmail`, `sendVerificationEmail`, `recordUserPasswordChange` |
 | Acesso e sessões | `getUserAccountMetadata`, `registerDeviceSession`, `revokeAllSessions`, `revokeDeviceSession`, `repairUserClaims` |
-| E-mail | `sendCustomEmail`, `resendReceivingWebhook`, `cleanupEmailDrafts` (`email/index.js`); `getEmailUsage` (`email/usage.js`) |
+| E-mail | `sendCustomEmail` (`email/send.js`), `getEmailUsage` (`email/usage.js`), `resendReceivingWebhook` (`email/webhook.js`), `cleanupEmailDrafts` (`email/cleanup.js`) |
 | WhatsApp | `sendWhatsAppDirectMessage`, `deleteWhatsAppMessage`, `syncWhatsAppChatMessages`, `getWhatsAppInstanceStatus`, `markWhatsAppChatRead`, `ensureWhatsAppConversation`, `evolutionWhatsAppWebhook` |
 | Pedidos (núcleo transacional) | `createOrder`, `updateComplexOrder`, `submitPublicCatalogOrder` |
 | Catálogo público | `getPublicCatalogProducts` (`orders/catalog.js`) |
@@ -36,7 +36,7 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 
 `calculateSuperfreteShipping` e `createSuperfreteLabel` são exportadas apenas no projeto `luisices-dev` e no emulador; não fazem parte do deploy de produção.
 
-O catálogo público, SuperFrete e acompanhamento têm módulos de entrada próprios. O catálogo mantém sua callable e cache em `orders/catalog.js`; SuperFrete fica em `orders/superfrete.js` e não carrega o módulo principal de pedidos; os sete handlers de acompanhamento ficam em `orders/tracking.js`. `getEmailUsage` tem entrada própria em `email/usage.js`, separada de envio, anexos, webhook e limpeza, mantendo autorização, chave Resend e telemetria Sentry. O teste de integração de acesso e consulta simulada passou; o deploy DEV publicou os quatro exports do módulo de E-mail no run [40752421042](https://github.com/ccesargarcia/luisices/actions/runs/40752421042). O run do conjunto completo de SDK [40752738060](https://github.com/ccesargarcia/luisices/actions/runs/40752738060) terminou com duas falhas preexistentes fora deste fluxo: fixture de contratos incompleto e expectativa de status no teste do webhook Alexa.
+O catálogo público, SuperFrete e acompanhamento têm módulos de entrada próprios. O catálogo mantém sua callable e cache em `orders/catalog.js`; SuperFrete fica em `orders/superfrete.js` e não carrega o módulo principal de pedidos; os sete handlers de acompanhamento ficam em `orders/tracking.js`. Os quatro exports de E-mail também têm entradas independentes (`email/send.js`, `email/usage.js`, `email/webhook.js` e `email/cleanup.js`). A extração de envio/webhook/limpeza preserva as implementações existentes e os secrets declarados. Testes de inicialização comprovam que cada handler não carrega os outros caminhos; o teste do seletor comprova que uma mudança em cada módulo escolhe apenas seu respectivo export.
 
 `cleanupEmailDrafts` é agendada. Webhooks têm validações próprias; não são chamadas de interface equivalentes aos callables autenticados.
 

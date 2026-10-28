@@ -44,10 +44,10 @@ describe('inicialização das Functions com SDK real', () => {
     checkStartup(`
       const handler = functions.getEmailUsage;
       assert.equal(handler, require('./email/usage').getEmailUsage);
-      assert.equal(require.cache[require.resolve('./email')], undefined,
+      assert.equal(require.cache[require.resolve('./email/send')], undefined,
         'consulta de uso não deve carregar o módulo completo de e-mail');
       for (const modulePath of [
-        './email/attachments', './email/cleanup', './email/spamFilter', './email/sendIdempotency',
+        './email/webhook', './email/attachments', './email/cleanup', './email/spamFilter', './email/sendIdempotency',
       ]) {
         assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
       }
@@ -58,6 +58,46 @@ describe('inicialização das Functions com SDK real', () => {
       const source = fs.readFileSync(require.resolve('./email/usage'), 'utf8');
       assert.ok(source.includes("withFirstInvocationSpan('getEmailUsage'"));
       assert.ok(source.includes('() => moduleInitializationMs'));
+    `);
+  });
+
+  it('limpeza de rascunhos carrega isolada do envio e do webhook e mantém agenda', () => {
+    checkStartup(`
+      const handler = functions.cleanupEmailDrafts;
+      assert.equal(handler, require('./email/cleanup').cleanupEmailDrafts);
+      for (const modulePath of [
+        './email/send', './email/webhook', './email/attachments', './email/spamFilter',
+        './email/sendIdempotency', './email/usage',
+      ]) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
+      }
+      assert.equal(handler.__endpoint.scheduleTrigger.schedule, 'every 24 hours');
+      assert.equal(handler.__endpoint.scheduleTrigger.timeZone, 'America/Sao_Paulo');
+      assert.equal(handler.__endpoint.timeoutSeconds, 540);
+    `);
+  });
+
+  it('envio carrega isolado do webhook e da limpeza agendada', () => {
+    checkStartup(`
+      const handler = functions.sendCustomEmail;
+      assert.equal(handler, require('./email/send').sendCustomEmail);
+      for (const modulePath of ['./email/webhook', './email/cleanup', './email/cleanupCore', './email/usage']) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
+      }
+      assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'RESEND_API_KEY'));
+    `);
+  });
+
+  it('webhook mantém secrets e fica isolado do envio e anexos', () => {
+    checkStartup(`
+      const handler = functions.resendReceivingWebhook;
+      assert.equal(handler, require('./email/webhook').resendReceivingWebhook);
+      for (const modulePath of ['./email/send', './email/cleanup', './email/attachments', './email/sendIdempotency']) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
+      }
+      for (const secret of ['RESEND_API_KEY', 'RESEND_WEBHOOK_SECRET', 'ORIGIN_SECRET']) {
+        assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === secret), secret);
+      }
     `);
   });
 

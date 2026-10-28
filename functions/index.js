@@ -42,10 +42,10 @@ expose('revokeDeviceSession', () => require('./users').revokeDeviceSession);
 expose('repairUserClaims', () => require('./users').repairUserClaims);
 
 // ─── E-mail (Resend API e Webhooks) ────────────────────────────────────────
-expose('sendCustomEmail', () => require('./email').sendCustomEmail);
+expose('sendCustomEmail', () => require('./email/send').sendCustomEmail);
 expose('getEmailUsage', () => require('./email/usage').getEmailUsage);
-expose('resendReceivingWebhook', () => require('./email').resendReceivingWebhook);
-expose('cleanupEmailDrafts', () => require('./email').cleanupEmailDrafts);
+expose('resendReceivingWebhook', () => require('./email/webhook').resendReceivingWebhook);
+expose('cleanupEmailDrafts', () => require('./email/cleanup').cleanupEmailDrafts);
 
 // ─── WhatsApp (Evolution API e Webhooks) ───────────────────────────────────
 expose('sendWhatsAppDirectMessage', () => require('./whatsapp').sendWhatsAppDirectMessage);

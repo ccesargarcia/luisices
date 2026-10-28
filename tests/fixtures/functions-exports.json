@@ -16,11 +16,9 @@
     "revokeDeviceSession",
     "repairUserClaims"
   ],
-  "./email": [
-    "sendCustomEmail",
-    "resendReceivingWebhook",
-    "cleanupEmailDrafts"
-  ],
+  "./email/send": ["sendCustomEmail"],
+  "./email/webhook": ["resendReceivingWebhook"],
+  "./email/cleanup": ["cleanupEmailDrafts"],
   "./email/usage": [
     "getEmailUsage"
   ],

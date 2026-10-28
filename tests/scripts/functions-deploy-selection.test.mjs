@@ -185,40 +185,32 @@ test('tracking change selects its own callable group only', () => {
   assert.deepEqual(selectFunctions(before, after).targets, ['tracking']);
 });
 
-test('consulta de cota de e-mail fica isolada do módulo de envio', () => {
-  const before = {
+test('handlers de e-mail têm deploys independentes por fluxo', () => {
+  const fixture = {
     'functions/index.js': `require('./bootstrap');
 function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }
-expose('sendCustomEmail', () => require('./email').sendCustomEmail);
-expose('getEmailUsage', () => require('./email').getEmailUsage);
-expose('resendReceivingWebhook', () => require('./email').resendReceivingWebhook);
-expose('cleanupEmailDrafts', () => require('./email').cleanupEmailDrafts);`,
-    'functions/email/index.js': "require('./attachments'); module.exports = {};",
+expose('sendCustomEmail', () => require('./email/send').sendCustomEmail);
+expose('getEmailUsage', () => require('./email/usage').getEmailUsage);
+expose('resendReceivingWebhook', () => require('./email/webhook').resendReceivingWebhook);
+expose('cleanupEmailDrafts', () => require('./email/cleanup').cleanupEmailDrafts);`,
+    'functions/email/send.js': "require('./attachments'); module.exports = {};",
+    'functions/email/webhook.js': "require('./spamFilter'); module.exports = {};",
+    'functions/email/cleanup.js': "require('./cleanupCore'); module.exports = {};",
     'functions/email/attachments.js': 'module.exports = {};',
+    'functions/email/spamFilter.js': 'module.exports = {};',
+    'functions/email/cleanupCore.js': 'module.exports = {};',
+    'functions/email/usage.js': 'module.exports = {};',
     'functions/bootstrap.js': 'module.exports = {};',
   };
-  const after = {
-    ...before,
-    'functions/index.js': before['functions/index.js'].replace(
-      "expose('getEmailUsage', () => require('./email').getEmailUsage);",
-      "expose('getEmailUsage', () => require('./email/usage').getEmailUsage);",
-    ),
-    'functions/email/index.js': 'module.exports = {};',
-    'functions/email/usage.js': 'module.exports = {};',
-  };
-  // A remoção do handler legado altera o índice ainda compartilhado pelos
-  // outros três exports. Esse redeploy é esperado apenas nesta transição.
-  assert.deepEqual(selectFunctions(before, after).targets, [
-    'cleanupEmailDrafts', 'getEmailUsage', 'resendReceivingWebhook', 'sendCustomEmail',
-  ]);
-
-  const usageChange = { ...after, 'functions/email/usage.js': 'module.exports = { changed: true };' };
-  assert.deepEqual(selectFunctions(after, usageChange).targets, ['getEmailUsage']);
-
-  const sendChange = { ...after, 'functions/email/index.js': "require('./attachments'); module.exports = {};" };
-  assert.deepEqual(selectFunctions(after, sendChange).targets, [
-    'cleanupEmailDrafts', 'resendReceivingWebhook', 'sendCustomEmail',
-  ]);
+  for (const [file, expected] of [
+    ['functions/email/send.js', ['sendCustomEmail']],
+    ['functions/email/usage.js', ['getEmailUsage']],
+    ['functions/email/webhook.js', ['resendReceivingWebhook']],
+    ['functions/email/cleanup.js', ['cleanupEmailDrafts']],
+  ]) {
+    const changed = { ...fixture, [file]: `${fixture[file]}\n// changed` };
+    assert.deepEqual(selectFunctions(fixture, changed).targets, expected);
+  }
 });
 
 test('adding a new expose entry to index.js only selects new/changed endpoint', () => {
