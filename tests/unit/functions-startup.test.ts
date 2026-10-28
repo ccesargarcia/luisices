@@ -65,7 +65,7 @@ describe('inicialização das Functions com SDK real', () => {
         assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'GEMINI_API_KEY'));
         assert.equal(handler.__endpoint.timeoutSeconds, 120);
         assert.equal(handler.__endpoint.maxInstances, 5);
-        assert.equal(handler.__endpoint.memory, '1GiB');
+        assert.equal(handler.__endpoint.availableMemoryMb, 1024);
       }
       for (const modulePath of [
         './ai/index', './ai/callables', './ai/tools', './ai/repositories',
