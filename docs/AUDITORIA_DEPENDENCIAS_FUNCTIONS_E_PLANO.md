@@ -14,13 +14,13 @@ O mapa é estático e baseado no código do repositório. Ele não mede o tempo 
 
 - Há **63 exports** no entrypoint: 61 endpoints gerais e 2 endpoints exclusivos de DEV/emulador.
 - Esses exports formam módulos de entrada independentes por domínio/capacidade: MCP separa gestão e endpoint; IA separa chat, enrichments e `getAiUsage`; Pedidos já separa catálogo público e SuperFrete DEV do núcleo transacional. Mudanças em dependências compartilhadas ainda selecionam todos os consumidores correspondentes.
-- O maior agrupamento é Usuários (**15 endpoints**), seguido de Pedidos (**13 em DEV, 11 em produção**, divididos entre core, catálogo, tracking e SuperFrete DEV), MCP (**11**), Alexa (**8**), WhatsApp (**7**), IA (**4**), E-mail (**4**, agora dividido entre entrada de uso e módulo de envio/webhook/limpeza) e Mídia (**1**).
+- O maior agrupamento ainda é Usuários (**14 endpoints** no módulo geral e `registerDeviceSession` em entrada própria), seguido de Pedidos (**13 em DEV, 11 em produção**, divididos entre core, catálogo, tracking e SuperFrete DEV), MCP (**11**), Alexa (**8**), WhatsApp (**7**), IA (**4**), E-mail (**4**, agora dividido entre entradas independentes) e Mídia (**1**).
 - No deploy DEV [40737383806](https://github.com/ccesargarcia/luisices/actions/runs/40737383806), o CI passou e o seletor publicou **5 Functions** para a separação de `getAiUsage`: quatro exports de IA e o endpoint MCP que compartilha a fábrica de IA. A etapa de atualização das Functions levou cerca de 2min09s.
 - No deploy anterior [40628205038](https://github.com/ccesargarcia/luisices/actions/runs/40628205038), o seletor havia escolhido **63 Functions** após a remoção do agregador MCP. A correção do seletor foi validada no run [40735963324](https://github.com/ccesargarcia/luisices/actions/runs/40735963324).
 - Os exports MCP agora são registrados diretamente por `functions/mcp/callables.js` e `functions/mcp/endpoint.js`. O antigo `functions/mcp/index.js` foi removido. Os testes já cobrem deploy seletivo entre os dois grupos.
 - A correção do seletor reconhece arquivos removidos que pertenciam ao grafo do commit implantado, mantendo seleção global para arquivos de runtime realmente não rastreáveis.
 - `getAiUsage` e MCP não usam a fábrica geral de chat. Chat e enrichments agora têm entradas/fábricas separadas, com `handlers.js`, Gemini e orçamento ainda compartilhados onde necessários.
-- MCP e IA já foram decompostos; em Pedidos, catálogo, SuperFrete e tracking têm entradas próprias, preservando o núcleo transacional. O isolamento de tracking já foi publicado em DEV. E-mail está em decomposição; WhatsApp, Alexa e Usuários permanecem como etapas futuras.
+- MCP, IA, E-mail e WhatsApp já têm entradas separadas por capacidade; em Pedidos, catálogo, SuperFrete e tracking têm entradas próprias, preservando o núcleo transacional. O isolamento de tracking e as mudanças anteriores de WhatsApp foram publicados em DEV. A separação de `registerDeviceSession` está implementada localmente e aguarda validação CI/deploy; Alexa e os demais endpoints de Usuários continuam como etapas futuras.
 
 ## Como o deploy funciona hoje
 
@@ -43,7 +43,8 @@ Os grupos abaixo representam os grafos estáticos identificados, não a quantida
 
 | Domínio / módulo de entrada compartilhado | Nº em DEV | Nº em produção | Exports presentes | Situação observada |
 |---|---:|---:|---|---|
-| Usuários — `functions/users/index.js` | 15 | 15 | `sendAdminPasswordReset`, `createUserInvitation`, `validateUserInvitation`, `completeUserInvitation`, `sendVerificationEmail`, `sendPasswordResetEmail`, `getUserAccountMetadata`, `recordUserPasswordChange`, `deleteUser`, `createUser`, `updateUser`, `registerDeviceSession`, `revokeAllSessions`, `revokeDeviceSession`, `repairUserClaims` | Um módulo contém endpoints administrativos, convites, autenticação e sessões. As dependências locais alcançadas são pequenas, mas o arquivo de entrada compartilha toda a implementação. |
+| Usuários — `functions/users/index.js` | 14 | 14 | `sendAdminPasswordReset`, `createUserInvitation`, `validateUserInvitation`, `completeUserInvitation`, `sendVerificationEmail`, `sendPasswordResetEmail`, `getUserAccountMetadata`, `recordUserPasswordChange`, `deleteUser`, `createUser`, `updateUser`, `revokeAllSessions`, `revokeDeviceSession`, `repairUserClaims` | Ainda agrupa administração, convites, identidade e sessão; a extração de `registerDeviceSession` reduz um consumidor desse módulo. |
+| Sessão de dispositivo — `functions/users/registerDeviceSession.js` | 1 | 1 | `registerDeviceSession` | Callable independente; lógica de transação extraída para `registerDeviceSessionCore.js` com dependências injetadas. Mantém autenticação, barreira de revogação, negação de dispositivo revogado e limite de 10 dispositivos. |
 | Pedidos — `functions/orders/index.js` | 3 | 3 | `submitPublicCatalogOrder`, `updateComplexOrder`, `createOrder` | Mantém as mutations críticas, inclusive os fluxos autoritativos de pedido/ledger. |
 | Catálogo público — `functions/orders/catalog.js` | 1 | 1 | `getPublicCatalogProducts` | Entrada independente, com teste de handler injetável e prova de inicialização seletiva. |
 | SuperFrete — `functions/orders/superfrete.js` | 2 | 0 | `calculateSuperfreteShipping`, `createSuperfreteLabel` (DEV/emulador) | Entrada independente; não carrega o núcleo de pedidos e permanece ausente em produção. |
@@ -120,9 +121,9 @@ Os quatro endpoints continuam no mesmo domínio público e cada um aponta direta
 
 ### 6. Usuários
 
-Os 15 endpoints apontam para `users/index.js`. Este grupo inclui senha, convites, perfis, claims e sessões — ações de segurança que não devem compartilhar código de execução apenas por estarem no mesmo domínio. A lista de dependências locais pequena não reduz o acoplamento de deploy porque a implementação está no próprio arquivo de entrada.
+Dos 15 endpoints do domínio, 14 continuam apontando para `users/index.js`; `registerDeviceSession` agora tem entrada própria e uma lógica transacional isolada em `registerDeviceSessionCore.js`. A separação preserva a transação de sessões e facilita testar autenticação, revogação e o teto de dispositivos sem carregar o módulo de usuários. Não implica redução de latência ainda: compare o grafo e as métricas após CI/deploy DEV.
 
-**Direção recomendada:** separar em endpoints/famílias como convites/ativação, credenciais/recuperação, perfil/admin e sessões; manter `userSyncService` e regras de claims como serviços explícitos. Priorizar uma mudança por família e cobrir operações de concorrência, monotonicidade de claims e revogação.
+**Próxima direção:** separar as famílias restantes de convites/ativação, credenciais/recuperação e perfil/admin; manter `userSyncService` e regras de claims como serviços explícitos. Priorizar uma mudança por família e cobrir operações de concorrência, monotonicidade de claims e revogação.
 
 ### 7. Bootstrap global e seletor
 
@@ -201,10 +202,11 @@ A mesma matriz está no arquivo CSV [`auditoria-functions-prioridades.csv`](audi
 
 ### Fase 5 — Usuários e consolidação
 
-1. Separar convite/ativação, operações de conta e sessões sem mudar regras de claims.
-2. Preservar a Mídia como referência de módulo isolado.
-3. Documentar novos grafos, comandos seletivos e critérios para adicionar um export. Garantir CI bloqueia import dinâmico não rastreável e export não mapeado.
-4. Comparar 5–10 deploys após a mudança; se a redução de tempo/Functions não for relevante, parar a decomposição antes de aumentar complexidade.
+1. ✅ Extrair `registerDeviceSession` para uma entrada e core próprios, preservando as validações/transação; testes unitários, inicialização e seletor adicionados localmente. A execução do Vitest está pendente neste ambiente por dependência Rollup opcional ausente; ainda falta CI e deploy DEV.
+2. Separar convite/ativação e operações de conta sem mudar regras de claims.
+3. Preservar a Mídia como referência de módulo isolado.
+4. Documentar novos grafos, comandos seletivos e critérios para adicionar um export. Garantir CI bloqueia import dinâmico não rastreável e export não mapeado.
+5. Comparar 5–10 deploys após a mudança; se a redução de tempo/Functions não for relevante, parar a decomposição antes de aumentar complexidade.
 
 ## Critérios de aceite por fase
 

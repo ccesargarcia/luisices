@@ -185,6 +185,33 @@ test('tracking change selects its own callable group only', () => {
   assert.deepEqual(selectFunctions(before, after).targets, ['tracking']);
 });
 
+test('registerDeviceSession tem entrada isolada e alterações no core selecionam só essa callable', () => {
+  const fixture = () => ({
+    'functions/index.js': `require('./bootstrap');
+function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }
+expose('createUser', () => require('./users').createUser);
+expose('registerDeviceSession', () => require('./users/registerDeviceSession').registerDeviceSession);`,
+    'functions/users/index.js': "require('../common/auth'); module.exports = {};",
+    'functions/users/registerDeviceSession.js': "require('firebase-admin/firestore'); require('../common/sentryFunctions'); require('./registerDeviceSessionCore'); module.exports = {};",
+    'functions/users/registerDeviceSessionCore.js': "require('firebase-functions/v2/https'); module.exports = {};",
+    'functions/common/auth.js': 'module.exports = {};',
+    'functions/common/sentryFunctions.js': 'module.exports = {};',
+    'functions/bootstrap.js': 'module.exports = {};',
+    'functions/package.json': '{"engines":{"node":"22"}}',
+    'functions/package-lock.json': '{}',
+    'firebase.json': '{"functions":{"runtime":"nodejs22"}}',
+  });
+
+  const before = fixture();
+  const after = fixture();
+  after['functions/users/registerDeviceSessionCore.js'] += '\n// changed session validation';
+  assert.deepEqual(selectFunctions(before, after).targets, ['registerDeviceSession']);
+
+  const entryChange = fixture();
+  entryChange['functions/users/registerDeviceSession.js'] += '\n// changed callable configuration';
+  assert.deepEqual(selectFunctions(before, entryChange).targets, ['registerDeviceSession']);
+});
+
 test('handlers de e-mail têm deploys independentes por fluxo', () => {
   const fixture = {
     'functions/index.js': `require('./bootstrap');

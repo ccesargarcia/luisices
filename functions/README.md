@@ -23,7 +23,7 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 |---|---|
 | Contas e convites | `createUser`, `updateUser`, `deleteUser`, `createUserInvitation`, `validateUserInvitation`, `completeUserInvitation` |
 | Recuperação/verificação | `sendAdminPasswordReset`, `sendPasswordResetEmail`, `sendVerificationEmail`, `recordUserPasswordChange` |
-| Acesso e sessões | `getUserAccountMetadata`, `registerDeviceSession`, `revokeAllSessions`, `revokeDeviceSession`, `repairUserClaims` |
+| Acesso e sessões | `getUserAccountMetadata`, `registerDeviceSession` (`users/registerDeviceSession.js`), `revokeAllSessions`, `revokeDeviceSession`, `repairUserClaims` |
 | E-mail | `sendCustomEmail` (`email/send.js`), `getEmailUsage` (`email/usage.js`), `resendReceivingWebhook` (`email/webhook.js`), `cleanupEmailDrafts` (`email/cleanup.js`) |
 | WhatsApp | `sendWhatsAppDirectMessage`, `deleteWhatsAppMessage`, `syncWhatsAppChatMessages`, `getWhatsAppInstanceStatus`, `markWhatsAppChatRead`, `ensureWhatsAppConversation`, `evolutionWhatsAppWebhook` |
 | Pedidos (núcleo transacional) | `createOrder`, `updateComplexOrder`, `submitPublicCatalogOrder` |

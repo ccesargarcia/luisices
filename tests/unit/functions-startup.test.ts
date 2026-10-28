@@ -61,6 +61,24 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
+  it('registerDeviceSession carrega isolada e mantém configuração de memória e contrato público', () => {
+    checkStartup(`
+      const handler = functions.registerDeviceSession;
+      assert.equal(handler, require('./users/registerDeviceSession').registerDeviceSession);
+      assert.equal(handler.__endpoint.availableMemoryMb, 512);
+      assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'ORIGIN_SECRET'));
+      assert.equal(require.cache[require.resolve('./users')], undefined,
+        'registro de sessão não deve carregar o módulo amplo de usuários');
+      for (const modulePath of [
+        './users/userSyncService', './users/deviceLogout', './email/send', './whatsapp/send', './mcp/profilePermissions',
+      ]) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined,
+          modulePath + ' carregado indevidamente');
+      }
+      assert.ok(require.cache[require.resolve('./users/registerDeviceSessionCore')]);
+    `);
+  });
+
   it('limpeza de rascunhos carrega isolada do envio e do webhook e mantém agenda', () => {
     checkStartup(`
       const handler = functions.cleanupEmailDrafts;

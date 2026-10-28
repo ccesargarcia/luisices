@@ -11,11 +11,11 @@
     "deleteUser",
     "createUser",
     "updateUser",
-    "registerDeviceSession",
     "revokeAllSessions",
     "revokeDeviceSession",
     "repairUserClaims"
   ],
+  "./users/registerDeviceSession": ["registerDeviceSession"],
   "./email/send": ["sendCustomEmail"],
   "./email/webhook": ["resendReceivingWebhook"],
   "./email/cleanup": ["cleanupEmailDrafts"],
