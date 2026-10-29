@@ -28,7 +28,7 @@ function expose(name, load) {
 expose('sendAdminPasswordReset', () => require('./users').sendAdminPasswordReset);
 expose('createUserInvitation', () => require('./users').createUserInvitation);
 expose('validateUserInvitation', () => require('./users/validateUserInvitation').validateUserInvitation);
-expose('completeUserInvitation', () => require('./users').completeUserInvitation);
+expose('completeUserInvitation', () => require('./users/completeUserInvitation').completeUserInvitation);
 expose('sendVerificationEmail', () => require('./users').sendVerificationEmail);
 expose('sendPasswordResetEmail', () => require('./users').sendPasswordResetEmail);
 expose('getUserAccountMetadata', () => require('./users').getUserAccountMetadata);

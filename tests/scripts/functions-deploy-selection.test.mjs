@@ -234,6 +234,40 @@ expose('validateUserInvitation', () => require('./users/validateUserInvitation')
   assert.deepEqual(selectFunctions(before, entryChange).targets, ['validateUserInvitation']);
 });
 
+test('completeUserInvitation tem entrada isolada e core transacional compartilhado seleciona consumidores de convites', () => {
+  const fixture = () => ({
+    'functions/index.js': `require('./bootstrap');
+function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }
+expose('createUserInvitation', () => require('./users').createUserInvitation);
+expose('completeUserInvitation', () => require('./users/completeUserInvitation').completeUserInvitation);`,
+    'functions/users/index.js': "require('./invitationActivation'); require('../common/secrets'); module.exports = {};",
+    'functions/users/invitationActivation.js': "require('./invitationActivationCore'); require('./invitedUserPermissions'); module.exports = {};",
+    'functions/users/invitedUserPermissions.js': 'module.exports = {};',
+    'functions/users/invitationActivationCore.js': 'module.exports = {};',
+    'functions/users/completeUserInvitation.js': "require('./invitationActivation'); require('./completeUserInvitationCore'); module.exports = {};",
+    'functions/users/completeUserInvitationCore.js': 'module.exports = {};',
+    'functions/common/secrets.js': 'module.exports = {};',
+    'functions/bootstrap.js': 'module.exports = {};',
+    'functions/package.json': '{"engines":{"node":"22"}}',
+    'functions/package-lock.json': '{}',
+    'firebase.json': '{"functions":{"runtime":"nodejs22"}}',
+  });
+
+  const before = fixture();
+  const completionCoreChange = fixture();
+  completionCoreChange['functions/users/completeUserInvitationCore.js'] += '\n// changed orchestration';
+  assert.deepEqual(selectFunctions(before, completionCoreChange).targets, ['completeUserInvitation']);
+
+  const entryChange = fixture();
+  entryChange['functions/users/completeUserInvitation.js'] += '\n// changed callable configuration';
+  assert.deepEqual(selectFunctions(before, entryChange).targets, ['completeUserInvitation']);
+
+  const sharedActivationChange = fixture();
+  sharedActivationChange['functions/users/invitationActivationCore.js'] += '\n// changed shared transaction';
+  assert.deepEqual(selectFunctions(before, sharedActivationChange).targets,
+    ['completeUserInvitation', 'createUserInvitation']);
+});
+
 test('handlers de e-mail têm deploys independentes por fluxo', () => {
   const fixture = {
     'functions/index.js': `require('./bootstrap');

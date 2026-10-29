@@ -2,7 +2,6 @@
   "./users": [
     "sendAdminPasswordReset",
     "createUserInvitation",
-    "completeUserInvitation",
     "sendVerificationEmail",
     "sendPasswordResetEmail",
     "getUserAccountMetadata",
@@ -15,6 +14,7 @@
     "repairUserClaims"
   ],
   "./users/validateUserInvitation": ["validateUserInvitation"],
+  "./users/completeUserInvitation": ["completeUserInvitation"],
   "./users/registerDeviceSession": ["registerDeviceSession"],
   "./email/send": ["sendCustomEmail"],
   "./email/webhook": ["resendReceivingWebhook"],

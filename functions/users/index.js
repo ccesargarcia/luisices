@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const { RESEND_API_KEY, EVOLUTION_API_KEY } = require('../common/secrets');
 const { passwordResetLimiter, adminUserActionLimiter } = require('../common/rateLimiters');
 const userSyncService = require('./userSyncService');
+const { activateInvitedAccount } = require('./invitationActivation');
 const { validateProfileMcpScopes } = require('../mcp/profilePermissions');
 const helpers = require('../common/helpers');
 const {
@@ -23,26 +24,6 @@ const {
   isAdminRequest,
   hashToken,
 } = helpers;
-
-const INVITED_USER_PERMISSIONS = {
-  dashboard: true,
-  orders: { view: true, create: true, edit: false, delete: false },
-  archivedOrders: { view: true, create: true, edit: true, delete: true },
-  customers: { view: true, create: true, edit: false, delete: false },
-  whatsapp: true,
-  aiCopilot: true,
-  products: { view: true, create: false, edit: false, delete: false },
-  storeProducts: { view: true, create: false, edit: false, delete: false },
-  store: false,
-  quotes: { view: true, create: true, edit: true, delete: true },
-  gallery: { view: true, create: true, delete: true },
-  exchanges: true,
-  reports: false,
-  settings: false,
-  users: { view: false, create: false, edit: false, delete: false },
-  emails: { view: false, create: false, edit: false, delete: false },
-  pricing: { view: true, create: true, edit: true, delete: true },
-};
 
 const VALID_PERMISSION_MODULES = [
   'dashboard', 'orders', 'archivedOrders', 'customers', 'whatsapp',
@@ -98,57 +79,6 @@ function writeUserAudit(action, actorUid, targetUid, details = {}) {
     createdAt: FieldValue.serverTimestamp(),
   }).catch((error) => {
     console.error('[users] Falha ao registrar auditoria:', error);
-  });
-}
-
-async function activateInvitedAccount(invitationRef, invitationData, authUser) {
-  if (!authUser.email || authUser.email.toLowerCase() !== invitationData.email.toLowerCase()) {
-    throw new HttpsError('permission-denied', 'O e-mail da conta não corresponde ao convite.');
-  }
-  if (authUser.emailVerified !== true) {
-    throw new HttpsError('failed-precondition', 'Confirme o e-mail antes de concluir o cadastro.');
-  }
-
-  await getFirestore().runTransaction(async (transaction) => {
-    const invitationSnapshot = await transaction.get(invitationRef);
-    const profileRef = getFirestore().doc(`userProfiles/${authUser.uid}`);
-    const profileSnapshot = await transaction.get(profileRef);
-    if (!invitationSnapshot.exists) {
-      throw new HttpsError('not-found', 'Convite inválido ou expirado.');
-    }
-
-    const currentInvitation = invitationSnapshot.data();
-    if (currentInvitation.status === 'accepted' && currentInvitation.acceptedBy === authUser.uid) return;
-    if (currentInvitation.status !== 'pending' || currentInvitation.expiresAt.toDate() <= new Date()) {
-      throw new HttpsError('failed-precondition', 'Convite inválido ou expirado.');
-    }
-
-    if (profileSnapshot.exists) {
-      const profileEmail = profileSnapshot.data().email;
-      if (!profileEmail || profileEmail.toLowerCase() !== authUser.email.toLowerCase()) {
-        throw new HttpsError('already-exists', 'Esta conta já possui outro perfil.');
-      }
-    } else {
-      transaction.set(profileRef, {
-        uid: authUser.uid,
-        email: authUser.email,
-        displayName: authUser.displayName || invitationData.email.split('@')[0],
-        whatsappPhone: invitationData.whatsappPhone || null,
-        role: 'user',
-        active: true,
-        permissions: INVITED_USER_PERMISSIONS,
-        invitedBy: invitationData.invitedBy,
-        createdAt: FieldValue.serverTimestamp(),
-        passwordChangedAt: authUser.metadata.creationTime,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-
-    transaction.update(invitationRef, {
-      status: 'accepted',
-      acceptedBy: authUser.uid,
-      acceptedAt: FieldValue.serverTimestamp(),
-    });
   });
 }
 
@@ -319,42 +249,6 @@ const createUserInvitation = onCall(
     }
   }
 );
-
-/** Conclui o cadastro convidado e inicializa o perfil do usuário. */
-const completeUserInvitation = onCall(async (request) => {
-  const { token } = request.data || {};
-  if (!token || typeof token !== 'string') {
-    throw new HttpsError('invalid-argument', 'Convite inválido.');
-  }
-  const invitationRef = getFirestore().collection('invitations').doc(hashToken(token));
-  const invitation = await invitationRef.get();
-  if (!invitation.exists) {
-    throw new HttpsError('not-found', 'Convite inválido ou expirado.');
-  }
-  const invData = invitation.data();
-  if (invData.status === 'accepted' && invData.acceptedBy) {
-    const acceptedUser = await getAuth().getUser(invData.acceptedBy);
-    if (acceptedUser.emailVerified && acceptedUser.email.toLowerCase() === invData.email.toLowerCase()) {
-      return { success: true };
-    }
-  }
-  if (invData.status !== 'pending' || invData.expiresAt.toDate() <= new Date()) {
-    throw new HttpsError('failed-precondition', 'Convite inválido ou expirado.');
-  }
-
-  // O token do convite prova o acesso ao convite; o Admin Auth confirma que o
-  // endereço correspondente já foi verificado, mesmo em outro navegador.
-  const authUser = await getAuth().getUserByEmail(invData.email);
-  if (authUser.emailVerified !== true) {
-    throw new HttpsError(
-      'failed-precondition',
-      'Confirme o e-mail da conta antes de concluir o cadastro.'
-    );
-  }
-
-  await activateInvitedAccount(invitationRef, invData, authUser);
-  return { success: true };
-});
 
 /** Envia confirmação de e-mail pela marca Luisices com ação válida do Firebase Auth. */
 const sendVerificationEmail = onCall(
@@ -893,7 +787,6 @@ const revokeDeviceSession = onCall(async (request) => requestDeviceLogout(reques
 module.exports = {
   sendAdminPasswordReset,
   createUserInvitation,
-  completeUserInvitation,
   sendVerificationEmail,
   sendPasswordResetEmail,
   getUserAccountMetadata,

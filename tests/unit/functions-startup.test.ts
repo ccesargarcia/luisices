@@ -91,6 +91,22 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
+  it('completeUserInvitation carrega isolada e mantém o contrato callable sem dependências de e-mail/admin', () => {
+    checkStartup(`
+      const handler = functions.completeUserInvitation;
+      assert.equal(handler, require('./users/completeUserInvitation').completeUserInvitation);
+      assert.equal(require.cache[require.resolve('./users')], undefined,
+        'conclusão do convite não deve carregar o módulo amplo de usuários');
+      assert.ok(require.cache[require.resolve('./users/completeUserInvitationCore')]);
+      assert.ok(require.cache[require.resolve('./users/invitationActivationCore')]);
+      for (const modulePath of ['./users/userSyncService', './common/rateLimiters']) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined,
+          modulePath + ' carregado indevidamente');
+      }
+      assert.deepEqual(handler.__endpoint.secretEnvironmentVariables.map(item => item.key), ['ORIGIN_SECRET']);
+    `);
+  });
+
   it('limpeza de rascunhos carrega isolada do envio e do webhook e mantém agenda', () => {
     checkStartup(`
       const handler = functions.cleanupEmailDrafts;
