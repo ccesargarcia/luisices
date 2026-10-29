@@ -15,9 +15,23 @@ export interface DateRange {
   end: Date;
 }
 
-export function getLedgerDateRange(period: LedgerPeriod, customRange?: { start?: string; end?: string }): DateRange {
-  if (period === 'yesterday') return getReportDateRange('today', 1);
-  return getReportDateRange(period, 0, customRange);
+export function getLedgerDateRange(
+  period: LedgerPeriod,
+  customRange?: { start?: string; end?: string },
+  now = new Date(),
+): DateRange {
+  if (period === 'yesterday') return getReportDateRange('today', 1, undefined, now);
+  return getReportDateRange(period, 0, customRange, now);
+}
+
+/** Serialize the same date boundaries used by ledger calculations for Firestore queries. */
+export function getLedgerDateRangeQueryInput(
+  period: LedgerPeriod,
+  customRange?: { start?: string; end?: string },
+  now = new Date(),
+): { start: string; end: string } {
+  const { start, end } = getLedgerDateRange(period, customRange, now);
+  return { start: start.toISOString(), end: end.toISOString() };
 }
 
 export function useSalesLedger(options?: {

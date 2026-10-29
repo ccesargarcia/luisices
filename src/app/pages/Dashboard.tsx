@@ -40,7 +40,7 @@ import { firebaseCustomerService } from '../../services/firebaseCustomerService'
 import { orderTrackingService } from '../../services/orderTrackingService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
-import { useSalesLedger } from '../../hooks/useSalesLedger';
+import { getLedgerDateRangeQueryInput, useSalesLedger } from '../../hooks/useSalesLedger';
 import { DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
 import { calculatePaymentBalance } from '../utils/financialMath';
 import { parseLocalDate } from '../utils/date';
@@ -102,12 +102,16 @@ export function Dashboard() {
     selectedUserIds,
   } = useFirebaseOrders();
   const { settings, updateSettings } = useUserSettings();
+  const dashboardLedgerDateRange = useMemo(
+    () => getLedgerDateRangeQueryInput('month'),
+    [],
+  );
   const {
     stats: ledgerStats,
     allSales,
     teamFilteredSales,
     loading: ledgerLoading,
-  } = useSalesLedger({ teamUserIds: selectedUserIds });
+  } = useSalesLedger({ teamUserIds: selectedUserIds, dateRange: dashboardLedgerDateRange });
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
