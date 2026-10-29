@@ -122,6 +122,25 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
+  it('sendVerificationEmail carrega isolada e preserva a secret de envio', () => {
+    checkStartup(`
+      const handler = functions.sendVerificationEmail;
+      assert.equal(handler, require('./users/sendVerificationEmail').sendVerificationEmail);
+      assert.equal(require.cache[require.resolve('./users')], undefined,
+        'verificação de e-mail não deve carregar o módulo amplo de usuários');
+      assert.ok(require.cache[require.resolve('./users/sendVerificationEmailCore')]);
+      assert.equal(handler.__endpoint.maxInstances, 5);
+      const secrets = handler.__endpoint.secretEnvironmentVariables.map(item => item.key);
+      assert.ok(secrets.includes('ORIGIN_SECRET'));
+      assert.ok(secrets.includes('RESEND_API_KEY'));
+      assert.equal(secrets.includes('EVOLUTION_API_KEY'), false);
+      for (const modulePath of ['./users/userSyncService', './users/invitationActivation']) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined,
+          modulePath + ' carregado indevidamente');
+      }
+    `);
+  });
+
   it('limpeza de rascunhos carrega isolada do envio e do webhook e mantém agenda', () => {
     checkStartup(`
       const handler = functions.cleanupEmailDrafts;

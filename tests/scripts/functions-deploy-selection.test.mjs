@@ -234,15 +234,18 @@ expose('validateUserInvitation', () => require('./users/validateUserInvitation')
   assert.deepEqual(selectFunctions(before, entryChange).targets, ['validateUserInvitation']);
 });
 
-test('completeUserInvitation tem entrada isolada e core transacional compartilhado seleciona consumidores de convites', () => {
+test('handlers de convite têm entradas isoladas e ativação compartilhada seleciona consumidores', () => {
   const fixture = () => ({
     'functions/index.js': `require('./bootstrap');
 function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }
 expose('createUserInvitation', () => require('./users/createUserInvitation').createUserInvitation);
+expose('sendVerificationEmail', () => require('./users/sendVerificationEmail').sendVerificationEmail);
 expose('completeUserInvitation', () => require('./users/completeUserInvitation').completeUserInvitation);`,
     'functions/users/index.js': "require('./userAdminActions'); require('./userAudit'); require('../common/secrets'); module.exports = {};",
     'functions/users/createUserInvitation.js': "require('./invitationActivation'); require('./createUserInvitationCore'); require('./userAdminActions'); require('./userAudit'); module.exports = {};",
     'functions/users/createUserInvitationCore.js': 'module.exports = {};',
+    'functions/users/sendVerificationEmail.js': "require('./sendVerificationEmailCore'); require('../common/helpers'); module.exports = {};",
+    'functions/users/sendVerificationEmailCore.js': 'module.exports = {};',
     'functions/users/userAdminActions.js': "require('../common/rateLimiters'); module.exports = {};",
     'functions/users/userAudit.js': 'module.exports = {};',
     'functions/users/invitationActivation.js': "require('./invitationActivationCore'); require('./invitedUserPermissions'); module.exports = {};",
@@ -251,6 +254,7 @@ expose('completeUserInvitation', () => require('./users/completeUserInvitation')
     'functions/users/completeUserInvitation.js': "require('./invitationActivation'); require('./completeUserInvitationCore'); module.exports = {};",
     'functions/users/completeUserInvitationCore.js': 'module.exports = {};',
     'functions/common/secrets.js': 'module.exports = {};',
+    'functions/common/helpers.js': 'module.exports = {};',
     'functions/common/rateLimiters.js': 'module.exports = {};',
     'functions/bootstrap.js': 'module.exports = {};',
     'functions/package.json': '{"engines":{"node":"22"}}',
@@ -266,6 +270,14 @@ expose('completeUserInvitation', () => require('./users/completeUserInvitation')
   const createCoreChange = fixture();
   createCoreChange['functions/users/createUserInvitationCore.js'] += '\n// changed invitation creation';
   assert.deepEqual(selectFunctions(before, createCoreChange).targets, ['createUserInvitation']);
+
+  const sendVerificationCoreChange = fixture();
+  sendVerificationCoreChange['functions/users/sendVerificationEmailCore.js'] += '\n// changed verification orchestration';
+  assert.deepEqual(selectFunctions(before, sendVerificationCoreChange).targets, ['sendVerificationEmail']);
+
+  const verificationEntryChange = fixture();
+  verificationEntryChange['functions/users/sendVerificationEmail.js'] += '\n// changed callable configuration';
+  assert.deepEqual(selectFunctions(before, verificationEntryChange).targets, ['sendVerificationEmail']);
 
   const entryChange = fixture();
   entryChange['functions/users/completeUserInvitation.js'] += '\n// changed callable configuration';

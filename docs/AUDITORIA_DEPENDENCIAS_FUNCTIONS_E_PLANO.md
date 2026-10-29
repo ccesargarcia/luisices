@@ -121,7 +121,7 @@ Os quatro endpoints continuam no mesmo domínio público e cada um aponta direta
 
 ### 6. Usuários
 
-Dos 15 endpoints do domínio, 14 continuam apontando para `users/index.js`; `registerDeviceSession` agora tem entrada própria e uma lógica transacional isolada em `registerDeviceSessionCore.js`. A separação preserva a transação de sessões e facilita testar autenticação, revogação e o teto de dispositivos sem carregar o módulo de usuários. Não implica redução de latência ainda: compare o grafo e as métricas após CI/deploy DEV.
+Dos 15 endpoints originais do domínio, 10 ainda apontam para `users/index.js`. `registerDeviceSession`, `validateUserInvitation`, `completeUserInvitation`, `createUserInvitation` e `sendVerificationEmail` agora têm entradas próprias. A separação preserva a transação de sessões e os fluxos de convite/verificação, facilitando testes e evitando carregar o módulo de usuários nesses callables. Não implica redução de latência ainda: compare o grafo e as métricas após CI/deploy DEV.
 
 **Próxima direção:** separar as famílias restantes de convites/ativação, credenciais/recuperação e perfil/admin; manter `userSyncService` e regras de claims como serviços explícitos. Priorizar uma mudança por família e cobrir operações de concorrência, monotonicidade de claims e revogação.
 
@@ -279,3 +279,9 @@ Foram adicionados testes de core para convite novo, tratamento de falha do Whats
 **Correção após CI:** a execução do commit `6758a1a` rodou 1.445 testes: 1.444 passaram e o novo teste identificou que um e-mail contendo somente espaços era aceito após a normalização. O core passou a rejeitar a string normalizada vazia com `invalid-argument` no commit `eb107a7`.
 
 **Conclusão em DEV:** a CI [40889986242](https://github.com/ccesargarcia/luisices/actions/runs/40889986242) passou lint e 1.445 testes unitários. O deploy seletivo atualizou 12 Functions em dois lotes e terminou com sucesso em cerca de 5 minutos. O E2E foi pulado por a alteração ser somente de backend; frontend, Rules e produção não foram publicados. Ainda falta o teste funcional manual dos fluxos de convite novo, reenvio e recuperação de conta órfã em DEV.
+
+## Etapa local: isolamento de envio da confirmação de e-mail (29/10/2026)
+
+`sendVerificationEmail` agora possui entrada (`users/sendVerificationEmail.js`) e core (`users/sendVerificationEmailCore.js`) próprios. O contrato callable continua autenticado, recebe `{ inviteToken }` e responde `{ success: true }`. Foram preservados a validação do convite pendente e não expirado, a comparação do e-mail autenticado, o retorno idempotente quando o e-mail já está verificado, a geração do `oobCode` do Firebase e o envio da mensagem pela Resend. A Function mantém `maxInstances: 5`, `RESEND_API_KEY` e `ORIGIN_SECRET`; não carrega mais `users/index.js`, rate limiters ou lógica de claims.
+
+Os testes cobrem autenticação, token ausente/inválido, Resend não configurado, conta sem e-mail, conta já verificada, convite inexistente/aceito/expirado ou de outra identidade, geração do link e erros de Firebase/Resend. Foram executados 10 testes unitários do core, 31 regressões de inicialização, 33 testes do seletor de deploy, `npm run typecheck`, lint de Functions e `git diff --check`; todos passaram. CI, deploy DEV e validação funcional por envio real ainda estão pendentes.
