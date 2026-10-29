@@ -25,8 +25,8 @@ const invitationData = (overrides: Record<string, unknown> = {}) => ({
 });
 
 function completionDependencies(data = invitationData(), exists = true) {
-  const invitationRef = { id: 'hashed-token' };
   const get = vi.fn().mockResolvedValue({ exists, data: () => data });
+  const invitationRef = { id: 'hashed-token', get };
   const doc = vi.fn(() => invitationRef);
   const collection = vi.fn(() => ({ doc }));
   const db = { collection };
