@@ -26,7 +26,7 @@ function expose(name, load) {
 // O cache do CommonJS reutiliza o domínio e o mesmo handler nas próximas chamadas.
 // ─── Gestão de Usuários e Convites ─────────────────────────────────────────
 expose('sendAdminPasswordReset', () => require('./users').sendAdminPasswordReset);
-expose('createUserInvitation', () => require('./users').createUserInvitation);
+expose('createUserInvitation', () => require('./users/createUserInvitation').createUserInvitation);
 expose('validateUserInvitation', () => require('./users/validateUserInvitation').validateUserInvitation);
 expose('completeUserInvitation', () => require('./users/completeUserInvitation').completeUserInvitation);
 expose('sendVerificationEmail', () => require('./users').sendVerificationEmail);

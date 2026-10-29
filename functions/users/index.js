@@ -2,16 +2,16 @@
  * Módulo de Gestão de Usuários, Convites e Autenticação (Cloud Functions v2).
  */
 
-const { FieldValue, Timestamp, getFirestore } = require('firebase-admin/firestore');
+const { FieldValue, getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { HttpsError } = require('firebase-functions/v2/https');
 const { onCall } = require('../common/sentryFunctions');
-const crypto = require('crypto');
 const { RESEND_API_KEY, EVOLUTION_API_KEY } = require('../common/secrets');
-const { passwordResetLimiter, adminUserActionLimiter } = require('../common/rateLimiters');
+const { passwordResetLimiter } = require('../common/rateLimiters');
 const userSyncService = require('./userSyncService');
-const { activateInvitedAccount } = require('./invitationActivation');
 const { validateProfileMcpScopes } = require('../mcp/profilePermissions');
+const { consumeAdminUserAction } = require('./userAdminActions');
+const { writeUserAudit } = require('./userAudit');
 const helpers = require('../common/helpers');
 const {
   getResend,
@@ -57,38 +57,6 @@ function sanitizeAndValidatePermissions(perms) {
     }
   }
   return clean;
-}
-
-async function consumeAdminUserAction(uid) {
-  try {
-    await adminUserActionLimiter.consume(uid);
-  } catch {
-    throw new HttpsError(
-      'resource-exhausted',
-      'Limite de operações administrativas atingido. Tente novamente mais tarde.'
-    );
-  }
-}
-
-function writeUserAudit(action, actorUid, targetUid, details = {}) {
-  return getFirestore().collection('userAuditLogs').add({
-    action,
-    actorUid,
-    ...(targetUid ? { targetUid } : {}),
-    ...details,
-    createdAt: FieldValue.serverTimestamp(),
-  }).catch((error) => {
-    console.error('[users] Falha ao registrar auditoria:', error);
-  });
-}
-
-async function createCustomVerificationLink(email, inviteToken) {
-  const continueUrl = `${getAppUrl()}/action?mode=verifyEmail&invite=${encodeURIComponent(inviteToken)}`;
-  const rawLink = await getAuth().generateEmailVerificationLink(email, { url: continueUrl });
-  const customLink = formatActionLink(rawLink, 'verifyEmail');
-  const verificationUrl = new URL(customLink);
-  verificationUrl.searchParams.set('invite', inviteToken);
-  return verificationUrl.toString();
 }
 
 /** Envia ao administrador um link seguro para redefinir a senha de outro usuário. */
@@ -145,107 +113,6 @@ const sendAdminPasswordReset = onCall(
       }
       console.error('[sendAdminPasswordReset]', error);
       throw new HttpsError('internal', 'Não foi possível enviar o link de redefinição.');
-    }
-  }
-);
-
-/** Cria convite de cadastro com token armazenado apenas em hash e validade de 48 horas. */
-const createUserInvitation = onCall(
-  { maxInstances: 5, secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] },
-  async (request) => {
-    if (!(await isAdminRequest(request))) {
-      throw new HttpsError('permission-denied', 'Apenas administradores podem enviar convites.');
-    }
-    await consumeAdminUserAction(request.auth.uid);
-    const { email, whatsappPhone } = request.data || {};
-    if (!email || typeof email !== 'string') {
-      throw new HttpsError('invalid-argument', 'E-mail do convite é obrigatório.');
-    }
-    const normalizedEmail = email.trim().toLowerCase();
-
-    try {
-      const existing = await getAuth().getUserByEmail(normalizedEmail).catch(() => null);
-      const token = crypto.randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
-      const invitationRef = getFirestore().collection('invitations').doc(hashToken(token));
-      const invitationData = {
-        email: normalizedEmail,
-        whatsappPhone: whatsappPhone || null,
-        invitedBy: request.auth.uid,
-        status: 'pending',
-        expiresAt: Timestamp.fromDate(expiresAt),
-        createdAt: FieldValue.serverTimestamp(),
-      };
-
-      if (existing) {
-        const existingProfile = await getFirestore().doc(`userProfiles/${existing.uid}`).get();
-        if (existingProfile.exists) {
-          const profile = existingProfile.data();
-          if (
-            profile.email?.toLowerCase() === normalizedEmail &&
-            profile.role === 'user' &&
-            profile.active === undefined
-          ) {
-            await existingProfile.ref.update({
-              active: true,
-              updatedAt: FieldValue.serverTimestamp(),
-            });
-            await writeUserAudit('ORPHANED_USER_ACCOUNT_ACTIVATED', request.auth.uid, existing.uid, { email: normalizedEmail });
-            return { success: true, repairedExistingAccount: true };
-          }
-          throw new HttpsError('already-exists', 'Este e-mail já possui uma conta ativa.');
-        }
-
-        await invitationRef.set(invitationData);
-        if (existing.emailVerified) {
-          await activateInvitedAccount(invitationRef, invitationData, existing);
-          await writeUserAudit('ORPHANED_USER_ACCOUNT_REPAIRED', request.auth.uid, existing.uid, { email: normalizedEmail });
-          return { success: true, repairedExistingAccount: true };
-        }
-
-        const resend = getResend(RESEND_API_KEY.value());
-        if (!resend) throw new HttpsError('failed-precondition', 'Resend não configurado.');
-        const verificationLink = await createCustomVerificationLink(normalizedEmail, token);
-        const { error } = await resend.emails.send({
-          from: getNoReplySender(),
-          to: [normalizedEmail],
-          subject: 'Confirme seu e-mail - Luisices',
-          html: `<p>Já encontramos uma conta Luisices vinculada a este e-mail.</p><p>Confirme o endereço para concluir a ativação do seu acesso:</p><p><a href="${verificationLink}">Confirmar e ativar minha conta</a></p><p>Se não reconhece este cadastro, ignore esta mensagem.</p>`,
-        });
-        if (error) {
-          console.error('[createUserInvitation] Falha ao reenviar confirmação:', JSON.stringify(error));
-          throw new HttpsError('internal', 'Não foi possível enviar o link de confirmação.');
-        }
-        await writeUserAudit('ORPHANED_USER_VERIFICATION_RESENT', request.auth.uid, existing.uid, { email: normalizedEmail });
-        return { success: true, verificationSent: true, expiresAt: expiresAt.toISOString() };
-      }
-
-      const resend = getResend(RESEND_API_KEY.value());
-      if (!resend) throw new HttpsError('failed-precondition', 'Resend não configurado.');
-      await invitationRef.set(invitationData);
-
-      const inviteLink = `${getAppUrl()}/registrar?invite=${token}`;
-      const emailPromise = resend.emails.send({
-        from: getNoReplySender(),
-        to: [normalizedEmail],
-        subject: 'Convite para acessar a plataforma Luisices',
-        html: `<p>Você foi convidado para acessar a plataforma Luisices.</p><p><a href="${inviteLink}">Aceitar convite e criar conta</a></p><p>O convite expira em 48 horas. Após criar a senha, será necessário confirmar o e-mail para concluir o cadastro.</p>`,
-      });
-      const whatsappPromise = whatsappPhone
-        ? sendWhatsAppMessage(whatsappPhone, `Convite Luisices\n\nAcesse o link para criar sua conta:\n${inviteLink}\n\nO convite expira em 48 horas.`)
-        : Promise.resolve();
-      await Promise.all([
-        emailPromise,
-        whatsappPromise.catch((error) => {
-          console.error('[createUserInvitation] Evolution API:', error);
-        }),
-      ]);
-      await writeUserAudit('USER_INVITATION_CREATED', request.auth.uid, null, { email: normalizedEmail });
-      return { success: true, expiresAt: expiresAt.toISOString() };
-    } catch (error) {
-      if (error instanceof HttpsError) throw error;
-      console.error('[createUserInvitation]', error);
-      throw new HttpsError('internal', 'Não foi possível enviar o convite.');
     }
   }
 );
@@ -786,7 +653,6 @@ const revokeDeviceSession = onCall(async (request) => requestDeviceLogout(reques
 
 module.exports = {
   sendAdminPasswordReset,
-  createUserInvitation,
   sendVerificationEmail,
   sendPasswordResetEmail,
   getUserAccountMetadata,

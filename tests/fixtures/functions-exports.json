@@ -1,7 +1,6 @@
 {
   "./users": [
     "sendAdminPasswordReset",
-    "createUserInvitation",
     "sendVerificationEmail",
     "sendPasswordResetEmail",
     "getUserAccountMetadata",
@@ -13,6 +12,7 @@
     "revokeDeviceSession",
     "repairUserClaims"
   ],
+  "./users/createUserInvitation": ["createUserInvitation"],
   "./users/validateUserInvitation": ["validateUserInvitation"],
   "./users/completeUserInvitation": ["completeUserInvitation"],
   "./users/registerDeviceSession": ["registerDeviceSession"],

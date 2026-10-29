@@ -238,15 +238,20 @@ test('completeUserInvitation tem entrada isolada e core transacional compartilha
   const fixture = () => ({
     'functions/index.js': `require('./bootstrap');
 function expose(name, load) { Object.defineProperty(module.exports, name, { enumerable: true, get: load }); }
-expose('createUserInvitation', () => require('./users').createUserInvitation);
+expose('createUserInvitation', () => require('./users/createUserInvitation').createUserInvitation);
 expose('completeUserInvitation', () => require('./users/completeUserInvitation').completeUserInvitation);`,
-    'functions/users/index.js': "require('./invitationActivation'); require('../common/secrets'); module.exports = {};",
+    'functions/users/index.js': "require('./userAdminActions'); require('./userAudit'); require('../common/secrets'); module.exports = {};",
+    'functions/users/createUserInvitation.js': "require('./invitationActivation'); require('./createUserInvitationCore'); require('./userAdminActions'); require('./userAudit'); module.exports = {};",
+    'functions/users/createUserInvitationCore.js': 'module.exports = {};',
+    'functions/users/userAdminActions.js': "require('../common/rateLimiters'); module.exports = {};",
+    'functions/users/userAudit.js': 'module.exports = {};',
     'functions/users/invitationActivation.js': "require('./invitationActivationCore'); require('./invitedUserPermissions'); module.exports = {};",
     'functions/users/invitedUserPermissions.js': 'module.exports = {};',
     'functions/users/invitationActivationCore.js': 'module.exports = {};',
     'functions/users/completeUserInvitation.js': "require('./invitationActivation'); require('./completeUserInvitationCore'); module.exports = {};",
     'functions/users/completeUserInvitationCore.js': 'module.exports = {};',
     'functions/common/secrets.js': 'module.exports = {};',
+    'functions/common/rateLimiters.js': 'module.exports = {};',
     'functions/bootstrap.js': 'module.exports = {};',
     'functions/package.json': '{"engines":{"node":"22"}}',
     'functions/package-lock.json': '{}',
@@ -257,6 +262,10 @@ expose('completeUserInvitation', () => require('./users/completeUserInvitation')
   const completionCoreChange = fixture();
   completionCoreChange['functions/users/completeUserInvitationCore.js'] += '\n// changed orchestration';
   assert.deepEqual(selectFunctions(before, completionCoreChange).targets, ['completeUserInvitation']);
+
+  const createCoreChange = fixture();
+  createCoreChange['functions/users/createUserInvitationCore.js'] += '\n// changed invitation creation';
+  assert.deepEqual(selectFunctions(before, createCoreChange).targets, ['createUserInvitation']);
 
   const entryChange = fixture();
   entryChange['functions/users/completeUserInvitation.js'] += '\n// changed callable configuration';

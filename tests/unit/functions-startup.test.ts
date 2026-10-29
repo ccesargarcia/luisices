@@ -107,6 +107,21 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
+  it('createUserInvitation carrega isolada do módulo amplo e mantém secrets e limite', () => {
+    checkStartup(`
+      const handler = functions.createUserInvitation;
+      assert.equal(handler, require('./users/createUserInvitation').createUserInvitation);
+      assert.equal(require.cache[require.resolve('./users')], undefined,
+        'criação do convite não deve carregar o módulo amplo de usuários');
+      assert.ok(require.cache[require.resolve('./users/createUserInvitationCore')]);
+      assert.equal(handler.__endpoint.maxInstances, 5);
+      const secrets = handler.__endpoint.secretEnvironmentVariables.map(item => item.key);
+      assert.ok(secrets.includes('ORIGIN_SECRET'));
+      assert.ok(secrets.includes('RESEND_API_KEY'));
+      assert.ok(secrets.includes('EVOLUTION_API_KEY'));
+    `);
+  });
+
   it('limpeza de rascunhos carrega isolada do envio e do webhook e mantém agenda', () => {
     checkStartup(`
       const handler = functions.cleanupEmailDrafts;
