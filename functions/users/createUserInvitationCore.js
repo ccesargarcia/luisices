@@ -22,6 +22,9 @@ async function createUserInvitationCore(request, {
     throw new HttpsError('invalid-argument', 'E-mail do convite é obrigatório.');
   }
   const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) {
+    throw new HttpsError('invalid-argument', 'E-mail do convite é obrigatório.');
+  }
 
   try {
     // Mantém o comportamento histórico: qualquer falha de consulta ao Auth é
