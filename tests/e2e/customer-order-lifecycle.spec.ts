@@ -93,7 +93,21 @@ test.describe.serial('Ciclo de vida: Cliente + Pedido', () => {
 
     // Submeter
     await dialog.locator('button[type="submit"]').click();
-    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+    const pendingOperationNotice = dialog.getByText(/O resultado da tentativa anterior está pendente/i);
+    await expect.poll(async () => {
+      if (!(await dialog.isVisible())) return 'closed';
+      if (await pendingOperationNotice.isVisible().catch(() => false)) return 'pending';
+      return 'saving';
+    }, { timeout: 15000, intervals: [100, 250, 500, 1000] }).toMatch(/closed|pending/);
+
+    // A criação é idempotente: se o servidor gravou o pedido, mas a confirmação
+    // da resposta ficou incerta, confirma a mesma operação usando a chave preservada.
+    if (await pendingOperationNotice.isVisible().catch(() => false)) {
+      const confirmPendingOrderButton = dialog.getByRole('button', { name: 'Confirmar pedido' });
+      await expect(confirmPendingOrderButton).toBeEnabled();
+      await confirmPendingOrderButton.click();
+      await expect(dialog).toBeHidden({ timeout: 15000 });
+    }
 
     // Verificar que o pedido aparece no dashboard
     await expect(page.getByText(testCustomer.name).first()).toBeVisible({ timeout: 10000 });
