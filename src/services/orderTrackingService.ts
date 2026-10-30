@@ -56,23 +56,39 @@ export const orderTrackingService = {
     await callable({ linkId });
   },
 
-  async deleteLinksBatch(linkIds: string[]): Promise<{ success: boolean; deletedCount: number }> {
-    if (!linkIds || linkIds.length === 0) return { success: true, deletedCount: 0 };
-    try {
-      const callable = httpsCallable<{ linkIds: string[] }, { success: boolean; deletedCount: number }>(
-        functions,
-        'deleteOrderTrackingLinksBatch'
-      );
-      const result = await callable({ linkIds });
-      return result.data;
-    } catch (error: any) {
-      if (error?.code === 'functions/not-found' || error?.code === 'not-found') {
-        const results = await Promise.allSettled(linkIds.map(id => this.deleteLink(id)));
-        const deletedCount = results.filter(r => r.status === 'fulfilled').length;
-        return { success: true, deletedCount };
+  async deleteLinksBatch(linkIds: string[]): Promise<{ success: boolean; deletedCount: number; failedIds: string[] }> {
+    if (!linkIds || linkIds.length === 0) return { success: true, deletedCount: 0, failedIds: [] };
+
+    const uniqueIds = [...new Set(linkIds)];
+    const failedIds: string[] = [];
+    let deletedCount = 0;
+    const batchSize = 100;
+
+    for (let offset = 0; offset < uniqueIds.length; offset += batchSize) {
+      const chunk = uniqueIds.slice(offset, offset + batchSize);
+      try {
+        const callable = httpsCallable<
+          { linkIds: string[] },
+          { success: boolean; deletedCount: number }
+        >(functions, 'deleteOrderTrackingLinksBatch');
+        const result = await callable({ linkIds: chunk });
+        const removed = result.data.success && result.data.deletedCount === chunk.length;
+        if (removed) deletedCount += result.data.deletedCount;
+        else failedIds.push(...chunk);
+      } catch (error: any) {
+        if (error?.code === 'functions/not-found' || error?.code === 'not-found') {
+          const results = await Promise.allSettled(chunk.map(id => this.deleteLink(id)));
+          results.forEach((result, index) => {
+            if (result.status === 'fulfilled') deletedCount += 1;
+            else failedIds.push(chunk[index]);
+          });
+        } else {
+          failedIds.push(...chunk);
+        }
       }
-      throw error;
     }
+
+    return { success: failedIds.length === 0, deletedCount, failedIds };
   },
 
   async listLinks(cursor: string | null = null): Promise<{ links: OrderTrackingLinkRecord[]; nextCursor: string | null }> {

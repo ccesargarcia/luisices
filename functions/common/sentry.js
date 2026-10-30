@@ -108,7 +108,7 @@ function sanitizeSpan(span) {
   const hasQuery = Object.keys(span.attributes || span.data || {}).some((key) => /db\.(statement|query)/i.test(key));
   const scrubAttributes = (attributes) => Object.fromEntries(Object.entries(attributes || {}).map(([key, value]) => {
     // Consultas e corpos podem conter nomes livres que uma regex não reconhece.
-    if (/db\.(statement|query)|body|payload|query_string/i.test(key)) return [key, '[REDACTED]'];
+    if (/db\.(statement|query)|body|payload|(?:^|[._])query(?:_string)?$/i.test(key)) return [key, '[REDACTED]'];
     if (/url/i.test(key) && typeof value === 'string') return [key, sanitizeText(value.split(/[?#]/)[0])];
     return [key, sanitizeValue(value, key)];
   }));
