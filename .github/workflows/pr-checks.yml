@@ -1,0 +1,57 @@
+name: PR Fast Checks
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "pr-${{ github.event.pull_request.number || github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  quick-validation:
+    name: ⚡ Validação Rápida (Lint + Unit + Build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+
+      - name: Instalar Dependências
+        run: |
+          npm ci --legacy-peer-deps
+          npm --prefix functions ci
+
+      - name: Lint Functions
+        run: npm --prefix functions run lint
+
+      - name: Testes Unitários (Vitest)
+        run: npm run test:unit
+
+      - name: Validar Build do Frontend (Typecheck + Vite)
+        run: npm run build
+
+  optional-e2e:
+    name: 🧪 E2E Playwright (Apenas se solicitado)
+    needs: quick-validation
+    if: |
+      contains(github.event.pull_request.labels.*.name, 'run-e2e') ||
+      contains(github.event.pull_request.title, '[run e2e]') ||
+      contains(github.event.pull_request.title, '[e2e]')
+    uses: ./.github/workflows/test-actions.yml
+    secrets: inherit

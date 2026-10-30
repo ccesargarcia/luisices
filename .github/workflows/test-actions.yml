@@ -28,17 +28,6 @@ on:
           - audit
           - screen-audit
         default: 'all'
-  push:
-    branches:
-      - develop
-    paths:
-      - '.github/workflows/deploy-dev.yml'
-      - '.github/workflows/playwright.yml'
-      - '.github/workflows/test-actions.yml'
-  pull_request:
-    branches:
-      - develop
-      - main
 
 permissions:
   contents: read
@@ -48,48 +37,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify-promotion:
-    name: Verify reusable E2E results
-    if: github.workflow == 'E2E Tests' && ((github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'release/sync-develop-main') || (github.event_name == 'push' && github.ref == 'refs/heads/develop'))
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      checks: read
-      contents: read
-      pull-requests: read
-    outputs:
-      reuse_e2e: ${{ steps.verify.outputs.reuse_e2e }}
-    steps:
-      - name: Checkout candidate commit and branch history
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 1
-
-      - name: Fetch current promotion refs
-        run: git fetch --no-tags --depth=1 origin refs/heads/main:refs/remotes/origin/main refs/heads/develop:refs/remotes/origin/develop
-
-      - name: Verify prior E2E or environment deployments
-        id: verify
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { canReuseE2E } = require('./scripts/reuse-verified-promotion-e2e.cjs');
-            const decision = await canReuseE2E({
-              github,
-              repo: context.repo,
-              context
-            });
-            core.setOutput('reuse_e2e', decision.reuse ? 'true' : 'false');
-            if (decision.reuse) {
-              core.notice(`E2E reutilizados: ${decision.reason}.`);
-            } else {
-              core.info(`E2E serão executados normalmente: ${decision.reason}.`);
-            }
-
   e2e-tests:
-    needs: verify-promotion
-    if: always() && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:

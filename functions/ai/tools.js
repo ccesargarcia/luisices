@@ -569,8 +569,16 @@ class AiToolsExecutor {
     // Otimização de performance: busca apenas a janela necessária no Firestore
     const hasStatusFilter = args.status && !['all', 'todos'].includes(String(args.status).toLowerCase().trim());
     const hasHistoryFilter = Boolean(args.searchTerm || args.startDate || args.endDate || hasStatusFilter);
+    const searchTerm = String(args.searchTerm || '').trim();
+    const exactOrderNumber = /^#[A-Za-z0-9][A-Za-z0-9-]*$/.test(searchTerm) && !args.startDate && !args.endDate;
     const maxLimit = hasHistoryFilter ? 5000 : Math.max(limit * 2, 50);
-    const orders = await this.repos.getScopedOrders(scope, { maxLimit, allowPartial: !hasHistoryFilter, skipCache: true });
+    let orders;
+    if (exactOrderNumber && typeof this.repos.getScopedOrderSummary === 'function') {
+      const order = await this.repos.getScopedOrderSummary(scope, searchTerm);
+      orders = order ? [order] : [];
+    } else {
+      orders = await this.repos.getScopedOrders(scope, { maxLimit, allowPartial: !hasHistoryFilter, skipCache: true });
+    }
     let filtered = orders;
 
     const statusAliases = {
@@ -1025,7 +1033,12 @@ class AiToolsExecutor {
     let phone = args.recipientPhone || '';
     let realOrder = null;
 
-    const orders = (await this.repos.getScopedOrders(scope, { skipCache: true })).filter((order) => !order.isDeleted);
+    const exactOrder = orderNumber && typeof this.repos.getScopedOrderSummary === 'function'
+      ? await this.repos.getScopedOrderSummary(scope, String(orderNumber))
+      : null;
+    const orders = orderNumber && typeof this.repos.getScopedOrderSummary === 'function'
+      ? (exactOrder ? [exactOrder] : [])
+      : (await this.repos.getScopedOrders(scope, { skipCache: true })).filter((order) => !order.isDeleted);
     const cleanTarget = String(orderNumber || '').toLowerCase().replace('#', '').trim();
     const nameTarget = String(recipientName).trim().toLowerCase();
     const canReadPaymentDetails = !Array.isArray(scope?.mcpScopes)

@@ -203,6 +203,19 @@ describe('Precificação: origens, validação e paridade', () => {
 });
 
 describe('Preparação não é execução; mensagens comprovadas e ambiguidade', () => {
+  it('usa busca pontual por identificador em vez de carregar todos os pedidos para WhatsApp', async () => {
+    const getScopedOrders = vi.fn(async () => { throw new Error('não deve carregar a coleção'); });
+    const getScopedOrderSummary = vi.fn(async () => order);
+    const repos = { ...reposFor(), getScopedOrders, getScopedOrderSummary };
+    const draft = await new AiToolsExecutor(repos).executeGenerateWhatsAppMessage(
+      { orderNumber: '#S1', messageType: 'pedido_pronto' }, scope,
+    );
+
+    expect(getScopedOrderSummary).toHaveBeenCalledWith(scope, '#S1');
+    expect(getScopedOrders).not.toHaveBeenCalled();
+    expect(draft.preparationStatus).toBe('draft_prepared');
+  });
+
   it.each(['pending', 'in-progress', 'completed', 'cancelled'])('não inventa embalagem nem pronto para status %s', async (status) => {
     const executor = new AiToolsExecutor(reposFor([{ ...order, status }]));
     const draft = await executor.executeGenerateWhatsAppMessage({ recipientName: order.customerName, orderNumber: '#S1', messageType: 'pedido_pronto' }, scope);
