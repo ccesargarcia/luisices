@@ -28,6 +28,9 @@ on:
           - audit
           - screen-audit
         default: 'all'
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
