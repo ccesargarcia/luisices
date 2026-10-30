@@ -1,0 +1,55 @@
+name: Deploy Firebase Security Rules (Production)
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-rules:
+    name: Deploy Firestore, RTDB and Storage Rules (Production)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools@15.32.1
+
+      - name: Validate and configure production service account
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.PROD_FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-production-rules.json
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+            throw new Error('FIREBASE_SERVICE_ACCOUNT_PROD não está configurado.');
+          }
+          JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+          fs.writeFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, process.env.FIREBASE_SERVICE_ACCOUNT, { mode: 0o600 });
+          NODE
+
+      - name: Deploy Firestore, RTDB and Storage Rules (Production)
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-production-rules.json
+        run: |
+          set -euo pipefail
+          if ! firebase deploy --only firestore:rules,database,storage --project papelaria-dashboard --non-interactive; then
+            echo '⚠️ Deploy de RTDB Rules falhou; tentando Firestore e Storage.'
+            firebase deploy --only firestore:rules,storage --project papelaria-dashboard --non-interactive
+          fi
+
+      - name: Remove production credentials
+        if: always()
+        run: rm -f "${{ runner.temp }}/firebase-production-rules.json"

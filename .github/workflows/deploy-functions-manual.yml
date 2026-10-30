@@ -1,12 +1,30 @@
-name: Deploy Firebase Functions & Rules (Dev manual / Prod automático)
+name: Deploy Firebase Functions (Dev manual / Production reusable)
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'functions/**'
-      - 'firebase.json'
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Ambiente selecionado pelo orquestrador de release'
+        required: true
+        type: string
+      functions_target:
+        description: 'auto ou lista explícita de Functions'
+        required: false
+        default: 'auto'
+        type: string
+      functions_base_sha:
+        description: 'Último SHA de produção com Functions publicado com sucesso'
+        required: false
+        default: ''
+        type: string
+      deploy_rules_and_indexes:
+        required: false
+        default: false
+        type: boolean
+      update_secrets:
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       environment:
@@ -16,7 +34,6 @@ on:
         type: choice
         options:
           - dev
-          - prod
       functions_target:
         description: 'Selecione o grupo ou função para deploy'
         required: true
@@ -89,11 +106,13 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TARGET="${{ inputs.environment }}"
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            TARGET="prod"
           else
-            TARGET="dev"
+            TARGET="${{ inputs.environment }}"
           fi
+          case "$TARGET" in
+            dev|prod) ;;
+            *) echo "Ambiente de deploy inválido: $TARGET"; exit 1 ;;
+          esac
           echo "target=$TARGET" >> "$GITHUB_OUTPUT"
 
       - name: Localizar última publicação bem-sucedida das Functions
@@ -102,6 +121,12 @@ jobs:
         with:
           script: |
             const targetEnv = `${{ steps.env.outputs.target }}`;
+            const requestedBaseSha = `${{ inputs.functions_base_sha }}`;
+            if (/^[a-f0-9]{40}$/.test(requestedBaseSha)) {
+              core.setOutput('sha', requestedBaseSha);
+              core.info(`Usando SHA base informado pelo orquestrador de ${targetEnv}.`);
+              return;
+            }
             const targetJobName = targetEnv === 'prod' ? 'Deploy Firebase Functions & Rules (Production)' : 'Deploy Firebase Functions & Rules (Dev)';
             for (let page = 1; page <= 3; page++) {
               const { data } = await github.rest.actions.listWorkflowRuns({
@@ -235,7 +260,7 @@ jobs:
           fi
 
           INPUT_FN="${{ inputs.functions_target }}"
-          if [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ]; then
+          if [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ] && [ "$INPUT_FN" != "auto" ]; then
             TARGETS=$(echo "$INPUT_FN" | tr ',' ' ' | tr -s ' ')
             DEPLOY_TARGET=""
             for fn in $TARGETS; do
@@ -450,7 +475,7 @@ jobs:
               ;;
           esac
 
-          if [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ]; then
+          if [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ] && [ "$INPUT_FN" != "auto" ]; then
             TARGETS=$(echo "$INPUT_FN" | tr ',' ' ' | tr -s ' ')
             DEPLOY_TARGET=""
             for fn in $TARGETS; do

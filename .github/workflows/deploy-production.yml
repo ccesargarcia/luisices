@@ -1,0 +1,236 @@
+name: Production Release (main)
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan production release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      base_sha: ${{ steps.base.outputs.sha }}
+      functions: ${{ steps.functions.outputs.has_targets }}
+      indexes: ${{ steps.changes.outputs.indexes }}
+      rules: ${{ steps.changes.outputs.rules }}
+      cloudflare_api: ${{ steps.changes.outputs.cloudflare_api }}
+      cloudflare_cdn: ${{ steps.changes.outputs.cloudflare_cdn }}
+      cloudflare_cache: ${{ steps.changes.outputs.cloudflare_cache }}
+      cloudflare_target: ${{ steps.changes.outputs.cloudflare_target }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+      has_changes: ${{ steps.changes.outputs.has_changes }}
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Find last successful production release
+        id: base
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              ...context.repo,
+              workflow_id: 'deploy-production.yml',
+              branch: 'main',
+              status: 'completed',
+              per_page: 50
+            });
+            const previous = data.workflow_runs.find(run => run.conclusion === 'success' && run.head_sha !== context.sha);
+            if (previous) {
+              core.setOutput('sha', previous.head_sha);
+              core.info(`Base de produção: ${previous.head_sha} (run ${previous.id}).`);
+            } else {
+              core.setOutput('sha', '');
+              core.warning('Ainda não há release de produção concluída; o seletor fará deploy fail-safe de todas as Functions elegíveis.');
+            }
+
+      - name: Setup Node for Functions selector
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Plan changed Functions
+        id: functions
+        env:
+          FUNCTIONS_BASE_SHA: ${{ steps.base.outputs.sha }}
+          TARGET_ENV: prod
+          GITHUB_SHA: ${{ github.sha }}
+        run: node scripts/select-functions-deploy.mjs
+
+      - name: Detect production components
+        id: changes
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          BASE="$BASE_SHA"
+          if [ -z "$BASE" ]; then BASE="$BEFORE_SHA"; fi
+          if [[ "$BASE" =~ ^[a-f0-9]{40}$ ]] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            CHANGED=$(git diff --name-only "$BASE" "$HEAD_SHA")
+          else
+            echo '⚠️ Sem SHA-base confiável; release será conservadora e publicará todos os componentes.'
+            CHANGED='*'
+          fi
+
+          matches() {
+            local pattern="$1"
+            printf '%s\n' "$CHANGED" | grep -Eq "$pattern"
+          }
+          frontend=false
+          indexes=false
+          rules=false
+          cloudflare_api=false
+          cloudflare_cdn=false
+          cloudflare_cache=false
+          if matches '^(src/|public/|index\.html$|vite\.config\.|package(-lock)?\.json$|tsconfig[^/]*\.json$)'; then frontend=true; fi
+          if matches '(^\*?$|^firestore\.indexes\.json$)'; then indexes=true; fi
+          if matches '(^\*?$|^(firestore\.rules|storage\.rules|database\.rules\.json|firebase\.json)$)'; then rules=true; fi
+          if matches '(^\*?$|^cloudflare/api-worker/|^scripts/(ensure-mcp-cache-bypass|ensure-order-tracking-rate-limit|purge-cloudflare-cache)\.mjs$)'; then cloudflare_api=true; fi
+          if matches '(^\*?$|^cloudflare/cdn-worker/)'; then cloudflare_cdn=true; fi
+          if matches '(^\*?$|^functions/mcp/|^public/\.well-known/)'; then cloudflare_cache=true; fi
+          cloudflare_target=''
+          if [ "$cloudflare_api" = true ] && [ "$cloudflare_cdn" = true ]; then cloudflare_target='all'
+          elif [ "$cloudflare_api" = true ]; then cloudflare_target='api'
+          elif [ "$cloudflare_cdn" = true ]; then cloudflare_target='cdn'
+          fi
+          has_changes=false
+          if [ "$frontend" = true ] || [ "$indexes" = true ] || [ "$rules" = true ] || [ "$cloudflare_target" != '' ] || [ "$cloudflare_cache" = true ] || [ '${{ steps.functions.outputs.has_targets }}' = true ]; then
+            has_changes=true
+          fi
+
+          {
+            echo "frontend=$frontend"
+            echo "indexes=$indexes"
+            echo "rules=$rules"
+            echo "cloudflare_api=$cloudflare_api"
+            echo "cloudflare_cdn=$cloudflare_cdn"
+            echo "cloudflare_cache=$cloudflare_cache"
+            echo "cloudflare_target=$cloudflare_target"
+            echo "has_changes=$has_changes"
+          } >> "$GITHUB_OUTPUT"
+          printf 'Production plan: frontend=%s indexes=%s rules=%s cloudflare=%s functions=%s\n' \
+            "$frontend" "$indexes" "$rules" "$cloudflare_target" '${{ steps.functions.outputs.has_targets }}'
+
+  indexes:
+    name: Firestore Indexes (Production)
+    needs: plan
+    if: needs.plan.outputs.indexes == 'true'
+    uses: ./.github/workflows/deploy-indexes.yml
+    with:
+      environment: prod
+    secrets: inherit
+
+  functions:
+    name: Functions (Production)
+    needs: plan
+    if: needs.plan.outputs.functions == 'true'
+    uses: ./.github/workflows/deploy-functions-manual.yml
+    with:
+      environment: prod
+      functions_target: auto
+      functions_base_sha: ${{ needs.plan.outputs.base_sha }}
+      deploy_rules_and_indexes: false
+      update_secrets: false
+    secrets: inherit
+
+  cloudflare:
+    name: Cloudflare Workers (Production)
+    needs: [plan, indexes, functions]
+    if: |
+      always() &&
+      needs.plan.result == 'success' &&
+      (needs.indexes.result == 'success' || needs.indexes.result == 'skipped') &&
+      (needs.functions.result == 'success' || needs.functions.result == 'skipped') &&
+      needs.plan.outputs.cloudflare_target != ''
+    uses: ./.github/workflows/deploy-cloudflare.yml
+    with:
+      target_environment: production
+      target_worker: ${{ needs.plan.outputs.cloudflare_target }}
+    secrets: inherit
+
+  purge-mcp-cache:
+    name: Purge MCP metadata cache (Production)
+    needs: [plan, functions, cloudflare]
+    if: |
+      always() &&
+      needs.plan.result == 'success' &&
+      (needs.functions.result == 'success' || needs.functions.result == 'skipped') &&
+      (needs.cloudflare.result == 'success' || needs.cloudflare.result == 'skipped') &&
+      needs.plan.outputs.cloudflare_cache == 'true' &&
+      needs.plan.outputs.cloudflare_api != 'true'
+    uses: ./.github/workflows/deploy-cloudflare.yml
+    with:
+      target_environment: production
+      target_worker: cache
+    secrets: inherit
+
+  frontend:
+    name: Frontend (Production)
+    needs: [plan, indexes, functions, cloudflare, purge-mcp-cache]
+    if: |
+      always() &&
+      needs.plan.result == 'success' &&
+      (needs.indexes.result == 'success' || needs.indexes.result == 'skipped') &&
+      (needs.functions.result == 'success' || needs.functions.result == 'skipped') &&
+      (needs.cloudflare.result == 'success' || needs.cloudflare.result == 'skipped') &&
+      (needs.purge-mcp-cache.result == 'success' || needs.purge-mcp-cache.result == 'skipped') &&
+      needs.plan.outputs.frontend == 'true'
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit
+
+  rules:
+    name: Firebase Rules (Production, last)
+    needs: [plan, indexes, functions, cloudflare, purge-mcp-cache, frontend]
+    if: |
+      always() &&
+      needs.plan.result == 'success' &&
+      (needs.indexes.result == 'success' || needs.indexes.result == 'skipped') &&
+      (needs.functions.result == 'success' || needs.functions.result == 'skipped') &&
+      (needs.cloudflare.result == 'success' || needs.cloudflare.result == 'skipped') &&
+      (needs.purge-mcp-cache.result == 'success' || needs.purge-mcp-cache.result == 'skipped') &&
+      (needs.frontend.result == 'success' || needs.frontend.result == 'skipped') &&
+      needs.plan.outputs.rules == 'true'
+    uses: ./.github/workflows/deploy-firebase-rules-production.yml
+    secrets: inherit
+
+  release-summary:
+    name: Release result
+    needs: [plan, indexes, functions, cloudflare, purge-mcp-cache, frontend, rules]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report release status
+        env:
+          PLAN: ${{ needs.plan.result }}
+          INDEXES: ${{ needs.indexes.result }}
+          FUNCTIONS: ${{ needs.functions.result }}
+          CLOUDFLARE: ${{ needs.cloudflare.result }}
+          CACHE_PURGE: ${{ needs.purge-mcp-cache.result }}
+          FRONTEND: ${{ needs.frontend.result }}
+          RULES: ${{ needs.rules.result }}
+        run: |
+          printf 'Plan: %s\nIndexes: %s\nFunctions: %s\nCloudflare: %s\nCache purge: %s\nFrontend: %s\nRules: %s\n' \
+            "$PLAN" "$INDEXES" "$FUNCTIONS" "$CLOUDFLARE" "$CACHE_PURGE" "$FRONTEND" "$RULES"
+          for result in "$PLAN" "$INDEXES" "$FUNCTIONS" "$CLOUDFLARE" "$CACHE_PURGE" "$FRONTEND" "$RULES"; do
+            if [ "$result" = failure ] || [ "$result" = cancelled ]; then exit 1; fi
+          done
