@@ -5,7 +5,7 @@ import {
   isBirthdayThisMonth,
   isBirthdayUpcoming,
 } from '../../src/app/utils/date';
-import { getLedgerDateRange, getLedgerDateRangeQueryInput } from '../../src/hooks/useSalesLedger';
+import { getLedgerDateRange, getLedgerDateRangeQueryInput, shouldAutoBackfillLedger } from '../../src/hooks/useSalesLedger';
 import { getSalesLedgerDateRangeQuery, getSalesLedgerQuery } from '../../src/services/firebaseLedgerService';
 
 vi.mock('../../src/lib/firebase', () => ({
@@ -21,6 +21,13 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 describe('Etapa 8: Consultas, Fusos Horários e Paginação (Achados 10, 11 e 18)', () => {
+  it('só executa backfill legado para ledger vazio quando a consulta permite a migração', () => {
+    expect(shouldAutoBackfillLedger(0, false, true)).toBe(true);
+    expect(shouldAutoBackfillLedger(0, false, false)).toBe(false);
+    expect(shouldAutoBackfillLedger(1, false, true)).toBe(false);
+    expect(shouldAutoBackfillLedger(0, true, true)).toBe(false);
+  });
+
   describe('Achado 11: Resolução de fusos horários locais em datas', () => {
     it('formatDateShort deve formatar tanto strings YYYY-MM-DD quanto ISO timestamps sem retornar Invalid Date', () => {
       // YYYY-MM-DD padrão

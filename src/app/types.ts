@@ -130,6 +130,7 @@ export interface Order {
   shippingUpdatedAt?: string | null;
   /** Indica apenas se existe um link público ativo; o hash secreto não é exposto ao cliente. */
   hasPublicTracking?: boolean;
+  publicTrackingLinkId?: string;
   publicTrackingExpiresAt?: string | null;
 }
 

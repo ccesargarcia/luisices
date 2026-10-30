@@ -99,10 +99,14 @@ async function createUserInvitationCore(request, {
     const whatsappPromise = requestedPhone
       ? sendWhatsAppMessage(requestedPhone, `Convite Luisices\n\nAcesse o link para criar sua conta:\n${inviteLink}\n\nO convite expira em 48 horas.`)
       : Promise.resolve();
-    await Promise.all([
+    const [emailResult] = await Promise.all([
       emailPromise,
       whatsappPromise.catch((error) => logger.error('[createUserInvitation] Evolution API:', error)),
     ]);
+    if (emailResult?.error) {
+      logger.error('[createUserInvitation] Resend:', JSON.stringify(emailResult.error));
+      throw new HttpsError('internal', 'Não foi possível enviar o convite por e-mail.');
+    }
     await writeUserAudit('USER_INVITATION_CREATED', request.auth.uid, null, { email: normalizedEmail });
     return { success: true, expiresAt: expiresAt.toISOString() };
   } catch (error) {
