@@ -55,9 +55,37 @@ test('main promotion reuses tests only after exact main/develop deployments were
   assert.equal(verify.outputs.reuse_e2e, '${{ steps.verify.outputs.reuse_e2e }}');
   assert.equal(e2e.needs, 'verify-promotion');
   assert.match(e2e.if, /always\(\)/);
-  assert.match(e2e.if, /needs\.verify-promotion\.outputs\.reuse_e2e != 'true'/);
+  assert.doesNotMatch(e2e.if, /reuse_e2e/);
+  assert.deepEqual(e2e.strategy.matrix.shard, [1, 2]);
+  const reuseStep = e2e.steps.find(step => step.name === 'Reuse verified E2E results');
+  assert.ok(reuseStep, 'expected a lightweight successful step when verified results are reused');
+  assert.match(reuseStep.if, /reuse_e2e == 'true'/);
+  const conditionalSteps = e2e.steps.filter(step => step.name !== 'Reuse verified E2E results');
+  assert.ok(conditionalSteps.every(step =>
+    step.if?.includes("needs.verify-promotion.result != 'success'")
+      && step.if.includes("needs.verify-promotion.outputs.reuse_e2e != 'true'")
+  ), 'all expensive steps must be skipped when E2E results are verified');
+  const testExecutionSteps = conditionalSteps.filter(step =>
+    !step.name.startsWith('Upload ') && step.name !== 'Report E2E failures to summary'
+  );
+  assert.ok(testExecutionSteps.every(step => step.if.includes('success()')),
+    'a failed setup or test step must stop later test work');
+  const historyFetch = verify.steps.find(step => step.name === 'Fetch current promotion refs');
+  assert.match(historyFetch.if, /head\.ref == 'release\/sync-develop-main'/);
+  assert.match(historyFetch.run, /git fetch --no-tags --unshallow origin/);
+  assert.doesNotMatch(historyFetch.run, /--depth=1/);
   assert.ok(trends.needs.includes('verify-promotion'));
   assert.match(trends.if, /reuse_e2e != 'true'/);
+});
+
+test('E2E verifier regression tests run in the CI workflow contract step', async () => {
+  const tests = await workflow('test-actions.yml');
+  const contractStep = tests.jobs['e2e-tests'].steps.find(step =>
+    step.name === 'Validate deployment workflow contracts'
+  );
+
+  assert.ok(contractStep, 'expected the workflow contract test step');
+  assert.match(contractStep.run, /tests\/scripts\/reuse-verified-promotion-e2e\.test\.mjs/);
 });
 
 test('Functions deployment fetches the previous deployment commit before calculating its delta', async () => {
