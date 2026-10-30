@@ -49,6 +49,26 @@ test('dev deployment publishes indexes before application changes and rules last
   assert.ok(dev.jobs['deploy-cloudflare'].needs.includes('cloudflare-validation'));
 });
 
+test('dev deployment reuses successful E2E checks from the merged PR and fails safe without them', async () => {
+  const dev = await workflow('deploy-dev.yml');
+  const detect = dev.jobs['detect-changes'];
+  const checksStep = detect.steps.find(step => step.name === 'Reutilizar E2E aprovados da PR mesclada');
+  const resolveStep = detect.steps.find(step => step.name === 'Resolver Alvos e Estratégia de Testes');
+
+  assert.ok(checksStep, 'expected merged pull request checks to be reused');
+  assert.equal(detect.permissions['pull-requests'], 'read');
+  assert.equal(detect.permissions.checks, 'read');
+  assert.match(checksStep.with.script, /listPullRequestsAssociatedWithCommit/);
+  assert.match(checksStep.with.script, /merge_commit_sha === context\.sha/);
+  assert.match(checksStep.with.script, /filter: 'latest'/);
+  assert.match(checksStep.with.script, /\['e2e-tests \(1\)', 'e2e-tests \(2\)'\]/);
+  assert.match(checksStep.with.script, /core\.setOutput\('verified', 'false'\)/);
+  assert.match(checksStep.with.script, /core\.setOutput\('verified', 'true'\)/);
+  assert.match(checksStep.with.script, /mantendo os testes neste push/);
+  assert.equal(resolveStep.env.MERGED_PR_E2E_VERIFIED, '${{ steps.pr_checks.outputs.verified }}');
+  assert.match(resolveStep.run, /MERGED_PR_E2E_VERIFIED.*true/);
+});
+
 test('dev deployment falls back to an older Functions baseline when GitHub API history is unavailable', async () => {
   const dev = await workflow('deploy-dev.yml');
   const baselineStep = dev.jobs['detect-changes'].steps.find(step =>

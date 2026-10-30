@@ -19,6 +19,8 @@ Ordem quando os componentes correspondentes mudarem:
 
 Os jobs não relacionados à mudança são ignorados. O deploy de regras não repete o deploy dos índices. A publicação de rules permanece depois da aplicação, evitando publicar uma regra incompatível antes do restante do release.
 
+Quando um push em `develop` corresponde exatamente ao merge de uma PR e os checks obrigatórios `e2e-tests (1)` e `e2e-tests (2)` passaram no commit da cabeça dessa PR, o workflow reutiliza essa validação e não repete unitários/E2E após o merge. Se não localizar a PR, se os checks estiverem ausentes/falharem ou a consulta à API do GitHub falhar, a validação normal permanece antes do deploy. Pushes diretos continuam executando os testes necessários.
+
 ## Produção (`main`)
 
 O workflow `.github/workflows/deploy-production.yml` é o único orquestrador automático disparado por push em `main`. Ele não executa novamente E2E/unitários; recebe apenas commits que foram aceitos pela política de proteção de branch.
