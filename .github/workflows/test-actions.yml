@@ -106,11 +106,11 @@ jobs:
         run: echo 'E2E já aprovados e validados para esta promoção; mantendo o check deste shard como aprovado.'
 
       - name: Checkout
-        if: (success() || needs.verify-promotion.result != 'success') && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
+        if: success() && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
         uses: actions/checkout@v5
 
       - name: Setup Node
-        if: (success() || needs.verify-promotion.result != 'success') && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
+        if: success() && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
         uses: actions/setup-node@v5
         with:
           node-version: '22'
@@ -120,17 +120,17 @@ jobs:
             functions/package-lock.json
 
       - name: Install dependencies
-        if: (success() || needs.verify-promotion.result != 'success') && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
+        if: success() && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
         run: |
           npm ci --legacy-peer-deps
           npm --prefix functions ci
 
       - name: Validate deployment workflow contracts
-        if: (success() || needs.verify-promotion.result != 'success') && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
+        if: success() && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
         run: node --test tests/scripts/deployment-workflows.test.mjs tests/scripts/functions-deploy-selection.test.mjs tests/scripts/reuse-verified-promotion-e2e.test.mjs
 
       - name: Create .env files with Firebase and test config
-        if: (success() || needs.verify-promotion.result != 'success') && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
+        if: success() && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
         env:
           API_KEY: ${{ secrets.DEV_VITE_FIREBASE_API_KEY || 'AIzaSy000000000000000000000000000000000' }}
           AUTH_DOMAIN: ${{ secrets.DEV_VITE_FIREBASE_AUTH_DOMAIN || 'localhost' }}
@@ -173,53 +173,53 @@ jobs:
           EOF
 
       - name: Prepare test metrics directory
-        if: (success() || needs.verify-promotion.result != 'success') && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
+        if: success() && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
         run: mkdir -p test-results
 
       - name: Run Unit Tests (Vitest)
-        if: (success() || needs.verify-promotion.result != 'success') && matrix.shard == 1 && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
+        if: success() && matrix.shard == 1 && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
         env:
           TEST_REPORT_DIR: test-results
           TEST_REPORT_NAME: vitest-unit-${{ matrix.shard }}
         run: npm run test:unit
 
       - name: Lint Functions
-        if: (success() || needs.verify-promotion.result != 'success') && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
+        if: success() && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
         run: npm --prefix functions run lint
 
       - name: Install Playwright browsers
-        if: (success() || needs.verify-promotion.result != 'success') && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
+        if: success() && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
         run: npx playwright install chromium --with-deps
 
       - name: Setup Java (for Firebase Emulators)
-        if: (success() || needs.verify-promotion.result != 'success') && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
+        if: success() && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '21'
 
       - name: Verify Firebase CLI from the project lockfile
-        if: (success() || needs.verify-promotion.result != 'success') && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
+        if: success() && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
         run: npx firebase --version
 
       - name: Run Rules Integration Tests
-        if: (success() || needs.verify-promotion.result != 'success') && matrix.shard == 1 && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
+        if: success() && matrix.shard == 1 && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
         env:
           TEST_REPORT_DIR: test-results
           TEST_REPORT_NAME: vitest-integration-${{ matrix.shard }}
         run: npm run test:integration
 
       - name: Run RTDB Presence Integration Tests
-        if: (success() || needs.verify-promotion.result != 'success') && matrix.shard == 1 && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
+        if: success() && matrix.shard == 1 && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
         run: npm run test:presence
 
       - name: Build
-        if: (success() || needs.verify-promotion.result != 'success') && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
+        if: success() && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
         run: npm run build
 
       - name: Run E2E tests with Firebase Emulator Suite (0 Cloud Reads)
         if: >-
-          (success() || needs.verify-promotion.result != 'success')
+          success()
           && (needs.verify-promotion.result != 'success' || needs.verify-promotion.outputs.reuse_e2e != 'true')
           && (
             (

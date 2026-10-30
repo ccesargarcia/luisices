@@ -68,7 +68,7 @@ test('main promotion reuses tests only after exact main/develop deployments were
   const testExecutionSteps = conditionalSteps.filter(step =>
     !step.name.startsWith('Upload ') && step.name !== 'Report E2E failures to summary'
   );
-  assert.ok(testExecutionSteps.every(step => step.if.includes('success()')),
+  assert.ok(testExecutionSteps.every(step => step.if.startsWith('success() &&')),
     'a failed setup or test step must stop later test work');
   const historyFetch = verify.steps.find(step => step.name === 'Fetch current promotion refs');
   assert.match(historyFetch.if, /head\.ref == 'release\/sync-develop-main'/);
