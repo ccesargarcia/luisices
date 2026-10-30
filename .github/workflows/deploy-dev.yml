@@ -96,9 +96,15 @@ jobs:
                 status: 'completed', per_page: 30, page
               });
               for (const run of data.workflow_runs) {
-                const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
-                  ...context.repo, run_id: run.id, per_page: 100
-                });
+                let jobs;
+                try {
+                  jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                    ...context.repo, run_id: run.id, per_page: 100
+                  });
+                } catch (error) {
+                  core.warning(`Não foi possível consultar os jobs do run ${run.id} (HTTP ${error.status || 'desconhecido'}); buscando uma referência anterior.`);
+                  continue;
+                }
                 if (jobs.some(job => job.name === '🚀 Deploy Firebase Functions (Dev)' &&
                   job.conclusion === 'success' && job.steps?.some(step =>
                     step.name === 'Deploy Firebase Functions (Dev)' && step.conclusion === 'success'))) {
