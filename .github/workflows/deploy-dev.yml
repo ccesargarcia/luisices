@@ -10,12 +10,10 @@ on:
       - '.vscode/**'
       - 'alexa-icons/**'
       - '.github/workflows/deploy-alexa-skill.yml'
-      - '.github/workflows/deploy.yml'
       - '.github/workflows/playwright.yml'
       - '.github/workflows/test-actions.yml'
       - '.github/workflows/screen-audit.yml'
       - '.github/workflows/migrate-user.yml'
-      - '.github/workflows/deploy-indexes.yml'
       - '.github/workflows/load-test.yml'
       - '.github/workflows/migrate-products.yml'
   workflow_dispatch:
@@ -53,12 +51,19 @@ jobs:
   detect-changes:
     name: 🔍 Detectar Alterações
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     outputs:
       frontend: ${{ steps.targets.outputs.frontend }}
       functions: ${{ steps.targets.outputs.functions }}
-      functions_scope: ${{ steps.targets.outputs.functions_scope }}
+      functions_chunks: ${{ steps.functions_plan.outputs.chunks }}
       rules: ${{ steps.targets.outputs.rules }}
+      indexes: ${{ steps.targets.outputs.indexes }}
+      cloudflare_api: ${{ steps.filter.outputs.cloudflare_api }}
+      cloudflare_cdn: ${{ steps.filter.outputs.cloudflare_cdn }}
+      cloudflare_target: ${{ steps.targets.outputs.cloudflare_target }}
       need_e2e: ${{ steps.targets.outputs.need_e2e }}
       need_functions_validation: ${{ steps.targets.outputs.need_functions_validation }}
       need_frontend_validation: ${{ steps.targets.outputs.need_frontend_validation }}
@@ -69,6 +74,58 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Setup Node for deploy selection
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Validar seletor de Functions
+        run: node --test tests/scripts/functions-deploy-selection.test.mjs
+
+      - name: Localizar última publicação bem-sucedida das Functions
+        id: functions_base
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // A failed frontend job does not undo a successful backend deploy.
+            // Conversely, a successful docs/test run is not a backend baseline.
+            for (let page = 1; page <= 3; page++) {
+              const { data } = await github.rest.actions.listWorkflowRuns({
+                ...context.repo, workflow_id: 'deploy-dev.yml', branch: 'develop',
+                status: 'completed', per_page: 30, page
+              });
+              for (const run of data.workflow_runs) {
+                const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                  ...context.repo, run_id: run.id, per_page: 100
+                });
+                if (jobs.some(job => job.name === '🚀 Deploy Firebase Functions (Dev)' &&
+                  job.conclusion === 'success' && job.steps?.some(step =>
+                    step.name === 'Deploy Firebase Functions (Dev)' && step.conclusion === 'success'))) {
+                  core.setOutput('sha', run.head_sha);
+                  core.info(`Backend publicado: ${run.head_sha} (run ${run.id})`);
+                  return;
+                }
+              }
+              if (data.workflow_runs.length < 30) break;
+            }
+            // First deployment / unavailable history: select all explicit exports.
+            core.warning('Sem referência de backend: será selecionado todo o backend atual.');
+            core.setOutput('sha', '');
+
+      - name: Selecionar Functions por dependências desde a última publicação
+        id: functions_plan
+        env:
+          FUNCTIONS_BASE_SHA: ${{ steps.functions_base.outputs.sha }}
+          TARGET_ENV: dev
+          FORCE_FUNCTIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'all' }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if echo "$COMMIT_MSG" | grep -qiE '\[deploy all\]|\[all\]'; then
+            export FORCE_FUNCTIONS=true
+          fi
+          node scripts/select-functions-deploy.mjs
+
 
       - name: Path Filter
         id: filter
@@ -85,35 +142,46 @@ jobs:
               - 'vite.config.*'
               - 'package*.json'
               - 'tsconfig*.json'
-            functions:
-              - 'functions/**'
-              # Este script é executado durante o deploy para sincronizar secrets.
-              - 'scripts/sync-secrets-safe.mjs'
             rules:
               - 'firestore.rules'
-              - 'firestore.indexes.json'
               - 'storage.rules'
               - 'database.rules.json'
               - 'firebase.json'
+            indexes:
+              - 'firestore.indexes.json'
+            cloudflare_api:
+              - 'cloudflare/api-worker/**'
+              - 'scripts/ensure-mcp-cache-bypass.mjs'
+              - 'scripts/ensure-order-tracking-rate-limit.mjs'
+              - 'scripts/purge-cloudflare-cache.mjs'
+            cloudflare_cdn:
+              - 'cloudflare/cdn-worker/**'
             e2e:
               - 'tests/e2e/**'
               - 'playwright.config.*'
             unit_tests:
               - 'tests/unit/**'
+              - 'tests/scripts/**'
               - 'vitest*.ts'
             integration_tests:
               - 'tests/integration/**'
             mcp_metadata:
               - 'functions/mcp/**'
-              - 'cloudflare/api-worker/**'
               - 'public/.well-known/**'
             ci:
               - '.github/workflows/deploy-dev.yml'
+              - '.github/workflows/deploy-functions-manual.yml'
+              - '.github/workflows/deploy-indexes.yml'
+              - '.github/workflows/deploy-cloudflare.yml'
+              - '.github/workflows/deploy-production.yml'
+              - '.github/workflows/deploy-firebase-rules-production.yml'
+              - '.github/workflows/deploy.yml'
               - '.github/workflows/test-actions.yml'
             maintenance:
               - 'scripts/fix-negative-values.mjs'
               - 'scripts/audit-order-integrity.mjs'
               - 'scripts/order-integrity-audit-core.mjs'
+              - 'scripts/select-functions-deploy.mjs'
 
       - name: Resolver Alvos e Estratégia de Testes
         id: targets
@@ -123,16 +191,18 @@ jobs:
           INPUT_SKIP_TESTS: ${{ inputs.skip_tests }}
           INPUT_RUN_E2E: ${{ inputs.run_e2e || false }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
-          BASE_SHA: ${{ github.event.before }}
           FILTER_FRONTEND: ${{ steps.filter.outputs.frontend }}
-          FILTER_FUNCTIONS: ${{ steps.filter.outputs.functions }}
+          FILTER_FUNCTIONS: ${{ steps.functions_plan.outputs.has_targets }}
           FILTER_RULES: ${{ steps.filter.outputs.rules }}
+          FILTER_INDEXES: ${{ steps.filter.outputs.indexes }}
           FILTER_E2E: ${{ steps.filter.outputs.e2e }}
           FILTER_UNIT_TESTS: ${{ steps.filter.outputs.unit_tests }}
           FILTER_INTEGRATION_TESTS: ${{ steps.filter.outputs.integration_tests }}
           FILTER_CI: ${{ steps.filter.outputs.ci }}
           FILTER_MAINTENANCE: ${{ steps.filter.outputs.maintenance }}
           FILTER_MCP_METADATA: ${{ steps.filter.outputs.mcp_metadata }}
+          FILTER_CLOUDFLARE_API: ${{ steps.filter.outputs.cloudflare_api }}
+          FILTER_CLOUDFLARE_CDN: ${{ steps.filter.outputs.cloudflare_cdn }}
         run: |
           # 1. Identificar flags na mensagem do commit e inputs
           SKIP_TESTS=false
@@ -165,42 +235,39 @@ jobs:
             DEPLOY_FRONTEND=false
             DEPLOY_FUNCTIONS=true
             DEPLOY_RULES=false
+            DEPLOY_INDEXES=false
           elif [ "$INPUT_TARGET" = "hosting-only" ] || [ "$ONLY_HOSTING" = "true" ]; then
             DEPLOY_FRONTEND=true
             DEPLOY_FUNCTIONS=false
             DEPLOY_RULES=false
+            DEPLOY_INDEXES=false
           elif [ "$INPUT_TARGET" = "rules-only" ]; then
             DEPLOY_FRONTEND=false
             DEPLOY_FUNCTIONS=false
             DEPLOY_RULES=true
+            DEPLOY_INDEXES=true
           elif [ "$INPUT_TARGET" = "all" ] || [ "$FORCE_ALL" = "true" ]; then
             DEPLOY_FRONTEND=true
             DEPLOY_FUNCTIONS=true
             DEPLOY_RULES=true
+            DEPLOY_INDEXES=true
           else
             # Modo auto baseado nas alterações detectadas
             if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
               DEPLOY_FRONTEND=true
               DEPLOY_FUNCTIONS=true
               DEPLOY_RULES=true
+              DEPLOY_INDEXES=true
             else
               DEPLOY_FRONTEND="$FILTER_FRONTEND"
               DEPLOY_FUNCTIONS="$FILTER_FUNCTIONS"
               DEPLOY_RULES="$FILTER_RULES"
+              DEPLOY_INDEXES="$FILTER_INDEXES"
             fi
           fi
 
-          # Implanta só os exports da SuperFrete quando esse for o único arquivo de Functions alterado.
-          FUNCTIONS_SCOPE=none
-          if [ "$DEPLOY_FUNCTIONS" = "true" ]; then
-            FUNCTIONS_SCOPE=all
-            if [ "$EVENT_NAME" = "push" ] && [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
-              CHANGED_FUNCTION_FILES=$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA" -- functions/)
-              if [ "$CHANGED_FUNCTION_FILES" = "functions/orders/superfrete.js" ]; then
-                FUNCTIONS_SCOPE=superfrete
-              fi
-            fi
-          fi
+          # O plano usa a última publicação bem-sucedida, incluindo alterações
+          # pendentes de runs que falharam. Hosting/rules-only continuam explícitos.
 
           # 3. Determinar se testes E2E do Playwright são necessários
           NEED_E2E=false
@@ -210,7 +277,7 @@ jobs:
                 NEED_E2E=true
               fi
             else
-              if [ "$FORCE_ALL" = "true" ] || [ "$DEPLOY_FRONTEND" = "true" ] || [ "$DEPLOY_RULES" = "true" ] || [ "$FILTER_E2E" = "true" ] || [ "$FILTER_INTEGRATION_TESTS" = "true" ]; then
+              if [ "$FORCE_ALL" = "true" ] || [ "$DEPLOY_FRONTEND" = "true" ] || [ "$DEPLOY_RULES" = "true" ] || [ "$FILTER_INDEXES" = "true" ] || [ "$FILTER_E2E" = "true" ] || [ "$FILTER_INTEGRATION_TESTS" = "true" ]; then
                 NEED_E2E=true
               fi
             fi
@@ -232,25 +299,34 @@ jobs:
 
           # 5. Determinar se há algo para deployar
           HAS_CHANGES=false
-          if [ "$DEPLOY_FRONTEND" = "true" ] || [ "$DEPLOY_FUNCTIONS" = "true" ] || [ "$DEPLOY_RULES" = "true" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+          if [ "$DEPLOY_FRONTEND" = "true" ] || [ "$DEPLOY_FUNCTIONS" = "true" ] || [ "$DEPLOY_RULES" = "true" ] || [ "$DEPLOY_INDEXES" = "true" ] || [ "$FILTER_CLOUDFLARE_API" = "true" ] || [ "$FILTER_CLOUDFLARE_CDN" = "true" ] || [ "$FILTER_MCP_METADATA" = "true" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             HAS_CHANGES=true
           fi
 
           echo "frontend=$DEPLOY_FRONTEND" >> "$GITHUB_OUTPUT"
           echo "functions=$DEPLOY_FUNCTIONS" >> "$GITHUB_OUTPUT"
-          echo "functions_scope=$FUNCTIONS_SCOPE" >> "$GITHUB_OUTPUT"
           echo "rules=$DEPLOY_RULES" >> "$GITHUB_OUTPUT"
+          echo "indexes=$DEPLOY_INDEXES" >> "$GITHUB_OUTPUT"
           echo "need_e2e=$NEED_E2E" >> "$GITHUB_OUTPUT"
           echo "need_functions_validation=$NEED_FUNCTIONS_VALIDATION" >> "$GITHUB_OUTPUT"
           echo "need_frontend_validation=$NEED_FRONTEND_VALIDATION" >> "$GITHUB_OUTPUT"
           echo "has_changes=$HAS_CHANGES" >> "$GITHUB_OUTPUT"
           echo "mcp_metadata=$FILTER_MCP_METADATA" >> "$GITHUB_OUTPUT"
+          CLOUDFLARE_TARGET=''
+          if [ "$FILTER_CLOUDFLARE_API" = 'true' ] && [ "$FILTER_CLOUDFLARE_CDN" = 'true' ]; then
+            CLOUDFLARE_TARGET='all'
+          elif [ "$FILTER_CLOUDFLARE_API" = 'true' ]; then
+            CLOUDFLARE_TARGET='api'
+          elif [ "$FILTER_CLOUDFLARE_CDN" = 'true' ]; then
+            CLOUDFLARE_TARGET='cdn'
+          fi
+          echo "cloudflare_target=$CLOUDFLARE_TARGET" >> "$GITHUB_OUTPUT"
 
           echo "============================================="
           echo "🎯 Estratégia de Execução da Pipeline:"
           echo " - Deploy Frontend: $DEPLOY_FRONTEND"
           echo " - Deploy Functions: $DEPLOY_FUNCTIONS"
-          echo " - Escopo Functions: $FUNCTIONS_SCOPE"
+          echo " - Deploy Indexes: $DEPLOY_INDEXES"
           echo " - Deploy Rules: $DEPLOY_RULES"
           echo " - Executar E2E (Playwright): $NEED_E2E"
           echo " - Executar Validação Rápida: $NEED_FUNCTIONS_VALIDATION"
@@ -281,6 +357,9 @@ jobs:
         run: |
           npm ci --legacy-peer-deps
           npm --prefix functions ci
+
+      - name: Validar estrutura dos workflows de deploy
+        run: node --test tests/scripts/deployment-workflows.test.mjs
 
       - name: Configurar Firebase para testes unitários
         env:
@@ -387,13 +466,53 @@ jobs:
     uses: ./.github/workflows/test-actions.yml
     secrets: inherit
 
+  cloudflare-validation:
+    name: 🧪 Validar Cloudflare Workers
+    needs: detect-changes
+    if: needs.detect-changes.outputs.cloudflare_api == 'true' || needs.detect-changes.outputs.cloudflare_cdn == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Run Cloudflare Worker tests
+        env:
+          CI: true
+        run: ./node_modules/.bin/vitest run tests/unit/cloudflare-workers.test.ts
+
+  deploy-indexes:
+    name: 🗂️ Deploy Firestore Indexes (Dev)
+    needs: [detect-changes, e2e-tests, functions-validation]
+    if: |
+      always() &&
+      needs.detect-changes.result == 'success' &&
+      needs.detect-changes.outputs.indexes == 'true' &&
+      (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
+      (needs.functions-validation.result == 'success' || needs.functions-validation.result == 'skipped')
+    uses: ./.github/workflows/deploy-indexes.yml
+    with:
+      environment: dev
+    secrets: inherit
+
   deploy-frontend:
     name: 🎨 Build e Deploy Frontend (Dev)
-    needs: [detect-changes, e2e-tests]
+    needs: [detect-changes, e2e-tests, deploy, deploy-indexes, deploy-cloudflare, purge-mcp-cache]
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
       (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
+      (needs.deploy.result == 'success' || needs.deploy.result == 'skipped') &&
+      (needs.deploy-indexes.result == 'success' || needs.deploy-indexes.result == 'skipped') &&
+      (needs.deploy-cloudflare.result == 'success' || needs.deploy-cloudflare.result == 'skipped') &&
+      (needs.purge-mcp-cache.result == 'success' || needs.purge-mcp-cache.result == 'skipped') &&
       needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -476,14 +595,15 @@ jobs:
           npx --yes firebase-tools@15.32.1 deploy --only hosting --project luisices-dev --non-interactive
 
   deploy:
-    name: 🚀 Deploy Rules e Functions (Dev)
-    needs: [detect-changes, e2e-tests, functions-validation]
+    name: 🚀 Deploy Firebase Functions (Dev)
+    needs: [detect-changes, e2e-tests, functions-validation, deploy-indexes]
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
       (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
       (needs.functions-validation.result == 'success' || needs.functions-validation.result == 'skipped') &&
-      (needs.detect-changes.outputs.functions == 'true' || needs.detect-changes.outputs.rules == 'true' || needs.detect-changes.outputs.mcp_metadata == 'true')
+      (needs.deploy-indexes.result == 'success' || needs.deploy-indexes.result == 'skipped') &&
+      needs.detect-changes.outputs.functions == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -566,10 +686,7 @@ jobs:
           for (const item of checks) {
             const hasVal = typeof item.val === 'string' && item.val.trim().length > 0;
             if (hasVal) {
-              const preview = item.val.length > 8
-                ? `${item.val.substring(0, 14)}...${item.val.substring(item.val.length - 4)} (${item.val.length} chars)`
-                : `(${item.val.length} chars)`;
-              console.log(`✅ ${item.name.padEnd(44)}: PRESENTE ${preview}`);
+              console.log(`✅ ${item.name.padEnd(44)}: PRESENTE (valor oculto)`);
             } else {
               if (item.required) {
                 console.log(`❌ ${item.name.padEnd(44)}: AUSENTE (OBRIGATÓRIO)`);
@@ -584,19 +701,6 @@ jobs:
             console.error('⚠️ ALERTA: Uma ou mais variáveis obrigatórias estão ausentes no GitHub Secrets!');
           }
           NODE
-
-      # --- ETAPAS DE REGRAS (FIRESTORE & STORAGE) ---
-      - name: Deploy Firestore & Storage Rules (Dev)
-        if: needs.detect-changes.outputs.rules == 'true'
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
-        run: |
-          echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
-          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
-          if ! npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,firestore:indexes,database,storage --project luisices-dev --non-interactive; then
-            echo "⚠️ Deploy com database falhou (possível ausência da instância RTDB em dev). Tentando deploy de Firestore e Storage..."
-            npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,firestore:indexes,storage --project luisices-dev --non-interactive
-          fi
 
       # --- ETAPAS DAS CLOUD FUNCTIONS ---
       - name: Instalar dependências de Functions
@@ -615,6 +719,7 @@ jobs:
           EVOLUTION_API_KEY: ${{ secrets.DEV_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.dev_gemini || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
           SUPERFRETE_SANDBOX_TOKEN: ${{ secrets.SUPERFRETE_SANDBOX_TOKEN }}
+          ORDER_TRACKING_ENCRYPTION_KEY: ${{ secrets.DEV_ORDER_TRACKING_ENCRYPTION_KEY }}
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
@@ -632,36 +737,103 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
           SENTRY_DSN: ${{ secrets.DEV_FUNCTIONS_SENTRY_DSN || secrets.DEV_SENTRY_DSN || secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN || secrets.SENTRY_DSN }}
-          FUNCTIONS_DEPLOY_SCOPE: ${{ needs.detect-changes.outputs.functions_scope }}
+          FUNCTIONS_DEPLOY_CHUNKS: ${{ needs.detect-changes.outputs.functions_chunks }}
           GCLOUD_PROJECT: luisices-dev
         run: |
           trap 'rm -f functions/.env.luisices-dev' EXIT
           if [ -n "$SENTRY_DSN" ]; then
             printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=development\n' "$SENTRY_DSN" > functions/.env.luisices-dev
           fi
+
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
 
-          if [ "$FUNCTIONS_DEPLOY_SCOPE" = "superfrete" ]; then
-            echo "🚚 Deploy seletivo das Functions da SuperFrete..."
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:calculateSuperfreteShipping,functions:createSuperfreteLabel" --project luisices-dev --non-interactive
-          elif ! npx --yes firebase-tools@15.32.1 deploy --only functions --project luisices-dev --non-interactive; then
-            echo "⚠️ Deploy em lote geral atingiu limite de concorrência. Executando deploy particionado por módulos..."
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project luisices-dev --non-interactive
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia" --project luisices-dev --non-interactive
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project luisices-dev --non-interactive
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook" --project luisices-dev --non-interactive
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession" --project luisices-dev --non-interactive
-            npx --yes firebase-tools@15.32.1 deploy --only "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint" --project luisices-dev --non-interactive
-          fi
+          deploy_chunk() {
+            local label="$1"
+            local targets="$2"
+            echo "📦 Deploying $label: $targets"
+            if ! npx --yes firebase-tools@15.32.1 deploy --only "$targets" --project luisices-dev --non-interactive; then
+              echo "⚠️ Falha temporária em $label. Aguardando 25s para esvaziar fila de workers do Cloud Build e tentando novamente..."
+              sleep 25
+              npx --yes firebase-tools@15.32.1 deploy --only "$targets" --project luisices-dev --non-interactive
+            fi
+          }
+
+          # No generic `--only functions`, no automatic expansion after failure.
+          # Removed remote endpoints require a separate, reviewed deletion.
+          while IFS= read -r targets; do
+            [ -n "$targets" ] || continue
+            deploy_chunk "Functions afetadas" "$targets"
+          done < <(node -e 'for (const chunk of JSON.parse(process.env.FUNCTIONS_DEPLOY_CHUNKS)) console.log(chunk)')
 
           echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Dev)..."
           npx --yes firebase-tools@15.32.1 functions:secrets:prune --project luisices-dev --force --non-interactive
 
-      - name: Purgar Cache da Borda Cloudflare (OpenAPI & Manifestos MCP)
-        if: needs.detect-changes.outputs.mcp_metadata == 'true' || inputs.deploy_target == 'all'
+  deploy-cloudflare:
+    name: ☁️ Deploy Cloudflare Workers (Dev)
+    needs: [detect-changes, e2e-tests, cloudflare-validation, deploy]
+    if: |
+      always() &&
+      needs.detect-changes.result == 'success' &&
+      (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
+      (needs.cloudflare-validation.result == 'success' || needs.cloudflare-validation.result == 'skipped') &&
+      (needs.deploy.result == 'success' || needs.deploy.result == 'skipped') &&
+      needs.detect-changes.outputs.cloudflare_target != ''
+    uses: ./.github/workflows/deploy-cloudflare.yml
+    with:
+      target_environment: dev
+      target_worker: ${{ needs.detect-changes.outputs.cloudflare_target }}
+    secrets: inherit
+
+  purge-mcp-cache:
+    name: 🧹 Purge MCP Metadata Cache (Dev)
+    needs: [detect-changes, e2e-tests, deploy, deploy-cloudflare]
+    if: |
+      always() &&
+      needs.detect-changes.result == 'success' &&
+      (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
+      (needs.deploy.result == 'success' || needs.deploy.result == 'skipped') &&
+      (needs.deploy-cloudflare.result == 'success' || needs.deploy-cloudflare.result == 'skipped') &&
+      needs.detect-changes.outputs.mcp_metadata == 'true' &&
+      needs.detect-changes.outputs.cloudflare_api != 'true'
+    uses: ./.github/workflows/deploy-cloudflare.yml
+    with:
+      target_environment: dev
+      target_worker: cache
+    secrets: inherit
+
+  deploy-rules:
+    name: 🔐 Deploy Firestore e Storage Rules (Dev)
+    needs: [detect-changes, e2e-tests, functions-validation, deploy-indexes, deploy, deploy-cloudflare, purge-mcp-cache, deploy-frontend]
+    if: |
+      always() &&
+      needs.detect-changes.result == 'success' &&
+      needs.detect-changes.outputs.rules == 'true' &&
+      (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
+      (needs.functions-validation.result == 'success' || needs.functions-validation.result == 'skipped') &&
+      (needs.deploy-indexes.result == 'success' || needs.deploy-indexes.result == 'skipped') &&
+      (needs.deploy.result == 'success' || needs.deploy.result == 'skipped') &&
+      (needs.deploy-cloudflare.result == 'success' || needs.deploy-cloudflare.result == 'skipped') &&
+      (needs.purge-mcp-cache.result == 'success' || needs.purge-mcp-cache.result == 'skipped') &&
+      (needs.deploy-frontend.result == 'success' || needs.deploy-frontend.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Deploy Firestore & Storage Rules (Dev)
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
         run: |
-          echo "🧹 Alterações detectadas em rotas/schemas do MCP. Purgando cache da borda na Cloudflare (Dev)..."
-          node scripts/purge-cloudflare-cache.mjs dev
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
+          if ! npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,database,storage --project luisices-dev --non-interactive; then
+            echo "⚠️ Deploy com database falhou (possível ausência da instância RTDB em dev). Tentando deploy de Firestore e Storage..."
+            npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,storage --project luisices-dev --non-interactive
+          fi

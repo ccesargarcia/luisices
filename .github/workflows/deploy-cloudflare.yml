@@ -1,16 +1,15 @@
 name: Deploy Cloudflare Workers (CDN & API Gateway)
 
 on:
-  push:
-    branches:
-      - develop
-      - main
-    paths:
-      - 'cloudflare/**'
-      - 'scripts/ensure-mcp-cache-bypass.mjs'
-      - 'scripts/purge-cloudflare-cache.mjs'
-      - '.github/workflows/deploy-cloudflare.yml'
-
+  workflow_call:
+    inputs:
+      target_environment:
+        required: true
+        type: string
+      target_worker:
+        required: false
+        default: all
+        type: string
   workflow_dispatch:
     inputs:
       target_environment:
@@ -19,9 +18,7 @@ on:
         type: choice
         options:
           - dev
-          - production
-          - all
-        default: all
+        default: dev
       target_worker:
         description: 'Worker para Deploy'
         required: true
@@ -34,6 +31,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: cloudflare-deploy-${{ inputs.target_environment }}
+  cancel-in-progress: false
 
 jobs:
   deploy-cloudflare:
@@ -52,23 +53,25 @@ jobs:
           cache: 'npm'
 
       - name: Instalar Dependências
-        run: npm install --legacy-peer-deps
+        run: npm ci --legacy-peer-deps
 
       - name: Validar Configuração da Cloudflare
         run: |
           if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
             echo "❌ ERRO: Secret CLOUDFLARE_API_TOKEN não configurado no repositório."
-            echo "ℹ️ Obtenha seu token em: Cloudflare Dashboard > My Profile > API Tokens (com permissão Workers Scripts:Edit e Zone:Edit)."
+            echo "ℹ️ Configure um token com Workers Scripts:Edit, Zone:Read e Zone WAF:Edit/Rulesets:Edit."
             exit 1
           fi
           echo "✅ Secret CLOUDFLARE_API_TOKEN presente."
 
       - name: Aplicar bypass de cache para APIs MCP e OAuth
+        if: inputs.target_worker != 'cache'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: node scripts/ensure-mcp-cache-bypass.mjs
 
       - name: Aplicar Ajustes de Conformidade & WAF (Desativar BIC / Erro 1010, SSL Strict, DKIM, VPN DNS)
+        if: inputs.target_worker != 'cache'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VPN_SERVER_IP: '35.209.209.91'
@@ -78,8 +81,7 @@ jobs:
       # ─── DEPLOY NO AMBIENTE DE DESENVOLVIMENTO (DEV) ────────────────────────
       - name: Deploy CDN Worker (Dev)
         if: |
-          (github.ref == 'refs/heads/develop' && github.event_name == 'push') ||
-          (github.event_name == 'workflow_dispatch' && (inputs.target_environment == 'dev' || inputs.target_environment == 'all') && (inputs.target_worker == 'cdn' || inputs.target_worker == 'all'))
+          inputs.target_environment == 'dev' && (inputs.target_worker == 'cdn' || inputs.target_worker == 'all')
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -89,8 +91,7 @@ jobs:
 
       - name: Deploy API Gateway Worker (Dev)
         if: |
-          (github.ref == 'refs/heads/develop' && github.event_name == 'push') ||
-          (github.event_name == 'workflow_dispatch' && (inputs.target_environment == 'dev' || inputs.target_environment == 'all') && (inputs.target_worker == 'api' || inputs.target_worker == 'all'))
+          inputs.target_environment == 'dev' && (inputs.target_worker == 'api' || inputs.target_worker == 'all')
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -110,8 +111,7 @@ jobs:
       # ─── DEPLOY NO AMBIENTE DE PRODUÇÃO ─────────────────────────────────────
       - name: Deploy CDN Worker (Produção)
         if: |
-          (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
-          (github.event_name == 'workflow_dispatch' && (inputs.target_environment == 'production' || inputs.target_environment == 'all') && (inputs.target_worker == 'cdn' || inputs.target_worker == 'all'))
+          inputs.target_environment == 'production' && (inputs.target_worker == 'cdn' || inputs.target_worker == 'all')
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -121,8 +121,7 @@ jobs:
 
       - name: Deploy API Gateway Worker (Produção)
         if: |
-          (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
-          (github.event_name == 'workflow_dispatch' && (inputs.target_environment == 'production' || inputs.target_environment == 'all') && (inputs.target_worker == 'api' || inputs.target_worker == 'all'))
+          inputs.target_environment == 'production' && (inputs.target_worker == 'api' || inputs.target_worker == 'all')
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -138,3 +137,15 @@ jobs:
           npx wrangler deploy -c cloudflare/api-worker/wrangler.toml -e production
           echo "🧹 Purgando cache das rotas MCP após deploy do API Gateway Worker (Produção)..."
           node scripts/purge-cloudflare-cache.mjs prod
+
+      - name: Purge MCP metadata cache (Dev)
+        if: inputs.target_environment == 'dev' && inputs.target_worker == 'cache'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/purge-cloudflare-cache.mjs dev
+
+      - name: Purge MCP metadata cache (Production)
+        if: inputs.target_environment == 'production' && inputs.target_worker == 'cache'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/purge-cloudflare-cache.mjs prod
