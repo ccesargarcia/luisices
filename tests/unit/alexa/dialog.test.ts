@@ -1,7 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 const { formatDatePtBr, formatCurrencyPtBr } = require('../../../functions/alexa/dialogSpeech');
 const { parseAndValidateDeliveryDate, parseAndValidatePrice } = require('../../../functions/alexa/dialogInput');
 const { handleAlexaDialog } = require('../../../functions/alexa/dialog');
+
+// Os cenários usam 25/10/2026 como data futura; fixa o relógio para evitar
+// que as fixtures expirem e passem a testar outro caminho de diálogo.
+beforeEach(() => {
+  vi.useFakeTimers({ now: new Date('2026-10-24T15:00:00.000Z'), toFake: ['Date'] });
+});
+afterEach(() => vi.useRealTimers());
 
 describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', () => {
   const baseConfig = {

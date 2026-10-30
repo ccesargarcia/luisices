@@ -1,4 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Vários fluxos APL compartilham a fixture de entrega 25/10/2026.
+beforeEach(() => {
+  vi.useFakeTimers({ now: new Date('2026-10-24T15:00:00.000Z'), toFake: ['Date'] });
+});
+afterEach(() => vi.useRealTimers());
 
 const {
   supportsApl,

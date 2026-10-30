@@ -1,18 +1,7 @@
 name: Deploy to GitHub Pages (Production)
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - '.github/workflows/**'
-      - 'tests/**'
-      - 'functions/**'
-      - '.github/*.md'
-      - '*.md'
-      - '*.txt'
-      - 'docs/**'
+  workflow_call:
 
 # Define permissões necessárias
 permissions:
@@ -39,24 +28,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      - name: Detect Firebase security config changes
-        id: firebase-config
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.before }}
-        run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
-            DEPLOY_FIREBASE_CONFIG=true
-          else
-            CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA")
-            if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(firebase\.json|firestore\.rules|firestore\.indexes\.json|database\.rules\.json|storage\.rules)$'; then
-              DEPLOY_FIREBASE_CONFIG=true
-            else
-              DEPLOY_FIREBASE_CONFIG=false
-            fi
-          fi
-          echo "deploy=$DEPLOY_FIREBASE_CONFIG" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -158,27 +129,6 @@ jobs:
         run: npm run build
         env:
           VITE_BASE_PATH: /
-
-      - name: Deploy Firebase Rules and Indexes (Production)
-        if: steps.firebase-config.outputs.deploy == 'true'
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.PROD_FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT }}
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-production-rules.json
-        run: |
-          set -euo pipefail
-          trap 'rm -f "$GOOGLE_APPLICATION_CREDENTIALS"' EXIT
-          node <<'NODE'
-          const fs = require('node:fs');
-          if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-            throw new Error('Firebase production service account is required to deploy Firestore rules.');
-          }
-          JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-          fs.writeFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, process.env.FIREBASE_SERVICE_ACCOUNT, { mode: 0o600 });
-          NODE
-          if ! npx firebase deploy --only firestore:rules,firestore:indexes,database,storage --project papelaria-dashboard --non-interactive; then
-            echo "⚠️ Falha ao publicar database rules em produção; publicando firestore e storage..."
-            npx firebase deploy --only firestore:rules,firestore:indexes,storage --project papelaria-dashboard --non-interactive
-          fi
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5

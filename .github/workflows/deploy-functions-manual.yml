@@ -1,12 +1,30 @@
-name: Deploy Firebase Functions & Rules (Dev manual / Prod automático)
+name: Deploy Firebase Functions (Dev manual / Production reusable)
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'functions/**'
-      - 'firebase.json'
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Ambiente selecionado pelo orquestrador de release'
+        required: true
+        type: string
+      functions_target:
+        description: 'auto ou lista explícita de Functions'
+        required: false
+        default: 'auto'
+        type: string
+      functions_base_sha:
+        description: 'Último SHA de produção com Functions publicado com sucesso'
+        required: false
+        default: ''
+        type: string
+      deploy_rules_and_indexes:
+        required: false
+        default: false
+        type: boolean
+      update_secrets:
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       environment:
@@ -16,7 +34,6 @@ on:
         type: choice
         options:
           - dev
-          - prod
       functions_target:
         description: 'Selecione o grupo ou função para deploy'
         required: true
@@ -26,7 +43,8 @@ on:
           - 'all'
           - 'alexaWebhook,approveAlexaPairing,setAlexaPermission,revokeAlexaBinding,toggleGlobalAlexaIntegration,getAlexaIntegrationStatus,approveAlexaDraft,cancelAlexaDraft'
           - 'sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,markWhatsAppChatRead,ensureWhatsAppConversation'
-          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,syncAllOrdersToAiView,submitPublicCatalogOrder,calculateSuperfreteShipping,createSuperfreteLabel,galleryMedia'
+          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,createOrder,updateComplexOrder,submitPublicCatalogOrder,getPublicCatalogProducts,calculateSuperfreteShipping,createSuperfreteLabel,galleryMedia'
+          - 'createOrderTrackingLink,listOrderTrackingLinks,revokeOrderTrackingLink,revokeOrderTrackingLinkById,deleteOrderTrackingLink,deleteOrderTrackingLinksBatch,getPublicOrderTracking'
           - 'cleanupEmailDrafts,resendReceivingWebhook,sendCustomEmail,getEmailUsage'
           - 'updateUser,recordUserPasswordChange,completeUserInvitation,createUserInvitation,createUser,getUserAccountMetadata,deleteUser,revokeAllSessions,repairUserClaims,registerDeviceSession,revokeDeviceSession,sendAdminPasswordReset,sendPasswordResetEmail,sendVerificationEmail,validateUserInvitation'
           - 'getMcpSettingsStatus,createMcpApiKey,toggleMcpApiKey,revokeMcpApiKey,toggleGlobalMcp,setUserMcpEligibility,chatGptToolsEndpoint'
@@ -36,7 +54,10 @@ on:
           - 'sendWhatsAppDirectMessage'
           - 'evolutionWhatsAppWebhook'
           - 'cleanupEmailDrafts'
+          - 'createOrder'
+          - 'updateComplexOrder'
           - 'submitPublicCatalogOrder'
+          - 'getPublicCatalogProducts'
           - 'calculateSuperfreteShipping'
           - 'createSuperfreteLabel'
           - 'galleryMedia'
@@ -85,12 +106,60 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TARGET="${{ inputs.environment }}"
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            TARGET="prod"
           else
-            TARGET="dev"
+            TARGET="${{ inputs.environment }}"
           fi
+          case "$TARGET" in
+            dev|prod) ;;
+            *) echo "Ambiente de deploy inválido: $TARGET"; exit 1 ;;
+          esac
           echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+
+      - name: Localizar última publicação bem-sucedida das Functions
+        id: functions_base
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const targetEnv = `${{ steps.env.outputs.target }}`;
+            const requestedBaseSha = `${{ inputs.functions_base_sha }}`;
+            if (/^[a-f0-9]{40}$/.test(requestedBaseSha)) {
+              core.setOutput('sha', requestedBaseSha);
+              core.info(`Usando SHA base informado pelo orquestrador de ${targetEnv}.`);
+              return;
+            }
+            const targetJobName = targetEnv === 'prod' ? 'Deploy Firebase Functions & Rules (Production)' : 'Deploy Firebase Functions & Rules (Dev)';
+            for (let page = 1; page <= 3; page++) {
+              const { data } = await github.rest.actions.listWorkflowRuns({
+                ...context.repo, workflow_id: 'deploy-functions-manual.yml',
+                status: 'completed', per_page: 30, page
+              });
+              for (const run of data.workflow_runs) {
+                const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                  ...context.repo, run_id: run.id, per_page: 100
+                });
+                if (jobs.some(job => job.name.includes(targetJobName) && job.conclusion === 'success')) {
+                  core.setOutput('sha', run.head_sha);
+                  core.info(`Backend de ${targetEnv} publicado: ${run.head_sha} (run ${run.id})`);
+                  return;
+                }
+              }
+              if (data.workflow_runs.length < 30) break;
+            }
+            core.warning(`Sem referência de backend para ${targetEnv}: selecionando todo o backend atual.`);
+            core.setOutput('sha', '');
+
+      - name: Selecionar Functions por dependências desde a última publicação
+        id: functions_plan
+        env:
+          FUNCTIONS_BASE_SHA: ${{ steps.functions_base.outputs.sha }}
+          TARGET_ENV: ${{ steps.env.outputs.target }}
+          FORCE_FUNCTIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.functions_target == 'all' }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if echo "$COMMIT_MSG" | grep -qiE '\[deploy all\]|\[all\]'; then
+            export FORCE_FUNCTIONS=true
+          fi
+          node scripts/select-functions-deploy.mjs
 
       - name: Deploy Firebase Functions & Rules (Dev)
         if: steps.env.outputs.target == 'dev'
@@ -101,16 +170,35 @@ jobs:
           RESEND_WEBHOOK_SECRET: ${{ secrets.DEV_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.DEV_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.dev_gemini || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
+          ORIGIN_SECRET: ${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
           SUPERFRETE_SANDBOX_TOKEN: ${{ secrets.SUPERFRETE_SANDBOX_TOKEN }}
+          ORDER_TRACKING_ENCRYPTION_KEY: ${{ secrets.DEV_ORDER_TRACKING_ENCRYPTION_KEY }}
           GCLOUD_PROJECT: luisices-dev
+          FUNCTIONS_DEPLOY_CHUNKS: ${{ steps.functions_plan.outputs.chunks }}
         run: |
-          trap 'rm -f functions/.env.luisices-dev' EXIT
+          trap 'rm -f functions/.env.luisices-dev "$HOME/order_tracking_encryption_key.txt" "$HOME/origin_secret.txt"' EXIT
           if [ -n "$SENTRY_DSN" ]; then
             printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=development\n' "$SENTRY_DSN" > functions/.env.luisices-dev
           fi
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           firebase use luisices-dev --project luisices-dev --non-interactive
+
+          if [ -z "$ORIGIN_SECRET" ]; then
+            echo "❌ DEV_ORIGIN_SECRET / ORIGIN_SECRET é obrigatório para proteger as funções callable."
+            exit 1
+          fi
+
+          deploy_chunk() {
+            local label="$1"
+            local targets="$2"
+            echo "📦 Deploying $label: $targets"
+            if ! firebase deploy --only "$targets" --project luisices-dev --non-interactive --force; then
+              echo "⚠️ Falha temporária em $label. Aguardando 25s para esvaziar fila de workers e tentando novamente..."
+              sleep 25
+              firebase deploy --only "$targets" --project luisices-dev --non-interactive --force
+            fi
+          }
 
           # Atualiza segredos no Secret Manager apenas se explicitamente solicitado
           if [ "${{ inputs.update_secrets }}" = "true" ]; then
@@ -133,45 +221,46 @@ jobs:
             fi
             printf '%s' "$SUPERFRETE_SANDBOX_TOKEN" > "$HOME/superfrete_sandbox_token.txt"
             firebase functions:secrets:set SUPERFRETE_SANDBOX_TOKEN --project luisices-dev --data-file "$HOME/superfrete_sandbox_token.txt" --non-interactive --force
+            if [ -n "$ORDER_TRACKING_ENCRYPTION_KEY" ]; then
+              printf '%s' "$ORDER_TRACKING_ENCRYPTION_KEY" > "$HOME/order_tracking_encryption_key.txt"
+              firebase functions:secrets:set ORDER_TRACKING_ENCRYPTION_KEY --project luisices-dev --data-file "$HOME/order_tracking_encryption_key.txt" --non-interactive --force
+            fi
             if [ -n "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" ]; then
               echo "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" > "$HOME/alexa_hmac.txt"
               firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
             fi
-            if [ -n "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ]; then
-              echo "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" > "$HOME/origin_secret.txt"
-              firebase functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force || true
-            fi
+            printf '%s' "$ORIGIN_SECRET" > "$HOME/origin_secret.txt"
+            firebase functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force
           fi
 
-          # Garante que ALEXA_IDENTITY_HMAC_KEY existe no Secret Manager de Dev antes do deploy se secret disponível
+          if ! firebase functions:secrets:get ORDER_TRACKING_ENCRYPTION_KEY --project luisices-dev --non-interactive > /dev/null 2>&1; then
+            if [ -z "$ORDER_TRACKING_ENCRYPTION_KEY" ]; then
+              echo "❌ Configure DEV_ORDER_TRACKING_ENCRYPTION_KEY no GitHub ou no Secret Manager do projeto luisices-dev antes do deploy."
+              exit 1
+            fi
+            printf '%s' "$ORDER_TRACKING_ENCRYPTION_KEY" > "$HOME/order_tracking_encryption_key.txt"
+            firebase functions:secrets:set ORDER_TRACKING_ENCRYPTION_KEY --project luisices-dev --data-file "$HOME/order_tracking_encryption_key.txt" --non-interactive --force
+          fi
+
           if [ -n "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" ] && ! firebase functions:secrets:get ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --non-interactive > /dev/null 2>&1; then
             echo "🔐 Inicializando ALEXA_IDENTITY_HMAC_KEY no Secret Manager (Dev)..."
             echo "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" > "$HOME/alexa_hmac.txt"
             firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
           fi
 
-          # Garante que ORIGIN_SECRET existe no Secret Manager de Dev antes do deploy se secret disponível
-          if [ -n "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ] && ! firebase functions:secrets:get ORIGIN_SECRET --project luisices-dev --non-interactive > /dev/null 2>&1; then
+          if ! firebase functions:secrets:get ORIGIN_SECRET --project luisices-dev --non-interactive > /dev/null 2>&1; then
             echo "🔐 Inicializando ORIGIN_SECRET no Secret Manager (Dev)..."
-            echo "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" > "$HOME/origin_secret.txt"
-            firebase functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force || true
+            printf '%s' "$ORIGIN_SECRET" > "$HOME/origin_secret.txt"
+            firebase functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force
           fi
 
-          # Determina se deve publicar regras e índices
           if [ "${{ inputs.deploy_rules_and_indexes }}" = "true" ]; then
             echo "📄 Publicando regras e índices do Firestore..."
             firebase deploy --only firestore:rules,firestore:indexes,database --project luisices-dev --non-interactive --force
           fi
 
-          # Determina quais funções publicar via seleção
           INPUT_FN="${{ inputs.functions_target }}"
-          if [ "${{ inputs.update_secrets }}" = "true" ] && [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ]; then
-            echo "🔐 Secrets serão atualizados; publicando todas as funções para que nenhuma continue usando uma versão antiga."
-            INPUT_FN="all"
-          fi
-          if [ -z "$INPUT_FN" ] || [ "$INPUT_FN" = "all" ]; then
-            DEPLOY_TARGET="functions"
-          else
+          if [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ] && [ "$INPUT_FN" != "auto" ]; then
             TARGETS=$(echo "$INPUT_FN" | tr ',' ' ' | tr -s ' ')
             DEPLOY_TARGET=""
             for fn in $TARGETS; do
@@ -184,31 +273,23 @@ jobs:
                 fi
               fi
             done
-          fi
-
-          echo "🚀 Realizando deploy de: $DEPLOY_TARGET"
-          if [ "$DEPLOY_TARGET" = "functions" ]; then
-            if ! firebase deploy --only functions --project luisices-dev --non-interactive --force; then
-              echo "⚠️ Deploy em lote geral atingiu timeout ou limite de concorrência. Executando deploy particionado por módulos..."
-              echo "📦 1/5: WhatsApp..."
-              firebase deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project luisices-dev --non-interactive --force
-              echo "📦 2/5: IA e Pedidos..."
-              firebase deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia" --project luisices-dev --non-interactive --force
-              echo "📦 3/5: E-mails..."
-              firebase deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project luisices-dev --non-interactive --force
-              echo "📦 4/5: Alexa..."
-              firebase deploy --only "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook" --project luisices-dev --non-interactive --force
-              echo "📦 5/6: Usuários e Autenticação..."
-              firebase deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation" --project luisices-dev --non-interactive --force
-              echo "📦 6/6: MCP & ChatGPT Actions..."
-              firebase deploy --only "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint" --project luisices-dev --non-interactive --force
-            fi
-          else
+            echo "🚀 Realizando deploy direcionado de: $DEPLOY_TARGET"
             firebase deploy --only "$DEPLOY_TARGET" --project luisices-dev --non-interactive --force
+          else
+            if [ "${{ steps.functions_plan.outputs.has_targets }}" = "false" ] && [ "${{ github.event_name }}" = "push" ]; then
+              echo "✅ Nenhuma Cloud Function alterada desde a última publicação em luisices-dev. Deploy de functions ignorado."
+            else
+              echo "🚀 Realizando deploy diferencial por chunks de functions em luisices-dev..."
+              while IFS= read -r targets; do
+                [ -n "$targets" ] || continue
+                deploy_chunk "Functions afetadas" "$targets"
+              done < <(node -e 'for (const chunk of JSON.parse(process.env.FUNCTIONS_DEPLOY_CHUNKS || "[]")) console.log(chunk)')
+            fi
           fi
 
           echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Dev)..."
           firebase functions:secrets:prune --project luisices-dev -f --non-interactive
+
 
       - name: Deploy Firebase Functions & Rules (Production)
         if: steps.env.outputs.target == 'prod'
@@ -223,8 +304,10 @@ jobs:
           ORIGIN_SECRET: ${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
           ALEXA_HMAC: ${{ secrets.PROD_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY }}
           ALEXA_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID || secrets.ALEXA_PROD_SKILL_ID || secrets.ALEXA_SKILL_ID }}
+          ORDER_TRACKING_ENCRYPTION_KEY: ${{ secrets.PROD_ORDER_TRACKING_ENCRYPTION_KEY }}
+          FUNCTIONS_DEPLOY_CHUNKS: ${{ steps.functions_plan.outputs.chunks }}
         run: |
-          trap 'rm -f functions/.env.papelaria-dashboard' EXIT
+          trap 'rm -f functions/.env.papelaria-dashboard "$HOME/order_tracking_encryption_key.txt" "$HOME/origin_secret_prod.txt"' EXIT
           if [ -n "$SENTRY_DSN" ]; then
             printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=production\n' "$SENTRY_DSN" > functions/.env.papelaria-dashboard
           fi
@@ -236,6 +319,22 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           firebase use papelaria-dashboard --project papelaria-dashboard --non-interactive
 
+          if [ -z "$ORIGIN_SECRET" ]; then
+            echo "❌ PROD_ORIGIN_SECRET / ORIGIN_SECRET é obrigatório para proteger as funções callable."
+            exit 1
+          fi
+
+          deploy_chunk() {
+            local label="$1"
+            local targets="$2"
+            echo "📦 Deploying $label: $targets"
+            if ! firebase deploy --only "$targets" --project papelaria-dashboard --non-interactive --force; then
+              echo "⚠️ Falha temporária em $label. Aguardando 25s para esvaziar fila de workers e tentando novamente..."
+              sleep 25
+              firebase deploy --only "$targets" --project papelaria-dashboard --non-interactive --force
+            fi
+          }
+
           node <<'NODE'
           const checks = [
             { name: 'FIREBASE_SERVICE_ACCOUNT_PROD', val: process.env.FIREBASE_SERVICE_ACCOUNT, required: true },
@@ -243,7 +342,7 @@ jobs:
             { name: 'PROD_RESEND_WEBHOOK_SECRET / RESEND_WEBHOOK_SECRET', val: process.env.RESEND_WEBHOOK_SECRET, required: false },
             { name: 'PROD_EVOLUTION_API_KEY / EVOLUTION_API_KEY', val: process.env.EVOLUTION_API_KEY, required: true },
             { name: 'PROD_GEMINI / PROD_GEMINI_API_KEY / GEMINI_API_KEY', val: process.env.GEMINI_API_KEY, required: true },
-            { name: 'PROD_ORIGIN_SECRET / ORIGIN_SECRET', val: process.env.ORIGIN_SECRET, required: false },
+            { name: 'PROD_ORIGIN_SECRET / ORIGIN_SECRET', val: process.env.ORIGIN_SECRET, required: true },
             { name: 'PROD_ALEXA_IDENTITY_HMAC_KEY / ALEXA_IDENTITY_HMAC_KEY', val: process.env.ALEXA_HMAC, required: false },
             { name: 'PROD_ALEXA_SKILL_ID / ALEXA_PROD_SKILL_ID', val: process.env.ALEXA_SKILL_ID, required: false }
           ];
@@ -254,7 +353,9 @@ jobs:
           for (const item of checks) {
             const hasVal = typeof item.val === 'string' && item.val.trim().length > 0;
             if (hasVal) {
-              const preview = item.val.length > 8
+              const preview = item.name.includes('ORIGIN_SECRET')
+                ? `(${item.val.length} chars; valor oculto)`
+                : item.val.length > 8
                 ? `${item.val.substring(0, 14)}...${item.val.substring(item.val.length - 4)} (${item.val.length} chars)`
                 : `(${item.val.length} chars)`;
               console.log(`✅ ${item.name.padEnd(52)}: PRESENTE ${preview}`);
@@ -281,6 +382,10 @@ jobs:
               echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
               firebase functions:secrets:set EVOLUTION_API_KEY --project papelaria-dashboard --data-file "$HOME/evolution_api_key.txt" --non-interactive --force || true
             fi
+            if [ -n "$ORDER_TRACKING_ENCRYPTION_KEY" ]; then
+              printf '%s' "$ORDER_TRACKING_ENCRYPTION_KEY" > "$HOME/order_tracking_encryption_key.txt"
+              firebase functions:secrets:set ORDER_TRACKING_ENCRYPTION_KEY --project papelaria-dashboard --data-file "$HOME/order_tracking_encryption_key.txt" --non-interactive --force
+            fi
             if [ -n "$RESEND_WEBHOOK_SECRET" ]; then
               echo "$RESEND_WEBHOOK_SECRET" > "$HOME/resend_webhook.txt"
               firebase functions:secrets:set RESEND_WEBHOOK_SECRET --project papelaria-dashboard --data-file "$HOME/resend_webhook.txt" --non-interactive --force || true
@@ -294,22 +399,30 @@ jobs:
               firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project papelaria-dashboard --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
             fi
             if [ -n "$ORIGIN_SECRET" ]; then
-              echo "$ORIGIN_SECRET" > "$HOME/origin_secret_prod.txt"
-              firebase functions:secrets:set ORIGIN_SECRET --project papelaria-dashboard --data-file "$HOME/origin_secret_prod.txt" --non-interactive --force || true
+              printf '%s' "$ORIGIN_SECRET" > "$HOME/origin_secret_prod.txt"
+              firebase functions:secrets:set ORIGIN_SECRET --project papelaria-dashboard --data-file "$HOME/origin_secret_prod.txt" --non-interactive --force
             fi
           fi
 
-          # Garante que segredos críticos existam no Secret Manager de Prod antes do deploy se secret disponível no GitHub
+          if ! firebase functions:secrets:get ORDER_TRACKING_ENCRYPTION_KEY --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
+            if [ -z "$ORDER_TRACKING_ENCRYPTION_KEY" ]; then
+              echo "❌ Configure PROD_ORDER_TRACKING_ENCRYPTION_KEY no GitHub ou no Secret Manager do projeto papelaria-dashboard antes do deploy."
+              exit 1
+            fi
+            printf '%s' "$ORDER_TRACKING_ENCRYPTION_KEY" > "$HOME/order_tracking_encryption_key.txt"
+            firebase functions:secrets:set ORDER_TRACKING_ENCRYPTION_KEY --project papelaria-dashboard --data-file "$HOME/order_tracking_encryption_key.txt" --non-interactive --force
+          fi
+
           if [ -n "$ALEXA_HMAC" ] && ! firebase functions:secrets:get ALEXA_IDENTITY_HMAC_KEY --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
             echo "🔐 Inicializando ALEXA_IDENTITY_HMAC_KEY no Secret Manager (Prod)..."
             echo "$ALEXA_HMAC" > "$HOME/alexa_hmac.txt"
             firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project papelaria-dashboard --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
           fi
 
-          if [ -n "$ORIGIN_SECRET" ] && ! firebase functions:secrets:get ORIGIN_SECRET --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
+          if ! firebase functions:secrets:get ORIGIN_SECRET --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
             echo "🔐 Inicializando ORIGIN_SECRET no Secret Manager (Prod)..."
-            echo "$ORIGIN_SECRET" > "$HOME/origin_secret_prod.txt"
-            firebase functions:secrets:set ORIGIN_SECRET --project papelaria-dashboard --data-file "$HOME/origin_secret_prod.txt" --non-interactive --force || true
+            printf '%s' "$ORIGIN_SECRET" > "$HOME/origin_secret_prod.txt"
+            firebase functions:secrets:set ORIGIN_SECRET --project papelaria-dashboard --data-file "$HOME/origin_secret_prod.txt" --non-interactive --force
           fi
 
           if [ -n "$GEMINI_API_KEY" ] && ! firebase functions:secrets:get GEMINI_API_KEY --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
@@ -349,13 +462,11 @@ jobs:
             ' || true
           fi
 
-          # Determina se deve publicar regras e índices
           if [ "${{ inputs.deploy_rules_and_indexes }}" = "true" ]; then
             echo "📄 Publicando regras, índices e storage..."
             firebase deploy --only firestore:rules,firestore:indexes,database,storage --project papelaria-dashboard --non-interactive --force
           fi
 
-          # Determina quais funções publicar via seleção
           INPUT_FN="${{ inputs.functions_target }}"
           case "$INPUT_FN" in
             *calculateSuperfreteShipping*|*createSuperfreteLabel*)
@@ -363,13 +474,8 @@ jobs:
               exit 1
               ;;
           esac
-          if [ "${{ inputs.update_secrets }}" = "true" ] && [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ]; then
-            echo "🔐 Secrets serão atualizados; publicando todas as funções para que nenhuma continue usando uma versão antiga."
-            INPUT_FN="all"
-          fi
-          if [ -z "$INPUT_FN" ] || [ "$INPUT_FN" = "all" ]; then
-            DEPLOY_TARGET="functions"
-          else
+
+          if [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ] && [ "$INPUT_FN" != "auto" ]; then
             TARGETS=$(echo "$INPUT_FN" | tr ',' ' ' | tr -s ' ')
             DEPLOY_TARGET=""
             for fn in $TARGETS; do
@@ -382,27 +488,18 @@ jobs:
                 fi
               fi
             done
-          fi
-
-          echo "🚀 Realizando deploy de: $DEPLOY_TARGET"
-          if [ "$DEPLOY_TARGET" = "functions" ]; then
-            if ! firebase deploy --only functions --project papelaria-dashboard --non-interactive --force; then
-              echo "⚠️ Deploy em lote geral atingiu timeout ou limite de concorrência. Executando deploy particionado por módulos..."
-              echo "📦 1/5: WhatsApp..."
-              firebase deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project papelaria-dashboard --non-interactive --force
-              echo "📦 2/5: IA e Pedidos..."
-              firebase deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder,functions:galleryMedia" --project papelaria-dashboard --non-interactive --force
-              echo "📦 3/5: E-mails..."
-              firebase deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project papelaria-dashboard --non-interactive --force
-              echo "📦 4/5: Alexa..."
-              firebase deploy --only "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook" --project papelaria-dashboard --non-interactive --force
-              echo "📦 5/6: Usuários e Autenticação..."
-              firebase deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation" --project papelaria-dashboard --non-interactive --force
-              echo "📦 6/6: MCP & ChatGPT Actions..."
-              firebase deploy --only "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint" --project papelaria-dashboard --non-interactive --force
-            fi
-          else
+            echo "🚀 Realizando deploy direcionado de: $DEPLOY_TARGET"
             firebase deploy --only "$DEPLOY_TARGET" --project papelaria-dashboard --non-interactive --force
+          else
+            if [ "${{ steps.functions_plan.outputs.has_targets }}" = "false" ] && [ "${{ github.event_name }}" = "push" ]; then
+              echo "✅ Nenhuma Cloud Function alterada desde a última publicação em papelaria-dashboard. Deploy de functions ignorado."
+            else
+              echo "🚀 Realizando deploy diferencial por chunks de functions em papelaria-dashboard..."
+              while IFS= read -r targets; do
+                [ -n "$targets" ] || continue
+                deploy_chunk "Functions afetadas" "$targets"
+              done < <(node -e 'for (const chunk of JSON.parse(process.env.FUNCTIONS_DEPLOY_CHUNKS || "[]")) console.log(chunk)')
+            fi
           fi
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
