@@ -64,7 +64,7 @@ jobs:
             // as the baseline. This avoids redeploying every Function merely because
             // the coordinated release workflow has no run history yet.
             for (let page = 1; page <= 3; page++) {
-              const { data: legacyRuns } = await github.rest.actions.listWorkflowRuns({
+              const { data: legacyResponse } = await github.rest.actions.listWorkflowRuns({
                 ...context.repo,
                 workflow_id: 'deploy-functions-manual.yml',
                 branch: 'main',
@@ -72,6 +72,7 @@ jobs:
                 per_page: 30,
                 page
               });
+              const legacyRuns = legacyResponse.workflow_runs || [];
               for (const run of legacyRuns) {
                 if (run.conclusion !== 'success' || run.event !== 'push' || run.head_sha === context.sha) continue;
                 const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {

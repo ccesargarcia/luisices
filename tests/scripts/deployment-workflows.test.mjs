@@ -22,6 +22,7 @@ test('production release deploys components in dependency order and serializes r
   assert.ok(release.jobs.rules.needs.includes('frontend'));
   assert.match(release.jobs.rules.name, /last/);
   assert.match(releaseSource, /workflow_id:\s*'deploy-functions-manual\.yml'/);
+  assert.match(releaseSource, /legacyResponse\.workflow_runs\s*\|\|\s*\[\]/);
   assert.match(releaseSource, /Deploy Firebase Functions & Rules \(Production\)/);
 });
 
