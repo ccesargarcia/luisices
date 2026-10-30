@@ -68,6 +68,9 @@ jobs:
           npm ci --legacy-peer-deps
           npm --prefix functions ci
 
+      - name: Validate deployment workflow contracts
+        run: node --test tests/scripts/deployment-workflows.test.mjs tests/scripts/functions-deploy-selection.test.mjs
+
       - name: Create .env files with Firebase and test config
         env:
           API_KEY: ${{ secrets.DEV_VITE_FIREBASE_API_KEY || 'AIzaSy000000000000000000000000000000000' }}
