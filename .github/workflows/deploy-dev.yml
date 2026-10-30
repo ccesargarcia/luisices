@@ -569,7 +569,9 @@ jobs:
     if: needs.detect-changes.outputs.need_e2e == 'true'
     permissions:
       actions: read
+      checks: read
       contents: read
+      pull-requests: read
     uses: ./.github/workflows/test-actions.yml
     secrets: inherit
 
