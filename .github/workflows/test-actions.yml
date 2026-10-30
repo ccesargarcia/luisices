@@ -217,8 +217,8 @@ jobs:
           fi
 
   test-trends:
-    if: always() && needs.verify-promotion.outputs.reuse_e2e != 'true'
-    needs: [e2e-tests, verify-promotion]
+    if: always()
+    needs: e2e-tests
     runs-on: ubuntu-latest
     permissions:
       actions: read
