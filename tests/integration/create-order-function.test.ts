@@ -228,7 +228,7 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
       adminDb.doc(`userProfiles/${uid}`).set({
         role: 'user',
         active: true,
-        permissions: { orders: { create: true } },
+        permissions: { orders: { create: true }, quotes: { edit: true } },
       }),
       adminDb.doc(`quotes/${quoteId}`).set({
         userId: uid,
@@ -268,6 +268,142 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
     expect(repeatResult.success).toBe(true);
     expect(repeatResult.orderId).toBe(result.orderId);
     expect(repeatResult.alreadyExisted).toBe(true);
+  });
+
+  it('não permite aprovar orçamento próprio sem permissão quotes.edit', async () => {
+    const uid = `quote-no-edit-${Date.now()}`;
+    const quoteId = `quote-no-edit-${Date.now()}`;
+    await Promise.all([
+      adminDb.doc(`userProfiles/${uid}`).set({
+        role: 'user', active: true, permissions: { orders: { create: true } },
+      }),
+      adminDb.doc(`quotes/${quoteId}`).set({
+        userId: uid, status: 'sent', totalPrice: 120, validUntil: '2026-12-31',
+      }),
+    ]);
+
+    await expect(handleCreateOrder({
+      auth: { uid, token: { auth_time: 1 } },
+      data: { orderData: {
+        customerName: 'Cliente Orçamento', productName: 'Convite Especial', quantity: 1,
+        price: 120, deliveryDate: '2026-12-10',
+      }, quoteId },
+    }, adminDb)).rejects.toMatchObject({ code: 'permission-denied' });
+
+    expect((await adminDb.doc(`quotes/${quoteId}`).get()).data()?.status).toBe('sent');
+    expect((await adminDb.collection('orders').where('userId', '==', uid).get()).size).toBe(0);
+  });
+
+  it('não permite vincular orçamento de outro usuário mesmo com permissão de criar pedidos', async () => {
+    const uid = `quote-owner-check-${Date.now()}`;
+    const quoteId = `quote-other-owner-${Date.now()}`;
+    await Promise.all([
+      adminDb.doc(`userProfiles/${uid}`).set({
+        role: 'user', active: true, permissions: { orders: { create: true }, quotes: { edit: true } },
+      }),
+      adminDb.doc(`quotes/${quoteId}`).set({
+        userId: `other-${uid}`, status: 'sent', totalPrice: 120, validUntil: '2026-12-31',
+      }),
+    ]);
+
+    await expect(handleCreateOrder({
+      auth: { uid, token: { auth_time: 1 } },
+      data: { orderData: {
+        customerName: 'Cliente Orçamento', productName: 'Convite Especial', quantity: 1,
+        price: 120, deliveryDate: '2026-12-10',
+      }, quoteId },
+    }, adminDb)).rejects.toMatchObject({ code: 'permission-denied' });
+
+    expect((await adminDb.doc(`quotes/${quoteId}`).get()).data()?.status).toBe('sent');
+    expect((await adminDb.collection('orders').where('userId', '==', uid).get()).size).toBe(0);
+  });
+
+  it('valida quotes.edit antes de retornar uma conversão idempotente', async () => {
+    const uid = `quote-replay-no-edit-${Date.now()}`;
+    const quoteId = `quote-replay-${Date.now()}`;
+    await Promise.all([
+      adminDb.doc(`userProfiles/${uid}`).set({
+        role: 'user', active: true, permissions: { orders: { create: true } },
+      }),
+      adminDb.doc(`quotes/${quoteId}`).set({
+        userId: uid, status: 'approved', convertedOrderId: 'existing-order', orderId: 'existing-order',
+      }),
+    ]);
+
+    await expect(handleCreateOrder({
+      auth: { uid, token: { auth_time: 1 } },
+      data: { orderData: {
+        customerName: 'Cliente Orçamento', productName: 'Convite Especial', quantity: 1,
+        price: 120, deliveryDate: '2026-12-10',
+      }, quoteId },
+    }, adminDb)).rejects.toMatchObject({ code: 'permission-denied' });
+  });
+
+  it('exige permissão de loja para converter pedidos da lojinha', async () => {
+    const uid = `catalog-no-store-${Date.now()}`;
+    const catalogOrderId = `catalog-order-${Date.now()}`;
+    await Promise.all([
+      adminDb.doc(`userProfiles/${uid}`).set({
+        role: 'user', active: true, permissions: { orders: { create: true } },
+      }),
+      adminDb.doc(`catalogOrders/${catalogOrderId}`).set({ status: 'received' }),
+    ]);
+
+    await expect(handleCreateOrder({
+      auth: { uid, token: { auth_time: 1 } },
+      data: { orderData: {
+        customerName: 'Cliente Loja', productName: 'Produto Loja', quantity: 1,
+        price: 120, deliveryDate: '2026-12-10',
+      }, catalogOrderId },
+    }, adminDb)).rejects.toMatchObject({ code: 'permission-denied' });
+
+    expect((await adminDb.doc(`catalogOrders/${catalogOrderId}`).get()).data()?.status).toBe('received');
+    expect((await adminDb.collection('orders').where('userId', '==', uid).get()).size).toBe(0);
+  });
+
+  it('valida permissão store antes de retornar uma conversão da lojinha já existente', async () => {
+    const uid = `catalog-replay-no-store-${Date.now()}`;
+    const catalogOrderId = `catalog-replay-${Date.now()}`;
+    await Promise.all([
+      adminDb.doc(`userProfiles/${uid}`).set({
+        role: 'user', active: true, permissions: { orders: { create: true } },
+      }),
+      adminDb.doc(`catalogOrders/${catalogOrderId}`).set({
+        status: 'converted', convertedOrderId: 'existing-order',
+      }),
+    ]);
+
+    await expect(handleCreateOrder({
+      auth: { uid, token: { auth_time: 1 } },
+      data: { orderData: {
+        customerName: 'Cliente Loja', productName: 'Produto Loja', quantity: 1,
+        price: 120, deliveryDate: '2026-12-10',
+      }, catalogOrderId },
+    }, adminDb)).rejects.toMatchObject({ code: 'permission-denied' });
+  });
+
+  it('permite converter pedido da lojinha com a permissão store', async () => {
+    const uid = `catalog-with-store-${Date.now()}`;
+    const catalogOrderId = `catalog-order-store-${Date.now()}`;
+    await Promise.all([
+      adminDb.doc(`userProfiles/${uid}`).set({
+        role: 'user', active: true, permissions: { orders: { create: true }, store: true },
+      }),
+      adminDb.doc(`catalogOrders/${catalogOrderId}`).set({ status: 'received' }),
+    ]);
+
+    const result = await handleCreateOrder({
+      auth: { uid, token: { auth_time: 1 } },
+      data: { orderData: {
+        customerName: 'Cliente Loja', productName: 'Produto Loja', quantity: 1,
+        price: 120, deliveryDate: '2026-12-10',
+      }, catalogOrderId },
+    }, adminDb);
+
+    expect(result.success).toBe(true);
+    const catalog = (await adminDb.doc(`catalogOrders/${catalogOrderId}`).get()).data();
+    expect(catalog?.status).toBe('converted');
+    expect(catalog?.convertedOrderId).toBe(result.orderId);
   });
 
   it('rejeita criação sem autenticação, com perfil inativo ou sem permissão', async () => {

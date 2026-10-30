@@ -43,6 +43,51 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('Pedidos - CRUD', () => {
+  test('permite corrigir nomes de produtos que excedem o limite antes de criar o cliente', async ({ page }) => {
+    test.setTimeout(90000);
+    const timestamp = Date.now();
+    const customerName = `Cliente Nome Longo E2E ${timestamp}`;
+    const customerPhone = `11977${String(Math.floor(1000000 + Math.random() * 9000000))}`;
+
+    await page.getByRole('button', { name: /Novo Pedido/i }).click();
+    const createDialog = page.getByRole('dialog').first();
+    await expect(createDialog).toBeVisible();
+    await createDialog.locator('button[role="combobox"]').first().click();
+    await page.getByRole('option').filter({ hasText: /Novo Cliente/i }).click();
+    await createDialog.locator('#customerName').fill(customerName);
+    await createDialog.locator('#customerPhone').fill(customerPhone);
+    await createDialog.getByPlaceholder('Produto 1').fill('A'.repeat(200));
+    await createDialog.getByPlaceholder('0,00').first().fill('10,00');
+    await createDialog.getByRole('button', { name: /Adicionar item/i }).click();
+    const secondProduct = createDialog.getByPlaceholder('Produto 2');
+    await secondProduct.fill('B'.repeat(200));
+    await createDialog.getByPlaceholder('0,00').nth(1).fill('10,00');
+    await createDialog.locator('#deliveryDate').fill(
+      new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    );
+
+    await createDialog.locator('button[type="submit"]').click();
+    await expect(page.getByText(/descrição combinada dos produtos/i)).toBeVisible();
+    await expect(secondProduct).toBeEnabled();
+
+    await secondProduct.fill('Produto corrigido');
+    await createDialog.locator('button[type="submit"]').click();
+    await expect(createDialog).not.toBeVisible({ timeout: 20000 });
+
+    const orderCard = page.locator('.cursor-pointer').filter({ hasText: customerName }).first();
+    await expect(orderCard).toBeVisible({ timeout: 20000 });
+    await orderCard.click();
+    const detailsDialog = page.getByRole('dialog').first();
+    await expect(detailsDialog.getByText('Detalhes do Pedido')).toBeVisible();
+    const deleteButton = detailsDialog.getByRole('button', { name: /Excluir Pedido/i });
+    if (await deleteButton.isVisible().catch(() => false)) {
+      await deleteButton.click();
+      const alertDialog = page.getByRole('alertdialog');
+      await expect(alertDialog).toBeVisible();
+      await alertDialog.getByRole('button', { name: /Excluir/i }).click();
+    }
+  });
+
   test('formata preço unitário em reais e preserva total histórico com 120 itens', async ({ page }) => {
     test.setTimeout(90000);
     const timestamp = Date.now();

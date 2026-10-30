@@ -504,7 +504,16 @@ export class FirebaseOrderService {
 
   /** Grava contador, pedido, venda e vínculo de catálogo/orçamento em uma única transação atômica. */
   async createOrder(orderData: Partial<Order>, catalogOrderId?: string, quoteId?: string, idempotencyKey?: string): Promise<Order> {
-    this.validateOrderPayload(orderData);
+    try {
+      this.validateOrderPayload(orderData);
+    } catch (error) {
+      // These checks run before any request is sent. Mark them as definitive so
+      // the UI can discard an unsubmitted idempotency draft and allow correction.
+      if (error && typeof error === 'object' && !('code' in error)) {
+        Object.assign(error, { code: 'invalid-argument' });
+      }
+      throw error;
+    }
     const userId = this.getCurrentUserId();
 
     // 1. Determina antecipadamente o identificador único e estável da operação.

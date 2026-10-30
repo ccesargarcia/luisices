@@ -49,4 +49,11 @@ describe('Operações pendentes: identidade e payload duráveis', () => {
     const saved = api.savePendingOrderOperation('uid', 'edit:order', { price: 20 });
     expect(api.loadPendingOrderOperation('uid', 'edit:order')).toEqual(saved);
   });
+
+  it('trata erro de validação local como rejeição definitiva do pedido', async () => {
+    const api = await import('../../src/services/pendingOrderOperations');
+    expect(api.isDefinitiveOrderRejection(Object.assign(new Error('Nome do produto inválido'), {
+      code: 'invalid-argument',
+    }))).toBe(true);
+  });
 });
