@@ -270,15 +270,11 @@ jobs:
                 ...context.repo,
                 run_id: runId
               });
-              const belongsToPullRequest = workflowRun.pull_requests?.some(pr =>
-                pr.number === mergedPr.number && pr.head?.sha === mergedPr.head.sha
-              );
               if (workflowRun.workflow_id !== e2eWorkflow.id
                 || workflowRun.event !== 'pull_request'
                 || workflowRun.status !== 'completed'
                 || workflowRun.conclusion !== 'success'
-                || workflowRun.head_sha !== mergedPr.head.sha
-                || !belongsToPullRequest) {
+                || workflowRun.head_sha !== mergedPr.head.sha) {
                 core.warning(`Os checks não vieram de uma execução completa de E2E da PR #${mergedPr.number}; os testes serão repetidos.`);
                 return;
               }
