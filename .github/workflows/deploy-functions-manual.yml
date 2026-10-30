@@ -148,6 +148,18 @@ jobs:
             core.warning(`Sem referência de backend para ${targetEnv}: selecionando todo o backend atual.`);
             core.setOutput('sha', '');
 
+      - name: Buscar commit-base do seletor de Functions
+        if: steps.functions_base.outputs.sha != ''
+        env:
+          FUNCTIONS_BASE_SHA: ${{ steps.functions_base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$FUNCTIONS_BASE_SHA^{tree}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$FUNCTIONS_BASE_SHA" \
+              || git fetch --no-tags origin main
+          fi
+          git cat-file -e "$FUNCTIONS_BASE_SHA^{tree}"
+
       - name: Selecionar Functions por dependências desde a última publicação
         id: functions_plan
         env:

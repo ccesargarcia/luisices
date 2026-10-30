@@ -40,6 +40,20 @@ test('production deployment entrypoints are reusable, with manual dispatch limit
   assert.deepEqual(indexes.on.workflow_dispatch.inputs.environment.options, ['dev']);
 });
 
+test('Functions deployment fetches the previous deployment commit before calculating its delta', async () => {
+  const functions = await workflow('deploy-functions-manual.yml');
+  const steps = functions.jobs['deploy-functions'].steps;
+  const fetchBase = steps.findIndex(step => step.name === 'Buscar commit-base do seletor de Functions');
+  const selectFunctions = steps.findIndex(step => step.name === 'Selecionar Functions por dependências desde a última publicação');
+
+  assert.ok(fetchBase >= 0, 'expected the shallow checkout baseline fetch step');
+  assert.ok(fetchBase < selectFunctions, 'baseline must be fetched before git ls-tree runs');
+  assert.equal(steps[fetchBase].env.FUNCTIONS_BASE_SHA, '${{ steps.functions_base.outputs.sha }}');
+  assert.match(steps[fetchBase].run, /git cat-file -e/);
+  assert.match(steps[fetchBase].run, /git fetch --no-tags --depth=1 origin/);
+  assert.match(steps[fetchBase].run, /git fetch --no-tags origin main/);
+});
+
 test('dev deployment publishes indexes before application changes and rules last', async () => {
   const dev = await workflow('deploy-dev.yml');
 
