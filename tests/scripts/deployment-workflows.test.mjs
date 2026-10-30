@@ -87,6 +87,17 @@ test('dev deployment publishes indexes before application changes and rules last
   assert.ok(dev.jobs['deploy-cloudflare'].needs.includes('cloudflare-validation'));
 });
 
+test('dev caller grants the read permissions required by the reusable E2E verifier', async () => {
+  const dev = await workflow('deploy-dev.yml');
+
+  assert.deepEqual(dev.jobs['e2e-tests'].permissions, {
+    actions: 'read',
+    checks: 'read',
+    contents: 'read',
+    'pull-requests': 'read',
+  });
+});
+
 test('dev deployment reuses successful E2E checks from the merged PR and fails safe without them', async () => {
   const dev = await workflow('deploy-dev.yml');
   const detect = dev.jobs['detect-changes'];
