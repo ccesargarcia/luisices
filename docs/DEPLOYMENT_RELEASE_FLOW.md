@@ -19,7 +19,7 @@ Ordem quando os componentes correspondentes mudarem:
 
 Os jobs não relacionados à mudança são ignorados. O deploy de regras não repete o deploy dos índices. A publicação de rules permanece depois da aplicação, evitando publicar uma regra incompatível antes do restante do release.
 
-Quando um push em `develop` corresponde exatamente ao merge de uma PR e os checks obrigatórios `e2e-tests (1)` e `e2e-tests (2)` passaram no commit da cabeça dessa PR, o workflow reutiliza essa validação e não repete unitários/E2E após o merge. Se não localizar a PR, se os checks estiverem ausentes/falharem ou a consulta à API do GitHub falhar, a validação normal permanece antes do deploy. Pushes diretos continuam executando os testes necessários.
+Quando um push em `develop` corresponde exatamente ao merge de uma PR, o workflow só reutiliza a validação se a árvore de arquivos do merge for idêntica à árvore testada e os dois checks obrigatórios (`e2e-tests (1)` e `e2e-tests (2)`) tiverem sido aprovados na mesma execução completa da workflow `test-actions.yml`, disparada pelo evento `pull_request` para aquela PR e commit. Nesse caso, unitários/E2E não são repetidos após o merge. Se qualquer validação falhar, faltar, divergir ou não puder ser consultada, os testes normais permanecem antes do deploy. Pushes diretos continuam executando os testes necessários.
 
 ## Produção (`main`)
 

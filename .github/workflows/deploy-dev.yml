@@ -214,6 +214,15 @@ jobs:
                 return;
               }
 
+              const [mergeCommit, testedCommit] = await Promise.all([
+                github.rest.repos.getCommit({ ...context.repo, ref: context.sha }),
+                github.rest.repos.getCommit({ ...context.repo, ref: mergedPr.head.sha })
+              ]);
+              if (mergeCommit.data.commit.tree.sha !== testedCommit.data.commit.tree.sha) {
+                core.warning(`A árvore do merge da PR #${mergedPr.number} difere da árvore testada; os testes serão repetidos.`);
+                return;
+              }
+
               const { data } = await github.rest.checks.listForRef({
                 ...context.repo,
                 ref: mergedPr.head.sha,
@@ -230,12 +239,52 @@ jobs:
                 return check?.status === 'completed' && check.conclusion === 'success';
               });
 
-              if (allPassed) {
-                core.setOutput('verified', 'true');
-                core.info(`E2E da PR #${mergedPr.number} já passaram no commit ${mergedPr.head.sha}; não serão repetidos após o merge.`);
-              } else {
+              if (!allPassed) {
                 core.warning(`A PR #${mergedPr.number} não tem os dois checks E2E obrigatórios aprovados; os testes serão executados neste push.`);
+                return;
               }
+
+              const runIds = new Set(requiredChecks.map(name => {
+                const detailsUrl = latestByName.get(name)?.details_url || '';
+                return detailsUrl.match(/\/actions\/runs\/(\d+)\//)?.[1] || '';
+              }));
+              if (runIds.size !== 1 || runIds.has('')) {
+                core.warning('Os checks E2E não pertencem à mesma execução completa; os testes serão repetidos.');
+                return;
+              }
+
+              const { data: workflows } = await github.rest.actions.listRepoWorkflows({
+                ...context.repo,
+                per_page: 100
+              });
+              const e2eWorkflow = workflows.workflows.find(workflow =>
+                workflow.path === '.github/workflows/test-actions.yml'
+              );
+              if (!e2eWorkflow) {
+                core.warning('A workflow E2E completa não foi localizada; os testes serão repetidos.');
+                return;
+              }
+
+              const runId = Number([...runIds][0]);
+              const { data: workflowRun } = await github.rest.actions.getWorkflowRun({
+                ...context.repo,
+                run_id: runId
+              });
+              const belongsToPullRequest = workflowRun.pull_requests?.some(pr =>
+                pr.number === mergedPr.number && pr.head?.sha === mergedPr.head.sha
+              );
+              if (workflowRun.workflow_id !== e2eWorkflow.id
+                || workflowRun.event !== 'pull_request'
+                || workflowRun.status !== 'completed'
+                || workflowRun.conclusion !== 'success'
+                || workflowRun.head_sha !== mergedPr.head.sha
+                || !belongsToPullRequest) {
+                core.warning(`Os checks não vieram de uma execução completa de E2E da PR #${mergedPr.number}; os testes serão repetidos.`);
+                return;
+              }
+
+              core.setOutput('verified', 'true');
+              core.info(`E2E completos da PR #${mergedPr.number} validaram a mesma árvore do merge; serão reutilizados.`);
             } catch (error) {
               core.warning(`Não foi possível verificar os checks da PR associada (HTTP ${error.status || 'desconhecido'}); mantendo os testes neste push.`);
             }

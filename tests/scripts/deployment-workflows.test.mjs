@@ -60,8 +60,14 @@ test('dev deployment reuses successful E2E checks from the merged PR and fails s
   assert.equal(detect.permissions.checks, 'read');
   assert.match(checksStep.with.script, /listPullRequestsAssociatedWithCommit/);
   assert.match(checksStep.with.script, /merge_commit_sha === context\.sha/);
+  assert.match(checksStep.with.script, /getCommit\([\s\S]*mergedPr\.head\.sha/);
+  assert.match(checksStep.with.script, /commit\.tree\.sha !== testedCommit\.data\.commit\.tree\.sha/);
   assert.match(checksStep.with.script, /filter: 'latest'/);
   assert.match(checksStep.with.script, /\['e2e-tests \(1\)', 'e2e-tests \(2\)'\]/);
+  assert.match(checksStep.with.script, /detailsUrl\.match\(\/\\\/actions\\\/runs\\\/\(\\d\+\)\\\//);
+  assert.match(checksStep.with.script, /workflow\.path === '\.github\/workflows\/test-actions\.yml'/);
+  assert.match(checksStep.with.script, /workflowRun\.event !== 'pull_request'/);
+  assert.match(checksStep.with.script, /workflowRun\.pull_requests\?\.some/);
   assert.match(checksStep.with.script, /core\.setOutput\('verified', 'false'\)/);
   assert.match(checksStep.with.script, /core\.setOutput\('verified', 'true'\)/);
   assert.match(checksStep.with.script, /mantendo os testes neste push/);
