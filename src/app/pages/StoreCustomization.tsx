@@ -292,6 +292,7 @@ export function StoreCustomization() {
   const [currentCatalogBanner, setCurrentCatalogBanner] = useState<string | null>(null);
   const [currentCatalogAboutImage, setCurrentCatalogAboutImage] = useState<string | null>(null);
   const [catalogBanners, setCatalogBanners] = useState<CatalogBannerItem[]>([]);
+  const [pendingBannerImageDeletes, setPendingBannerImageDeletes] = useState<string[]>([]);
   const [catalogBannerInterval, setCatalogBannerInterval] = useState<number>(5);
   const [catalogBannerAutoPlay, setCatalogBannerAutoPlay] = useState<boolean>(true);
   const [currentCatalogHeaderBackground, setCurrentCatalogHeaderBackground] = useState<string | null>(null);
@@ -1011,11 +1012,7 @@ export function StoreCustomization() {
     setCatalogBanners(updated);
     setCurrentCatalogBanner(updated[0]?.imageUrl || null);
 
-    try {
-      await deleteCatalogBannerImage(bannerToRemove.imageUrl);
-    } catch (err) {
-      console.warn('Erro ao deletar imagem do storage:', err);
-    }
+    setPendingBannerImageDeletes((pending) => [...new Set([...pending, bannerToRemove.imageUrl])]);
 
     try {
       const cached = localStorage.getItem('luisices_public_store_settings');
@@ -1612,6 +1609,10 @@ IMPORTANTE:
       };
 
       await updateSettings(payload);
+      if (pendingBannerImageDeletes.length > 0) {
+        await Promise.all(pendingBannerImageDeletes.map((url) => deleteCatalogBannerImage(url)));
+        setPendingBannerImageDeletes([]);
+      }
 
       // Salva no cache do navegador para a lojinha atualizar instantaneamente
       try {

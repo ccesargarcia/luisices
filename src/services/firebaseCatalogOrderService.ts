@@ -34,7 +34,28 @@ export interface CatalogOrderReceipt {
   isIdempotentReplay?: boolean;
 }
 
+export interface PublicCatalogProduct {
+  id: string;
+  name: string;
+  price: number;
+  category?: string;
+  description?: string;
+  imageUrl?: string;
+  leadTimeDays?: number;
+  badge?: string;
+  isCustomizable?: boolean;
+  status?: 'active' | 'paused';
+  order?: number;
+  createdAt?: string;
+}
+
 class FirebaseCatalogOrderService {
+  async getPublicCatalogProducts(): Promise<PublicCatalogProduct[]> {
+    const getProducts = httpsCallable<void, { products: PublicCatalogProduct[] }>(functions, 'getPublicCatalogProducts');
+    const response = await getProducts();
+    return Array.isArray(response.data?.products) ? response.data.products : [];
+  }
+
   private mapDoc(id: string, data: Record<string, any>): CatalogOrder {
     return {
       id,

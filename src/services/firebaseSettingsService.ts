@@ -4,7 +4,7 @@
  * Serviço para gerenciar configurações e personalização do usuário
  */
 
-import { doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
+import { deleteField, doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { CustomerTiersSettings } from '../app/utils/customerMetrics';
 
@@ -46,8 +46,41 @@ export interface InstitutionalCustomSection {
   content: string;
 }
 
+export interface OrderTrackingTemplate {
+  layout: 'classic' | 'editorial' | 'soft';
+  brandName: string;
+  logoUrl: string;
+  title: string;
+  subtitle: string;
+  footerText: string;
+  backgroundColor: string;
+  surfaceColor: string;
+  primaryColor: string;
+  textColor: string;
+  showLogo: boolean;
+  showProgress: boolean;
+  showProduct: boolean;
+  showQuantity: boolean;
+  showDeliveryDate: boolean;
+  showTrackingCode: boolean;
+  productLabel: string;
+  quantityLabel: string;
+  deliveryLabel: string;
+  trackingLabel: string;
+}
+
+export const DEFAULT_ORDER_TRACKING_TEMPLATE: OrderTrackingTemplate = {
+  layout: 'classic', brandName: '', logoUrl: '', title: 'Acompanhe seu pedido',
+  subtitle: 'Veja as atualizações do seu pedido por aqui.', footerText: 'Dúvidas? Fale com a nossa equipe.',
+  backgroundColor: '', surfaceColor: '', primaryColor: '', textColor: '',
+  showLogo: true, showProgress: true, showProduct: true, showQuantity: true,
+  showDeliveryDate: true, showTrackingCode: true, productLabel: 'Item', quantityLabel: 'Quantidade',
+  deliveryLabel: 'Previsão de entrega', trackingLabel: 'Código de rastreio',
+};
+
 export interface UserSettings {
   userId: string;
+  orderTrackingTemplate?: Partial<OrderTrackingTemplate>;
 
   // Personalização visual
   avatar?: string; // URL da imagem
@@ -326,20 +359,18 @@ export class FirebaseSettingsService {
     if (storeUnpublishMessage !== undefined) {
       updatePayload.storeUnpublishMessage = storeUnpublishMessage;
     }
-    await setDoc(docRef, updatePayload, { merge: true });
-
-    try {
-      const publicPayload: Record<string, any> = {
-        storePublished,
-        updatedAt: new Date(),
-      };
-      if (storeUnpublishMessage !== undefined) {
-        publicPayload.storeUnpublishMessage = storeUnpublishMessage;
-      }
-      await setDoc(doc(db, 'storeSettings', 'public'), publicPayload, { merge: true });
-    } catch (e) {
-      console.warn('Erro ao sincronizar storePublished na storeSettings pública:', e);
+    const publicPayload: Record<string, any> = {
+      storePublished,
+      updatedAt: new Date(),
+    };
+    if (storeUnpublishMessage !== undefined) {
+      publicPayload.storeUnpublishMessage = storeUnpublishMessage;
     }
+
+    const batch = writeBatch(db);
+    batch.set(docRef, updatePayload, { merge: true });
+    batch.set(doc(db, 'storeSettings', 'public'), publicPayload, { merge: true });
+    await batch.commit();
   }
 
   async updateSettings(
@@ -361,13 +392,14 @@ export class FirebaseSettingsService {
       updatedAt: new Date(),
     };
 
-    await setDoc(docRef, data, { merge: true });
+    const batch = writeBatch(db);
+    batch.set(docRef, data, { merge: true });
 
     // Sincronizar dados públicos da loja para o catálogo online público.
     // IMPORTANTE: apenas campos exclusivos da lojinha (catalog*) são sincronizados para storeSettings/public.
     // Campos do painel (businessName, businessTagline, whatsappPhone, instagramUrl, websiteUrl) NÃO
     // vazam para a lojinha — a lojinha gerencia seus próprios valores de forma independente via StoreCustomization.
-    try {
+    {
       const publicData: Record<string, any> = { updatedAt: new Date() };
 
       // Somente sincroniza dados de identidade/contato quando o save vem da tela da Lojinha
@@ -446,6 +478,7 @@ export class FirebaseSettingsService {
       if (settings.catalogBannerAutoPlay !== undefined) {
         publicData.catalogBannerAutoPlay = settings.catalogBannerAutoPlay;
       }
+      if (settings.catalogProductsPerPage !== undefined) publicData.catalogProductsPerPage = settings.catalogProductsPerPage;
 
       // Customizações da Lojinha / Catálogo
       if (settings.catalogCardDensity !== undefined) publicData.catalogCardDensity = settings.catalogCardDensity;
@@ -495,6 +528,7 @@ export class FirebaseSettingsService {
       if (settings.catalogAboutPillar2Text !== undefined) publicData.catalogAboutPillar2Text = settings.catalogAboutPillar2Text;
       if (settings.catalogAboutPillar3Title !== undefined) publicData.catalogAboutPillar3Title = settings.catalogAboutPillar3Title;
       if (settings.catalogAboutPillar3Text !== undefined) publicData.catalogAboutPillar3Text = settings.catalogAboutPillar3Text;
+      if (settings.catalogAboutPillars !== undefined) publicData.catalogAboutPillars = settings.catalogAboutPillars;
 
       // 2. Como Funciona
       if (settings.catalogShowHowItWorks !== undefined) publicData.catalogShowHowItWorks = settings.catalogShowHowItWorks;
@@ -509,6 +543,7 @@ export class FirebaseSettingsService {
       if (settings.catalogHowItWorksStep3Text !== undefined) publicData.catalogHowItWorksStep3Text = settings.catalogHowItWorksStep3Text;
       if (settings.catalogHowItWorksStep4Title !== undefined) publicData.catalogHowItWorksStep4Title = settings.catalogHowItWorksStep4Title;
       if (settings.catalogHowItWorksStep4Text !== undefined) publicData.catalogHowItWorksStep4Text = settings.catalogHowItWorksStep4Text;
+      if (settings.catalogHowItWorksSteps !== undefined) publicData.catalogHowItWorksSteps = settings.catalogHowItWorksSteps;
 
       // 3. Diferenciais
       if (settings.catalogShowFeatures !== undefined) publicData.catalogShowFeatures = settings.catalogShowFeatures;
@@ -522,6 +557,7 @@ export class FirebaseSettingsService {
       if (settings.catalogFeature3Text !== undefined) publicData.catalogFeature3Text = settings.catalogFeature3Text;
       if (settings.catalogFeature4Title !== undefined) publicData.catalogFeature4Title = settings.catalogFeature4Title;
       if (settings.catalogFeature4Text !== undefined) publicData.catalogFeature4Text = settings.catalogFeature4Text;
+      if (settings.catalogFeatureItems !== undefined) publicData.catalogFeatureItems = settings.catalogFeatureItems;
 
       // 4. Dúvidas Frequentes (FAQ)
       if (settings.catalogShowFaq !== undefined) publicData.catalogShowFaq = settings.catalogShowFaq;
@@ -537,6 +573,8 @@ export class FirebaseSettingsService {
       if (settings.catalogFaq4A !== undefined) publicData.catalogFaq4A = settings.catalogFaq4A;
       if (settings.catalogFaq5Q !== undefined) publicData.catalogFaq5Q = settings.catalogFaq5Q;
       if (settings.catalogFaq5A !== undefined) publicData.catalogFaq5A = settings.catalogFaq5A;
+      if (settings.catalogFaqItems !== undefined) publicData.catalogFaqItems = settings.catalogFaqItems;
+      if (settings.catalogCustomSections !== undefined) publicData.catalogCustomSections = settings.catalogCustomSections;
 
       // Publicação e Feature Flags — sincronizados instantaneamente para a loja pública
       if (settings.storePublished !== undefined) publicData.storePublished = settings.storePublished;
@@ -544,11 +582,10 @@ export class FirebaseSettingsService {
       if (settings.featureFlags !== undefined) publicData.featureFlags = settings.featureFlags;
 
       if (Object.keys(publicData).length > 1) {
-        await setDoc(doc(db, 'storeSettings', 'public'), publicData, { merge: true });
+        batch.set(doc(db, 'storeSettings', 'public'), publicData, { merge: true });
       }
-    } catch (e) {
-      console.warn('Erro ao sincronizar storeSettings pública:', e);
     }
+    await batch.commit();
   }
 
   /**
@@ -589,30 +626,14 @@ export class FirebaseSettingsService {
   async updateCatalogLogo(userId: string, catalogLogoUrl: string | null): Promise<void> {
     const docRef = doc(db, 'users', userId, 'settings', 'profile');
     const isRemove = catalogLogoUrl === null || catalogLogoUrl === '';
-
-    await setDoc(
-      docRef,
-      {
-        catalogLogo: isRemove ? null : catalogLogoUrl,
-        userId,
-        updatedAt: new Date(),
-      },
-      { merge: true }
-    );
-
-    try {
-      await setDoc(
-        doc(db, 'storeSettings', 'public'),
-        {
-          catalogLogo: isRemove ? null : catalogLogoUrl,
-          ...(isRemove ? { logo: null } : {}),
-          updatedAt: new Date(),
-        },
-        { merge: true }
-      );
-    } catch (e) {
-      console.warn('Erro ao sincronizar catalogLogo em storeSettings pública:', e);
-    }
+    const batch = writeBatch(db);
+    batch.set(docRef, { catalogLogo: isRemove ? null : catalogLogoUrl, userId, updatedAt: new Date() }, { merge: true });
+    batch.set(doc(db, 'storeSettings', 'public'), {
+      catalogLogo: isRemove ? null : catalogLogoUrl,
+      ...(isRemove ? { logo: null } : {}),
+      updatedAt: new Date(),
+    }, { merge: true });
+    await batch.commit();
   }
 
   /**
@@ -622,28 +643,13 @@ export class FirebaseSettingsService {
     const docRef = doc(db, 'users', userId, 'settings', 'profile');
     const isRemove = catalogBannerUrl === null || catalogBannerUrl === '';
 
-    await setDoc(
-      docRef,
-      {
-        catalogBanner: isRemove ? null : catalogBannerUrl,
-        userId,
-        updatedAt: new Date(),
-      },
-      { merge: true }
-    );
-
-    try {
-      await setDoc(
-        doc(db, 'storeSettings', 'public'),
-        {
-          catalogBanner: isRemove ? null : catalogBannerUrl,
-          updatedAt: new Date(),
-        },
-        { merge: true }
-      );
-    } catch (e) {
-      console.warn('Erro ao sincronizar catalogBanner em storeSettings pública:', e);
-    }
+    const batch = writeBatch(db);
+    batch.set(docRef, { catalogBanner: isRemove ? null : catalogBannerUrl, userId, updatedAt: new Date() }, { merge: true });
+    batch.set(doc(db, 'storeSettings', 'public'), {
+      catalogBanner: isRemove ? null : catalogBannerUrl,
+      updatedAt: new Date(),
+    }, { merge: true });
+    await batch.commit();
   }
 
   /**
@@ -653,28 +659,13 @@ export class FirebaseSettingsService {
     const docRef = doc(db, 'users', userId, 'settings', 'profile');
     const isRemove = backgroundUrl === null || backgroundUrl === '';
 
-    await setDoc(
-      docRef,
-      {
-        catalogHeaderBackground: isRemove ? null : backgroundUrl,
-        userId,
-        updatedAt: new Date(),
-      },
-      { merge: true }
-    );
-
-    try {
-      await setDoc(
-        doc(db, 'storeSettings', 'public'),
-        {
-          catalogHeaderBackground: isRemove ? null : backgroundUrl,
-          updatedAt: new Date(),
-        },
-        { merge: true }
-      );
-    } catch (e) {
-      console.warn('Erro ao sincronizar catalogHeaderBackground em storeSettings pública:', e);
-    }
+    const batch = writeBatch(db);
+    batch.set(docRef, { catalogHeaderBackground: isRemove ? null : backgroundUrl, userId, updatedAt: new Date() }, { merge: true });
+    batch.set(doc(db, 'storeSettings', 'public'), {
+      catalogHeaderBackground: isRemove ? null : backgroundUrl,
+      updatedAt: new Date(),
+    }, { merge: true });
+    await batch.commit();
   }
 
   /**
@@ -700,28 +691,13 @@ export class FirebaseSettingsService {
     const docRef = doc(db, 'users', userId, 'settings', 'profile');
     const isRemove = imageUrl === null || imageUrl === '';
 
-    await setDoc(
-      docRef,
-      {
-        catalogAboutImageUrl: isRemove ? null : imageUrl,
-        userId,
-        updatedAt: new Date(),
-      },
-      { merge: true }
-    );
-
-    try {
-      await setDoc(
-        doc(db, 'storeSettings', 'public'),
-        {
-          catalogAboutImageUrl: isRemove ? null : imageUrl,
-          updatedAt: new Date(),
-        },
-        { merge: true }
-      );
-    } catch (e) {
-      console.warn('Erro ao sincronizar catalogAboutImageUrl em storeSettings pública:', e);
-    }
+    const batch = writeBatch(db);
+    batch.set(docRef, { catalogAboutImageUrl: isRemove ? null : imageUrl, userId, updatedAt: new Date() }, { merge: true });
+    batch.set(doc(db, 'storeSettings', 'public'), {
+      catalogAboutImageUrl: isRemove ? null : imageUrl,
+      updatedAt: new Date(),
+    }, { merge: true });
+    await batch.commit();
   }
 
   /**
@@ -729,10 +705,53 @@ export class FirebaseSettingsService {
    */
   async resetToDefaults(userId: string): Promise<void> {
     const docRef = doc(db, 'users', userId, 'settings', 'profile');
-    await setDoc(docRef, {
+    const publicCatalogFields = [
+      'catalogStoreName', 'name', 'businessName', 'catalogStoreTagline', 'tagline', 'businessTagline',
+      'catalogWhatsappPhone', 'whatsappPhone', 'whatsapp', 'businessPhone', 'catalogLogo', 'logo',
+      'catalogBanner', 'banner', 'catalogBanners', 'banners', 'catalogBannerInterval', 'bannerInterval',
+      'catalogBannerAutoPlay', 'bannerAutoPlay', 'catalogBannerFixed', 'bannerFixed', 'instagramUrl',
+      'instagramColabUrl', 'instagram', 'instagramColab', 'websiteUrl', 'website', 'catalogHeaderBackground',
+      'headerBackground', 'catalogHeaderBgColor', 'headerBgColor', 'catalogHeaderTextColor', 'headerTextColor',
+      'catalogHeaderLogoPosition', 'headerLogoPosition', 'catalogHeaderHeight', 'headerHeight',
+      'catalogHeaderHideText', 'headerHideText',
+      'catalogCardDensity', 'catalogImageAspect', 'catalogShowBadgeCustomizable', 'catalogShowBadgeLeadTime',
+      'catalogShowBadgeBestSeller', 'catalogShowBadgeNew', 'catalogStoreMode', 'catalogShowFloatingWhatsApp',
+      'catalogFloatingWhatsAppText', 'catalogPixDiscountText', 'catalogAdvanceNoticeText', 'catalogMinOrderAmount',
+      'catalogBackgroundStyle', 'catalogTypographyStyle', 'catalogDefaultSort', 'catalogCategoryFilterStyle',
+      'catalogPrimaryColor', 'catalogButtonRadius', 'catalogButtonStyle', 'catalogBadge', 'catalogStatusText',
+      'catalogHeroTitle', 'heroTitle', 'catalogHeroDescription', 'heroDescription', 'catalogShowHero', 'showHero',
+      'catalogAnnouncement', 'catalogWhatsappGreeting', 'whatsappGreeting', 'catalogWhatsappCustomizationLabel',
+      'whatsappCustomizationLabel', 'catalogWhatsappFooter', 'whatsappFooter', 'catalogFooterText', 'footerText',
+      'catalogFooterLocation', 'footerLocation', 'catalogFooterBusinessHours', 'footerBusinessHours',
+      'catalogFooterCopyright', 'footerCopyright', 'catalogFooterNotice', 'footerNotice',
+      'catalogShowAbout', 'catalogAboutBadge', 'catalogAboutTitle', 'catalogAboutText', 'catalogAboutImageUrl',
+      'catalogAboutPillar1Title', 'catalogAboutPillar1Text', 'catalogAboutPillar2Title', 'catalogAboutPillar2Text',
+      'catalogAboutPillar3Title', 'catalogAboutPillar3Text', 'catalogShowHowItWorks', 'catalogHowItWorksBadge',
+      'catalogHowItWorksTitle', 'catalogHowItWorksSubtitle', 'catalogHowItWorksStep1Title',
+      'catalogHowItWorksStep1Text', 'catalogHowItWorksStep2Title', 'catalogHowItWorksStep2Text',
+      'catalogHowItWorksStep3Title', 'catalogHowItWorksStep3Text', 'catalogHowItWorksStep4Title',
+      'catalogHowItWorksStep4Text', 'catalogShowFeatures', 'catalogFeaturesBadge', 'catalogFeaturesTitle',
+      'catalogFeature1Title', 'catalogFeature1Text', 'catalogFeature2Title', 'catalogFeature2Text',
+      'catalogFeature3Title', 'catalogFeature3Text', 'catalogFeature4Title', 'catalogFeature4Text',
+      'catalogShowFaq', 'catalogFaqBadge', 'catalogFaqTitle', 'catalogFaq1Q', 'catalogFaq1A', 'catalogFaq2Q',
+      'catalogFaq2A', 'catalogFaq3Q', 'catalogFaq3A', 'catalogFaq4Q', 'catalogFaq4A', 'catalogFaq5Q',
+      'catalogFaq5A', 'catalogProductsPerPage', 'catalogCustomSections', 'catalogFeatureItems',
+      'catalogHowItWorksSteps', 'catalogFaqItems', 'catalogAboutPillars',
+    ];
+    const publicReset: Record<string, any> = Object.fromEntries(
+      publicCatalogFields.map((field) => [field, deleteField()])
+    );
+    publicReset.storePublished = true;
+    publicReset.storeUnpublishMessage = deleteField();
+    publicReset.featureFlags = deleteField();
+
+    const batch = writeBatch(db);
+    batch.set(docRef, {
       userId,
       updatedAt: new Date(),
     });
+    batch.set(doc(db, 'storeSettings', 'public'), publicReset, { merge: true });
+    await batch.commit();
   }
 }
 

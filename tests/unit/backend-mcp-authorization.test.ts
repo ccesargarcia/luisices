@@ -59,6 +59,50 @@ describe('backend MCP authorization', () => {
     expect(updateQuoteStatus).not.toHaveBeenCalled();
   });
 
+  it('does not update a quote unless confirmation is explicitly true', async () => {
+    const updateQuoteStatus = vi.fn();
+    const tools = new AiToolsExecutor({ updateQuoteStatus });
+
+    const preview = await tools.executeUpdateQuoteStatus({
+      quoteNumber: 'ORC-0002', status: 'approved',
+    }, { uid: 'user-1', permissions: { quotes: { edit: true } } });
+
+    expect(preview).toMatchObject({ preview: true, quoteNumber: 'ORC-0002', status: 'approved' });
+    expect(updateQuoteStatus).not.toHaveBeenCalled();
+  });
+
+  it('routes quote reads through the initialized repository instance', async () => {
+    const getQuotes = vi.fn().mockResolvedValue([]);
+    const tools = new AiToolsExecutor({ getQuotes });
+
+    await expect(tools.executeQueryQuotes({}, { uid: 'user-1' })).resolves.toMatchObject({
+      success: true,
+      totalCount: 0,
+      quotes: [],
+    });
+    expect(getQuotes).toHaveBeenCalledWith({ uid: 'user-1' }, { limit: 20 });
+  });
+
+  it('does not expose a collaborator email through customer search when team:read is missing', async () => {
+    const tools = new AiToolsExecutor({
+      getScopedCustomers: vi.fn().mockResolvedValue({ customers: [] }),
+      getTeamMembers: vi.fn().mockResolvedValue([{
+        uid: 'creator-1', name: 'Colaborador', email: 'colaborador@example.com',
+      }]),
+      getScopedOrders: vi.fn().mockResolvedValue([{
+        userId: 'caller-1', createdBy: 'creator-1', createdByName: 'Colaborador',
+        customerName: 'Cliente', customerPhone: '11999990000', totalPrice: 100,
+      }]),
+    });
+
+    const result = await tools.executeQueryCustomers({ searchTerm: 'Colaborador' }, {
+      uid: 'caller-1', isEmployee: true, active: true, scopes: ['customers:read'],
+    });
+
+    expect(result.collaboratorFound).toEqual({ name: 'Colaborador' });
+    expect(result.collaboratorFound).not.toHaveProperty('email');
+  });
+
   it('requires orders:create before approving a quote with conversion enabled', async () => {
     const updateQuoteStatus = vi.fn();
     const tools = new AiToolsExecutor({ updateQuoteStatus });

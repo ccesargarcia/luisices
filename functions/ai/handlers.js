@@ -5,7 +5,6 @@
 const { getCallerScope, validateAiAccess, validateGalleryAccess } = require('./authorization');
 const { TOOLS_DECLARATIONS, COPILOT_SYSTEM_INSTRUCTION, GALLERY_VISION_PROMPT, STORE_PRODUCT_VISION_PROMPT } = require('./schemas');
 const { INPUT_LIMITS, TIMEOUTS, MODEL_CONFIG, TOOL_LIMITS, BUSINESS_TIMEZONE } = require('./config');
-const { recordAiUsage, getAiUsageSummary } = require('./usage');
 
 function cleanAiOutput(text = '') {
   if (!text || typeof text !== 'string') return '';
@@ -275,10 +274,6 @@ function createAiAgentChatHandler(deps = {}) {
 
     const startTime = Date.now();
     let totalTokensConsumed = 0;
-    let promptTokensConsumed = 0;
-    let candidatesTokensConsumed = 0;
-    let reasoningTokensConsumed = 0;
-    let usedModel = MODEL_CONFIG.PRIMARY_CHAT_MODEL;
     let geminiAttempts = [];
 
     try {
@@ -353,20 +348,24 @@ function createAiAgentChatHandler(deps = {}) {
         system_instruction: { parts: [{ text: `${COPILOT_SYSTEM_INSTRUCTION}\nData atual do servidor: ${new Intl.DateTimeFormat('pt-BR', { timeZone: BUSINESS_TIMEZONE, dateStyle: 'short' }).format(new Date())}; fuso: ${BUSINESS_TIMEZONE}.` }] },
         contents,
         tools: [{ function_declarations: activeDeclarations }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 1536 },
+        generationConfig: {
+          maxOutputTokens: 1536,
+          // O copiloto faz consultas e prepara rascunhos; raciocínio baixo
+          // reduz espera nas tarefas rotineiras sem limitar as ferramentas.
+          thinkingConfig: { thinkingLevel: MODEL_CONFIG.CHAT_THINKING_LEVEL },
+        },
       };
 
       // 6. Executa chamada ao Gemini
       let geminiResp = await geminiClient.generateContent(geminiPayload, {
         totalTimeoutMs: TIMEOUTS.CHAT_TOTAL_MS,
+        primaryAttemptTimeoutMs: TIMEOUTS.CHAT_ATTEMPT_MS,
+        fallbackAttemptTimeoutMs: TIMEOUTS.CHAT_FALLBACK_ATTEMPT_MS,
+        fallbackDelayMs: TIMEOUTS.CHAT_FALLBACK_DELAY_MS,
       });
       geminiAttempts = geminiResp.attempts || [];
 
-      usedModel = geminiResp.modelUsed;
       totalTokensConsumed = geminiResp.tokens.totalTokens;
-      promptTokensConsumed = geminiResp.tokens.promptTokens;
-      candidatesTokensConsumed = geminiResp.tokens.candidatesTokens;
-      reasoningTokensConsumed = geminiResp.tokens.reasoningTokens;
 
       const candidate = geminiResp.data?.candidates?.[0];
       const parts = candidate?.content?.parts || [];
@@ -493,19 +492,21 @@ function createAiAgentChatHandler(deps = {}) {
                 { ...candidate.content, role: 'model' },
                 { role: 'user', parts: functionResponseParts },
               ],
-              generationConfig: { temperature: 0.1, maxOutputTokens: 768 },
+              generationConfig: {
+                maxOutputTokens: 768,
+                thinkingConfig: { thinkingLevel: MODEL_CONFIG.CHAT_THINKING_LEVEL },
+              },
             };
 
             try {
               const synthesisResp = await geminiClient.generateContent(synthesisPayload, {
                 totalTimeoutMs: remainingMs,
+                primaryAttemptTimeoutMs: Math.min(TIMEOUTS.CHAT_ATTEMPT_MS, remainingMs),
+                fallbackAttemptTimeoutMs: TIMEOUTS.CHAT_FALLBACK_ATTEMPT_MS,
+                fallbackDelayMs: TIMEOUTS.CHAT_FALLBACK_DELAY_MS,
               });
               totalTokensConsumed += synthesisResp.tokens.totalTokens;
-              promptTokensConsumed += synthesisResp.tokens.promptTokens;
-              candidatesTokensConsumed += synthesisResp.tokens.candidatesTokens;
-              reasoningTokensConsumed += synthesisResp.tokens.reasoningTokens;
               geminiAttempts = [...geminiAttempts, ...(synthesisResp.attempts || [])];
-              usedModel = synthesisResp.modelUsed || usedModel;
               const synthesisParts = synthesisResp.data?.candidates?.[0]?.content?.parts || [];
               const synthesizedAnswer = cleanAiOutput(synthesisParts.map((part) => part.text).filter(Boolean).join('\n'));
               if (synthesizedAnswer) answers.splice(0, answers.length, synthesizedAnswer);
@@ -539,73 +540,17 @@ function createAiAgentChatHandler(deps = {}) {
         cache.set(cacheKey, responsePayload);
       }
 
-      // 8. Reconcilia orçamento e registra telemetria (R01 & R10)
+      // 8. Reconcilia o limite de orçamento (R01 & R10)
       if (budgetManager && reservation) {
         await budgetManager.reconcileBudget(reservation, totalTokensConsumed);
-      }
-
-      if (db) {
-        await recordAiUsage(db, {
-          userId: scope.uid,
-          action: 'copilot_chat',
-          requestedModel: MODEL_CONFIG.PRIMARY_CHAT_MODEL,
-          usedModel,
-          promptTokens: promptTokensConsumed,
-          candidatesTokens: candidatesTokensConsumed,
-          reasoningTokens: reasoningTokensConsumed,
-          totalTokens: totalTokensConsumed,
-          attempts: geminiAttempts,
-          durationMs: Date.now() - startTime,
-          status: 'success',
-        });
       }
 
       return responsePayload;
     } catch (error) {
       geminiAttempts = error.attempts || geminiAttempts;
       await settleFailedReservation(budgetManager, reservation, error, totalTokensConsumed, geminiAttempts);
-      if (db) {
-        await recordAiUsage(db, {
-          userId: scope.uid,
-          action: 'copilot_chat',
-          requestedModel: MODEL_CONFIG.PRIMARY_CHAT_MODEL,
-          usedModel,
-          reasoningTokens: geminiAttempts.reduce((sum, attempt) => sum + (attempt.reasoningTokens || 0), 0),
-          totalTokens: totalTokensConsumed,
-          attempts: geminiAttempts,
-          durationMs: Date.now() - startTime,
-          status: 'error',
-          errorMessage: error.message,
-        });
-      }
       throw error;
     }
-  };
-}
-
-/**
- * Cria o handler para getAiUsage
- */
-function createGetAiUsageHandler(deps = {}) {
-  const { db } = deps;
-
-  return async function handleGetAiUsage(request) {
-    const callerUid = request?.auth?.uid;
-    if (!callerUid) {
-      const err = new Error('Usuário não autenticado.');
-      err.code = 'unauthenticated';
-      throw err;
-    }
-
-    const callerProfile = request?.authProfile || (db ? (await db.doc(`userProfiles/${callerUid}`).get().then(d => d.exists ? d.data() : null)) : null);
-    const scope = getCallerScope(callerUid, callerProfile);
-    if (!scope.isAdmin) {
-      const err = new Error('Acesso restrito a administradores.');
-      err.code = 'permission-denied';
-      throw err;
-    }
-
-    return getAiUsageSummary(db);
   };
 }
 
@@ -672,9 +617,7 @@ function createEnrichGalleryItemHandler(deps = {}) {
       reservation = await budgetManager.reserveBudget(scope.uid, 2000);
     }
 
-    const startTime = Date.now();
     let totalTokens = 0;
-    let usedModel = MODEL_CONFIG.PRIMARY_VISION_MODEL;
     let geminiAttempts = [];
 
     try {
@@ -703,12 +646,11 @@ function createEnrichGalleryItemHandler(deps = {}) {
             { text: `${GALLERY_VISION_PROMPT}\nTítulo informado: "${itemData.title || ''}"\nDescrição atual: "${itemData.description || ''}"` },
           ],
         }],
-        generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
+        generationConfig: { responseMimeType: 'application/json' },
       };
 
       const resp = await geminiClient.generateContent(payload, { totalTimeoutMs: TIMEOUTS.VISION_TOTAL_MS });
       geminiAttempts = resp.attempts || [];
-      usedModel = resp.modelUsed;
       totalTokens = resp.tokens.totalTokens;
 
       const rawText = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
@@ -733,25 +675,10 @@ function createEnrichGalleryItemHandler(deps = {}) {
 
       await itemRef.update(updates);
 
-      // Reconciliação e Telemetria (R10)
+      // Reconciliação do limite de orçamento (R10)
       if (budgetManager && reservation) {
         await budgetManager.reconcileBudget(reservation, totalTokens);
       }
-
-      await recordAiUsage(db, {
-        userId: scope.uid,
-        action: 'gallery_vision_enrichment',
-        requestedModel: MODEL_CONFIG.PRIMARY_VISION_MODEL,
-        usedModel,
-        promptTokens: resp.tokens.promptTokens,
-        candidatesTokens: resp.tokens.candidatesTokens,
-        reasoningTokens: resp.tokens.reasoningTokens,
-        totalTokens,
-        attempts: geminiAttempts,
-        durationMs: Date.now() - startTime,
-        status: 'success',
-        itemId,
-      });
 
       return {
         success: true,
@@ -762,19 +689,6 @@ function createEnrichGalleryItemHandler(deps = {}) {
     } catch (error) {
       geminiAttempts = error.attempts || geminiAttempts;
       await settleFailedReservation(budgetManager, reservation, error, totalTokens, geminiAttempts);
-      await recordAiUsage(db, {
-        userId: scope.uid,
-        action: 'gallery_vision_enrichment',
-        requestedModel: MODEL_CONFIG.PRIMARY_VISION_MODEL,
-        usedModel,
-        reasoningTokens: geminiAttempts.reduce((sum, attempt) => sum + (attempt.reasoningTokens || 0), 0),
-        totalTokens,
-        attempts: geminiAttempts,
-        durationMs: Date.now() - startTime,
-        status: 'error',
-        errorMessage: error.message,
-        itemId,
-      });
       throw error;
     }
   };
@@ -829,9 +743,7 @@ function createEnrichStoreProductHandler(deps = {}) {
       reservation = await budgetManager.reserveBudget(scope.uid, 2000);
     }
 
-    const startTime = Date.now();
     let totalTokens = 0;
-    let usedModel = MODEL_CONFIG.PRIMARY_VISION_MODEL;
     let geminiAttempts = [];
 
     try {
@@ -849,12 +761,11 @@ function createEnrichStoreProductHandler(deps = {}) {
             { text: promptText },
           ],
         }],
-        generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
+        generationConfig: { responseMimeType: 'application/json' },
       };
 
       const resp = await geminiClient.generateContent(payload, { totalTimeoutMs: TIMEOUTS.VISION_TOTAL_MS });
       geminiAttempts = resp.attempts || [];
-      usedModel = resp.modelUsed;
       totalTokens = resp.tokens.totalTokens;
 
       const rawText = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
@@ -873,22 +784,6 @@ function createEnrichStoreProductHandler(deps = {}) {
         await budgetManager.reconcileBudget(reservation, totalTokens);
       }
 
-      if (db) {
-        await recordAiUsage(db, {
-          userId: scope.uid,
-          action: 'store_product_vision_enrichment',
-          requestedModel: MODEL_CONFIG.PRIMARY_VISION_MODEL,
-          usedModel,
-          promptTokens: resp.tokens.promptTokens,
-          candidatesTokens: resp.tokens.candidatesTokens,
-          reasoningTokens: resp.tokens.reasoningTokens,
-          totalTokens,
-          attempts: geminiAttempts,
-          durationMs: Date.now() - startTime,
-          status: 'success',
-        });
-      }
-
       return {
         success: true,
         name: parsed.name || currentName || '',
@@ -901,20 +796,6 @@ function createEnrichStoreProductHandler(deps = {}) {
     } catch (error) {
       geminiAttempts = error.attempts || geminiAttempts;
       await settleFailedReservation(budgetManager, reservation, error, totalTokens, geminiAttempts);
-      if (db) {
-        await recordAiUsage(db, {
-          userId: scope.uid,
-          action: 'store_product_vision_enrichment',
-          requestedModel: MODEL_CONFIG.PRIMARY_VISION_MODEL,
-          usedModel,
-          reasoningTokens: geminiAttempts.reduce((sum, attempt) => sum + (attempt.reasoningTokens || 0), 0),
-          totalTokens,
-          attempts: geminiAttempts,
-          durationMs: Date.now() - startTime,
-          status: 'error',
-          errorMessage: error.message,
-        });
-      }
       throw error;
     }
   };
@@ -929,7 +810,7 @@ function createStoreCustomizationCopyHandler(deps = {}) {
   return async function handleStoreCustomizationCopy(prompt) {
     const payload = {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 3000, responseMimeType: 'application/json' },
+      generationConfig: { maxOutputTokens: 3000, responseMimeType: 'application/json' },
     };
 
     const resp = await geminiClient.generateContent(payload, { totalTimeoutMs: TIMEOUTS.STORE_COPY_TOTAL_MS });
@@ -940,7 +821,6 @@ function createStoreCustomizationCopyHandler(deps = {}) {
 
 module.exports = {
   createAiAgentChatHandler,
-  createGetAiUsageHandler,
   createEnrichGalleryItemHandler,
   createEnrichStoreProductHandler,
   createStoreCustomizationCopyHandler,

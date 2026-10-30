@@ -130,6 +130,7 @@ const Exchanges          = lazyWithRetry(() => import('./pages/Exchanges'), 'Exc
 const Users              = lazyWithRetry(() => import('./pages/Users'), 'Users');
 const HelpCenter         = lazyWithRetry(() => import('./pages/HelpCenter'), 'HelpCenter');
 const Emails             = lazyWithRetry(() => import('./pages/Emails'), 'Emails');
+const PublicTrackingLinks = lazyWithRetry(() => import('./pages/PublicTrackingLinks'), 'PublicTrackingLinks');
 const Pricing            = lazyWithRetry(() => import('./pages/Pricing'), 'Pricing');
 const FixNegativeValues  = lazyWithRetry(() => import('./pages/FixNegativeValues'));
 const PublicCatalog      = lazyWithRetry(() => import('./pages/PublicCatalog'), 'PublicCatalog');
@@ -140,6 +141,7 @@ const WhatsAppChat       = lazyWithRetry(() => import('./pages/WhatsAppChat'), '
 const ArchivedOrders     = lazyWithRetry(() => import('./pages/ArchivedOrders'), 'ArchivedOrders');
 const ArtisanPricingPage = lazyWithRetry(() => import('./pages/ArtisanPricingPage'), 'ArtisanPricingPage');
 const ApiDocs            = lazyWithRetry(() => import('./pages/ApiDocs'), 'ApiDocs');
+const PublicOrderTracking = lazyWithRetry(() => import('./pages/PublicOrderTracking'), 'PublicOrderTracking');
 
 function PageLoader() {
   return (
@@ -209,6 +211,11 @@ export const router = isCatalogSubdomain
       },
     ], { basename })
   : createBrowserRouter([
+      {
+        path: '/acompanhar/:token',
+        element: <Lazy><PublicOrderTracking /></Lazy>,
+        errorElement: <ErrorBoundary />,
+      },
       {
         path: '/login',
         element: <Login />,
@@ -368,6 +375,10 @@ export const router = isCatalogSubdomain
       {
         path: 'emails',
         element: <Lazy><PermissionRoute check={p => canAccessEmails(p, 'view')}><Emails /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'links-acompanhamento',
+        element: <Lazy><PermissionRoute check={p => p.orders?.view ?? false}><PublicTrackingLinks /></PermissionRoute></Lazy>,
       },
       {
         path: 'ajuda',

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef, Fragment } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { Link } from 'react-router';
 import { Order, OrderStatus, UserProfile, canAccessArchivedOrders } from '../types';
 import { OrderCard } from '../components/OrderCard';
@@ -37,9 +37,10 @@ import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
+import { orderTrackingService } from '../../services/orderTrackingService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
-import { useSalesLedger } from '../../hooks/useSalesLedger';
+import { getLedgerDateRangeQueryInput, useSalesLedger } from '../../hooks/useSalesLedger';
 import { DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
 import { calculatePaymentBalance } from '../utils/financialMath';
 import { parseLocalDate } from '../utils/date';
@@ -101,12 +102,16 @@ export function Dashboard() {
     selectedUserIds,
   } = useFirebaseOrders();
   const { settings, updateSettings } = useUserSettings();
+  const dashboardLedgerDateRange = useMemo(
+    () => getLedgerDateRangeQueryInput('month'),
+    [],
+  );
   const {
     stats: ledgerStats,
     allSales,
     teamFilteredSales,
     loading: ledgerLoading,
-  } = useSalesLedger({ teamUserIds: selectedUserIds });
+  } = useSalesLedger({ teamUserIds: selectedUserIds, dateRange: dashboardLedgerDateRange });
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -122,6 +127,8 @@ export function Dashboard() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
   const [creatorProfiles, setCreatorProfiles] = useState<UserProfile[]>([]);
+  const [trackingLinksByOrderId, setTrackingLinksByOrderId] = useState<Record<string, string>>({});
+  const trackingLinkRequestsRef = useRef(new Map<string, Promise<string | null>>());
   const [viewMode, setViewMode] = useState<'grid' | 'table'>(() => {
     try {
       const saved = localStorage.getItem('orders_view_mode');
@@ -146,6 +153,37 @@ export function Dashboard() {
     firebaseUserService.listUsers().then(setCreatorProfiles).catch(() => setCreatorProfiles([]));
   }, [userProfile?.role]);
 
+  useEffect(() => {
+    setTrackingLinksByOrderId({});
+    trackingLinkRequestsRef.current.clear();
+  }, [user?.uid]);
+
+  const loadTrackingUrlForOrder = useCallback((orderId: string): Promise<string | null> => {
+    const cachedUrl = trackingLinksByOrderId[orderId];
+    if (cachedUrl) return Promise.resolve(cachedUrl);
+
+    const pending = trackingLinkRequestsRef.current.get(orderId);
+    if (pending) return pending;
+
+    const requestingUid = user?.uid;
+    const request = orderTrackingService.getLinkForOrder(orderId)
+      .then((link) => {
+        if (user?.uid !== requestingUid || !link?.token || link.revokedAt || (link.expiresAt && Date.parse(link.expiresAt) <= Date.now())) return null;
+        const base = import.meta.env.BASE_URL || '/';
+        const url = new URL(`${base.replace(/\/$/, '')}/acompanhar/${link.token}`, window.location.origin).toString();
+        setTrackingLinksByOrderId(current => ({ ...current, [orderId]: url }));
+        return url;
+      })
+      .catch((error) => {
+        console.warn('Não foi possível carregar o link de acompanhamento do pedido:', error);
+        return null;
+      })
+      .finally(() => trackingLinkRequestsRef.current.delete(orderId));
+
+    trackingLinkRequestsRef.current.set(orderId, request);
+    return request;
+  }, [trackingLinksByOrderId, user?.uid]);
+
   const currentMonthName = useMemo(() => {
     const name = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date());
     return name.charAt(0).toUpperCase() + name.slice(1);
@@ -164,6 +202,9 @@ export function Dashboard() {
       createdByName: creatorName,
     });
     setDetailsOpen(true);
+    if (order.hasPublicTracking && !trackingLinksByOrderId[order.id]) {
+      void loadTrackingUrlForOrder(order.id);
+    }
   };
 
   // Rotina silenciosa e idempotente de auto-arquivamento de pedidos concluídos expirados (Hot/Cold Data)
@@ -594,6 +635,8 @@ export function Dashboard() {
           <OrderCard
             key={order.id}
             order={order}
+            trackingUrl={trackingLinksByOrderId[order.id]}
+            onLoadTrackingUrl={loadTrackingUrlForOrder}
             isSelected={selectedOrderIds.includes(order.id)}
             onToggleSelect={toggleOrderSelection}
             onClick={() => handleOrderClick(order)}
@@ -1193,6 +1236,13 @@ export function Dashboard() {
 
       <OrderDetailsDialog
         order={selectedOrder}
+        trackingUrl={selectedOrder ? trackingLinksByOrderId[selectedOrder.id] : undefined}
+        onTrackingLinkChanged={(orderId, url) => setTrackingLinksByOrderId(current => {
+          const next = { ...current };
+          if (url) next[orderId] = url;
+          else delete next[orderId];
+          return next;
+        })}
         open={detailsOpen}
         onOpenChange={(open) => {
           setDetailsOpen(open);

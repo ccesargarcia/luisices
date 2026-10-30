@@ -20,9 +20,10 @@ service cloud.firestore {
     }
 
     function isAdmin() {
+      let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
       return request.auth != null
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin'
-        && isActiveUser();
+        && profile.get('role', '') == 'admin'
+        && isActiveProfile(profile);
     }
 
     function isActiveEmployee() {
@@ -118,26 +119,53 @@ service cloud.firestore {
         );
     }
 
-    function canUpdateOrder(previous, changed) {
+    function hasOrderDeletePermission(profile, previous) {
+      let permissions = profile.get('permissions', {});
+      let ordersPermission = permissions.get('orders', false);
+      let archivedPermission = permissions.get('archivedOrders', null);
+      let deletePermission = previous.get('isArchived', false) == true
+        ? (archivedPermission == null ? ordersPermission : archivedPermission)
+        : ordersPermission;
+      return hasPerm(deletePermission, 'delete');
+    }
+
+    function hasOrderArchivePermission(profile, previous, next) {
+      let permissions = profile.get('permissions', {});
+      let ordersPermission = permissions.get('orders', false);
+      let archivedPermission = permissions.get('archivedOrders', null);
+      let isArchiving = next.get('isArchived', false) == true && previous.get('isArchived', false) != true;
+      let isUnarchiving = next.get('isArchived', false) == false && previous.get('isArchived', false) == true;
+      let archivePerm = archivedPermission == null ? ordersPermission : archivedPermission;
+      return (!isArchiving || hasPerm(archivePerm, 'create') || (archivedPermission == null && hasPerm(ordersPermission, 'edit')))
+        && (!isUnarchiving || hasPerm(archivePerm, 'edit') || (archivedPermission == null && hasPerm(ordersPermission, 'edit')));
+    }
+
+    function canUpdateOrder(previous, next, changed) {
       let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
       let role = profile.get('role', '');
+      let isSoftDelete = changed.hasAny(['deletedAt']);
+      let isArchiveTransition = changed.hasAny(['isArchived']);
+      let hasEditPerm = hasPerm(profile.get('permissions', {}).get('orders', false), 'edit');
+      let canArchive = hasOrderArchivePermission(profile, previous, next);
+      let canDelete = hasOrderDeletePermission(profile, previous);
+      let onlyArchiveFields = changed.hasOnly(['isArchived', 'archivedAt', 'archivedBy', 'updatedAt', 'version']);
+      let canPerformUpdate = isSoftDelete
+        ? (changed.hasOnly(['deletedAt', 'updatedAt', 'version']) && next.get('deletedAt', null) != null && canDelete)
+        : (isArchiveTransition
+          ? (canArchive && (onlyArchiveFields || hasEditPerm))
+          : hasEditPerm);
       return isActiveProfile(profile)
         && (
           role == 'admin'
           || (
             previous.userId == request.auth.uid
-            && hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
-            && (!changed.hasAny(['deletedAt'])
-              || hasPerm(profile.get('permissions', {}).get('orders', false), 'delete')
-              || hasPerm(profile.get('permissions', {}).get('archivedOrders', false), 'create'))
+            && canPerformUpdate
           )
           || (
             role == 'funcionario'
             && previous.get('assignedTo', '') == request.auth.uid
-            && hasPerm(profile.get('permissions', {}).get('orders', false), 'edit')
             && !changed.hasAny(['assignedTo'])
-            && (!changed.hasAny(['deletedAt'])
-              || hasPerm(profile.get('permissions', {}).get('orders', false), 'delete'))
+            && canPerformUpdate
           )
         );
     }
@@ -162,25 +190,6 @@ service cloud.firestore {
       let d = int(parts[2]);
       let dt = timestamp.date(int(parts[0]), m, d);
       return dt.month() == m && dt.day() == d;
-    }
-
-    // Direct required-field access and string methods fail closed for missing/wrong types.
-    function isValidNewOrder(data) {
-      return data.customerName.size() <= 200 && data.customerName.matches('[\\s\\S]*[^\\s][\\s\\S]*')
-        && data.productName.size() <= 300 && data.productName.matches('[\\s\\S]*[^\\s][\\s\\S]*')
-        && data.quantity is int && data.quantity > 0 && data.quantity <= 10000
-        && data.price is number && data.price >= 0 && data.price <= 1000000
-        && data.status in ['pending', 'in-progress', 'completed', 'cancelled']
-        && data.deliveryDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && isValidCalendarDate(data.deliveryDate)
-        && (data.get('customerPhone', null) == null || (data.customerPhone is string && data.customerPhone.size() <= 50))
-        && (data.get('notes', null) == null || (data.notes is string && data.notes.size() <= 1000))
-        && (data.get('tags', null) == null || isValidOrderTags(data.tags))
-        && (data.get('customerId', null) == null || (
-          data.customerId is string && data.customerId.size() > 0 && data.customerId.size() <= 128
-          && get(/databases/$(database)/documents/customers/$(data.customerId)).data.userId == data.userId
-        ))
-        && isValidOrderItemsField(data)
-        && (data.get('payment', null) == null || isConsistentOrderPayment(data.payment, data.price));
     }
 
     // Tag names are trimmed before submission; reject NUL in either field.
@@ -212,26 +221,28 @@ service cloud.firestore {
       let count = tags.size();
       return tags is list && count <= 20
         && (count == 20 ? are20TagsValid(tags) : (
-          (count <= 0 || isValidOrderTag(tags[0]))
-          && (count <= 1 || isValidOrderTag(tags[1]))
-          && (count <= 2 || isValidOrderTag(tags[2]))
-          && (count <= 3 || isValidOrderTag(tags[3]))
-          && (count <= 4 || isValidOrderTag(tags[4]))
-          && (count <= 5 || isValidOrderTag(tags[5]))
-          && (count <= 6 || isValidOrderTag(tags[6]))
-          && (count <= 7 || isValidOrderTag(tags[7]))
-          && (count <= 8 || isValidOrderTag(tags[8]))
-          && (count <= 9 || isValidOrderTag(tags[9]))
-          && (count <= 10 || isValidOrderTag(tags[10]))
-          && (count <= 11 || isValidOrderTag(tags[11]))
-          && (count <= 12 || isValidOrderTag(tags[12]))
-          && (count <= 13 || isValidOrderTag(tags[13]))
-          && (count <= 14 || isValidOrderTag(tags[14]))
-          && (count <= 15 || isValidOrderTag(tags[15]))
-          && (count <= 16 || isValidOrderTag(tags[16]))
-          && (count <= 17 || isValidOrderTag(tags[17]))
-          && (count <= 18 || isValidOrderTag(tags[18]))
-          && (count <= 19 || isValidOrderTag(tags[19]))
+          count == 0 || (
+            isValidOrderTag(tags[0])
+            && (count <= 1 || isValidOrderTag(tags[1]))
+            && (count <= 2 || isValidOrderTag(tags[2]))
+            && (count <= 3 || isValidOrderTag(tags[3]))
+            && (count <= 4 || isValidOrderTag(tags[4]))
+            && (count <= 5 || isValidOrderTag(tags[5]))
+            && (count <= 6 || isValidOrderTag(tags[6]))
+            && (count <= 7 || isValidOrderTag(tags[7]))
+            && (count <= 8 || isValidOrderTag(tags[8]))
+            && (count <= 9 || isValidOrderTag(tags[9]))
+            && (count <= 10 || isValidOrderTag(tags[10]))
+            && (count <= 11 || isValidOrderTag(tags[11]))
+            && (count <= 12 || isValidOrderTag(tags[12]))
+            && (count <= 13 || isValidOrderTag(tags[13]))
+            && (count <= 14 || isValidOrderTag(tags[14]))
+            && (count <= 15 || isValidOrderTag(tags[15]))
+            && (count <= 16 || isValidOrderTag(tags[16]))
+            && (count <= 17 || isValidOrderTag(tags[17]))
+            && (count <= 18 || isValidOrderTag(tags[18]))
+            && (count <= 19 || isValidOrderTag(tags[19]))
+          )
         ));
     }
 
@@ -264,86 +275,12 @@ service cloud.firestore {
       let prevCount = prevTags is list ? prevTags.size() : 0;
       return tags is list && count <= 20
         && (tags == prevTags
+          || (count == 0 && (prevTags == null || prevCount == 0))
           || (count == 20 && prevCount == 20
             ? (tags[0] == prevTags[0] || tags[19] == prevTags[19]
               ? are20TagsValidUpdate(tags, prevTags)
               : are20TagsValid(tags))
             : isValidOrderTags(tags)));
-    }
-
-    function isValidOrderItem(item) {
-      return item is map
-        && 'name' in item && 'quantity' in item && 'unitPrice' in item
-        && item.size() == ('price' in item ? 4 : 3)
-        && item.name.size() <= 300 && item.name.matches('[\\s\\S]*[^\\s][\\s\\S]*')
-        && item.quantity is int && item.quantity > 0 && item.quantity <= 10000
-        && item.unitPrice >= 0 && item.unitPrice <= 1000000
-        && (!('price' in item) || math.abs(item.price - (item.quantity * item.unitPrice)) < 0.05);
-    }
-
-    function isValidOrderItems(items) {
-      let count = items.size();
-      return items is list && count > 0 && count <= 10
-        && (count == 1 ? isValidOrderItem(items[0]) : (
-          isValidOrderItem(items[0])
-          && (count <= 1 || isValidOrderItem(items[1]))
-          && (count <= 2 || isValidOrderItem(items[2]))
-          && (count <= 3 || isValidOrderItem(items[3]))
-          && (count <= 4 || isValidOrderItem(items[4]))
-          && (count <= 5 || isValidOrderItem(items[5]))
-          && (count <= 6 || isValidOrderItem(items[6]))
-          && (count <= 7 || isValidOrderItem(items[7]))
-          && (count <= 8 || isValidOrderItem(items[8]))
-          && (count <= 9 || isValidOrderItem(items[9]))
-        ));
-    }
-
-    function getItemSubtotal(item) {
-      return 'price' in item ? item.price : (item.quantity * item.unitPrice);
-    }
-
-    function isConsistentOrderItemsSum(items, quantity, price) {
-      let count = items.size();
-      return (count == 1 && quantity == items[0].quantity && math.abs(price - getItemSubtotal(items[0])) < 0.05)
-        || (count == 2 && quantity == (items[0].quantity + items[1].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]))) < 0.05)
-        || (count == 3 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]))) < 0.05)
-        || (count == 4 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]))) < 0.05)
-        || (count == 5 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]))) < 0.05)
-        || (count == 6 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]))) < 0.05)
-        || (count == 7 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]))) < 0.05)
-        || (count == 8 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]) + getItemSubtotal(items[7]))) < 0.05)
-        || (count == 9 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity + items[8].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]) + getItemSubtotal(items[7]) + getItemSubtotal(items[8]))) < 0.05)
-        || (count == 10 && quantity == (items[0].quantity + items[1].quantity + items[2].quantity + items[3].quantity + items[4].quantity + items[5].quantity + items[6].quantity + items[7].quantity + items[8].quantity + items[9].quantity)
-            && math.abs(price - (getItemSubtotal(items[0]) + getItemSubtotal(items[1]) + getItemSubtotal(items[2]) + getItemSubtotal(items[3]) + getItemSubtotal(items[4]) + getItemSubtotal(items[5]) + getItemSubtotal(items[6]) + getItemSubtotal(items[7]) + getItemSubtotal(items[8]) + getItemSubtotal(items[9]))) < 0.05);
-    }
-
-    function isConsistentOrderItemsMetadata(items, data) {
-      let count = items.size();
-      let up = data.get('unitPrice', null);
-      return (count > 1 ? up == null : (
-        up == null || math.abs(up - items[0].unitPrice) < 0.01
-      ));
-    }
-
-    function isValidOrderItemsField(data) {
-      let items = data.get('items', null);
-      let mode = data.get('pricingMode', null);
-      let unitPrice = data.get('unitPrice', null);
-      return (mode == null || mode == 'unit' || mode == 'total' || mode == 'items')
-        && (unitPrice == null || (unitPrice is number && unitPrice >= 0 && unitPrice <= 1000000))
-        && (items == null || (
-          isValidOrderItems(items)
-          && isConsistentOrderItemsSum(items, data.quantity, data.price)
-          && isConsistentOrderItemsMetadata(items, data)
-        ));
     }
 
     function isValidOrderConcurrency(previous, next, changed) {
@@ -352,47 +289,33 @@ service cloud.firestore {
         || next.version == previous.get('version', 1) + 1;
     }
 
-    function isConsistentOrderPayment(payment, price) {
-      let paid = payment.paidAmount;
-      let remaining = payment.remainingAmount;
-      let status = payment.status;
-      let method = payment.get('method', null);
-      return payment.totalAmount == price
-        && paid is number && paid >= 0 && paid <= price
-        && remaining >= 0
-        && math.abs(remaining - (price - paid)) < 0.005
-        && (method == null || method == 'pix' || method == 'cash' || method == 'credit' || method == 'debit' || method == 'transfer')
-        && (status == 'paid' ? paid == price
-          : status == 'partial' ? (paid > 0 && paid < price)
-          : status == 'pending' && paid == 0);
-    }
-
     function isValidOrder(data, changed) {
-      return (!changed.hasAny(['price']) || (data.price is number && data.price >= 0 && data.price <= 1000000))
-        && (!changed.hasAny(['quantity']) || (data.quantity is int && data.quantity > 0 && data.quantity <= 10000))
-        && (!changed.hasAny(['customerName']) || (data.customerName.size() <= 200 && data.customerName.matches('[\\s\\S]*[^\\s][\\s\\S]*')))
-        && (!changed.hasAny(['productName']) || (data.productName.size() <= 300 && data.productName.matches('[\\s\\S]*[^\\s][\\s\\S]*')))
-        && (!changed.hasAny(['customerPhone']) || data.get('customerPhone', null) == null || (data.customerPhone is string && data.customerPhone.size() <= 50))
-        && (!changed.hasAny(['notes']) || data.get('notes', null) == null || (data.notes is string && data.notes.size() <= 1000))
-        && (!changed.hasAny(['status']) || data.status in ['pending', 'in-progress', 'completed', 'cancelled']);
+      return (!changed.hasAny(['price']) || ('price' in data && data.price is number && data.price >= 0 && data.price <= 1000000))
+        && (!changed.hasAny(['quantity']) || ('quantity' in data && data.quantity is int && data.quantity > 0 && data.quantity <= 10000))
+        && (!changed.hasAny(['customerName']) || ('customerName' in data && data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 200))
+        && (!changed.hasAny(['productName']) || ('productName' in data && data.productName is string && data.productName.size() >= 1 && data.productName.size() <= 300))
+        && (!changed.hasAny(['customerPhone']) || !('customerPhone' in data) || data.customerPhone == null || (data.customerPhone is string && data.customerPhone.size() <= 50))
+        && (!changed.hasAny(['notes']) || !('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 1000))
+        && (!changed.hasAny(['status']) || ('status' in data && data.status in ['pending', 'in-progress', 'completed', 'cancelled']));
     }
 
     function isValidOrderChanges(previous, data, changed) {
+      let usesFinancialOrOrderTotals = changed.hasAny([
+        'items', 'price', 'quantity', 'pricingMode', 'unitPrice',
+        'payment', 'isExchange', 'customerId'
+      ]);
       return isValidOrder(data, changed)
-        && (!changed.hasAny(['tags']) || data.get('tags', null) == null || isValidOrderTagsUpdate(data.tags, previous))
-        && (!changed.hasAny(['deliveryDate']) || (
-          data.deliveryDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && isValidCalendarDate(data.deliveryDate)))
-        && (!changed.hasAny(['customerId']) || data.get('customerId', null) == null || (
-          data.customerId is string && data.customerId.size() > 0 && data.customerId.size() <= 128
-          && get(/databases/$(database)/documents/customers/$(data.customerId)).data.userId == data.userId))
-        && ((!changed.hasAny(['items', 'pricingMode', 'unitPrice']) && (data.get('items', null) == null || !changed.hasAny(['price', 'quantity'])))
-          || isValidOrderItemsField(data))
-        && (!changed.hasAny(['price', 'payment']) || data.get('payment', null) == null || isConsistentOrderPayment(data.payment, data.price));
+        // Financial, exchange, items and customer-link changes go through
+        // updateComplexOrder, which validates and reconciles dependent records.
+        && !usesFinancialOrOrderTotals
+        && (!changed.hasAny(['tags']) || !('tags' in data) || data.tags == null || isValidOrderTagsUpdate(data.tags, previous))
+        && (!changed.hasAny(['deliveryDate']) || ('deliveryDate' in data && data.deliveryDate is string
+          && data.deliveryDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && isValidCalendarDate(data.deliveryDate)));
     }
 
     function isAllowedOrderUpdate(previous, next) {
       let changed = next.diff(previous).affectedKeys();
-      return canUpdateOrder(previous, changed)
+      return canUpdateOrder(previous, next, changed)
         && changed.hasOnly([
           'customerName', 'customerPhone', 'customerId', 'productName',
           'quantity', 'price', 'pricingMode', 'unitPrice', 'items', 'status',
@@ -520,49 +443,237 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('orders', 'view'))
         || isAdmin()
-        || (resource != null && 'assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo) && userHasPerm('orders', 'view'));
-      allow create: if request.auth != null
-        && canCreateOwnedDocument('orders', request.resource.data)
-        && isValidNewOrder(request.resource.data);
+        || (resource != null && 'assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo) && userHasPerm('orders', 'view'))
+        || (resource == null && (isAdmin() || (isActiveUser() && userHasPerm('orders', 'view'))));
+      // All order creation must go through createOrder (Cloud Function) with Admin SDK.
+      // Direct client creation is completely blocked to enforce atomic ledger, counters and customer stats.
+      allow create: if false;
       allow update: if request.auth != null
         && isAllowedOrderUpdate(resource.data, request.resource.data);
-      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('orders', 'delete'))
-        || isAdmin()
-        || (resource != null && 'assignedTo' in resource.data && isAssignedEmployeeDeleter(resource.data.assignedTo));
+      allow delete: if request.auth != null && (
+        isAdmin()
+        || (
+          resource != null
+          && isActiveProfile(get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
+          && hasOrderDeletePermission(get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data, resource.data)
+          && (
+            ('userId' in resource.data && isOwner(resource.data.userId))
+            || ('assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo))
+          )
+        )
+      );
+
+      match /paymentEvents/{eventId} {
+        function canReadOrderPaymentEvents() {
+          let orderPath = /databases/$(database)/documents/orders/$(orderId);
+          let orderData = get(orderPath).data;
+          return request.auth != null && exists(orderPath)
+            && ((orderData.get('userId', null) is string
+                && isOwner(orderData.get('userId', '')) && userHasPerm('orders', 'view'))
+              || isAdmin()
+              || (orderData.get('assignedTo', null) is string
+                && isAssignedEmployee(orderData.get('assignedTo', '')) && userHasPerm('orders', 'view')));
+        }
+        allow read: if canReadOrderPaymentEvents();
+        // Event records are created only by updateComplexOrder using Admin SDK.
+        allow write: if false;
+      }
     }
 
     // Regras para histórico financeiro de vendas (salesLedger)
     match /salesLedger/{saleId} {
+      function matchesOrderFinancialMirror(orderData, requireIdentity) {
+        let payment = orderData.get('payment', null);
+        let isExchange = orderData.get('isExchange', false) == true;
+        let expectedPaid = payment is map ? payment.get('paidAmount', 0) : 0;
+        return (!requireIdentity || (request.resource.data.get('id', null) == saleId
+            && request.resource.data.get('orderId', null) == saleId
+            && request.resource.data.get('userId', null) == orderData.get('userId', null)))
+          && (!('userId' in orderData) || request.resource.data.get('userId', null) == orderData.get('userId', null))
+          && request.resource.data.get('amount', 0) == (isExchange ? 0 : orderData.get('price', 0))
+          && request.resource.data.get('isExchange', false) == isExchange
+          && request.resource.data.get('paymentStatus', 'pending') == (payment is map ? payment.get('status', 'pending') : 'pending')
+          && request.resource.data.get('paidAmount', 0) == (isExchange ? 0 : expectedPaid)
+          && request.resource.data.get('paymentMethod', null) == (payment is map ? payment.get('method', null) : null);
+      }
+
+      function financialLedgerUpdateMatchesOrder() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        let financialFields = ['amount', 'isExchange', 'paymentStatus', 'paidAmount', 'paymentMethod'];
+        let orderPath = /databases/$(database)/documents/orders/$(saleId);
+        return !changed.hasAny(financialFields)
+          || (exists(orderPath) && matchesOrderFinancialMirror(getAfter(orderPath).data, false));
+      }
+
+      function financialLedgerCreateMatchesOrder() {
+        let orderPath = /databases/$(database)/documents/orders/$(saleId);
+        return existsAfter(orderPath) && matchesOrderFinancialMirror(getAfter(orderPath).data, true);
+      }
+
+      // Registros antigos podem não ter recebido assignedTo quando o pedido foi atribuído.
+      // Nesses casos, a atribuição do pedido vinculado continua sendo a fonte de permissão.
+      function ledgerValueOr(value, fallback) {
+        return value == null || value == '' ? fallback : value;
+      }
+
+      function canReadThroughAssignedOrder() {
+        let orderPath = /databases/$(database)/documents/orders/$(saleId);
+        return request.auth != null
+          && exists(orderPath)
+          && get(orderPath).data.get('userId', null) is string
+          && get(orderPath).data.get('userId', '').size() > 0
+          && isAssignedEmployee(get(orderPath).data.get('assignedTo', ''))
+          // Ledger legado pode não ter userId; o ID do documento ancora a leitura
+          // no pedido atribuído. Se houver proprietário, ele deve ser o mesmo do pedido.
+          && (resource.data.get('userId', null) in [null, '']
+            || resource.data.get('userId', null) == get(orderPath).data.get('userId', null))
+          && userHasPerm('orders', 'view');
+      }
+
+      function canUpdateThroughAssignedOrder() {
+        let orderPath = /databases/$(database)/documents/orders/$(saleId);
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return request.auth != null
+          && exists(orderPath)
+          && get(orderPath).data.get('userId', null) is string
+          && get(orderPath).data.get('userId', '').size() > 0
+          && (
+            get(orderPath).data.get('userId', null) == resource.data.get('userId', null)
+            || (resource.data.get('userId', null) in [null, '']
+              && get(orderPath).data.get('userId', null) is string
+              && get(orderPath).data.get('userId', null).size() > 0)
+          )
+          && (
+            isAssignedEmployeeEditor(get(orderPath).data.get('assignedTo', ''))
+            || (changed.hasOnly(['isDeletedFromOrders', 'updatedAt'])
+              && get(orderPath).data.get('deletedAt', null) != null
+              && isAssignedEmployee(get(orderPath).data.get('assignedTo', ''))
+              && hasOrderDeletePermission(
+                get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data,
+                get(orderPath).data
+              ))
+          )
+          && (
+            request.resource.data.get('userId', null) == resource.data.get('userId', null)
+            || (resource.data.get('userId', null) in [null, '']
+              && request.resource.data.get('userId', null) == getAfter(orderPath).data.get('userId', null)
+              && getAfter(orderPath).data.get('userId', null) is string
+              && getAfter(orderPath).data.get('userId', null).size() > 0)
+          )
+          && (
+            (request.resource.data.get('assignedTo', null) == resource.data.get('assignedTo', null)
+              && request.resource.data.get('assignedToName', null) == resource.data.get('assignedToName', null))
+            || (resource.data.get('assignedTo', null) in [null, '']
+              && request.resource.data.get('assignedTo', null) == getAfter(orderPath).data.get('assignedTo', null)
+              && request.resource.data.get('assignedToName', null) == getAfter(orderPath).data.get('assignedToName', null))
+          )
+          && changed.hasOnly([
+            'userId', 'amount', 'isExchange', 'status', 'customerName', 'customerPhone',
+            'customerId', 'productName', 'quantity', 'deliveryDate',
+            'paymentStatus', 'paidAmount', 'paymentMethod', 'assignedTo',
+            'assignedToName', 'isDeletedFromOrders', 'updatedAt'
+          ])
+          && (!changed.hasAny(['amount']) || request.resource.data.amount == (
+            getAfter(orderPath).data.get('isExchange', false)
+              ? 0
+              : getAfter(orderPath).data.get('price', 0)
+          ))
+          && (!changed.hasAny(['isExchange']) || request.resource.data.isExchange == getAfter(orderPath).data.get('isExchange', false))
+          && (!changed.hasAny(['status']) || request.resource.data.status == getAfter(orderPath).data.get('status', null))
+          && (!changed.hasAny(['customerName']) || request.resource.data.customerName == getAfter(orderPath).data.get('customerName', null))
+          && (!changed.hasAny(['customerPhone']) || request.resource.data.get('customerPhone', null) == getAfter(orderPath).data.get('customerPhone', null))
+          && (!changed.hasAny(['customerId']) || request.resource.data.get('customerId', null) == getAfter(orderPath).data.get('customerId', null))
+          && (!changed.hasAny(['productName']) || request.resource.data.productName == getAfter(orderPath).data.get('productName', null))
+          && (!changed.hasAny(['quantity']) || request.resource.data.quantity == getAfter(orderPath).data.get('quantity', null))
+          && (!changed.hasAny(['deliveryDate']) || request.resource.data.get('deliveryDate', null) == getAfter(orderPath).data.get('deliveryDate', null))
+          && (!changed.hasAny(['isDeletedFromOrders']) || request.resource.data.isDeletedFromOrders == (getAfter(orderPath).data.get('deletedAt', null) != null))
+          && (!changed.hasAny(['paymentStatus', 'paidAmount', 'paymentMethod']) || (
+            getAfter(orderPath).data.get('payment', null) is map
+            && (!changed.hasAny(['paymentStatus']) || request.resource.data.paymentStatus == getAfter(orderPath).data.payment.status)
+            && (!changed.hasAny(['paidAmount']) || request.resource.data.paidAmount == getAfter(orderPath).data.payment.paidAmount)
+            && (!changed.hasAny(['paymentMethod']) || request.resource.data.get('paymentMethod', null) == getAfter(orderPath).data.payment.get('method', null))
+          ));
+      }
+
+      function isSaleRecordForAssignedOrder(orderData) {
+        let payment = orderData.get('payment', null);
+        let rawPaidAmount = payment is map ? payment.get('paidAmount', 0) : 0;
+        let paidAmount = rawPaidAmount is number && rawPaidAmount > 0 ? rawPaidAmount : 0;
+        return request.resource.data.get('id', null) == saleId
+          && request.resource.data.get('orderId', null) == saleId
+          && request.resource.data.get('userId', null) == orderData.get('userId', null)
+          && request.resource.data.get('orderNumber', '') == ledgerValueOr(orderData.get('orderNumber', null), '')
+          && request.resource.data.get('assignedTo', null) == ledgerValueOr(orderData.get('assignedTo', null), null)
+          && request.resource.data.get('assignedToName', null) == ledgerValueOr(orderData.get('assignedToName', null), null)
+          && request.resource.data.get('customerId', null) == ledgerValueOr(orderData.get('customerId', null), null)
+          && request.resource.data.get('customerName', null) == orderData.get('customerName', null)
+          && request.resource.data.get('customerPhone', null) == ledgerValueOr(orderData.get('customerPhone', null), null)
+          && request.resource.data.get('productName', null) == orderData.get('productName', null)
+          && request.resource.data.get('quantity', null) == orderData.get('quantity', null)
+          && request.resource.data.get('amount', null) == (orderData.get('isExchange', false) ? 0 : orderData.get('price', 0))
+          && request.resource.data.get('isExchange', false) == orderData.get('isExchange', false)
+          && request.resource.data.get('status', null) == ledgerValueOr(orderData.get('status', null), 'pending')
+          && request.resource.data.get('deliveryDate', null) == ledgerValueOr(orderData.get('deliveryDate', null), null)
+          && request.resource.data.get('notes', null) == ledgerValueOr(orderData.get('notes', null), null)
+          && request.resource.data.get('tags', null) == orderData.get('tags', null)
+          && request.resource.data.get('isDeletedFromOrders', false) == (orderData.get('deletedAt', null) != null)
+          && request.resource.data.get('createdAt', null) == request.resource.data.get('date', null)
+          && (
+            (payment is map
+              && request.resource.data.get('paymentStatus', 'pending') == ledgerValueOr(payment.get('status', null), 'pending')
+              && request.resource.data.get('paidAmount', 0) == (orderData.get('isExchange', false) ? 0 : paidAmount)
+              && request.resource.data.get('paymentMethod', null) == ledgerValueOr(payment.get('method', null), null))
+            || (payment == null
+              && request.resource.data.get('paymentStatus', 'pending') == 'pending'
+              && request.resource.data.get('paidAmount', 0) == 0
+              && request.resource.data.get('paymentMethod', null) == null)
+          );
+      }
+
+      function canCreateThroughAssignedOrder() {
+        let orderPath = /databases/$(database)/documents/orders/$(saleId);
+        return request.auth != null
+          && exists(orderPath)
+          && isAssignedEmployeeEditor(get(orderPath).data.get('assignedTo', ''))
+          && isSaleRecordForAssignedOrder(getAfter(orderPath).data);
+      }
+
       allow read: if request.auth != null && (
         (resource != null && (
           ('userId' in resource.data && isOwner(resource.data.userId))
           || isAdmin()
-          || ('assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo))
+          || ('assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo) && userHasPerm('orders', 'view'))
         ))
+        || (resource != null && canReadThroughAssignedOrder())
         || (resource == null && (
           isAdmin()
           || (
             exists(/databases/$(database)/documents/orders/$(saleId))
             && (
-              isOwner(get(/databases/$(database)/documents/orders/$(saleId)).data.get('userId', ''))
-              || ('assignedTo' in get(/databases/$(database)/documents/orders/$(saleId)).data && isAssignedEmployee(get(/databases/$(database)/documents/orders/$(saleId)).data.assignedTo))
+              (isOwner(get(/databases/$(database)/documents/orders/$(saleId)).data.get('userId', '')) && userHasPerm('orders', 'view'))
+              || ('assignedTo' in get(/databases/$(database)/documents/orders/$(saleId)).data
+                && isAssignedEmployee(get(/databases/$(database)/documents/orders/$(saleId)).data.assignedTo)
+                && userHasPerm('orders', 'view'))
             )
           )
         ))
       );
-      allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin())
-        && isValidSaleRecord(request.resource.data);
-      allow update: if (isAdmin() || (
-        resource != null
-        && 'userId' in resource.data
-        && 'userId' in request.resource.data
-        && request.resource.data.userId == resource.data.userId
-        && (isOwner(resource.data.userId) || (
-          'assignedTo' in resource.data
-          && isAssignedEmployeeEditor(resource.data.assignedTo)
-          && ('assignedTo' in request.resource.data && request.resource.data.assignedTo == resource.data.assignedTo)
-        ))
-      )) && isValidSaleRecord(request.resource.data);
+      allow create: if (
+        ('userId' in request.resource.data && isOwner(request.resource.data.userId))
+        || isAdmin()
+        || canCreateThroughAssignedOrder()
+      ) && isValidSaleRecord(request.resource.data)
+        && financialLedgerCreateMatchesOrder();
+      allow update: if (
+        isAdmin()
+        || (resource != null
+          && 'userId' in resource.data
+          && 'userId' in request.resource.data
+          && request.resource.data.userId == resource.data.userId
+          && isOwner(resource.data.userId))
+        || canUpdateThroughAssignedOrder()
+      ) && isValidSaleRecord(request.resource.data)
+        && financialLedgerUpdateMatchesOrder();
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin();
     }
@@ -745,11 +856,10 @@ service cloud.firestore {
 
     // Perfis de usuário do sistema de permissões
     match /userProfiles/{uid} {
-      // Leitura: usuário lê sempre o próprio perfil (mesmo inativo ou por e-mail correspondente);
+      // Leitura: usuário lê sempre o perfil do próprio UID (mesmo inativo);
       // admin e funcionários ativos leem todos para colaboração na equipe
       allow read: if request.auth != null && (
         request.auth.uid == uid
-        || (resource != null && 'email' in resource.data && resource.data.email == request.auth.token.email)
         || (isActiveUser() && (isAdmin() || userHasPerm('users', 'view')))
       );
 
@@ -818,6 +928,11 @@ service cloud.firestore {
       allow delete: if canAccessEmails('delete');
     }
 
+    // Tokens recuperáveis ficam cifrados e só são acessados por Cloud Functions autenticadas.
+    match /orderTrackingLinks/{linkId} {
+      allow read, write: if false;
+    }
+
     // Regras para configurações públicas da loja / catálogo online
     match /storeSettings/{docId} {
       allow read: if true;
@@ -831,7 +946,13 @@ service cloud.firestore {
 
     // Regras para catálogo de produtos da lojinha pública (storeProducts)
     match /storeProducts/{productId} {
-      allow read: if true;
+      // A vitrine pública recebe apenas os campos liberados por getPublicCatalogProducts.
+      // Documentos internos podem conter userId e internalProductId.
+      allow read: if isActiveUser() && (
+        isAdmin()
+        || hasPerm(getEmployeePermissions().get('storeProducts', false), 'view')
+        || getEmployeePermissions().get('store', false) == true
+      );
 
       // Criação permitida para administradores ou usuários ativos com permissão de criação em loja
       allow create: if isActiveUser() && (

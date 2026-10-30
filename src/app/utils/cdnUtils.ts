@@ -82,7 +82,7 @@ export function toPublicCdnUrl(value?: string | null): string {
     path = input.replace(/^\/+/, '').split('?')[0];
   }
 
-  const isPublicUserImage = /^users\/[^/]+\/(avatar|logo|banner|products|customers|catalog-logo|catalog-banner|catalog-header|catalog-about)\/[^/]+$/.test(path);
+  const isPublicUserImage = /^users\/[^/]+\/(avatar|logo|tracking-logo|banner|products|customers|catalog-logo|catalog-banner|catalog-header|catalog-about)\/[^/]+$/.test(path);
   const isPublicStoreImage = /^store\/[^/]+\/[^/]+$/.test(path);
   const isPublicAsset = /^public\/(?!.*(?:^|\/)\.\.\/).+$/.test(path);
   if (!isPublicUserImage && !isPublicStoreImage && !isPublicAsset) return input;

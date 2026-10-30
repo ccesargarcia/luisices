@@ -1,97 +1,106 @@
 /**
- * Ponto de Entrada Principal das Cloud Functions para Firebase (v2).
- * Arquitetura Modularizada por Domínio de Negócio - Luisices.
+ * Ponto de entrada das Cloud Functions (CommonJS).
+ * O Functions Framework acessa somente o export do endpoint solicitado.
+ * Getters enumeráveis preservam a descoberta completa do Firebase CLI, mas
+ * evitam carregar Alexa, IA, e-mail etc. ao iniciar uma Function de pedidos.
+ * Não substituir por um spread/Object.assign: isso executaria todos os getters.
  */
-// Inicialize antes de importar Firebase Functions para instrumentar triggers.
+// Instrumentação precisa preceder os SDKs e as declarações dos triggers.
 require('./common/sentry');
 
 const { initializeApp } = require('firebase-admin/app');
+const { initializeFirestore } = require('firebase-admin/firestore');
 
-// Inicialização do Firebase Admin SDK no escopo global
-initializeApp();
+// Uma instância por processo, antes de qualquer domínio chamar getFirestore().
+// REST adia a carga do gRPC; transações continuam gerenciadas pelo Admin SDK.
+// onSnapshot, se introduzido no backend, faz o SDK recorrer ao gRPC.
+// O REST do SDK atual busca ADC mesmo no emulador; gRPC permite testes locais
+// sem credenciais reais. Na nuvem, mantém ADC da service account do runtime.
+initializeFirestore(initializeApp(), { preferRest: !process.env.FIRESTORE_EMULATOR_HOST });
 
-// Importação dos módulos de domínio
-const userFunctions = require('./users');
-const emailFunctions = require('./email');
-const whatsappFunctions = require('./whatsapp');
-const orderFunctions = require('./orders');
-const aiFunctions = require('./ai/callables');
-const alexaFunctions = require('./alexa');
-const mcpFunctions = require('./mcp');
-const mediaFunctions = require('./media/gallery');
-
-module.exports = {
-  // ─── Gestão de Usuários e Convites ─────────────────────────────────────────
-  sendAdminPasswordReset: userFunctions.sendAdminPasswordReset,
-  createUserInvitation: userFunctions.createUserInvitation,
-  validateUserInvitation: userFunctions.validateUserInvitation,
-  completeUserInvitation: userFunctions.completeUserInvitation,
-  sendVerificationEmail: userFunctions.sendVerificationEmail,
-  sendPasswordResetEmail: userFunctions.sendPasswordResetEmail,
-  getUserAccountMetadata: userFunctions.getUserAccountMetadata,
-  recordUserPasswordChange: userFunctions.recordUserPasswordChange,
-  deleteUser: userFunctions.deleteUser,
-  createUser: userFunctions.createUser,
-  updateUser: userFunctions.updateUser,
-  registerDeviceSession: userFunctions.registerDeviceSession,
-  revokeAllSessions: userFunctions.revokeAllSessions,
-  revokeDeviceSession: userFunctions.revokeDeviceSession,
-  repairUserClaims: userFunctions.repairUserClaims,
-
-  // ─── E-mail (Resend API e Webhooks) ────────────────────────────────────────
-  sendCustomEmail: emailFunctions.sendCustomEmail,
-  getEmailUsage: emailFunctions.getEmailUsage,
-  resendReceivingWebhook: emailFunctions.resendReceivingWebhook,
-  cleanupEmailDrafts: emailFunctions.cleanupEmailDrafts,
-
-  // ─── WhatsApp (Evolution API e Webhooks) ───────────────────────────────────
-  sendWhatsAppDirectMessage: whatsappFunctions.sendWhatsAppDirectMessage,
-  deleteWhatsAppMessage: whatsappFunctions.deleteWhatsAppMessage,
-  syncWhatsAppChatMessages: whatsappFunctions.syncWhatsAppChatMessages,
-  getWhatsAppInstanceStatus: whatsappFunctions.getWhatsAppInstanceStatus,
-  markWhatsAppChatRead: whatsappFunctions.markWhatsAppChatRead,
-  ensureWhatsAppConversation: whatsappFunctions.ensureWhatsAppConversation,
-  evolutionWhatsAppWebhook: whatsappFunctions.evolutionWhatsAppWebhook,
-
-  // ─── Pedidos e Vitrine Pública ─────────────────────────────────────────────
-  syncAllOrdersToAiView: orderFunctions.syncAllOrdersToAiView,
-  submitPublicCatalogOrder: orderFunctions.submitPublicCatalogOrder,
-
-  // ─── Inteligência Artificial (Google Gemini) ────────────────────────────────
-  aiAgentChat: aiFunctions.aiAgentChat,
-  getAiUsage: aiFunctions.getAiUsage,
-  enrichGalleryItemWithAi: aiFunctions.enrichGalleryItemWithAi,
-  enrichStoreProductWithAi: aiFunctions.enrichStoreProductWithAi,
-
-  // ─── Integração Alexa (Voice Order Creation) ───────────────────────────────
-  alexaWebhook: alexaFunctions.alexaWebhook,
-  approveAlexaPairing: alexaFunctions.approveAlexaPairing,
-  setAlexaPermission: alexaFunctions.setAlexaPermission,
-  revokeAlexaBinding: alexaFunctions.revokeAlexaBinding,
-  toggleGlobalAlexaIntegration: alexaFunctions.toggleGlobalAlexaIntegration,
-  getAlexaIntegrationStatus: alexaFunctions.getAlexaIntegrationStatus,
-  approveAlexaDraft: alexaFunctions.approveAlexaDraft,
-  cancelAlexaDraft: alexaFunctions.cancelAlexaDraft,
-
-  // ─── Integração MCP & ChatGPT Actions ─────────────────────────────────────
-  getMcpSettingsStatus: mcpFunctions.getMcpSettingsStatus,
-  createMcpApiKey: mcpFunctions.createMcpApiKey,
-  updateMcpApiKeyScopes: mcpFunctions.updateMcpApiKeyScopes,
-  toggleMcpApiKey: mcpFunctions.toggleMcpApiKey,
-  revokeMcpApiKey: mcpFunctions.revokeMcpApiKey,
-  toggleGlobalMcp: mcpFunctions.toggleGlobalMcp,
-  setUserMcpEligibility: mcpFunctions.setUserMcpEligibility,
-  revokeMcpSession: mcpFunctions.revokeMcpSession,
-  getMcpAuditLogs: mcpFunctions.getMcpAuditLogs,
-  getMcpOpenApiSchema: mcpFunctions.getMcpOpenApiSchema,
-  chatGptToolsEndpoint: mcpFunctions.chatGptToolsEndpoint,
-  galleryMedia: mediaFunctions.galleryMedia,
-};
-
-// Keep sandbox-only SuperFrete endpoints out of production deployments.
-// Firebase CLI sets GCLOUD_PROJECT during function discovery/deployment.
-if (process.env.GCLOUD_PROJECT === 'luisices-dev' || process.env.FUNCTIONS_EMULATOR === 'true') {
-  module.exports.calculateSuperfreteShipping = orderFunctions.calculateSuperfreteShipping;
-  module.exports.createSuperfreteLabel = orderFunctions.createSuperfreteLabel;
+function expose(name, load) {
+  Object.defineProperty(module.exports, name, { enumerable: true, get: load });
 }
 
+// Requires literais: também analisados por scripts/select-functions-deploy.mjs.
+// O cache do CommonJS reutiliza o domínio e o mesmo handler nas próximas chamadas.
+// ─── Gestão de Usuários e Convites ─────────────────────────────────────────
+expose('sendAdminPasswordReset', () => require('./users').sendAdminPasswordReset);
+expose('createUserInvitation', () => require('./users/createUserInvitation').createUserInvitation);
+expose('validateUserInvitation', () => require('./users/validateUserInvitation').validateUserInvitation);
+expose('completeUserInvitation', () => require('./users/completeUserInvitation').completeUserInvitation);
+expose('sendVerificationEmail', () => require('./users/sendVerificationEmail').sendVerificationEmail);
+expose('sendPasswordResetEmail', () => require('./users').sendPasswordResetEmail);
+expose('getUserAccountMetadata', () => require('./users').getUserAccountMetadata);
+expose('recordUserPasswordChange', () => require('./users').recordUserPasswordChange);
+expose('deleteUser', () => require('./users').deleteUser);
+expose('createUser', () => require('./users').createUser);
+expose('updateUser', () => require('./users').updateUser);
+expose('registerDeviceSession', () => require('./users/registerDeviceSession').registerDeviceSession);
+expose('revokeAllSessions', () => require('./users').revokeAllSessions);
+expose('revokeDeviceSession', () => require('./users').revokeDeviceSession);
+expose('repairUserClaims', () => require('./users').repairUserClaims);
+
+// ─── E-mail (Resend API e Webhooks) ────────────────────────────────────────
+expose('sendCustomEmail', () => require('./email/send').sendCustomEmail);
+expose('getEmailUsage', () => require('./email/usage').getEmailUsage);
+expose('resendReceivingWebhook', () => require('./email/webhook').resendReceivingWebhook);
+expose('cleanupEmailDrafts', () => require('./email/cleanup').cleanupEmailDrafts);
+
+// ─── WhatsApp (Evolution API e Webhooks) ───────────────────────────────────
+expose('sendWhatsAppDirectMessage', () => require('./whatsapp/send').sendWhatsAppDirectMessage);
+expose('deleteWhatsAppMessage', () => require('./whatsapp/delete').deleteWhatsAppMessage);
+expose('syncWhatsAppChatMessages', () => require('./whatsapp/sync').syncWhatsAppChatMessages);
+expose('getWhatsAppInstanceStatus', () => require('./whatsapp/status').getWhatsAppInstanceStatus);
+expose('markWhatsAppChatRead', () => require('./whatsapp/conversations').markWhatsAppChatRead);
+expose('ensureWhatsAppConversation', () => require('./whatsapp/conversations').ensureWhatsAppConversation);
+expose('evolutionWhatsAppWebhook', () => require('./whatsapp/webhook').evolutionWhatsAppWebhook);
+
+// ─── Pedidos e Vitrine Pública ─────────────────────────────────────────────
+expose('submitPublicCatalogOrder', () => require('./orders').submitPublicCatalogOrder);
+expose('updateComplexOrder', () => require('./orders').updateComplexOrder);
+expose('createOrder', () => require('./orders').createOrder);
+expose('getPublicCatalogProducts', () => require('./orders/catalog').getPublicCatalogProducts);
+expose('createOrderTrackingLink', () => require('./orders/tracking').createOrderTrackingLink);
+expose('listOrderTrackingLinks', () => require('./orders/tracking').listOrderTrackingLinks);
+expose('revokeOrderTrackingLink', () => require('./orders/tracking').revokeOrderTrackingLink);
+expose('revokeOrderTrackingLinkById', () => require('./orders/tracking').revokeOrderTrackingLinkById);
+expose('deleteOrderTrackingLink', () => require('./orders/tracking').deleteOrderTrackingLink);
+expose('deleteOrderTrackingLinksBatch', () => require('./orders/tracking').deleteOrderTrackingLinksBatch);
+expose('getPublicOrderTracking', () => require('./orders/tracking').getPublicOrderTracking);
+
+// ─── Inteligência Artificial (Google Gemini) ────────────────────────────────
+expose('aiAgentChat', () => require('./ai/callables').aiAgentChat);
+expose('getAiUsage', () => require('./ai/usageCallable').getAiUsage);
+expose('enrichGalleryItemWithAi', () => require('./ai/enrichmentCallables').enrichGalleryItemWithAi);
+expose('enrichStoreProductWithAi', () => require('./ai/enrichmentCallables').enrichStoreProductWithAi);
+
+// ─── Integração Alexa (Voice Order Creation) ───────────────────────────────
+expose('alexaWebhook', () => require('./alexa').alexaWebhook);
+expose('approveAlexaPairing', () => require('./alexa').approveAlexaPairing);
+expose('setAlexaPermission', () => require('./alexa').setAlexaPermission);
+expose('revokeAlexaBinding', () => require('./alexa').revokeAlexaBinding);
+expose('toggleGlobalAlexaIntegration', () => require('./alexa').toggleGlobalAlexaIntegration);
+expose('getAlexaIntegrationStatus', () => require('./alexa').getAlexaIntegrationStatus);
+expose('approveAlexaDraft', () => require('./alexa').approveAlexaDraft);
+expose('cancelAlexaDraft', () => require('./alexa').cancelAlexaDraft);
+
+// ─── Integração MCP & ChatGPT Actions ─────────────────────────────────────
+expose('getMcpSettingsStatus', () => require('./mcp/callables').getMcpSettingsStatus);
+expose('createMcpApiKey', () => require('./mcp/callables').createMcpApiKey);
+expose('updateMcpApiKeyScopes', () => require('./mcp/callables').updateMcpApiKeyScopes);
+expose('toggleMcpApiKey', () => require('./mcp/callables').toggleMcpApiKey);
+expose('revokeMcpApiKey', () => require('./mcp/callables').revokeMcpApiKey);
+expose('toggleGlobalMcp', () => require('./mcp/callables').toggleGlobalMcp);
+expose('setUserMcpEligibility', () => require('./mcp/callables').setUserMcpEligibility);
+expose('revokeMcpSession', () => require('./mcp/callables').revokeMcpSession);
+expose('getMcpAuditLogs', () => require('./mcp/callables').getMcpAuditLogs);
+expose('getMcpOpenApiSchema', () => require('./mcp/callables').getMcpOpenApiSchema);
+expose('chatGptToolsEndpoint', () => require('./mcp/endpoint').chatGptToolsEndpoint);
+expose('galleryMedia', () => require('./media/gallery').galleryMedia);
+
+// Preserve a mesma fronteira: SuperFrete sandbox não é publicado em produção.
+if (process.env.GCLOUD_PROJECT === 'luisices-dev' || process.env.FUNCTIONS_EMULATOR === 'true') {
+  expose('calculateSuperfreteShipping', () => require('./orders/superfrete').calculateSuperfreteShipping);
+  expose('createSuperfreteLabel', () => require('./orders/superfrete').createSuperfreteLabel);
+}

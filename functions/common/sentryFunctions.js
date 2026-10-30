@@ -2,6 +2,9 @@
 const { Sentry } = require('./sentry');
 const firebaseHttps = require('firebase-functions/v2/https');
 const firebaseScheduler = require('firebase-functions/v2/scheduler');
+const { HttpsError } = firebaseHttps;
+const { ORIGIN_SECRET } = require('./secrets');
+const { validateOriginSecret } = require('../originProtection');
 
 const EXPECTED_HTTPS_CODES = new Set([
   'cancelled', 'invalid-argument', 'deadline-exceeded', 'not-found',
@@ -41,8 +44,24 @@ function wrapFactory(factory, trigger) {
   };
 }
 
+function onCall(...args) {
+  const hasOptions = args.length > 1;
+  const options = hasOptions ? args[0] : {};
+  const handler = hasOptions ? args[1] : args[0];
+  const secrets = [...new Set([...(options.secrets || []), ORIGIN_SECRET])];
+  const protectedHandler = wrapHandler(async (request) => {
+    const origin = validateOriginSecret(request?.rawRequest);
+    if (!origin.allowed) {
+      throw new HttpsError('permission-denied', origin.error || 'Acesso não permitido.');
+    }
+    return handler(request);
+  }, 'callable');
+
+  return firebaseHttps.onCall({ ...options, secrets }, protectedHandler);
+}
+
 module.exports = {
-  onCall: wrapFactory(firebaseHttps.onCall, 'callable'),
+  onCall,
   onRequest: wrapFactory(firebaseHttps.onRequest, 'http'),
   onSchedule: wrapFactory(firebaseScheduler.onSchedule, 'schedule'),
 };

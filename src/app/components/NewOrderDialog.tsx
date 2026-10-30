@@ -1,12 +1,13 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogBody, DialogFooter } from './ui/dialog';
 import { Button } from './ui/button';
+import { Progress } from './ui/progress';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Plus, Loader2, Repeat2, Paperclip, Upload, ImageIcon, ExternalLink } from 'lucide-react';
-import { OrderStatus, PaymentStatus, PaymentMethod, Customer, Tag, OrderAttachment, Product } from '../types';
+import { Plus, Loader2, Repeat2, Paperclip, Upload, ImageIcon, ExternalLink, AlertTriangle } from 'lucide-react';
+import { OrderStatus, PaymentStatus, PaymentMethod, Customer, Tag, OrderAttachment, Product, ExchangeItem } from '../types';
 import { TagInput } from './TagInput';
 import { TAG_COLORS } from '../utils/tagColors';
 import { Switch } from './ui/switch';
@@ -26,11 +27,12 @@ import { NewOrderItemsSelect } from './orders/NewOrderItemsSelect';
 import { NewOrderPaymentSection } from './orders/NewOrderPaymentSection';
 import { NewOrderGallerySelect } from './orders/NewOrderGallerySelect';
 import { ProductItem } from './orders/OrderEditForm';
-import { AiOrderDraft, OrderItem } from '../types';
+import { AiOrderDraft, OrderItem, Order } from '../types';
 import { secureRandomId } from '../utils/random';
 import { parseDecimalMoneyInput } from '../utils/parseDecimalMoneyInput';
 import { formatDecimalMoneyInput } from '../utils/formatDecimalMoneyInput';
 import { MAX_ORDER_TAGS } from '../utils/orderLimits';
+import { loadPendingOrderOperation, savePendingOrderOperation, clearPendingOrderOperation, isDefinitiveOrderRejection } from '../../services/pendingOrderOperations';
 
 interface NewOrderDialogProps {
   open?: boolean;
@@ -58,6 +60,10 @@ export function NewOrderDialog({
     controlledOnOpenChange?.(val);
   };
   const [loading, setLoading] = useState(false);
+  const [hasUnconfirmedDraft, setHasUnconfirmedDraft] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState(() => secureRandomId(20));
+  const pendingCreation = useRef<Partial<Order> | null>(null);
+  const operationScope = `new-order:${initialCustomerId || 'new'}`;
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [isNewCustomer, setIsNewCustomer] = useState(false);
@@ -78,11 +84,13 @@ export function NewOrderDialog({
     cardColor: '',
   });
   const [products, setProducts] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
+  const [exchangeItems, setExchangeItems] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [pendingGallery] = useState<{ file: File; title: string }[]>([]);
   const [localAttachments, setLocalAttachments] = useState<OrderAttachment[]>([]);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [attachmentUploadProgress, setAttachmentUploadProgress] = useState(0);
 
   const [galleryItems, setGalleryItems] = useState<import('../types').GalleryItem[]>([]);
   const [galleryBrowserOpen, setGalleryBrowserOpen] = useState(false);
@@ -126,6 +134,7 @@ export function NewOrderDialog({
       cardColor: '',
     });
     setProducts([{ name: '', quantity: '1', unitPrice: '' }]);
+    setExchangeItems([{ name: '', quantity: '1', unitPrice: '' }]);
     setTags([]);
     setPendingFiles([]);
     setLocalAttachments([]);
@@ -134,11 +143,15 @@ export function NewOrderDialog({
     setGalleryBrowserSearch('');
     setCatalogSearch('');
     setCatalogOpenIdx(null);
+    if (user) clearPendingOrderOperation(user.uid, operationScope);
+    pendingCreation.current = null;
+    setIdempotencyKey(secureRandomId(20));
+    setHasUnconfirmedDraft(false);
   };
 
   // Preenche dados vindos do Copiloto de IA
   useEffect(() => {
-    if (initialDraft && open) {
+    if (initialDraft && open && !pendingCreation.current) {
       setIsNewCustomer(true);
       setSelectedCustomer('new');
       setFormData(prev => ({
@@ -175,15 +188,36 @@ export function NewOrderDialog({
     }
   }, [initialDraft, open]);
 
-  // Every opening starts a clean order draft, including after Cancel/close.
+  // Restaura rascunho com confirmação pendente no servidor ou inicia formulário limpo
   useEffect(() => {
-    if (open) {
-      resetForm();
-      if (initialCustomerId) {
-        setSelectedCustomer(initialCustomerId);
+    if (!open || !user) return;
+    try {
+      const stored = loadPendingOrderOperation<any>(user.uid, operationScope);
+      if (stored) {
+        const draft = stored.payload;
+        if (draft.orderData) {
+          pendingCreation.current = draft.orderData;
+          setIdempotencyKey(stored.id);
+          if (draft.formData) setFormData(draft.formData);
+          if (Array.isArray(draft.products)) setProducts(draft.products);
+          if (Array.isArray(draft.exchangeItems)) setExchangeItems(draft.exchangeItems);
+          if (Array.isArray(draft.tags)) setTags(draft.tags);
+          if (draft.selectedCustomer) setSelectedCustomer(draft.selectedCustomer);
+          if (typeof draft.isNewCustomer === 'boolean') setIsNewCustomer(draft.isNewCustomer);
+          if (draft.assignedTo) setAssignedTo(draft.assignedTo);
+          setHasUnconfirmedDraft(true);
+          return;
+        }
       }
+    } catch {
+      // silencioso
     }
-  }, [open, initialCustomerId]);
+
+    resetForm();
+    if (initialCustomerId) {
+      setSelectedCustomer(initialCustomerId);
+    }
+  }, [open, initialCustomerId, user?.uid]);
 
   // Pré-preencher datas e método de pagamento com os padrões configurados
   useEffect(() => {
@@ -212,6 +246,7 @@ export function NewOrderDialog({
 
   // Preencher dados do cliente selecionado
   useEffect(() => {
+    if (hasUnconfirmedDraft) return;
     if (selectedCustomer && selectedCustomer !== 'new') {
       const customer = customers.find(c => c.id === selectedCustomer);
       if (customer) {
@@ -232,7 +267,7 @@ export function NewOrderDialog({
         customerEmail: '',
       }));
     }
-  }, [selectedCustomer, customers]);
+  }, [selectedCustomer, customers, hasUnconfirmedDraft]);
 
   const handleAttachmentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -256,11 +291,11 @@ export function NewOrderDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || loading) return;
 
     // Bloquear pedido para cliente inadimplente
     const selectedCustomerObj = customers.find(c => c.id === selectedCustomer);
-    if (selectedCustomerObj?.status === 'defaulter') {
+    if (!pendingCreation.current && selectedCustomerObj?.status === 'defaulter') {
       toast.error('Não é possível criar um pedido para este cliente. Existem pagamentos pendentes a regularizar.');
       return;
     }
@@ -278,153 +313,191 @@ export function NewOrderDialog({
       toast.error(`O valor pago deve estar entre R$ 0,00 e ${formatCurrency(totalAmount)}.`);
       return;
     }
+    if (formData.isExchange) {
+      const enteredItems = exchangeItems.filter(item => item.name.trim() || item.unitPrice.trim() || item.quantity !== '1');
+      const hasInvalidItem = enteredItems.some(item => {
+        const quantity = Number(item.quantity);
+        const value = item.unitPrice.trim() ? parseDecimalMoneyInput(item.unitPrice) : null;
+        return !item.name.trim() || item.name.trim().length > 200 || !Number.isInteger(quantity) || quantity < 1 || quantity > 10000 ||
+          (item.unitPrice.trim() && (value === null || value < 0 || value > 1000000));
+      });
+      if (enteredItems.length > 10 || hasInvalidItem) {
+        toast.error('Confira os itens recebidos: informe um nome, quantidade inteira e valor válido.');
+        return;
+      }
+    }
 
     setLoading(true);
 
     try {
-      let customerId = selectedCustomer && selectedCustomer !== 'new' ? selectedCustomer : undefined;
+      let orderData = pendingCreation.current;
+      if (!orderData) {
+        let customerId = selectedCustomer && selectedCustomer !== 'new' ? selectedCustomer : undefined;
 
-      // Criar novo cliente ou auto-vincular se necessário
-      const trimmedCustomerName = formData.customerName.trim();
-      const trimmedCustomerPhone = formData.customerPhone.trim();
-      const trimmedCustomerEmail = formData.customerEmail?.trim() || undefined;
+        // Criar novo cliente ou auto-vincular se necessário
+        const trimmedCustomerName = formData.customerName.trim();
+        const trimmedCustomerPhone = formData.customerPhone.trim();
+        const trimmedCustomerEmail = formData.customerEmail?.trim() || undefined;
 
-      // Criar ou localizar cliente se não houver cliente existente selecionado (ou se for novo cliente/digitação direta)
-      if (!customerId && trimmedCustomerName) {
-        // 1. Tentar encontrar cliente existente pelo telefone ou dígitos limpos
-        let existingCustomer: Customer | null = null;
-        if (trimmedCustomerPhone) {
-          const cleanPhoneDigits = trimmedCustomerPhone.replace(/\D/g, '');
-          existingCustomer = customers.find((c) => {
-            if (c.phone === trimmedCustomerPhone) return true;
-            const cDigits = (c.phone || '').replace(/\D/g, '');
-            return cleanPhoneDigits.length >= 8 && cDigits === cleanPhoneDigits;
-          }) || null;
+        // Criar ou localizar cliente se não houver cliente existente selecionado (ou se for novo cliente/digitação direta)
+        if (!customerId && trimmedCustomerName) {
+          // 1. Tentar encontrar cliente existente pelo telefone ou dígitos limpos
+          let existingCustomer: Customer | null = null;
+          if (trimmedCustomerPhone) {
+            const cleanPhoneDigits = trimmedCustomerPhone.replace(/\D/g, '');
+            existingCustomer = customers.find((c) => {
+              if (c.phone === trimmedCustomerPhone) return true;
+              const cDigits = (c.phone || '').replace(/\D/g, '');
+              return cleanPhoneDigits.length >= 8 && cDigits === cleanPhoneDigits;
+            }) || null;
 
-          if (!existingCustomer) {
-            existingCustomer = await firebaseCustomerService.findCustomerByPhone(user.uid, trimmedCustomerPhone);
+            if (!existingCustomer) {
+              existingCustomer = await firebaseCustomerService.findCustomerByPhone(user.uid, trimmedCustomerPhone);
+            }
           }
-        }
 
-        // Se encontrou cliente existente com mesmo telefone, reutiliza o ID
-        if (existingCustomer) {
-          customerId = existingCustomer.id;
-        } else {
-          // 2. Se for novo cliente, grava no Firestore de forma garantida
-          try {
-            customerId = await firebaseCustomerService.createCustomer(user.uid, {
-              name: trimmedCustomerName,
-              phone: trimmedCustomerPhone,
-              email: trimmedCustomerEmail,
-            });
-
-            setCustomers((prev) => [
-              {
-                id: customerId,
+          // Se encontrou cliente existente com mesmo telefone, reutiliza o ID
+          if (existingCustomer) {
+            customerId = existingCustomer.id;
+          } else {
+            // 2. Se for novo cliente, grava no Firestore de forma garantida
+            try {
+              customerId = await firebaseCustomerService.createCustomer(user.uid, {
                 name: trimmedCustomerName,
                 phone: trimmedCustomerPhone,
-                email: trimmedCustomerEmail || '',
-                createdAt: new Date().toISOString(),
-                userId: user.uid,
-                totalOrders: 0,
-                totalSpent: 0,
-              } as Customer,
-              ...prev.filter((c) => c.id !== customerId),
-            ]);
-          } catch (createErr: any) {
-            if (createErr?.message?.startsWith('DUPLICATE_PHONE:')) {
-              customerId = createErr.message.split(':')[1];
-            } else {
-              // Não criar o pedido sem o vínculo escolhido: isso deixa um pedido
-              // aparentemente válido, mas perde o cadastro do cliente informado.
-              throw createErr;
+                email: trimmedCustomerEmail,
+              });
+
+              setCustomers((prev) => [
+                {
+                  id: customerId,
+                  name: trimmedCustomerName,
+                  phone: trimmedCustomerPhone,
+                  email: trimmedCustomerEmail || '',
+                  createdAt: new Date().toISOString(),
+                  userId: user.uid,
+                  totalOrders: 0,
+                  totalSpent: 0,
+                } as Customer,
+                ...prev.filter((c) => c.id !== customerId),
+              ]);
+            } catch (createErr: any) {
+              if (createErr?.message?.startsWith('DUPLICATE_PHONE:')) {
+                customerId = createErr.message.split(':')[1];
+              } else {
+                // Não criar o pedido sem o vínculo escolhido: isso deixa um pedido
+                // aparentemente válido, mas perde o cadastro do cliente informado.
+                throw createErr;
+              }
             }
           }
         }
-      }
 
-      const validProducts = products.filter(p => p.name.trim());
-      if (validProducts.length > 10) {
-        toast.error('O pedido não pode ter mais de 10 produtos.');
-        return;
-      }
-      const productName = validProducts
-        .map(p => parseInt(p.quantity) > 1 ? `${p.name.trim()} (${p.quantity}x)` : p.name.trim())
-        .join(', ');
-      const totalQuantity = validProducts.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
+        const validProducts = products.filter(p => p.name.trim());
+        if (validProducts.length > 10) {
+          toast.error('O pedido não pode ter mais de 10 produtos.');
+          return;
+        }
+        const productName = validProducts
+          .map(p => parseInt(p.quantity) > 1 ? `${p.name.trim()} (${p.quantity}x)` : p.name.trim())
+          .join(', ');
+        const totalQuantity = validProducts.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
 
-      const orderItems: OrderItem[] = validProducts.map(p => {
-        const qty = Math.max(1, parseInt(p.quantity, 10) || 1);
-        const parsedUnit = p.unitPrice.trim() ? parseDecimalMoneyInput(p.unitPrice) : null;
-        const unitPrice = parsedUnit !== null ? parsedUnit : 0;
-        return {
-          name: p.name.trim(),
-          quantity: qty,
-          unitPrice,
-          price: Number((qty * unitPrice).toFixed(2)),
+        const orderItems: OrderItem[] = validProducts.map(p => {
+          const qty = Math.max(1, parseInt(p.quantity, 10) || 1);
+          const parsedUnit = p.unitPrice.trim() ? parseDecimalMoneyInput(p.unitPrice) : null;
+          const unitPrice = parsedUnit !== null ? parsedUnit : 0;
+          return {
+            name: p.name.trim(),
+            quantity: qty,
+            unitPrice,
+            price: Number((qty * unitPrice).toFixed(2)),
+          };
+        });
+
+        const singleUnitPrice = orderItems.length === 1 && orderItems[0].unitPrice > 0 ? orderItems[0].unitPrice : null;
+        const pricingMode = orderItems.length === 1 ? (singleUnitPrice !== null ? 'unit' : 'total') : 'items';
+
+        const selectedMember = userProfile?.role === 'admin' && assignedTo !== '__none__'
+          ? teamMembers.find(m => m.uid === assignedTo)
+          : null;
+
+        orderData = {
+          customerName: formData.customerName,
+          customerPhone: formData.customerPhone,
+          productName,
+          quantity: totalQuantity,
+          price: totalAmount,
+          pricingMode,
+          unitPrice: singleUnitPrice,
+          items: orderItems,
+          status: formData.status,
+          deliveryDate: formData.deliveryDate,
+          notes: formData.notes || undefined,
+          tags: tags.length > 0 ? tags : undefined,
+          customerId,
+          assignedTo: selectedMember?.uid || undefined,
+          assignedToName: selectedMember?.displayName || undefined,
+          assignedAt: selectedMember ? new Date().toISOString() : undefined,
+          assignedBy: selectedMember ? (user?.displayName || user?.email || 'Admin') : undefined,
+          cardColor: formData.cardColor || undefined,
+          isExchange: formData.isExchange || undefined,
+          exchangeNotes: formData.exchangeNotes || undefined,
+          exchangeItems: formData.isExchange
+            ? exchangeItems.filter(item => item.name.trim()).map(item => ({
+                name: item.name.trim(),
+                quantity: Math.max(1, parseInt(item.quantity, 10) || 1),
+                value: item.unitPrice.trim() ? (parseDecimalMoneyInput(item.unitPrice) ?? undefined) : undefined,
+              } as ExchangeItem))
+            : undefined,
+          payment: formData.isExchange ? {
+            status: 'paid' as PaymentStatus,
+            totalAmount: 0,
+            paidAmount: 0,
+            remainingAmount: 0,
+            method: null,
+            paymentDate: null,
+            notes: null,
+            history: null,
+          } : {
+            status: totalAmount === 0
+              ? (formData.paymentStatus || 'paid')
+              : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending')),
+            method: formData.paymentMethod || null,
+            totalAmount,
+            paidAmount,
+            remainingAmount: Math.round(Math.max(0, totalAmount - paidAmount) * 100) / 100,
+            paymentDate: paidAmount > 0 ? new Date().toISOString() : null,
+            notes: null,
+            history: null,
+          },
         };
-      });
-
-      const singleUnitPrice = orderItems.length === 1 && orderItems[0].unitPrice > 0 ? orderItems[0].unitPrice : null;
-      const pricingMode = orderItems.length === 1 ? (singleUnitPrice !== null ? 'unit' : 'total') : 'items';
-
-      const selectedMember = userProfile?.role === 'admin' && assignedTo !== '__none__'
-        ? teamMembers.find(m => m.uid === assignedTo)
-        : null;
-
-      // Criar pedido
-      const createdOrder = await firebaseOrderService.createOrder({
-        customerName: formData.customerName,
-        customerPhone: formData.customerPhone,
-        productName,
-        quantity: totalQuantity,
-        price: totalAmount,
-        pricingMode,
-        unitPrice: singleUnitPrice,
-        items: orderItems,
-        status: formData.status,
-        deliveryDate: formData.deliveryDate,
-        notes: formData.notes || undefined,
-        tags: tags.length > 0 ? tags : undefined,
-        customerId,
-        assignedTo: selectedMember?.uid || undefined,
-        assignedToName: selectedMember?.displayName || undefined,
-        assignedAt: selectedMember ? new Date().toISOString() : undefined,
-        assignedBy: selectedMember ? (user?.displayName || user?.email || 'Admin') : undefined,
-        cardColor: formData.cardColor || undefined,
-        isExchange: formData.isExchange || undefined,
-        exchangeNotes: formData.exchangeNotes || undefined,
-        payment: formData.isExchange ? {
-          status: 'paid' as PaymentStatus,
-          totalAmount: 0,
-          paidAmount: 0,
-          remainingAmount: 0,
-          method: null,
-          paymentDate: null,
-          notes: null,
-          history: null,
-        } : {
-          status: totalAmount === 0
-            ? (formData.paymentStatus || 'paid')
-            : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending')),
-          method: formData.paymentMethod || null,
-          totalAmount,
-          paidAmount,
-          remainingAmount: Math.round(Math.max(0, totalAmount - paidAmount) * 100) / 100,
-          paymentDate: paidAmount > 0 ? new Date().toISOString() : null,
-          notes: null,
-          history: null,
-        },
-      });
+        const operation = savePendingOrderOperation(user.uid, operationScope, {
+          orderData, formData, products, exchangeItems, tags, selectedCustomer, isNewCustomer, assignedTo,
+        }, idempotencyKey);
+        orderData = operation.payload.orderData;
+        pendingCreation.current = orderData;
+      }
+      const createdOrder = await firebaseOrderService.createOrder(orderData, undefined, undefined, idempotencyKey);
+      const customerId = orderData.customerId || undefined;
 
       trackOrderCreated(createdOrder.id, totalAmount, formData.status);
       toast.success('Pedido salvo com sucesso.');
 
       if (pendingFiles.length > 0) {
         setIsUploadingAttachment(true);
+        setAttachmentUploadProgress(0);
         try {
-          for (const file of pendingFiles) {
-            const attachment = await firebaseStorageService.uploadOrderAttachment(file, user.uid, createdOrder.id);
+          for (let index = 0; index < pendingFiles.length; index++) {
+            const file = pendingFiles[index];
+            const attachment = await firebaseStorageService.uploadOrderAttachment(
+              file,
+              user.uid,
+              createdOrder.id,
+              progress => setAttachmentUploadProgress(
+                Math.round(((index + progress / 100) / pendingFiles.length) * 100),
+              ),
+            );
             await firebaseOrderService.addAttachment(createdOrder.id, attachment);
             if (!attachment.isPdf && (customerId || formData.customerName)) {
               try {
@@ -442,8 +515,10 @@ export function NewOrderDialog({
           }
         } catch (attachErr) {
           console.error('Erro ao enviar anexos:', attachErr);
+          toast.error('Pedido criado, mas não foi possível enviar todos os anexos. Reabra o pedido e tente novamente.');
         } finally {
           setIsUploadingAttachment(false);
+          setAttachmentUploadProgress(0);
         }
       }
 
@@ -471,33 +546,20 @@ export function NewOrderDialog({
         }
       }
 
+      clearPendingOrderOperation(user.uid, operationScope);
+      setHasUnconfirmedDraft(false);
       setOpen(false);
-      setFormData({
-        customerName: '',
-        customerPhone: '',
-        customerEmail: '',
-        deliveryDate: '',
-        notes: '',
-        status: 'pending',
-        paymentStatus: 'pending',
-        paymentMethod: '',
-        paidAmount: '',
-        isExchange: false,
-        exchangeNotes: '',
-        cardColor: '',
-      });
-      setProducts([{ name: '', quantity: '1', unitPrice: '' }]);
-      setTags([]);
-      setSelectedCustomer('');
-      setIsNewCustomer(false);
-      setAssignedTo('__none__');
-      localAttachments.forEach(a => URL.revokeObjectURL(a.url));
-      setPendingFiles([]);
-      setLocalAttachments([]);
-      setSelectedGalleryIds([]);
-      setGalleryBrowserSearch('');
+      resetForm();
     } catch (err: any) {
       console.error('Erro ao criar pedido:', err);
+      if (!hasUnconfirmedDraft && isDefinitiveOrderRejection(err)) {
+        clearPendingOrderOperation(user.uid, operationScope);
+        pendingCreation.current = null;
+        setIdempotencyKey(secureRandomId(20));
+        setHasUnconfirmedDraft(false);
+      } else {
+        setHasUnconfirmedDraft(Boolean(pendingCreation.current));
+      }
       const rawMsg = String(err?.message || err?.code || '').toLowerCase();
 
       if (rawMsg.includes('offline') || rawMsg.includes('network') || rawMsg.includes('unavailable') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
@@ -519,7 +581,7 @@ export function NewOrderDialog({
   if (!canCreate) return null;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(value) => { if (!loading) setOpen(value); }}>
       {!hideTrigger && (
         <DialogTrigger asChild>
           <Button data-testid="new-order-button" className="gap-2">
@@ -535,6 +597,15 @@ export function NewOrderDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <DialogBody className="p-4 sm:p-6 space-y-4">
+          {hasUnconfirmedDraft && (
+            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm text-amber-900 dark:text-amber-200 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span>O resultado da tentativa anterior está pendente. Clique em Confirmar pedido para verificar a mesma operação antes de iniciar outro pedido.</span>
+              </div>
+            </div>
+          )}
+          <fieldset disabled={hasUnconfirmedDraft || loading} className="contents">
           <NewOrderCustomerSelect
             selectedCustomer={selectedCustomer}
             onSelectCustomer={setSelectedCustomer}
@@ -639,6 +710,33 @@ export function NewOrderDialog({
             />
           </div>
 
+          {formData.isExchange && (
+            <div className="space-y-2 rounded-lg border border-primary/20 bg-muted/30 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <Label>O que você recebe</Label>
+                  <p className="text-xs text-muted-foreground">Registre os itens e o valor estimado da parceria.</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" disabled={exchangeItems.length >= 10}
+                  onClick={() => setExchangeItems(items => [...items, { name: '', quantity: '1', unitPrice: '' }])}>
+                  <Plus className="size-3.5" /> Item
+                </Button>
+              </div>
+              {exchangeItems.map((item, index) => (
+                <div key={index} className="grid grid-cols-[1fr_64px_100px_32px] gap-2">
+                  <Input aria-label={`Item recebido ${index + 1}`} placeholder="Item recebido" value={item.name}
+                    onChange={event => setExchangeItems(items => items.map((entry, i) => i === index ? { ...entry, name: event.target.value } : entry))} />
+                  <Input aria-label={`Quantidade recebida ${index + 1}`} type="number" min="1" max="10000" step="1" value={item.quantity}
+                    onChange={event => setExchangeItems(items => items.map((entry, i) => i === index ? { ...entry, quantity: event.target.value } : entry))} />
+                  <Input aria-label={`Valor estimado ${index + 1}`} inputMode="decimal" placeholder="Valor (R$)" value={item.unitPrice}
+                    onChange={event => setExchangeItems(items => items.map((entry, i) => i === index ? { ...entry, unitPrice: event.target.value.replace(/[^0-9.,]/g, '') } : entry))} />
+                  <Button type="button" variant="ghost" size="icon" aria-label={`Remover item recebido ${index + 1}`} disabled={exchangeItems.length === 1}
+                    onClick={() => setExchangeItems(items => items.filter((_, i) => i !== index))}>×</Button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="tags">Tags</Label>
             <TagInput
@@ -690,24 +788,33 @@ export function NewOrderDialog({
           />
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <Label className="flex items-center gap-1.5">
                 <Paperclip className="size-3.5" /> Anexos
               </Label>
-              <label className="cursor-pointer">
-                <input
-                  type="file"
-                  className="sr-only"
-                  accept="image/*,.pdf"
-                  onChange={handleAttachmentSelect}
-                  disabled={isUploadingAttachment}
-                />
-                <span className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors">
-                  <Upload className="size-3.5" />
-                  Adicionar arquivo
-                </span>
-              </label>
+              <Button asChild variant="outline" size="sm" disabled={isUploadingAttachment} className="shrink-0 whitespace-nowrap">
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    className="sr-only"
+                    accept="image/*,.pdf"
+                    onChange={handleAttachmentSelect}
+                    disabled={isUploadingAttachment}
+                  />
+                  <Upload className="size-4" />
+                  {isUploadingAttachment ? 'Enviando...' : 'Adicionar arquivo'}
+                </label>
+              </Button>
             </div>
+            {isUploadingAttachment && (
+              <div className="space-y-1.5" role="status" aria-live="polite">
+                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>Preparando e enviando arquivos</span>
+                  <span>{attachmentUploadProgress}%</span>
+                </div>
+                <Progress value={attachmentUploadProgress} aria-label="Progresso do envio dos anexos" />
+              </div>
+            )}
             {localAttachments.length > 0 ? (
               <div className="grid grid-cols-3 gap-2">
                 {localAttachments.map((att, idx) => (
@@ -728,7 +835,8 @@ export function NewOrderDialog({
                     <button
                       type="button"
                       onClick={() => handleRemoveLocalAttachment(idx)}
-                      className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full size-5 items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity flex"
+                      aria-label={`Remover anexo ${att.name || idx + 1}`}
+                      className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full size-5 items-center justify-center text-xs opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex"
                     >
                       ×
                     </button>
@@ -769,6 +877,7 @@ export function NewOrderDialog({
             />
           )}
 
+          </fieldset>
           </DialogBody>
           <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex flex-col-reverse sm:flex-row sm:justify-end gap-2 bg-card">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>
@@ -777,10 +886,10 @@ export function NewOrderDialog({
             <Button
               type="submit"
               className="w-full sm:w-auto"
-              disabled={loading || customers.find(c => c.id === selectedCustomer)?.status === 'defaulter'}
+              disabled={loading || (!hasUnconfirmedDraft && customers.find(c => c.id === selectedCustomer)?.status === 'defaulter')}
             >
               {loading && <Loader2 className="size-4 mr-2 animate-spin" />}
-              Adicionar Pedido
+              {hasUnconfirmedDraft ? 'Confirmar pedido' : 'Adicionar Pedido'}
             </Button>
           </DialogFooter>
         </form>

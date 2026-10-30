@@ -32,7 +32,11 @@ function getOriginSecretValue() {
  * @returns {{ allowed: boolean, error?: string, statusCode?: number }}
  */
 function validateOriginSecret(req) {
-  const isTestOrLocal = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
+  // Chamadas diretas do navegador para o emulador não passam pelo Worker da Cloudflare.
+  // Em produção, manter a validação mesmo quando NODE_ENV está definido como test.
+  if (process.env.FUNCTIONS_EMULATOR === 'true') return { allowed: true };
+
+  const isTestOrLocal = process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
   const secret = getOriginSecretValue();
 
   if (!secret) {
@@ -90,8 +94,65 @@ function validateOriginSecret(req) {
   return { allowed: true };
 }
 
+/**
+ * Extrai o IP do cliente de forma segura e confiável.
+ * Os cabeçalhos de proxy reverso ('cf-connecting-ip', 'x-real-ip') SÓ são confiáveis
+ * se a requisição foi autenticada como originária da Cloudflare (através da validação do ORIGIN_SECRET).
+ * Em chamadas diretas ou sem autenticação de origem comprovada, ignora cabeçalhos forjáveis
+ * e utiliza estritamente o IP de conexão direta (rawRequest.ip ou socket.remoteAddress).
+ *
+ * @param {import('express').Request} rawRequest
+ * @returns {string} IP confiável do cliente ou 'unknown'
+ */
+function getTrustedClientIp(rawRequest) {
+  if (!rawRequest) return 'unknown';
+
+  const hasOriginToken = Boolean(
+    rawRequest.headers?.['x-origin-secret'] ||
+    rawRequest.headers?.['x-cf-origin-token']
+  );
+  const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+
+  let isVerifiedCloudflare = false;
+  if (hasOriginToken) {
+    const originValidation = validateOriginSecret(rawRequest);
+    isVerifiedCloudflare = originValidation.allowed === true;
+  } else if (isEmulator) {
+    isVerifiedCloudflare = true;
+  }
+
+  // Se a requisição veio comprovadamente pelo Cloudflare Worker (com token válido) ou no emulador
+  if (isVerifiedCloudflare) {
+    const cfIp = rawRequest.headers?.['cf-connecting-ip'];
+    if (typeof cfIp === 'string' && cfIp.trim()) {
+      return cfIp.trim();
+    }
+    const realIp = rawRequest.headers?.['x-real-ip'];
+    if (typeof realIp === 'string' && realIp.trim()) {
+      return realIp.trim();
+    }
+  }
+
+  // Se a requisição não comprovou origem pela Cloudflare (ex: chamada direta, token ausente ou inválido),
+  // NUNCA confiar em cabeçalhos enviados pelo cliente (cf-connecting-ip, x-real-ip, x-forwarded-for).
+  // Priorizar estritamente o endereço de socket TCP direto (socket.remoteAddress), que é imune a spoofing via HTTP headers.
+  // rawRequest.ip só é utilizado como fallback secundário (ex.: em mocks de testes unitários onde socket não foi instanciado).
+  const socketIp = rawRequest.socket?.remoteAddress;
+  if (typeof socketIp === 'string' && socketIp.trim()) {
+    return socketIp.trim();
+  }
+
+  const directIp = rawRequest.ip;
+  if (typeof directIp === 'string' && directIp.trim()) {
+    return directIp.trim();
+  }
+
+  return 'unknown';
+}
+
 module.exports = {
   ORIGIN_SECRET,
   getOriginSecretValue,
   validateOriginSecret,
+  getTrustedClientIp,
 };

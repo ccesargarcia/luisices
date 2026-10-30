@@ -12,6 +12,7 @@ import { collection, query, where, orderBy, onSnapshot, QuerySnapshot, DocumentD
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { Order, UserProfile } from '../app/types';
+import { normalizeOrderItems } from '../app/utils/normalizeOrderItems';
 import { toast } from 'sonner';
 
 export interface TeamMemberOption {
@@ -194,7 +195,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         price: data.price,
         pricingMode: data.pricingMode,
         unitPrice: typeof data.unitPrice === 'number' ? data.unitPrice : null,
-        items: Array.isArray(data.items) ? data.items : (data.items === null ? null : undefined),
+        items: Array.isArray(data.items) ? normalizeOrderItems(data.items) : (data.items === null ? null : undefined),
         status: data.status,
         deliveryDate: data.deliveryDate,
         notes: data.notes,
@@ -228,6 +229,12 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           ? data.archivedAt.toDate().toISOString()
           : data.archivedAt,
         archivedBy: data.archivedBy,
+        hasPublicTracking: Boolean(data.publicTrackingHash)
+          && (data.publicTrackingExpiresAt === null
+            || (typeof data.publicTrackingExpiresAt === 'string' && Date.parse(data.publicTrackingExpiresAt) > Date.now())),
+        publicTrackingExpiresAt: typeof data.publicTrackingExpiresAt === 'string' || data.publicTrackingExpiresAt === null
+          ? data.publicTrackingExpiresAt
+          : undefined,
       } as Order;
     });
 

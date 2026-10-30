@@ -8,8 +8,26 @@ O registro começou em 12/10/2026 com as entregas recentes verificadas em produ�
 
 ### Alterado
 
+- Inicialização das Functions carrega os domínios sob demanda e prefere REST no Firestore Admin em nuvem, mantendo escala para zero, controles de acesso e compatibilidade do deploy seletivo; emuladores preservam o transporte padrão sem credenciais reais.
+- Pipeline DEV seleciona Functions por dependências desde a última publicação bem-sucedida, publica nomes explícitos em grupos de até seis e não amplia automaticamente o deploy após falha. Auditoria de secrets exibe somente presença, sem trechos dos valores.
+
+- Criação de pedidos do painel centralizada em `createOrder`, com autorização, validação de 1–10 itens, contador, ledger, estatísticas e eventos financeiros na transação; criação direta no Firestore bloqueada.
+- Edição financeira e de itens encaminhada a `updateComplexOrder`, preservando etiquetas e acompanhamento público sem somatórios de itens nas regras CEL.
+- Histórico financeiro mantém a contagem de pagamentos após consolidação; relatórios e métricas usam os dados preservados.
+- Links públicos de acompanhamento agora têm ciclo de vida gerenciado por pedido, com listagem, cópia, revogação e exclusão; endpoints e limites de publicação estão documentados no backend.
+- Fortalecidas as validações de pedidos, pagamentos, etiquetas e conversão de orçamentos, com ajustes correspondentes nas regras do Firestore e na integração com o emulador.
+- Unificados cálculos de preços e pagamentos entre as telas, orçamento e backend, preservando centavos e registrando ajustes de pagamento no histórico.
+- Melhoradas as respostas do Copiloto e a entrada de valores monetários locais pela integração MCP.
+- Endurecida a proteção dos endpoints de acompanhamento público com secret de criptografia e regra de rate limit WAF.
+- O checkout da loja valida o pedido mínimo e calcula valores em centavos no backend; a vitrine recebe apenas campos públicos e os limites de quantidade ficam consistentes entre tela e servidor.
 - Atualizados os guias de CI e testes para refletir a execução atual com emuladores e a seleção de fluxos no GitHub Actions.
 - O deploy de produção ignora alterações isoladas em arquivos Markdown e texto na raiz do repositório.
+
+### Corrigido
+
+- Tentativas de criação, edição, venda da calculadora e duplicação mantêm sua identidade e dados após timeout, com confirmação pelo servidor e proteção contra sucesso falso ou gravação repetida.
+- Recibos de edição verificam usuário, permissão e comando original; uma edição posterior não impede reconhecer a operação já concluída. Etiquetas, responsável e cor também integram a identificação da criação.
+- Testes de importação usam a Function real para criação, mantêm a proibição de escrita direta e validam autorização, entradas adulteradas e consistência do ledger no emulador.
 
 ### Removido
 

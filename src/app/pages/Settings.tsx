@@ -41,7 +41,7 @@ import { NavigationOrderSection, DEFAULT_NAV_ORDER } from '../components/setting
 import { CardDensitySection } from '../components/settings/CardDensitySection';
 import { HeaderFooterCustomizationSection } from '../components/settings/HeaderFooterCustomizationSection';
 import { WhatsAppTemplateSection } from '../components/settings/WhatsAppTemplateSection';
-import { AiSettingsSection } from '../components/settings/AiSettingsSection';
+import { OrderTrackingTemplateSection } from '../components/settings/OrderTrackingTemplateSection';
 import { AlexaSettingsSection } from '../components/settings/AlexaSettingsSection';
 import { McpSettingsSection } from '../components/settings/McpSettingsSection';
 import { SuperfreteSettingsSection } from '../components/settings/SuperfreteSettingsSection';
@@ -59,6 +59,7 @@ export function Settings() {
     updateSettings,
     uploadAvatar,
     uploadLogo,
+    uploadOrderTrackingLogo,
     uploadBanner,
     removeAvatar,
     removeLogo,
@@ -407,6 +408,9 @@ export function Settings() {
 
     try {
       await resetToDefaults();
+      setTheme('system');
+      setSelectedColorTheme('default');
+      applyColorTheme('default');
       setBusinessInfo({
         businessName: '',
         businessPhone: '',
@@ -614,6 +618,14 @@ export function Settings() {
             saving={savingPersonalization}
           />
 
+          <OrderTrackingTemplateSection
+            settings={settings}
+            businessName={settings?.businessName || ''}
+            logo={settings?.logo || ''}
+            onLogoUpload={uploadOrderTrackingLogo}
+            onSave={(orderTrackingTemplate) => updateSettings({ orderTrackingTemplate })}
+          />
+
           <HeaderFooterCustomizationSection
             headerSticky={headerSticky}
             onHeaderStickyChange={setHeaderSticky}
@@ -699,9 +711,6 @@ export function Settings() {
               </CardHeader>
             </Card>
           )}
-
-          {/* Monitoramento de IA */}
-          <AiSettingsSection isAdmin={isAdmin} />
 
           {/* Alexa Skill */}
           <AlexaSettingsSection isAdmin={isAdmin} />

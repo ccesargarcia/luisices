@@ -4,6 +4,7 @@ const { validateOriginSecret } = require('../../functions/originProtection');
 
 describe('Segurança: Proteção de Origem (Origin Secret / Cloudflare Only)', () => {
   const originalEnvSecret = process.env.ORIGIN_SECRET;
+  const originalFunctionsEmulator = process.env.FUNCTIONS_EMULATOR;
 
   beforeEach(() => {
     delete process.env.ORIGIN_SECRET;
@@ -15,6 +16,20 @@ describe('Segurança: Proteção de Origem (Origin Secret / Cloudflare Only)', (
     } else {
       delete process.env.ORIGIN_SECRET;
     }
+    if (originalFunctionsEmulator === undefined) {
+      delete process.env.FUNCTIONS_EMULATOR;
+    } else {
+      process.env.FUNCTIONS_EMULATOR = originalFunctionsEmulator;
+    }
+  });
+
+  it('deve permitir chamadas diretas no Emulator mesmo com ORIGIN_SECRET configurado', () => {
+    process.env.FUNCTIONS_EMULATOR = 'true';
+    process.env.ORIGIN_SECRET = 'segredo-configurado-no-ci';
+
+    const result = validateOriginSecret({ headers: {} });
+
+    expect(result).toEqual({ allowed: true });
   });
 
   it('deve permitir a requisição se nenhum ORIGIN_SECRET estiver configurado no ambiente (fail-open para dev/testes)', () => {

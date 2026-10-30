@@ -1,4 +1,5 @@
 import { Order } from '../types';
+import { formatExchangeItems, getExchangeItemsValue } from './exchanges';
 
 /**
  * Normaliza número de telefone brasileiro para envio ao WhatsApp (E.164 sem o sinal de +).
@@ -236,6 +237,12 @@ export function generateExchangeMessage(order: Order, businessName = 'Papelaria 
   msg += `📅 Data de entrega: ${formatDate(order.deliveryDate)}\n`;
   msg += `📊 Status: ${statusLabels[order.status] || order.status}\n`;
 
+  if (order.exchangeItems?.length) {
+    msg += `\n📦 *Itens recebidos*\n`;
+    msg += `${formatExchangeItems(order.exchangeItems, formatCurrency)}\n`;
+    msg += `Valor estimado: ${formatCurrency(getExchangeItemsValue(order.exchangeItems))}\n`;
+  }
+
   if (order.exchangeNotes) {
     msg += `\n📝 *Observações*\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n`;
@@ -280,6 +287,10 @@ export function generateExchangeSummaryMessage(
     msg += `*${idx + 1}. ${o.productName}*\n`;
     msg += `   📅 ${formatDate(o.deliveryDate)}\n`;
     msg += `   💰 Custo: ${formatCurrency(o.price || 0)}\n`;
+    if (o.exchangeItems?.length) {
+      msg += `   📦 Recebido: ${formatExchangeItems(o.exchangeItems, formatCurrency).replace(/\n/g, '; ')}\n`;
+      msg += `   📊 Valor recebido: ${formatCurrency(getExchangeItemsValue(o.exchangeItems))}\n`;
+    }
     msg += `   📊 ${statusLabels[o.status] || o.status}\n`;
     if (o.exchangeNotes) msg += `   📝 ${o.exchangeNotes}\n`;
     msg += `\n`;

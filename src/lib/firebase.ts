@@ -20,7 +20,7 @@ import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { getDatabase, connectDatabaseEmulator } from 'firebase/database';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import { connectAuthEmulator } from 'firebase/auth';
-import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
+import { initializeAnalytics, isSupported, Analytics } from 'firebase/analytics';
 import { getPerformance, FirebasePerformance, trace as firebaseTrace } from 'firebase/performance';
 
 // Configuração do Firebase - valores vêm do .env.local (com fallback seguro para CI/testes)
@@ -124,7 +124,10 @@ let perf: FirebasePerformance | null = null;
 if (typeof window !== 'undefined') {
   isSupported().then(yes => {
     if (yes) {
-      analytics = getAnalytics(app);
+      // Evita page_view automático com URL completa: a rota pública de acompanhamento
+      // carrega um token bearer no caminho. As páginas internas já registram views
+      // explicitamente pelo analyticsService.
+      analytics = initializeAnalytics(app, { config: { send_page_view: false } });
       console.log('[Firebase] Analytics inicializado');
     }
   });

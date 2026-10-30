@@ -9,6 +9,7 @@ import {
   doc,
   addDoc,
   getDoc,
+  getDocFromServer,
   getDocs,
   query,
   where,
@@ -16,16 +17,96 @@ import {
   Timestamp,
   runTransaction,
 } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { db, auth, functions } from '../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import { Order, OrderItem, OrderStatus, ProductionStep, ProductionWorkflow } from '../app/types';
 import { parseDecimalMoneyInput } from '../app/utils/parseDecimalMoneyInput';
+import { normalizeOrderItems } from '../app/utils/normalizeOrderItems';
 import { MAX_ORDER_TAGS } from '../app/utils/orderLimits';
 import { firebaseLedgerService } from './firebaseLedgerService';
 import { firebaseCustomerService } from './firebaseCustomerService';
+import { loadPendingOrderOperation, savePendingOrderOperation, clearPendingOrderOperation } from './pendingOrderOperations';
 
 const ORDERS_COLLECTION = 'orders';
 
+export function callableErrorCode(error: any): string {
+  return String(error?.code || '').replace(/^functions\//, '');
+}
+
+/**
+ * Classifica falhas transitórias de transporte, rede ou indisponibilidade de gateway
+ * para fins de tratamento de operação inconclusiva e reconciliação idempotente via gateway.
+ */
+export function isTransientCallableError(error: any): boolean {
+  if (!error) return false;
+  const code = callableErrorCode(error);
+
+  // Erros definitivos do backend/aplicação indicam recusa com resultado conhecido,
+  // NUNCA falha transitória de transporte ou estado inconclusivo
+  const definitiveAppCodes = [
+    'invalid-argument',
+    'permission-denied',
+    'unauthenticated',
+    'not-found',
+    'already-exists',
+    'failed-precondition',
+    'aborted',
+    'out-of-range',
+    'unimplemented',
+    'resource-exhausted',
+    'data-loss',
+  ];
+  if (definitiveAppCodes.includes(code)) {
+    return false;
+  }
+
+  // Códigos canônicos de indisponibilidade de transporte / timeout do SDK Firebase
+  if (['unavailable', 'deadline-exceeded', 'network-request-failed'].includes(code)) {
+    return true;
+  }
+
+  // Status HTTP em detalhes de resposta se disponíveis no erro
+  const status = Number(error?.status || error?.customData?.status || error?.response?.status);
+  if ([502, 503, 504, 520, 521, 522, 523, 524].includes(status)) {
+    return true;
+  }
+
+  // Mensagens de falha de transporte no navegador / borda da Cloudflare
+  const message = String(error?.message || '');
+
+  // Detecção conservadora de falha de rede/gateway:
+  // Evita falsos positivos com números arbitrários em mensagens de negócio
+  const hasGatewaySignal =
+    /failed to fetch|network\s*request\s*failed|network\s*error|load\s+failed|net::err/i.test(message) ||
+    /cloudflare|bad\s+gateway|gateway\s+timeout|connection\s+timed?\s*out/i.test(message) ||
+    /\b(502|503|504|520|521|522|523|524)\b.*(gateway|cloudflare|proxy|host|server)/i.test(message) ||
+    /(gateway|cloudflare|proxy|host|server).*\b(502|503|504|520|521|522|523|524)\b/i.test(message);
+
+  return hasGatewaySignal;
+}
+
+/** Alias para compatibilidade reversa */
+export const isGatewayUnavailableError = isTransientCallableError;
+
+function isUncertainCallableError(error: any): boolean {
+  return ['deadline-exceeded', 'unavailable', 'internal', 'unknown', 'network-request-failed'].includes(callableErrorCode(error))
+    || isTransientCallableError(error);
+}
+
 export class FirebaseOrderService {
+  /** Executa leitura autoritativa diretamente no servidor Firestore, ignorando caches locais */
+  private async readDocFromServer(ref: any): Promise<any> {
+    if (typeof getDocFromServer === 'function') {
+      try {
+        return await getDocFromServer(ref);
+      } catch (err: any) {
+        // Se a leitura no servidor falhar (ex: rede fora), o erro é repassado para manter estado desconhecido
+        throw err;
+      }
+    }
+    return await getDoc(ref);
+  }
+
   /**
    * Obter usuário autenticado
    */
@@ -199,9 +280,8 @@ export class FirebaseOrderService {
         } else if (typeof item?.unitPrice === 'string') {
           unitPrice = parseDecimalMoneyInput(item.unitPrice) ?? 0;
         }
-        let price = typeof item?.price === 'number' && Number.isFinite(item.price)
-          ? this.ensurePositive(item.price)
-          : Number((quantity * unitPrice).toFixed(2));
+        // unitPrice e quantity são a fonte canônica; nunca preserve um subtotal divergente.
+        const price = this.ensurePositive(quantity * unitPrice);
         return { name, quantity, unitPrice, price };
       })
       .filter(item => item.name.length > 0);
@@ -214,6 +294,65 @@ export class FirebaseOrderService {
   private validateOrderPayload(data: Partial<Order>): void {
     if (data.tags != null && (!Array.isArray(data.tags) || data.tags.length > MAX_ORDER_TAGS)) {
       throw new Error(`Um pedido pode ter no máximo ${MAX_ORDER_TAGS} etiquetas.`);
+    }
+    if (Array.isArray(data.tags)) {
+      for (const tag of data.tags as any[]) {
+        const name = tag?.name;
+        const color = tag?.color;
+        if (typeof name !== 'string' || !name.trim() || name !== name.trim() || name.length > 80 || name.includes('\0') ||
+            typeof color !== 'string' || !/^#(?:[a-fA-F0-9]{6}|[a-fA-F0-9]{8})$/.test(color)) {
+          throw new Error('Cada etiqueta precisa ter um nome válido e uma cor hexadecimal.');
+        }
+      }
+    }
+    if (data.exchangeItems != null) {
+      if (!Array.isArray(data.exchangeItems) || data.exchangeItems.length > 10) {
+        throw new Error('Uma permuta pode ter no máximo 10 itens recebidos.');
+      }
+      for (const item of data.exchangeItems) {
+        if (!item || typeof item.name !== 'string' || !item.name.trim() || item.name.trim().length > 200 ||
+            !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 10000 ||
+            (item.value != null && (typeof item.value !== 'number' || !Number.isFinite(item.value) || item.value < 0 || item.value > 1000000))) {
+          throw new Error('Confira os itens recebidos: nome, quantidade e valor precisam ser válidos.');
+        }
+      }
+    }
+    if (data.items != null) {
+      if (!Array.isArray(data.items)) {
+        throw new Error('A lista de produtos do pedido é inválida.');
+      }
+      const items = data.items.filter(item => String(item?.name || '').trim());
+      if (items.length > 10) {
+        throw new Error('O pedido não pode ter mais de 10 produtos.');
+      }
+      let itemsQuantity = 0;
+      let itemsPrice = 0;
+      for (const item of items) {
+        const name = String(item?.name || '').trim();
+        const quantity = typeof item?.quantity === 'number' ? item.quantity : Number(item?.quantity);
+        const rawUnitPrice = typeof item?.unitPrice === 'number'
+          ? item.unitPrice
+          : typeof item?.unitPrice === 'string'
+            ? parseDecimalMoneyInput(item.unitPrice)
+            : null;
+        if (!name || name.length > 300 || !Number.isInteger(quantity) || quantity < 1 || quantity > 10000 ||
+            rawUnitPrice === null || !Number.isFinite(rawUnitPrice) || rawUnitPrice < 0 || rawUnitPrice > 1000000) {
+          throw new Error('Confira cada produto: nome, quantidade inteira e valor unitário precisam ser válidos.');
+        }
+        const unitPrice = this.ensurePositive(rawUnitPrice);
+        const linePrice = this.ensurePositive(quantity * unitPrice);
+        if (linePrice > 1000000) {
+          throw new Error(`O subtotal do produto "${name}" não pode ultrapassar R$ 1.000.000,00.`);
+        }
+        itemsQuantity += quantity;
+        itemsPrice = Math.round((itemsPrice + linePrice) * 100) / 100;
+      }
+      if (items.length > 0 && data.quantity !== undefined && itemsQuantity !== data.quantity) {
+        throw new Error('A quantidade total não corresponde à soma das quantidades dos produtos.');
+      }
+      if (items.length > 0 && data.price !== undefined && Math.abs(itemsPrice - data.price) >= 0.05) {
+        throw new Error('O valor total não corresponde à soma dos subtotais dos produtos.');
+      }
     }
     if (data.customerName !== undefined) {
       if (!data.customerName || typeof data.customerName !== 'string' || !data.customerName.trim()) {
@@ -232,13 +371,35 @@ export class FirebaseOrderService {
       }
     }
     if (data.quantity !== undefined) {
-      if (typeof data.quantity !== 'number' || data.quantity <= 0) {
-        throw new Error('A quantidade deve ser um número maior que zero.');
+      if (typeof data.quantity !== 'number' || !Number.isInteger(data.quantity) || data.quantity < 1 || data.quantity > 10000) {
+        throw new Error('A quantidade deve ser um número inteiro entre 1 e 10.000.');
       }
     }
     if (data.price !== undefined) {
-      if (typeof data.price !== 'number' || data.price < 0 || isNaN(data.price)) {
-        throw new Error('O preço não pode ser negativo.');
+      if (typeof data.price !== 'number' || !Number.isFinite(data.price) || data.price < 0 || data.price > 1000000) {
+        throw new Error('O valor do pedido deve estar entre R$ 0,00 e R$ 1.000.000,00.');
+      }
+    }
+    if (data.unitPrice != null && (typeof data.unitPrice !== 'number' || !Number.isFinite(data.unitPrice) || data.unitPrice < 0 || data.unitPrice > 1000000)) {
+      throw new Error('O valor unitário deve estar entre R$ 0,00 e R$ 1.000.000,00.');
+    }
+    if (data.pricingMode != null && !['unit', 'total', 'items'].includes(data.pricingMode)) {
+      throw new Error('O tipo de precificação do pedido é inválido.');
+    }
+    if (data.customerPhone != null && (typeof data.customerPhone !== 'string' || data.customerPhone.length > 50)) {
+      throw new Error('O telefone do cliente deve ter no máximo 50 caracteres.');
+    }
+    if (data.notes != null && (typeof data.notes !== 'string' || data.notes.length > 1000)) {
+      throw new Error('As observações devem ter no máximo 1.000 caracteres.');
+    }
+    if (data.deliveryDate !== undefined && (typeof data.deliveryDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(data.deliveryDate))) {
+      throw new Error('Informe uma data de entrega válida.');
+    }
+    if (typeof data.deliveryDate === 'string') {
+      const parsedDeliveryDate = new Date(`${data.deliveryDate}T00:00:00.000Z`);
+      if (Number.isNaN(parsedDeliveryDate.getTime()) ||
+          parsedDeliveryDate.toISOString().slice(0, 10) !== data.deliveryDate) {
+        throw new Error('Informe uma data de entrega válida.');
       }
     }
     if (data.status !== undefined) {
@@ -258,8 +419,8 @@ export class FirebaseOrderService {
     // Sanitize payment object: replace undefined with null so Firestore doesn't reject it
     let payment = null;
     if (orderData.payment) {
-      const totalAmount = price;
-      const rawPaidAmount = this.ensurePositive(orderData.payment.paidAmount);
+      const totalAmount = orderData.isExchange ? 0 : price;
+      const rawPaidAmount = orderData.isExchange ? 0 : this.ensurePositive(orderData.payment.paidAmount);
       // Regra estrita do Firestore (firestore.rules:344): 0 <= paidAmount <= price
       const paidAmount = Math.min(rawPaidAmount, totalAmount);
       const remainingAmount = this.ensurePositive(
@@ -342,22 +503,141 @@ export class FirebaseOrderService {
   }
 
   /** Grava contador, pedido, venda e vínculo de catálogo/orçamento em uma única transação atômica. */
-  async createOrder(orderData: Partial<Order>, catalogOrderId?: string, quoteId?: string): Promise<Order> {
+  async createOrder(orderData: Partial<Order>, catalogOrderId?: string, quoteId?: string, idempotencyKey?: string): Promise<Order> {
     this.validateOrderPayload(orderData);
     const userId = this.getCurrentUserId();
-    const orderRef = doc(collection(db, ORDERS_COLLECTION));
+
+    // 1. Determina antecipadamente o identificador único e estável da operação.
+    // Prioridade:
+    // a) idempotencyKey explícita
+    // b) orderData.id já existente
+    // c) novo ID determinístico gerado no Firestore
+    const candidateId = idempotencyKey
+      || (typeof (orderData as any).id === 'string' && (orderData as any).id.trim()
+        ? (orderData as any).id.trim()
+        : null)
+      || (typeof (orderData as any).idempotencyKey === 'string' && (orderData as any).idempotencyKey.trim()
+        ? (orderData as any).idempotencyKey.trim()
+        : null)
+      || doc(collection(db, ORDERS_COLLECTION)).id;
+
+    const effectiveOrderId = candidateId;
+
+    const sanitizedData: Partial<Order> = {
+      ...orderData,
+      id: effectiveOrderId,
+      items: this.sanitizeOrderItems(orderData.items),
+      exchangeItems: this.sanitizeExchangeItems(orderData.exchangeItems),
+    };
+
+    // Even on retry the backend must check authorization AND the original payload.
+    // Finding a document with this ID does not prove this command was accepted.
+
+    // 2. Tentar criar via Cloud Function autoritativa (isolamento CEL total e recuperação de estado)
+    try {
+      const callable = httpsCallable<{
+        orderData: Partial<Order>;
+        catalogOrderId?: string;
+        quoteId?: string;
+        idempotencyKey?: string;
+      }, { success: boolean; orderId: string; orderNumber: string }>(
+        functions,
+        'createOrder',
+      );
+      const response = await callable({
+        orderData: sanitizedData,
+        catalogOrderId,
+        quoteId,
+        idempotencyKey: effectiveOrderId,
+      });
+      if (response?.data?.orderId) {
+        try {
+          const saved = await this.readDocFromServer(doc(db, ORDERS_COLLECTION, response.data.orderId));
+          if (!saved?.exists()) throw new Error('Pedido ainda não disponível para leitura.');
+          return this.mapOrderDoc(saved);
+        } catch (_readErr: any) {
+          // Se a leitura no servidor falhar logo após a Function responder sucesso,
+          // preserva a chave idempotente no erro para que um retry recupere o mesmo pedido
+          const unconfirmedErr: any = new Error(
+            `O pedido foi processado pelo servidor, mas a confirmação da leitura falhou. ` +
+            `A chave (${response.data.orderId}) foi preservada. Repita a operação para carregar o pedido gravado.`
+          );
+          unconfirmedErr.code = 'unconfirmed-order';
+          unconfirmedErr.orderId = response.data.orderId;
+          unconfirmedErr.idempotencyKey = response.data.orderId;
+          unconfirmedErr.isUnconfirmed = true;
+          throw unconfirmedErr;
+        }
+      }
+      if (functions && Object.keys(functions).length > 0) {
+        throw Object.assign(new Error('Resposta de criação inválida recebida do servidor.'), { code: 'internal' });
+      }
+    } catch (err: any) {
+      if (['invalid-argument', 'permission-denied', 'unauthenticated', 'not-found', 'failed-precondition', 'already-exists', 'unconfirmed-order'].includes(callableErrorCode(err))) {
+        throw err;
+      }
+
+      // Em erro de rede/timeout real da Function, preservar estado incerto com chave da operação
+      const isNetworkOrTimeout = isUncertainCallableError(err);
+
+      if (isNetworkOrTimeout) {
+        // Se a leitura falhou ou houve timeout, NÃO se pode concluir que a Function não gravou.
+        // Preservamos a chave da operação no erro para que repetições usem o mesmo ID
+        // e informamos que o resultado precisa ser confirmado pelo gateway.
+        const unconfirmedError: any = new Error(
+          `A gravação do pedido não pôde ser confirmada devido ao tempo de resposta esgotado. ` +
+          `A chave da operação (${effectiveOrderId}) foi preservada. ` +
+          `Verifique a lista de pedidos ou tente novamente utilizando a mesma chave de operação.`
+        );
+        unconfirmedError.code = 'unconfirmed-order';
+        unconfirmedError.orderId = effectiveOrderId;
+        unconfirmedError.idempotencyKey = effectiveOrderId;
+        unconfirmedError.isUnconfirmed = true;
+        throw unconfirmedError;
+      }
+
+      // Se a Function está configurada (produção / ambiente real), nunca contorna o fluxo autoritativo
+      // gravando diretamente pelo cliente, eliminando o risco de reintroduzir dependência das regras CEL.
+      let isUnconfiguredMock = false;
+      try {
+        isUnconfiguredMock = !functions
+          || (typeof functions === 'object' && Object.keys(functions).length === 0);
+      } catch {
+        isUnconfiguredMock = true;
+      }
+      if (typeof err?.message === 'string' && (err.message.includes('_url is not a function') || err.message.includes('No "functions" export'))) {
+        isUnconfiguredMock = true;
+      }
+      isUnconfiguredMock = import.meta.env.MODE === 'test' && isUnconfiguredMock;
+
+      if (!isUnconfiguredMock) {
+        console.error('[firebaseOrderService] Falha ao criar pedido via Cloud Function:', err);
+        throw new Error(err?.message || 'Falha de comunicação ao cadastrar pedido no servidor. Tente novamente.');
+      }
+
+      console.warn('[firebaseOrderService] createOrder callable indisponível no ambiente de teste, executando transação de teste.');
+    }
+
+    // 3. Fallback transacional local idempotente para ambientes de teste
+    const orderRef = doc(db, ORDERS_COLLECTION, effectiveOrderId);
     const counterRef = doc(db, 'users', userId, 'metadata', 'counters');
     const catalogRef = catalogOrderId ? doc(db, 'catalogOrders', catalogOrderId) : null;
     const quoteRef = quoteId ? doc(db, 'quotes', quoteId) : null;
 
-    const savedOrderId = await runTransaction(db, async (transaction) => {
+    const { savedOrderId, isNewOrder } = await runTransaction(db, async (transaction) => {
+      // 0. Idempotência estrita: se o pedido já existe, não sobrescreve nem incrementa o contador
+      const existingOrderSnap = await transaction.get(orderRef);
+      if (existingOrderSnap && typeof existingOrderSnap.exists === 'function' && existingOrderSnap.exists()) {
+        return { savedOrderId: orderRef.id, isNewOrder: false };
+      }
+
       // 1. Idempotência e validação da lojinha
       if (catalogRef) {
         const catalogSnap = await transaction.get(catalogRef);
         if (!catalogSnap.exists()) throw new Error('Pedido da lojinha não encontrado.');
         const catalog = catalogSnap.data();
         // O vínculo é permanente, mesmo se o status de atendimento mudar posteriormente.
-        if (catalog.convertedOrderId) return String(catalog.convertedOrderId);
+        if (catalog.convertedOrderId) return { savedOrderId: String(catalog.convertedOrderId), isNewOrder: false };
         if (catalog.status === 'converted') {
           throw new Error('Este pedido da lojinha já foi convertido em pedido de produção anteriormente.');
         }
@@ -369,7 +649,7 @@ export class FirebaseOrderService {
         if (!quoteSnap.exists()) throw new Error('Orçamento não encontrado.');
         const quote = quoteSnap.data();
         const existingOrderId = quote.convertedOrderId || quote.orderId;
-        if (existingOrderId) return String(existingOrderId);
+        if (existingOrderId) return { savedOrderId: String(existingOrderId), isNewOrder: false };
         if (quote.status === 'approved') {
           throw new Error('Este orçamento já foi aprovado anteriormente.');
         }
@@ -416,11 +696,11 @@ export class FirebaseOrderService {
         });
       }
 
-      return orderRef.id;
+      return { savedOrderId: orderRef.id, isNewOrder: true };
     });
 
-    // Atualizar estatísticas do cliente de forma centralizada (pedidos manuais, orçamentos, lojinha pública, etc.)
-    if (orderData.customerId) {
+    // Atualizar estatísticas do cliente de forma centralizada APENAS se for um pedido novo
+    if (isNewOrder && orderData.customerId && !orderData.isExchange) {
       try {
         const orderAmount = Number(orderData.price || orderData.payment?.totalAmount || 0);
         await firebaseCustomerService.incrementCustomerStats(orderData.customerId, orderAmount);
@@ -454,6 +734,15 @@ export class FirebaseOrderService {
     return this.mapOrderDoc(orderSnap);
   }
 
+  async getOrderByIdFromServer(orderId: string): Promise<Order> {
+    const uid = this.getCurrentUserId();
+    const snapshot = await this.readDocFromServer(doc(db, ORDERS_COLLECTION, orderId));
+    if (!snapshot?.exists() || !(await this.canAccessAssignedOrder(snapshot.data(), uid))) {
+      throw new Error('Pedido não encontrado ou sem permissão para leitura.');
+    }
+    return this.mapOrderDoc(snapshot);
+  }
+
   private mapOrderDoc(doc: any): Order {
     const data = doc.data();
     return {
@@ -467,7 +756,7 @@ export class FirebaseOrderService {
       price: data.price,
       pricingMode: data.pricingMode,
       unitPrice: typeof data.unitPrice === 'number' ? data.unitPrice : null,
-      items: Array.isArray(data.items) ? data.items : (data.items === null ? null : undefined),
+      items: Array.isArray(data.items) ? normalizeOrderItems(data.items) : (data.items === null ? null : undefined),
       status: data.status,
       deliveryDate: data.deliveryDate,
       notes: data.notes,
@@ -491,6 +780,12 @@ export class FirebaseOrderService {
       isArchived: Boolean(data.isArchived),
       archivedAt: data.archivedAt?.toDate ? data.archivedAt.toDate().toISOString() : data.archivedAt,
       archivedBy: data.archivedBy,
+      hasPublicTracking: Boolean(data.publicTrackingHash)
+        && (data.publicTrackingExpiresAt === null
+          || (typeof data.publicTrackingExpiresAt === 'string' && Date.parse(data.publicTrackingExpiresAt) > Date.now())),
+      publicTrackingExpiresAt: typeof data.publicTrackingExpiresAt === 'string' || data.publicTrackingExpiresAt === null
+        ? data.publicTrackingExpiresAt
+        : undefined,
     } as Order;
   }
 
@@ -705,10 +1000,19 @@ export class FirebaseOrderService {
       transaction.update(orderRef, orderUpdates);
 
       if (saleSnap.exists()) {
-        transaction.update(saleRef, {
+        const existingSale = saleSnap.data();
+        const saleUpdates: Record<string, any> = {
           status,
           updatedAt: now,
-        });
+        };
+        if (orderData.userId && !existingSale.userId) {
+          saleUpdates.userId = orderData.userId;
+        }
+        if (orderData.assignedTo && !existingSale.assignedTo) {
+          saleUpdates.assignedTo = orderData.assignedTo;
+          saleUpdates.assignedToName = orderData.assignedToName || null;
+        }
+        transaction.update(saleRef, saleUpdates);
       } else {
         const fullOrder = { ...this.mapOrderDoc(orderSnap), status };
         const saleRecord = firebaseLedgerService.mapOrderToSaleRecord(fullOrder as Order, userId);
@@ -726,7 +1030,8 @@ export class FirebaseOrderService {
   async updateOrder(
     orderId: string,
     updates: Partial<Omit<Order, 'id' | 'userId' | 'createdAt' | 'orderNumber'>>,
-    expectedVersion?: number
+    expectedVersion?: number,
+    operationId?: string
   ): Promise<void> {
     this.validateOrderPayload(updates);
     const userId = this.getCurrentUserId();
@@ -737,6 +1042,90 @@ export class FirebaseOrderService {
     const initialSnap = await getDoc(orderRef);
     if (!initialSnap.exists() || !(await this.canAccessAssignedOrder(initialSnap.data(), userId))) {
       throw new Error('Pedido não encontrado ou sem permissão');
+    }
+
+    const initialOrderData = initialSnap.data();
+    const affectsItemTotals = ['items', 'price', 'quantity', 'pricingMode', 'unitPrice'].some((key) =>
+      Object.prototype.hasOwnProperty.call(updates, key)
+        && updates[key as keyof typeof updates] !== undefined
+        && JSON.stringify(updates[key as keyof typeof updates])
+          !== JSON.stringify(initialOrderData[key] ?? null));
+    const paymentChanged = updates.payment !== undefined
+      && JSON.stringify(updates.payment) !== JSON.stringify(initialOrderData.payment ?? null);
+    const exchangeChanged = updates.isExchange !== undefined
+      && Boolean(updates.isExchange) !== Boolean(initialOrderData.isExchange);
+    const customerChanged = updates.customerId !== undefined
+      && (updates.customerId ?? null) !== (initialOrderData.customerId ?? null);
+    // Todas as alterações financeiras/itens passam pela Function. Isso evita
+    // depender do custo CEL até mesmo para listas pequenas ou pedidos legados.
+    const requiresBackend = Boolean(operationId) || paymentChanged || exchangeChanged || customerChanged || affectsItemTotals;
+    if (requiresBackend) {
+      const sanitizedUpdates = {
+        ...updates,
+        ...(updates.items !== undefined ? { items: this.sanitizeOrderItems(updates.items) } : {}),
+      };
+      const targetVersion = expectedVersion ?? this.currentOrderVersion(initialOrderData);
+      const effectiveOperationId = operationId
+        || doc(collection(db, ORDERS_COLLECTION)).id;
+
+      try {
+        const callable = httpsCallable<{
+          orderId: string;
+          expectedVersion: number;
+          updates: typeof updates;
+          operationId?: string;
+        }, { success: boolean; alreadyApplied?: boolean }>(
+          functions,
+          'updateComplexOrder',
+        );
+        const response = await callable({
+          orderId,
+          expectedVersion: targetVersion,
+          updates: sanitizedUpdates,
+          operationId: effectiveOperationId,
+        });
+        if (response?.data?.success !== true) {
+          throw Object.assign(new Error('Não foi possível confirmar a resposta da edição.'), { code: 'internal' });
+        }
+        return;
+      } catch (err: any) {
+        if (['invalid-argument', 'permission-denied', 'not-found', 'unauthenticated', 'failed-precondition', 'already-exists'].includes(callableErrorCode(err))) {
+          throw err;
+        }
+
+        if (isUncertainCallableError(err)) {
+          // A matching field or lastOperationId is insufficient: another command
+          // may have reused that ID. Only the backend receipt confirms the retry.
+
+          // Se a leitura falhou ou o resultado for inconclusivo sob timeout (ex: versão não avançou ainda):
+          // mantém o estado como desconhecido e informa que não foi possível confirmar, sem retentar automaticamente.
+          const unconfirmedError: any = new Error(
+            'A alteração do pedido não pôde ser confirmada devido ao tempo de resposta esgotado. ' +
+            'Verifique os dados atuais do pedido antes de tentar novamente.'
+          );
+          unconfirmedError.code = 'unconfirmed-update';
+          unconfirmedError.operationId = effectiveOperationId;
+          unconfirmedError.isUnconfirmed = true;
+          throw unconfirmedError;
+        }
+
+        let isUnconfiguredMock = false;
+        try {
+          isUnconfiguredMock = !functions
+            || (typeof functions === 'object' && Object.keys(functions).length === 0);
+        } catch {
+          isUnconfiguredMock = true;
+        }
+        if (typeof err?.message === 'string' && (err.message.includes('_url is not a function') || err.message.includes('No "functions" export'))) {
+          isUnconfiguredMock = true;
+        }
+        isUnconfiguredMock = import.meta.env.MODE === 'test' && isUnconfiguredMock;
+
+        if (!isUnconfiguredMock) {
+          throw err;
+        }
+      }
+      return;
     }
 
     await runTransaction(db, async (transaction) => {
@@ -768,6 +1157,17 @@ export class FirebaseOrderService {
       const cleanUpdates: any = {};
       Object.entries(updates).forEach(([key, value]) => {
         if (value !== undefined) {
+          if (['items', 'price', 'quantity', 'pricingMode', 'unitPrice', 'payment', 'isExchange'].includes(key)) {
+            const unchanged = key === 'isExchange'
+              ? Boolean(value) === Boolean(orderData.isExchange)
+              : JSON.stringify(value) === JSON.stringify(orderData[key] ?? null);
+            if (!unchanged) {
+              throw new Error('Os dados financeiros do pedido mudaram durante a edição. Atualize a tela e tente novamente.');
+            }
+            // Valores sem alteração não devem ser incluídos na gravação direta;
+            // mudanças reais são encaminhadas a updateComplexOrder antes da transação.
+            return;
+          }
           if (key === 'price' && typeof value === 'number') {
             cleanUpdates[key] = resolvedPrice;
           } else if (key === 'payment' && value) {
@@ -856,6 +1256,14 @@ export class FirebaseOrderService {
         }
       });
 
+      const remainsExchange = Boolean(cleanUpdates.isExchange ?? orderData.isExchange);
+      if (remainsExchange && (cleanUpdates.isExchange === true || cleanUpdates.payment)) {
+        cleanUpdates.payment = {
+          status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0,
+          method: null, paymentDate: null, notes: null, history: null,
+        };
+      }
+
       // Se apenas o preço foi alterado e o pedido já possui payment, sincronizar totalAmount, remainingAmount e status
       if (cleanUpdates.price !== undefined && !cleanUpdates.payment && orderData.payment) {
         const totalAmount = cleanUpdates.price;
@@ -924,7 +1332,21 @@ export class FirebaseOrderService {
 
       if (saleSnap.exists()) {
         const salePayload: any = { updatedAt: now };
-        if (cleanUpdates.price !== undefined) salePayload.amount = cleanUpdates.price;
+        const existingSale = saleSnap.data();
+        // Reparar campos de vínculo legados ausentes usando como fonte o pedido
+        // que o funcionário está autorizado a editar.
+        if (orderData.userId && !existingSale.userId) {
+          salePayload.userId = orderData.userId;
+        }
+        if (orderData.assignedTo && !existingSale.assignedTo) {
+          salePayload.assignedTo = orderData.assignedTo;
+          salePayload.assignedToName = orderData.assignedToName || null;
+        }
+        if (cleanUpdates.price !== undefined || cleanUpdates.isExchange !== undefined) {
+          const exchange = cleanUpdates.isExchange ?? orderData.isExchange;
+          salePayload.amount = exchange ? 0 : (cleanUpdates.price ?? orderData.price ?? 0);
+        }
+        if (cleanUpdates.isExchange !== undefined) salePayload.isExchange = Boolean(cleanUpdates.isExchange);
         if (cleanUpdates.status !== undefined) salePayload.status = cleanUpdates.status;
         if (cleanUpdates.customerName !== undefined) salePayload.customerName = cleanUpdates.customerName;
         if (cleanUpdates.customerPhone !== undefined) salePayload.customerPhone = cleanUpdates.customerPhone;
@@ -948,14 +1370,22 @@ export class FirebaseOrderService {
           isDeletedFromOrders: orderData.deletedAt != null,
         });
       }
+
     });
   }
 
   /**
    * Duplicar pedido
    */
-  async duplicateOrder(orderId: string): Promise<Order> {
+  async duplicateOrder(orderId: string, idempotencyKey?: string): Promise<Order> {
     const userId = this.getCurrentUserId();
+    const scope = `duplicate-payload:${idempotencyKey || orderId}`;
+    const pending = idempotencyKey ? loadPendingOrderOperation<Partial<Order>>(userId, scope) : null;
+    if (pending) {
+      const saved = await this.createOrder(pending.payload, undefined, undefined, pending.id);
+      clearPendingOrderOperation(userId, scope);
+      return saved;
+    }
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
     const orderSnap = await getDoc(orderRef);
 
@@ -964,23 +1394,17 @@ export class FirebaseOrderService {
     }
 
     const data = orderSnap.data();
-    const orderNumber = await this.generateOrderNumber(userId);
-
-    const ordersRef = collection(db, ORDERS_COLLECTION);
     const price = this.ensurePositive(data.price);
-    const newOrderRef = await addDoc(ordersRef, {
-      userId,
-      createdByName: auth.currentUser?.displayName || auth.currentUser?.email || userId,
-      orderNumber,
+    const duplicatedPayload: Partial<Order> = {
       customerName: data.customerName,
-      customerPhone: data.customerPhone,
+      customerPhone: data.customerPhone || null,
       customerId: data.customerId || null,
       productName: data.productName,
       quantity: data.quantity,
       price,
       pricingMode: data.pricingMode || null,
       unitPrice: typeof data.unitPrice === 'number' ? data.unitPrice : null,
-      items: Array.isArray(data.items) ? data.items : null,
+      items: Array.isArray(data.items) ? normalizeOrderItems(data.items) : null,
       status: 'pending',
       deliveryDate: data.deliveryDate,
       notes: data.notes || null,
@@ -993,18 +1417,18 @@ export class FirebaseOrderService {
         remainingAmount: price,
         paymentDate: null,
         notes: null,
+        history: null,
       },
-      version: 1,
-      createdAt: Timestamp.now(),
-      deletedAt: null,
-    });
+      isExchange: Boolean(data.isExchange),
+      exchangeNotes: data.exchangeNotes || null,
+      exchangeItems: data.exchangeItems || null,
+      cardColor: data.cardColor || null,
+    };
 
-    const createdOrder = await this.getOrderById(newOrderRef.id);
-    firebaseLedgerService.recordOrderSale(createdOrder, userId).catch(err => {
-      console.warn('firebaseLedgerService: erro ao gravar venda duplicada no ledger:', err);
-    });
-
-    return createdOrder;
+    const operation = savePendingOrderOperation(userId, scope, duplicatedPayload, idempotencyKey);
+    const saved = await this.createOrder(operation.payload, undefined, undefined, operation.id);
+    clearPendingOrderOperation(userId, scope);
+    return saved;
   }
 
   /**
@@ -1234,21 +1658,11 @@ export class FirebaseOrderService {
           });
         } else {
           // Reconstrução contábil caso o registro de faturamento não exista (pedido legado)
+          const fullOrder = { ...this.mapOrderDoc(orderSnap), ...updates };
+          const saleRecord = firebaseLedgerService.mapOrderToSaleRecord(fullOrder as Order, userId);
           transaction.set(saleRef, {
-            orderId,
-            orderNumber: data.orderNumber || null,
-            customerName: data.customerName || '',
-            customerPhone: data.customerPhone || null,
-            amount: data.price || 0,
-            paidAmount: data.payment?.paidAmount || (data.payment?.status === 'paid' ? data.price : 0),
-            status: updates.status,
-            date: (data.createdAt && typeof data.createdAt.toDate === 'function')
-              ? data.createdAt.toDate().toISOString().split('T')[0]
-              : (typeof data.createdAt === 'string' ? data.createdAt.split('T')[0] : now.split('T')[0]),
-            userId: data.userId || userId,
-            assignedTo: data.assignedTo || null,
-            createdAt: data.createdAt || now,
-            updatedAt: now,
+            ...saleRecord,
+            isDeletedFromOrders: data.deletedAt != null,
           });
         }
       }

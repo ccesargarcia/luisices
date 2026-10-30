@@ -6,6 +6,7 @@ const { ORIGIN_SECRET } = require('../common/secrets');
 const { validateOriginSecret } = require('../originProtection');
 const { createGalleryMediaHandler, getGalleryStoragePath, canReadGalleryItem } = require('./galleryCore');
 
+// Keep the public media endpoint isolated so backend changes can deploy only this export.
 const galleryMedia = onRequest({
   cors: false,
   maxInstances: 10,

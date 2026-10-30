@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockGetDoc = vi.fn();
 const mockSetDoc = vi.fn();
+const mockBatchSet = vi.hoisted(() => vi.fn());
+const mockBatchCommit = vi.hoisted(() => vi.fn());
 
 vi.mock('../../src/lib/firebase', () => ({
   db: { id: 'mock-db' },
@@ -10,12 +12,13 @@ vi.mock('../../src/lib/firebase', () => ({
 }));
 
 vi.mock('firebase/firestore', () => ({
+  deleteField: vi.fn(() => ({ __fieldValue: 'delete' })),
   doc: vi.fn((_db, ...parts) => ({ path: parts.join('/') })),
   getDoc: vi.fn((...args) => mockGetDoc(...args)),
   setDoc: vi.fn((...args) => mockSetDoc(...args)),
   writeBatch: vi.fn(() => ({
-    set: vi.fn(),
-    commit: vi.fn().mockResolvedValue(undefined),
+    set: (...args: unknown[]) => mockBatchSet(...args),
+    commit: (...args: unknown[]) => mockBatchCommit(...args),
   })),
 }));
 
@@ -26,6 +29,7 @@ import { TAG_COLORS, getTextColor } from '../../src/app/utils/tagColors';
 describe('Funcionalidade: Configurações, Dashboard Cards e Sistema de Cores', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockBatchCommit.mockResolvedValue(undefined);
   });
 
   describe('1. Serviço de Configurações do Usuário (firebaseSettingsService)', () => {
@@ -67,7 +71,7 @@ describe('Funcionalidade: Configurações, Dashboard Cards e Sistema de Cores', 
         whatsappPhone: '5511999998888',
       });
 
-      expect(mockSetDoc).toHaveBeenCalledWith(
+      expect(mockBatchSet).toHaveBeenCalledWith(
         expect.objectContaining({ path: 'users/user-1/settings/profile' }),
         expect.objectContaining({
           businessName: 'Novo Nome',
@@ -76,22 +80,39 @@ describe('Funcionalidade: Configurações, Dashboard Cards e Sistema de Cores', 
         }),
         { merge: true }
       );
+      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
+    });
+
+    it('não informa sucesso se uma gravação do lote de configurações falhar', async () => {
+      mockBatchCommit.mockRejectedValueOnce(new Error('write denied'));
+      await expect(firebaseSettingsService.updateSettings('user-1', {
+        catalogStoreName: 'Loja atualizada',
+      })).rejects.toThrow('write denied');
     });
 
     it('resetToDefaults deve redefinir documento para defaults', async () => {
       await firebaseSettingsService.resetToDefaults('user-reset');
-      expect(mockSetDoc).toHaveBeenCalledWith(
+      expect(mockBatchSet).toHaveBeenCalledWith(
         expect.objectContaining({ path: 'users/user-reset/settings/profile' }),
         expect.objectContaining({
           userId: 'user-reset',
           updatedAt: expect.any(Date),
         })
       );
+      expect(mockBatchSet).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'storeSettings/public' }),
+        expect.objectContaining({
+          storePublished: true,
+          catalogLogo: { __fieldValue: 'delete' },
+          featureFlags: { __fieldValue: 'delete' },
+        }),
+        { merge: true }
+      );
     });
 
     it('toggleStorePublished deve atualizar status na loja pública e no perfil', async () => {
       await firebaseSettingsService.toggleStorePublished('user-1', false, 'Em manutenção');
-      expect(mockSetDoc).toHaveBeenCalledWith(
+      expect(mockBatchSet).toHaveBeenCalledWith(
         expect.objectContaining({ path: 'users/user-1/settings/profile' }),
         expect.objectContaining({
           storePublished: false,
@@ -99,7 +120,7 @@ describe('Funcionalidade: Configurações, Dashboard Cards e Sistema de Cores', 
         }),
         { merge: true }
       );
-      expect(mockSetDoc).toHaveBeenCalledWith(
+      expect(mockBatchSet).toHaveBeenCalledWith(
         expect.objectContaining({ path: 'storeSettings/public' }),
         expect.objectContaining({
           storePublished: false,
@@ -107,6 +128,13 @@ describe('Funcionalidade: Configurações, Dashboard Cards e Sistema de Cores', 
         }),
         { merge: true }
       );
+      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
+    });
+
+    it('toggleStorePublished deve rejeitar o lote inteiro quando a loja pública falha', async () => {
+      mockBatchCommit.mockRejectedValueOnce(new Error('public write denied'));
+      await expect(firebaseSettingsService.toggleStorePublished('user-1', false))
+        .rejects.toThrow('public write denied');
     });
 
     it('updateAvatar deve atualizar avatar do usuário', async () => {
@@ -126,7 +154,7 @@ describe('Funcionalidade: Configurações, Dashboard Cards e Sistema de Cores', 
       await firebaseSettingsService.updateCatalogLogo('user-1', 'https://cdn.luisices.com.br/catalog-logo.png');
 
       // 1. Perfil do usuário
-      expect(mockSetDoc).toHaveBeenCalledWith(
+      expect(mockBatchSet).toHaveBeenCalledWith(
         expect.objectContaining({ path: 'users/user-1/settings/profile' }),
         expect.objectContaining({
           catalogLogo: 'https://cdn.luisices.com.br/catalog-logo.png',
@@ -135,25 +163,27 @@ describe('Funcionalidade: Configurações, Dashboard Cards e Sistema de Cores', 
       );
 
       // 2. Vitrine pública
-      expect(mockSetDoc).toHaveBeenCalledWith(
+      expect(mockBatchSet).toHaveBeenCalledWith(
         expect.objectContaining({ path: 'storeSettings/public' }),
         expect.objectContaining({
           catalogLogo: 'https://cdn.luisices.com.br/catalog-logo.png',
         }),
         { merge: true }
       );
+      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
     });
 
     it('updateCatalogBanner deve atualizar banner da loja pública', async () => {
       await firebaseSettingsService.updateCatalogBanner('user-1', 'https://cdn.luisices.com.br/banner.png');
 
-      expect(mockSetDoc).toHaveBeenCalledWith(
+      expect(mockBatchSet).toHaveBeenCalledWith(
         expect.objectContaining({ path: 'storeSettings/public' }),
         expect.objectContaining({
           catalogBanner: 'https://cdn.luisices.com.br/banner.png',
         }),
         { merge: true }
       );
+      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
     });
   });
 

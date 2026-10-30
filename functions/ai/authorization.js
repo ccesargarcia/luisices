@@ -231,8 +231,14 @@ function sanitizeCollaboratorInfo(member, scope) {
     (targetEmail && callerEmail && targetEmail === callerEmail)
   );
 
+  const isMcpClient = Array.isArray(scope?.scopes) || Array.isArray(scope?.mcpScopes);
+  const hasTeamScope = !isMcpClient || (
+    (Array.isArray(scope?.scopes) && scope.scopes.includes('team:read')) ||
+    (Array.isArray(scope?.mcpScopes) && scope.mcpScopes.includes('team:read'))
+  );
+
   const canAccessPrivateDetails = Boolean(
-    scope?.active && (scope.isAdmin || scope.isEmployee || isSelf)
+    scope?.active && (scope.isAdmin || isSelf || (scope.isEmployee && hasTeamScope))
   );
 
   const name = member.name || member.displayName || 'Colaborador';

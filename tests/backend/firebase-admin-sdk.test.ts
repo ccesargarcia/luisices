@@ -238,6 +238,56 @@ describe(`Protocolo HTTP nas Functions (${process.env.SDK_TEST_HTTP_MODE})`, () 
     expect(result.body.error.status).toBe('UNAUTHENTICATED');
   });
 
+  it('getEmailUsage nega perfil sem permissão e retorna métricas sem chamar o provedor real', async () => {
+    const deniedUid = await createUser();
+    await db.doc(`userProfiles/${deniedUid}`).set({ active: true, role: 'user', permissions: {} });
+    const denied = await callable('getEmailUsage', {}, await signIn(deniedUid));
+    expect(denied.status).toBe(403);
+    expect(denied.body.error.status).toBe('PERMISSION_DENIED');
+
+    const allowedUid = await createUser();
+    await db.doc(`userProfiles/${allowedUid}`).set({ active: true, role: 'user', permissions: { emails: { view: true } } });
+    const sentAt = new Date().toISOString();
+    await db.collection('sentEmails').doc(`usage-${allowedUid}`).set({ sentAt, senderUid: allowedUid });
+
+    // Invoca o handler real sobre o Firestore Emulator, mas intercepta as duas
+    // requisições Resend para que o teste nunca dependa de rede ou credenciais.
+    const originalFetch = globalThis.fetch;
+    const originalResendApiKey = process.env.RESEND_API_KEY;
+    process.env.RESEND_API_KEY = 'sdk-test-placeholder';
+    let resendRequests = 0;
+    globalThis.fetch = async (input, init) => {
+      if (String(input).startsWith('https://api.resend.com/emails/metrics')) {
+        resendRequests += 1;
+        expect(new Headers(init?.headers).get('authorization')).toBe('Bearer sdk-test-placeholder');
+        return new Response(JSON.stringify({ totals: { sent: 2 } }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      return originalFetch(input, init);
+    };
+    try {
+      const result = await (functions.getEmailUsage as any).run({
+        auth: { uid: allowedUid, token: { auth_time: Math.floor(Date.now() / 1000) } },
+        data: {},
+        rawRequest: { headers: { 'x-origin-secret': 'sdk-test-placeholder' } },
+      });
+      expect(resendRequests).toBe(2);
+      expect(result).toMatchObject({
+        success: true,
+        source: 'resend_api',
+        daily: { used: 2, sent: 2, limit: 100, received: 0 },
+        monthly: { used: 2, sent: 2, limit: 3000, received: 0 },
+      });
+      expect(result.daily.resetsAt).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
+      expect(result.monthly.resetsAt).toMatch(/^\d{4}-\d{2}-01T00:00:00\.000Z$/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalResendApiKey === undefined) delete process.env.RESEND_API_KEY;
+      else process.env.RESEND_API_KEY = originalResendApiKey;
+    }
+  });
+
   it('nega acesso protegido quando o token é inválido', async () => {
     const result = await callable('getUserAccountMetadata', { uids: [] }, 'invalid-token');
     if (process.env.SDK_TEST_HTTP_MODE === 'wrapper') {

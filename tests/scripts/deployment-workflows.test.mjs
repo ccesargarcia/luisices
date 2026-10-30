@@ -52,3 +52,14 @@ test('dev deployment publishes indexes before application changes and rules last
   assert.equal(dev.jobs['purge-mcp-cache'].with.target_worker, 'cache');
   assert.ok(dev.jobs['deploy-cloudflare'].needs.includes('cloudflare-validation'));
 });
+
+test('dev deployment falls back to an older Functions baseline when GitHub API history is unavailable', async () => {
+  const dev = await workflow('deploy-dev.yml');
+  const baselineStep = dev.jobs['detect-changes'].steps.find(step =>
+    step.name === 'Localizar última publicação bem-sucedida das Functions');
+
+  assert.ok(baselineStep, 'expected the Functions baseline lookup step');
+  assert.match(baselineStep.with.script, /try\s*\{[\s\S]*github\.paginate[\s\S]*catch\s*\(error\)/);
+  assert.match(baselineStep.with.script, /core\.warning\([\s\S]*\);\s*continue;/);
+  assert.match(baselineStep.with.script, /core\.setOutput\('sha', ''\)/);
+});

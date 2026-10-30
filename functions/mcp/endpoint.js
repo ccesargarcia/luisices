@@ -20,7 +20,7 @@ const {
 const { TOOL_SCOPE_MAP, MCP_SCOPES } = require('./constants');
 const { buildOpenApiSchema, TOOLS_METADATA } = require('./openapi');
 const { validateToolArguments } = require('./validation');
-const { createAiServices } = require('../ai/index');
+const { createMcpAiServices } = require('./aiServices');
 const { ORIGIN_SECRET } = require('../common/secrets');
 const { validateOriginSecret } = require('../originProtection');
 const { captureApiError } = require('../common/sentry');
@@ -31,6 +31,7 @@ const MCP_ASSISTANT_INSTRUCTIONS = [
   'Escreva para a pessoa, não para um sistema: comece pela resposta; use frases curtas e no máximo três tópicos quando ajudarem.',
   'Transforme os resultados das consultas em uma resposta simples. Não copie a saída técnica, não despeje campos e não repita informações que a pessoa já viu.',
   'Ao falar da rotina do ateliê, evite termos como MCP, API, ferramenta, JSON, parâmetro, escopo, versão, chave, código interno ou nome de campo. Use palavras comuns como pedido, etapa, acesso e confirmação; só use termos técnicos quando a pessoa pedir uma explicação técnica.',
+  'Quando a pessoa pedir para editar um pedido identificado, carregue os dados do pedido antes de perguntar detalhes. Em seguida, mostre todas as opções disponíveis — dados do cliente, produtos, quantidades, preços unitários, prazo, tema, observações e etapa quando puder avançar — e deixe claro que ela pode pedir várias mudanças juntas. Não pergunte apenas qual item ou campo quer editar.',
   'Nunca mencione idempotência, chaves de repetição ou mecanismos internos para evitar duplicidade. Gere e mantenha esses valores silenciosamente ao chamar as ferramentas; eles nunca são uma tarefa para a pessoa.',
   'Se uma ação falhar, diga em linguagem simples o que aconteceu e qual é o próximo passo seguro. Não invente causas nem diga que algo foi salvo sem confirmação explícita de sucesso.',
   'Antes de criar ou alterar dados, mostre uma prévia curta e aguarde confirmação explícita. Não peça confirmação de novo depois que a pessoa já confirmou a mesma prévia.',
@@ -220,15 +221,12 @@ function recordMcpAuditLog(db, {
     });
 }
 
-let sharedAiServices = null;
-function getSharedAiServices(db) {
-  if (!sharedAiServices) {
-    sharedAiServices = createAiServices({
-      firestore: () => db,
-      auth: () => getAuth(),
-    });
+let sharedMcpServices = null;
+function getSharedMcpServices(db) {
+  if (!sharedMcpServices) {
+    sharedMcpServices = createMcpAiServices({ firestore: db, auth: getAuth() });
   }
-  return sharedAiServices;
+  return sharedMcpServices;
 }
 
 /**
@@ -628,6 +626,12 @@ const chatGptToolsEndpoint = onRequest(
               name: t.name,
               description: `${t.summary}: ${t.description}`,
               inputSchema: { ...(t.requestBody || { type: 'object', properties: {} }), additionalProperties: false },
+              ...(t.name === 'get_order_edit_form' ? {
+                _meta: {
+                  ui: { resourceUri: 'ui://luisices/order-edit/v2.html' },
+                  'openai/outputTemplate': 'ui://luisices/order-edit/v2.html',
+                },
+              } : {}),
             })),
           },
         });
@@ -639,9 +643,9 @@ const chatGptToolsEndpoint = onRequest(
         if (!authResult.success) return res.status(authResult.status || 401).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32001, message: authResult.message || 'Autenticação necessária.' } });
         const scopes = authResult.keyData.scopes || [];
         const resources = scopes.includes('*') || scopes.includes('orders:update') ? [{
-          uri: 'ui://luisices/order-edit/v1.html',
+          uri: 'ui://luisices/order-edit/v2.html',
           name: 'Formulário de edição de pedido',
-          description: 'Formulário para editar dados e valores do pedido.',
+          description: 'Formulário interativo para revisar o pedido, editar produtos, quantidades e preços unitários e conferir o total antes de salvar.',
           mimeType: 'text/html;profile=mcp-app',
         }] : [];
         return res.status(200).json({ jsonrpc: '2.0', id: rpcId, result: { resources } });
@@ -654,7 +658,7 @@ const chatGptToolsEndpoint = onRequest(
         if (!scopes.includes('*') && !scopes.includes('orders:update')) {
           return res.status(200).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32003, message: 'Permissão negada para carregar o formulário de edição.' } });
         }
-        if (params.uri !== 'ui://luisices/order-edit/v1.html') {
+        if (params.uri !== 'ui://luisices/order-edit/v2.html') {
           return res.status(200).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32602, message: 'Recurso MCP não encontrado.' } });
         }
         const { ORDER_EDIT_WIDGET_HTML } = require('./orderEditWidget');
@@ -731,7 +735,7 @@ const chatGptToolsEndpoint = onRequest(
 
         const startTime = Date.now();
         try {
-          const aiServices = traceMcpStep('services', () => getSharedAiServices(db));
+          const aiServices = traceMcpStep('services', () => getSharedMcpServices(db));
           const { toolsExecutor } = aiServices;
           const result = await executeScopedToolByName(toolsExecutor, toolName, toolArgs, scope, keyScopes);
           const executionTimeMs = Date.now() - startTime;
@@ -870,7 +874,7 @@ const chatGptToolsEndpoint = onRequest(
       } catch (validationError) {
         return res.status(400).json({ error: 'INVALID_ARGUMENT', message: publicErrorMessage(validationError) });
       }
-      const aiServices = traceMcpStep('services', () => getSharedAiServices(db));
+      const aiServices = traceMcpStep('services', () => getSharedMcpServices(db));
       const { toolsExecutor } = aiServices;
 
       const startTime = Date.now();

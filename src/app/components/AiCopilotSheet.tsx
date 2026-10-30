@@ -350,7 +350,6 @@ export function AiCopilotSheet({
   const [progressStepIndex, setProgressStepIndex] = useState(0);
   const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<Order | null>(null);
   const [orderDetailsOpen, setOrderDetailsOpen] = useState(false);
-  const [quota, setQuota] = useState<import('../types').AiUsageData | null>(null);
   const [attachedImage, setAttachedImage] = useState<{
     preview: string;
     base64: string;
@@ -418,16 +417,6 @@ export function AiCopilotSheet({
     return () => clearInterval(interval);
   }, [loading]);
 
-  const fetchQuota = async () => {
-    if (!isAdmin) return;
-    try {
-      const data = await firebaseAiAgentService.getAiUsage();
-      setQuota(data);
-    } catch {
-      // Ignora erro
-    }
-  };
-
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -437,12 +426,6 @@ export function AiCopilotSheet({
       setTimeout(scrollToBottom, 150);
     }
   }, [open, messages, loading]);
-
-  useEffect(() => {
-    if (open && isAdmin) {
-      fetchQuota();
-    }
-  }, [open, isAdmin]);
 
   const handleImagePick = async (file: File) => {
     const validMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -553,9 +536,6 @@ export function AiCopilotSheet({
       };
 
       setMessages(prev => [...prev, assistantMsg]);
-      if (isAdmin) {
-        fetchQuota();
-      }
     } catch (err: any) {
       console.error('[AiCopilot] Erro ao enviar mensagem:', err);
       toast.error(err.message || 'Erro ao comunicar com o Copiloto de IA.');
@@ -694,15 +674,6 @@ export function AiCopilotSheet({
                   <Badge variant="outline" className="text-[9px] sm:text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-600 border-amber-500/30 shrink-0">
                     IA SEGURA
                   </Badge>
-                  {isAdmin && quota?.daily && (
-                    <Badge
-                      variant="outline"
-                      className="hidden xs:inline-flex text-[9px] sm:text-[10px] px-1.5 py-0 bg-muted/60 text-muted-foreground border-border gap-1 font-mono shrink-0"
-                      title={quota.isAvailable === false ? 'Métricas de uso indisponíveis' : `Uso registrado: ${quota.daily.used} requisições hoje${quota.daily.limit == null ? '; limite do provedor não confirmado' : ` de ${quota.daily.limit} (${quota.daily.percentage ?? 0}%)`}`}
-                    >
-                      ⚡ {quota.isAvailable === false ? '—' : quota.daily.used}{quota.isAvailable === false || quota.daily.limit == null ? ' req' : `/${quota.daily.limit} req`}
-                    </Badge>
-                  )}
                 </SheetTitle>
                 <SheetDescription className="text-[10px] sm:text-xs text-muted-foreground truncate">
                   Consultas, Resumo do Dia, WhatsApp & Orçamentos

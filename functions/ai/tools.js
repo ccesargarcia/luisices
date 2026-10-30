@@ -36,6 +36,22 @@ function isConfirmed(value) {
   return value === true || value === 'true';
 }
 
+function getStoredItemUnitPrice(item) {
+  const unitPrice = Number(item?.unitPrice);
+  if (Number.isFinite(unitPrice) && unitPrice > 0) return unitPrice;
+
+  const quantity = Number(item?.quantity);
+  const subtotal = Number(item?.price);
+  if (unitPrice === 0 && Number.isSafeInteger(quantity) && quantity > 0
+    && Number.isFinite(subtotal) && subtotal > 0) {
+    const subtotalCents = Math.round(subtotal * 100);
+    if (Math.abs(subtotal * 100 - subtotalCents) <= 0.001 && subtotalCents % quantity === 0) {
+      return (subtotalCents / quantity) / 100;
+    }
+  }
+  return Number.isFinite(unitPrice) ? unitPrice : 0;
+}
+
 /**
  * Calcula intervalos de data no fuso do negócio (America/Sao_Paulo - UTC-3)
  */
@@ -1359,6 +1375,14 @@ class AiToolsExecutor {
         customerName: order.data.customerName || '',
         customerPhone: order.data.customerPhone || '',
         productName: order.data.productName || '',
+        items: Array.isArray(order.data.items) ? order.data.items.map((item, existingIndex) => ({
+          existingIndex,
+          name: String(item.name || item.productName || '').slice(0, 200),
+          quantity: Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+          unitPrice: item.unitPrice !== null && item.unitPrice !== undefined && item.unitPrice !== '' && Number.isFinite(Number(item.unitPrice))
+            ? getStoredItemUnitPrice(item)
+            : (Number(item.quantity) > 0 ? Number(item.price || 0) / Number(item.quantity) : Number(item.price || 0)),
+        })) : [],
         quantity: Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
         totalPrice: Number(order.data.price ?? order.data.totalPrice ?? order.data.payment?.totalAmount ?? 0),
         deliveryDate: order.data.deliveryDate || '',
@@ -1367,7 +1391,17 @@ class AiToolsExecutor {
         status: statusAliases[String(order.data.status || 'pending').toLowerCase().trim()] || 'unknown',
         version: Number.isSafeInteger(order.data.version) && order.data.version > 0 ? order.data.version : 1,
       },
-      message: 'Preencha os campos desejados. Escolha valor total ou unitário; o total unitário será calculado pelo servidor.',
+      editableOptions: [
+        'Nome e telefone do cliente',
+        'Produtos: nome, quantidade e preço unitário de cada item; adicionar ou remover itens (até 10)',
+        ...(!Array.isArray(order.data.items) || order.data.items.length === 0 ? ['Quantidade geral e valor total ou preço unitário do pedido'] : []),
+        'Prazo de entrega',
+        'Tema do pedido',
+        'Observações',
+        ...(statusAliases[String(order.data.status || 'pending').toLowerCase().trim()] === 'pending' ? ['Etapa de produção: avançar para em produção'] : []),
+        ...(statusAliases[String(order.data.status || 'pending').toLowerCase().trim()] === 'in-progress' ? ['Etapa de produção: avançar para concluído'] : []),
+      ],
+      message: 'Você pode alterar um ou vários desses campos na mesma solicitação. As alterações serão apresentadas para conferência antes de salvar; pagamentos já registrados são preservados.',
     };
   }
 
@@ -1405,7 +1439,59 @@ class AiToolsExecutor {
       error.code = 'invalid-argument';
       throw error;
     }
-    const requestedPrice = args.totalPrice !== undefined ? args.totalPrice : args.unitPrice;
+    if (args.items !== undefined && (args.totalPrice !== undefined || args.unitPrice !== undefined || args.quantity !== undefined)) {
+      const error = new Error('Ao editar os itens, não informe também quantidade geral, totalPrice ou unitPrice. A quantidade e o total serão calculados pelos itens.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    let requestedPrice = args.totalPrice !== undefined ? args.totalPrice : args.unitPrice;
+    let itemSourceIndexes = null;
+    let itemChanges = null;
+    if (args.items !== undefined) {
+      if (!Array.isArray(args.items) || args.items.length < 1 || args.items.length > 10) {
+        const error = new Error('Informe de 1 a 10 itens para o pedido.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
+      let totalCents = 0;
+      let totalQuantity = 0;
+      const usedSourceIndexes = new Set();
+      itemSourceIndexes = [];
+      updates.items = args.items.map((item) => {
+        const name = typeof item?.name === 'string' ? item.name.trim() : '';
+        const quantity = Number(item?.quantity);
+        const unitPrice = item?.unitPrice;
+        const existingIndex = item?.existingIndex;
+        if (!name || name.length > 200 || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000 || typeof unitPrice !== 'number' || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1000000) {
+          const error = new Error('Cada item precisa de nome, quantidade inteira entre 1 e 10000 e preço unitário válido de até R$ 1.000.000,00.');
+          error.code = 'invalid-argument';
+          throw error;
+        }
+        if (existingIndex !== undefined && (!Number.isSafeInteger(existingIndex) || existingIndex < 0 || existingIndex > 49 || usedSourceIndexes.has(existingIndex))) {
+          const error = new Error('O índice de um item existente é inválido ou foi repetido. Consulte novamente os itens do pedido.');
+          error.code = 'invalid-argument';
+          throw error;
+        }
+        if (existingIndex !== undefined) usedSourceIndexes.add(existingIndex);
+        itemSourceIndexes.push(existingIndex ?? null);
+        const unitCents = Math.round(unitPrice * 100);
+        const lineCents = unitCents * quantity;
+        totalCents += lineCents;
+        totalQuantity += quantity;
+        if (!Number.isSafeInteger(totalCents) || totalCents > 1000000000 || totalQuantity > 100000) {
+          const error = new Error('O total ou a quantidade somada dos itens excede o limite permitido.');
+          error.code = 'invalid-argument';
+          throw error;
+        }
+        return { name, quantity, unitPrice: unitCents / 100, price: lineCents / 100 };
+      });
+      updates.quantity = totalQuantity;
+      updates.productName = updates.items
+        .map((item) => item.quantity > 1 ? `${item.name} (${item.quantity}x)` : item.name)
+        .join(', ')
+        .slice(0, 300);
+      requestedPrice = totalCents / 100;
+    }
     if (requestedPrice !== undefined) {
       if (typeof requestedPrice !== 'number' || !Number.isFinite(requestedPrice) || requestedPrice < 0) {
         const error = new Error('O valor informado deve ser um número não negativo em reais.');
@@ -1413,7 +1499,7 @@ class AiToolsExecutor {
         throw error;
       }
       const cents = Math.round(requestedPrice * 100);
-      const maxCents = args.totalPrice !== undefined ? 1000000000 : 100000000;
+      const maxCents = args.totalPrice !== undefined || args.items !== undefined ? 1000000000 : 100000000;
       if (!Number.isSafeInteger(cents) || cents > maxCents) {
         const error = new Error('O valor informado excede o limite permitido.');
         error.code = 'invalid-argument';
@@ -1438,6 +1524,50 @@ class AiToolsExecutor {
       const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
       error.code = 'not-found';
       throw error;
+    }
+    if (itemSourceIndexes) {
+      const currentItems = Array.isArray(order.data.items) ? order.data.items : [];
+      const staleIndex = itemSourceIndexes.find((index) => index !== null && index >= currentItems.length);
+      if (staleIndex !== undefined) {
+        const error = new Error('Os itens do pedido mudaram desde a consulta. Carregue novamente antes de editar.');
+        error.code = 'failed-precondition';
+        throw error;
+      }
+      const retainedIndexes = new Set(itemSourceIndexes.filter((index) => index !== null));
+      updates.items = updates.items.map((item, index) => {
+        const sourceIndex = itemSourceIndexes[index];
+        if (sourceIndex === null) return item;
+        const preservedItemData = Object.fromEntries(
+          Object.entries(currentItems[sourceIndex] || {}).filter(([key]) => key !== 'existingIndex')
+        );
+        return { ...preservedItemData, ...item };
+      });
+      itemChanges = {
+        changed: updates.items.map((after, index) => {
+          const sourceIndex = itemSourceIndexes[index];
+          const before = sourceIndex === null ? null : currentItems[sourceIndex];
+          const beforeQuantity = Number(before?.quantity) || 1;
+          const beforeUnitPrice = before?.unitPrice !== null && before?.unitPrice !== undefined && Number.isFinite(Number(before.unitPrice))
+            ? getStoredItemUnitPrice(before)
+            : Number(before?.price || 0) / beforeQuantity;
+          const same = before && before.name === after.name && beforeQuantity === after.quantity && Math.round(beforeUnitPrice * 100) === Math.round(after.unitPrice * 100);
+          const metadataPreserved = Boolean(before && Object.keys(before).some((key) => !['name', 'quantity', 'unitPrice', 'price', 'existingIndex'].includes(key)));
+          return {
+            action: before ? (same ? 'unchanged' : 'updated') : 'added',
+            metadataPreserved,
+            ...(before ? { before: { name: before.name || before.productName || '', quantity: beforeQuantity, unitPrice: Math.round(beforeUnitPrice * 100) / 100, subtotal: Number(before.price ?? beforeQuantity * beforeUnitPrice) } } : {}),
+            after: { name: after.name, quantity: after.quantity, unitPrice: after.unitPrice, subtotal: after.price },
+          };
+        }),
+        removed: currentItems
+          .map((item, index) => ({ item, index }))
+          .filter(({ index }) => !retainedIndexes.has(index))
+          .map(({ item }) => {
+            const quantity = Number(item.quantity) || 1;
+            const unitPrice = Number(item.unitPrice) || 0;
+            return { name: item.name || item.productName || '', quantity, unitPrice, subtotal: Number(item.price ?? quantity * unitPrice) };
+          }),
+      };
     }
     if (requestedPrice !== undefined && args.unitPrice !== undefined) {
       const quantity = updates.quantity ?? (Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1);
@@ -1464,15 +1594,22 @@ class AiToolsExecutor {
       throw error;
     }
 
+    const previewChanges = { ...updates };
+    if (Array.isArray(updates.items)) {
+      previewChanges.items = updates.items.map(({ name, quantity, unitPrice, price }) => ({ name, quantity, unitPrice, price }));
+    }
     const summary = {
       orderNumber: order.data.orderNumber || identifier,
       customerName: order.data.customerName || '',
-      changes: updates,
+      changes: previewChanges,
+      ...(itemChanges ? { itemChanges } : {}),
       ...(requestedPrice !== undefined ? {
         pricing: {
-          mode: args.unitPrice !== undefined ? 'unit' : 'total',
-          unitPrice: args.unitPrice !== undefined ? Math.round(Number(args.unitPrice) * 100) / 100 : Math.round((updates.price / (updates.quantity ?? (Number(order.data.quantity) || 1))) * 100) / 100,
+          mode: args.items !== undefined ? 'items' : args.unitPrice !== undefined ? 'unit' : 'total',
           totalPrice: updates.price,
+          ...(args.items !== undefined ? { items: updates.items.map(({ name, quantity, unitPrice, price }) => ({ name, quantity, unitPrice, price })) } : {
+            unitPrice: args.unitPrice !== undefined ? Math.round(Number(args.unitPrice) * 100) / 100 : Math.round((updates.price / (updates.quantity ?? (Number(order.data.quantity) || 1))) * 100) / 100,
+          }),
         },
       } : {}),
       version,
@@ -1531,7 +1668,7 @@ class AiToolsExecutor {
       transaction.update(orderRef, orderUpdates);
       if (saleSnap.exists) {
         const saleUpdates = { updatedAt: now };
-        for (const field of ['customerName', 'customerPhone', 'productName', 'quantity', 'deliveryDate']) {
+        for (const field of ['customerName', 'customerPhone', 'productName', 'quantity', 'deliveryDate', 'items']) {
           if (updates[field] !== undefined) saleUpdates[field] = updates[field];
         }
         if (requestedPrice !== undefined) {
@@ -1554,6 +1691,7 @@ class AiToolsExecutor {
           customerPhone: updates.customerPhone ?? current.customerPhone ?? null,
           productName: updates.productName ?? current.productName ?? 'Produto',
           quantity: updates.quantity ?? current.quantity ?? 1,
+          items: updates.items ?? current.items ?? [],
           amount: updates.price,
           paymentStatus: payment.status,
           paidAmount: payment.paidAmount,
@@ -2410,7 +2548,7 @@ class AiToolsExecutor {
   }
 
   async executeListSupplies(args = {}, scope) {
-    const supplies = await this.repositories.getSupplies(scope);
+    const supplies = await this.repos.getSupplies(scope);
     const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
     let filtered = supplies;
     if (searchTerm) {
@@ -2427,7 +2565,7 @@ class AiToolsExecutor {
   }
 
   async executeListPricingModels(args = {}, scope) {
-    const recipes = await this.repositories.getPricingRecipes(scope, { limit: args.limit || 20 });
+    const recipes = await this.repos.getPricingRecipes(scope, { limit: args.limit || 20 });
     const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
     let filtered = recipes;
     if (searchTerm) {
@@ -2442,7 +2580,7 @@ class AiToolsExecutor {
   }
 
   async executeGetPricingModel(args = {}, scope) {
-    const model = await this.repositories.getPricingRecipeById(scope, args.modelId);
+    const model = await this.repos.getPricingRecipeById(scope, args.modelId);
     if (!model) {
       const err = new Error('Modelo de precificação não encontrado.');
       err.code = 'not-found';
@@ -2467,7 +2605,7 @@ class AiToolsExecutor {
       };
     }
 
-    const saved = await this.repositories.savePricingRecipe(scope, args);
+    const saved = await this.repos.savePricingRecipe(scope, args);
     return {
       success: true,
       modelId: saved.id,
@@ -2477,7 +2615,7 @@ class AiToolsExecutor {
   }
 
   async executeQueryQuotes(args = {}, scope) {
-    const quotes = await this.repositories.getQuotes(scope, { limit: args.limit || 20 });
+    const quotes = await this.repos.getQuotes(scope, { limit: args.limit || 20 });
     const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
     const statusFilter = String(args.status || 'all').toLowerCase();
 
@@ -2509,7 +2647,7 @@ class AiToolsExecutor {
       };
     }
 
-    const quote = await this.repositories.createQuote(scope, args);
+    const quote = await this.repos.createQuote(scope, args);
     return {
       success: true,
       quoteId: quote.id,
@@ -2522,7 +2660,7 @@ class AiToolsExecutor {
 
   async executeUpdateQuoteStatus(args = {}, scope) {
     requireMcpModulePermission(scope, 'quotes', 'edit', 'atualizar orçamentos');
-    if (args.confirmed === false) {
+    if (!isConfirmed(args.confirmed)) {
       return {
         success: true,
         preview: true,
@@ -2539,11 +2677,11 @@ class AiToolsExecutor {
       throw error;
     }
 
-    const updated = await this.repositories.updateQuoteStatus(scope, args.quoteNumber, args.status);
+    const updated = await this.repos.updateQuoteStatus(scope, args.quoteNumber, args.status);
     let orderCreated = null;
 
     if (args.status === 'approved' && args.convertToOrder) {
-      const quotes = await this.repositories.getQuotes(scope, { limit: 10 });
+      const quotes = await this.repos.getQuotes(scope, { limit: 10 });
       const targetQuote = quotes.find((q) => q.id === updated.id || q.quoteNumber === updated.quoteNumber);
       if (targetQuote) {
         orderCreated = await this.executeCreateOrder({
@@ -2573,7 +2711,7 @@ class AiToolsExecutor {
   }
 
   async executeListStoreProducts(args = {}, scope) {
-    const products = await this.repositories.getStoreProducts();
+    const products = await this.repos.getStoreProducts();
     const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
     let filtered = products;
     if (searchTerm) {

@@ -1,5 +1,6 @@
 /**
- * Subsistema de Observabilidade, Telemetria e Gestão de Custos - Luisices
+ * Compatibilidade de leitura para analytics históricos de uso da IA.
+ * Novas chamadas de produção não gravam mais nas coleções ai_usage_*.
  */
 
 const { FieldValue: AdminFieldValue } = require('firebase-admin/firestore');
@@ -45,6 +46,9 @@ function getDateKeys(date = new Date()) {
 
 /**
  * Registra log detalhado e atualiza agregados diários e mensais com quebra por modelo
+ */
+/**
+ * @deprecated Mantida temporariamente para compatibilidade histórica; não chamar em fluxos de produção.
  */
 async function recordAiUsage(db, record = {}) {
   const {
@@ -257,9 +261,9 @@ async function getAiUsageSummary(db) {
       isDefault: true,
     },
     {
-      id: 'gemini-3.1-flash-lite',
-      name: 'Gemini 3.1 Flash Lite',
-      description: 'Modelo ultraleve e econômico para fallback e respostas instantâneas.',
+      id: 'gemini-3.6-flash',
+      name: 'Gemini 3.6 Flash',
+      description: 'Fallback estável para tarefas operacionais e chamadas de ferramentas.',
       category: 'Produção (Fallback)',
       isDefault: false,
     },
@@ -271,17 +275,10 @@ async function getAiUsageSummary(db) {
       isDefault: false,
     },
     {
-      id: 'gemini-3-flash-preview',
-      name: 'Gemini 3 Flash Preview',
-      description: 'Geração 3 experimental com alta fidelidade lógica e estruturação.',
-      category: 'Experimental / Preview',
-      isDefault: false,
-    },
-    {
-      id: 'gemini-3.8-pro',
-      name: 'Gemini 3.8 Pro',
-      description: 'Modelo de alta capacidade para raciocínio complexo e tarefas densas.',
-      category: 'Alta Capacidade',
+      id: 'gemini-3.1-flash-lite',
+      name: 'Gemini 3.1 Flash-Lite',
+      description: 'Fallback estável e leve para respostas operacionais.',
+      category: 'Produção (Fallback)',
       isDefault: false,
     },
   ];
