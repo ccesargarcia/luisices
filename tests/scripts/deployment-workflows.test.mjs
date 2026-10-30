@@ -85,7 +85,8 @@ test('dev deployment reuses successful E2E checks from the merged PR and fails s
   assert.match(checksStep.with.script, /detailsUrl\.match\(\/\\\/actions\\\/runs\\\/\(\\d\+\)\\\//);
   assert.match(checksStep.with.script, /workflow\.path === '\.github\/workflows\/test-actions\.yml'/);
   assert.match(checksStep.with.script, /workflowRun\.event !== 'pull_request'/);
-  assert.match(checksStep.with.script, /workflowRun\.pull_requests\?\.some/);
+  assert.match(checksStep.with.script, /workflowRun\.head_sha !== mergedPr\.head\.sha/);
+  assert.doesNotMatch(checksStep.with.script, /workflowRun\.pull_requests/);
   assert.match(checksStep.with.script, /core\.setOutput\('verified', 'false'\)/);
   assert.match(checksStep.with.script, /core\.setOutput\('verified', 'true'\)/);
   assert.match(checksStep.with.script, /mantendo os testes neste push/);
