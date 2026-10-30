@@ -80,8 +80,8 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Validar seletor de Functions e workflows de deploy
-        run: node --test tests/scripts/functions-deploy-selection.test.mjs tests/scripts/deployment-workflows.test.mjs
+      - name: Validar seletor de Functions
+        run: node --test tests/scripts/functions-deploy-selection.test.mjs
 
       - name: Localizar última publicação bem-sucedida das Functions
         id: functions_base
@@ -357,6 +357,9 @@ jobs:
         run: |
           npm ci --legacy-peer-deps
           npm --prefix functions ci
+
+      - name: Validar estrutura dos workflows de deploy
+        run: node --test tests/scripts/deployment-workflows.test.mjs
 
       - name: Configurar Firebase para testes unitários
         env:
