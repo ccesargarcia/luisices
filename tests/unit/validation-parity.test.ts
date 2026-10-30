@@ -111,6 +111,18 @@ describe('Paridade de Validação Backend & Frontend (Zero Trust)', () => {
         .rejects.toThrow('Um pedido pode ter no máximo 20 etiquetas.');
     });
 
+    it('valida nome e cor das etiquetas antes de enviar ao Firestore', async () => {
+      const invalidTags = [
+        { name: '   ', color: '#123456' },
+        { name: 'Etiqueta válida', color: 'vermelho' },
+      ];
+
+      await expect(firebaseOrderService.createOrder({ tags: [invalidTags[0]] }))
+        .rejects.toThrow('Cada etiqueta precisa ter um nome válido');
+      await expect(firebaseOrderService.updateOrder('pedido-1', { tags: [invalidTags[1]] }))
+        .rejects.toThrow('Cada etiqueta precisa ter um nome válido');
+    });
+
     it('firebaseOrderService rejeita inputs inválidos antes de submeter ao Firestore', async () => {
       await expect(
         firebaseOrderService.createOrder({ customerName: '   ', price: 100 })
@@ -122,15 +134,24 @@ describe('Paridade de Validação Backend & Frontend (Zero Trust)', () => {
 
       await expect(
         firebaseOrderService.createOrder({ customerName: 'Valido', productName: 'Topo', quantity: -5 })
-      ).rejects.toThrow('A quantidade deve ser um número maior que zero');
+      ).rejects.toMatchObject({ code: 'invalid-argument', message: 'A quantidade deve ser um número inteiro entre 1 e 10.000.' });
 
       await expect(
         firebaseOrderService.createOrder({ customerName: 'Valido', productName: 'Topo', price: -50 })
-      ).rejects.toThrow('O preço não pode ser negativo');
+      ).rejects.toThrow('O valor do pedido deve estar entre R$ 0,00 e R$ 1.000.000,00.');
 
       await expect(
         firebaseOrderService.createOrder({ customerName: 'Valido', productName: 'Topo', status: 'invalid-status' as any })
       ).rejects.toThrow('Status do pedido inválido');
+    });
+
+    it('classifica validação local de productName longo como definitiva antes de enviar', async () => {
+      await expect(firebaseOrderService.createOrder({
+        customerName: 'Cliente', productName: 'P'.repeat(301), quantity: 1, price: 100,
+      })).rejects.toMatchObject({
+        code: 'invalid-argument',
+        message: 'Nome do produto deve ter no máximo 300 caracteres.',
+      });
     });
 
     it('firebaseCustomerService rejeita criação e atualização inválida', async () => {

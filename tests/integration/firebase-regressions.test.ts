@@ -5,11 +5,44 @@ import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, Timesta
 import { ref, uploadBytes, getMetadata } from 'firebase/storage';
 import { assertPermissionDenied } from '../helpers/assertPermissionDenied';
 import { DEFAULT_USER_PERMISSIONS } from '../../src/app/types';
+import { initializeApp, deleteApp, type App } from 'firebase-admin/app';
+import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { handleUpdateComplexOrder, handleCreateOrder } from '../../functions/orders/index.js';
+
+let adminApp: App;
+let adminDb: Firestore;
 
 const client = vi.hoisted(() => ({ db: undefined as any, auth: { currentUser: null as any } }));
 vi.mock('../../src/lib/firebase', () => ({
   get db() { return client.db; },
   auth: client.auth,
+  functions: {},
+}));
+
+vi.mock('firebase/functions', () => ({
+  httpsCallable: vi.fn((_functions, name) => {
+    if (name === 'updateComplexOrder') {
+      return async (data: any) => {
+        const uid = client.auth.currentUser?.uid || 'owner';
+        await handleUpdateComplexOrder({
+          auth: { uid, token: { auth_time: 1 } },
+          data,
+        }, adminDb);
+        return { data: { success: true } };
+      };
+    }
+    if (name === 'createOrder') {
+      return async (data: any) => {
+        const uid = client.auth.currentUser?.uid || 'owner';
+        const result = await handleCreateOrder({
+          auth: { uid, token: { auth_time: 1 } },
+          data,
+        }, adminDb);
+        return { data: result };
+      };
+    }
+    return vi.fn().mockResolvedValue({ data: { success: true } });
+  }),
 }));
 import { firebaseSettingsService } from '../../src/services/firebaseSettingsService';
 import { getSalesLedgerQuery } from '../../src/services/firebaseLedgerService';
@@ -43,13 +76,18 @@ beforeAll(async () => {
   if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_STORAGE_EMULATOR_HOST) {
     throw new Error('Execute npm run test:integration para usar apenas emuladores locais.');
   }
+  adminApp = initializeApp({ projectId: 'demo-luisices-review' }, `firebase-regressions-${Date.now()}`);
+  adminDb = getFirestore(adminApp);
   env = await initializeTestEnvironment({
     projectId: 'demo-luisices-review',
     firestore: { rules: readFileSync('firestore.rules', 'utf8') },
     storage: { rules: readFileSync('storage.rules', 'utf8') },
   });
 });
-afterAll(async () => { await env?.cleanup(); });
+afterAll(async () => {
+  if (adminApp) await deleteApp(adminApp);
+  await env?.cleanup();
+});
 beforeEach(async () => {
   await env.clearFirestore();
   await Promise.all([
@@ -63,6 +101,19 @@ beforeEach(async () => {
 });
 
 describe('Perfis e desativação', () => {
+  it('não permite que UID novo leia perfil antigo mesmo quando o e-mail coincide', async () => {
+    await seed('userProfiles/old-admin', {
+      ...profile('old-admin', 'admin'),
+      email: 'reused@example.test',
+    });
+    const replacementAccount = env.authenticatedContext('new-account', {
+      email: 'reused@example.test',
+      email_verified: true,
+    }).firestore();
+
+    await assertPermissionDenied(() => getDoc(doc(replacementAccount as any, 'userProfiles/old-admin')));
+  });
+
   it('impede criação direta de perfil, mas permite atualização de dados próprios', async () => {
     const db = dbFor('new-user');
     // Usuário comum não pode criar o próprio perfil diretamente no Firestore
@@ -245,11 +296,11 @@ describe('Acompanhamento de produção (productionTracking - Achado 4)', () => {
 });
 
 describe('Isolamento financeiro', () => {
-  it('impede assumir registro de outro proprietário, preservando edição legítima', async () => {
+  it('impede assumir ou alterar valores de registros sem pedido correspondente', async () => {
     await seed('salesLedger/sale', { userId: 'owner', assignedTo: 'old-employee', amount: 100 });
     await assertPermissionDenied(() => setDoc(doc(dbFor('other') as any, 'salesLedger/sale'), { userId: 'other', amount: 1 }));
-    await assertSucceeds(updateDoc(doc(dbFor('owner') as any, 'salesLedger/sale'), { amount: 120 }));
-    await assertSucceeds(updateDoc(doc(dbFor('old-employee') as any, 'salesLedger/sale'), { amount: 130 }));
+    await assertPermissionDenied(() => updateDoc(doc(dbFor('owner') as any, 'salesLedger/sale'), { amount: 120 }));
+    await assertPermissionDenied(() => updateDoc(doc(dbFor('old-employee') as any, 'salesLedger/sale'), { amount: 130 }));
     await assertPermissionDenied(() => updateDoc(doc(dbFor('old-employee') as any, 'salesLedger/sale'), { assignedTo: 'new-employee' }));
   });
 });
@@ -273,6 +324,27 @@ describe('Storage', () => {
 });
 
 describe('Pedidos e ledger atômicos', () => {
+  it('cria permuta com pagamento e faturamento zero sem alterar estatísticas monetárias do cliente', async () => {
+    await seed('customers/customer-exchange', {
+      userId: 'owner', name: 'Cliente Permuta', phone: '11999999999', totalOrders: 0, totalSpent: 0,
+    });
+
+    const created = await firebaseOrderService.createOrder({
+      ...order,
+      customerId: 'customer-exchange',
+      isExchange: true,
+      exchangeItems: [{ name: 'Divulgação', quantity: 2, value: 25 }],
+      payment: { status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0, method: null },
+    });
+
+    expect(created.payment).toMatchObject({ totalAmount: 0, paidAmount: 0, remainingAmount: 0, status: 'paid' });
+    expect(created.exchangeItems).toEqual([{ name: 'Divulgação', quantity: 2, value: 25 }]);
+    const sale = await getDoc(doc(client.db, 'salesLedger', created.id));
+    expect(sale.data()).toMatchObject({ amount: 0, paidAmount: 0, isExchange: true });
+    const customer = await getDoc(doc(client.db, 'customers', 'customer-exchange'));
+    expect(customer.data()).toMatchObject({ totalOrders: 0, totalSpent: 0 });
+  });
+
   it('cria pedido normal preservando pagamento e workflow e gravando a venda', async () => {
     const created = await firebaseOrderService.createOrder({
       ...order, status: 'pending', payment: { status: 'partial', totalAmount: 100, paidAmount: 20, remainingAmount: 80 },
@@ -422,9 +494,202 @@ describe('Pausar e retomar vendas', () => {
     await assertPermissionDenied(() => firebaseSettingsService.updateStoreFeatureFlags('limited', { enableOnlineOrders: false }));
     expect((await getDoc(doc(client.db, 'users/limited/settings/profile'))).data()?.featureFlags.enableOnlineOrders).toBe(true);
   });
+
+  it('não altera configuração privada se a publicação pública for negada', async () => {
+    await seed('userProfiles/limited', {
+      ...profile('limited', 'funcionario'),
+      permissions: { store: false, settings: false },
+    });
+    await seed('users/limited/settings/profile', { storePublished: true, storeUnpublishMessage: 'Atendimento normal' });
+    await seed('storeSettings/public', { storePublished: true, storeUnpublishMessage: 'Atendimento normal' });
+    asUser('limited');
+
+    await assertPermissionDenied(() => firebaseSettingsService.toggleStorePublished('limited', false, 'Pausa'));
+    expect((await getDoc(doc(client.db, 'users/limited/settings/profile'))).data()).toMatchObject({
+      storePublished: true,
+      storeUnpublishMessage: 'Atendimento normal',
+    });
+    expect((await getDoc(doc(client.db, 'storeSettings/public'))).data()).toMatchObject({
+      storePublished: true,
+      storeUnpublishMessage: 'Atendimento normal',
+    });
+  });
+
+  it('reseta configurações privadas e remove personalizações e aliases públicos no mesmo lote', async () => {
+    await seed('users/admin/settings/profile', {
+      userId: 'admin', storePublished: false, catalogStoreName: 'Nome antigo', catalogLogo: 'logo-antiga',
+    });
+    await seed('storeSettings/public', {
+      storePublished: false, catalogStoreName: 'Nome antigo', businessName: 'Nome antigo',
+      catalogLogo: 'logo-antiga', logo: 'logo-antiga', banner: 'banner-antigo',
+      featureFlags: { enableOnlineOrders: false },
+    });
+    asUser('admin');
+
+    await firebaseSettingsService.resetToDefaults('admin');
+
+    expect((await getDoc(doc(client.db, 'users/admin/settings/profile'))).data()).toMatchObject({ userId: 'admin' });
+    expect((await getDoc(doc(client.db, 'users/admin/settings/profile'))).data()).not.toHaveProperty('catalogLogo');
+    expect((await getDoc(doc(client.db, 'storeSettings/public'))).data()).toMatchObject({ storePublished: true });
+    expect((await getDoc(doc(client.db, 'storeSettings/public'))).data()).not.toHaveProperty('catalogStoreName');
+    expect((await getDoc(doc(client.db, 'storeSettings/public'))).data()).not.toHaveProperty('businessName');
+    expect((await getDoc(doc(client.db, 'storeSettings/public'))).data()).not.toHaveProperty('logo');
+    expect((await getDoc(doc(client.db, 'storeSettings/public'))).data()).not.toHaveProperty('banner');
+    expect((await getDoc(doc(client.db, 'storeSettings/public'))).data()).not.toHaveProperty('featureFlags');
+  });
 });
 
 describe('Reverificação e Correções Críticas (R1, R2, R3, R11)', () => {
+  it('funcionário atribuído adiciona item com link público e corrige vínculos legados ausentes', async () => {
+    const employeeId = 'new-employee';
+    const orderId = 'assigned-order-with-tracking-link';
+    const trackingLinkId = 'tracking-link-for-assigned-order';
+    const tags = Array.from({ length: 20 }, (_, index) => ({
+      name: `Etiqueta ${String(index + 1).padStart(2, '0')}`,
+      color: '#3b82f6',
+    }));
+
+    await seed(`userProfiles/${employeeId}`, {
+      ...profile(employeeId, 'funcionario'),
+      permissions: {
+        ...DEFAULT_USER_PERMISSIONS,
+        orders: { view: true, create: false, edit: true, delete: false },
+      },
+    });
+    await seed(`orders/${orderId}`, {
+      ...order,
+      userId: 'owner',
+      orderNumber: '#2026-0101',
+      assignedTo: employeeId,
+      assignedToName: 'Funcionário responsável',
+      version: 1,
+      quantity: 1,
+      price: 100,
+      pricingMode: 'unit',
+      unitPrice: 100,
+      items: [{ name: 'Convite', quantity: 1, unitPrice: 100, price: 100 }],
+      tags,
+      payment: {
+        status: 'partial', method: 'pix', totalAmount: 100,
+        paidAmount: 50, remainingAmount: 50,
+      },
+      publicTrackingHash: 'a'.repeat(64),
+      publicTrackingExpiresAt: '2027-10-24T12:00:00.000Z',
+      publicTrackingLinkId: trackingLinkId,
+    });
+    await seed(`orderTrackingLinks/${trackingLinkId}`, {
+      orderId,
+      orderNumber: '#2026-0101',
+      createdByUid: employeeId,
+      tokenHash: 'a'.repeat(64),
+      tokenCiphertext: 'encrypted-token',
+      expiresAt: '2027-10-24T12:00:00.000Z',
+      createdAt: '2026-10-24T12:00:00.000Z',
+      revokedAt: null,
+    });
+    await seed(`salesLedger/${orderId}`, {
+      id: orderId,
+      orderId,
+      orderNumber: '#2026-0101',
+      // Formato legado sem os dados de propriedade e atribuição do pedido.
+      assignedTo: '',
+      assignedToName: '',
+      customerName: 'Cliente',
+      customerPhone: '11999999999',
+      productName: 'Convite',
+      quantity: 1,
+      amount: 100,
+      isExchange: false,
+      paymentStatus: 'partial',
+      paidAmount: 50,
+      paymentMethod: 'pix',
+      date: '2026-01-01',
+      deliveryDate: '2026-12-01',
+      status: 'pending',
+      isDeletedFromOrders: false,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    asUser(employeeId);
+    await firebaseOrderService.updateOrder(orderId, {
+      customerName: 'Cliente',
+      customerPhone: '11999999999',
+      productName: 'Convite, Envelope',
+      quantity: 2,
+      price: 150,
+      pricingMode: 'items',
+      unitPrice: null,
+      items: [
+        { name: 'Convite', quantity: 1, unitPrice: 100, price: 100 },
+        { name: 'Envelope', quantity: 1, unitPrice: 50, price: 50 },
+      ],
+      tags,
+      deliveryDate: '2026-12-01',
+      notes: null,
+      status: 'pending',
+      payment: {
+        status: 'partial', method: 'pix', totalAmount: 150,
+        paidAmount: 50, remainingAmount: 100,
+      },
+      isExchange: false,
+      exchangeNotes: null,
+      exchangeItems: [],
+      cardColor: null,
+    }, 1);
+
+    const savedOrder = (await getDoc(doc(client.db, 'orders', orderId))).data();
+    const savedLedger = (await getDoc(doc(client.db, 'salesLedger', orderId))).data();
+    expect(savedOrder?.items).toHaveLength(2);
+    expect(savedOrder?.price).toBe(150);
+    expect(savedOrder?.publicTrackingLinkId).toBe(trackingLinkId);
+    expect(savedLedger).toMatchObject({
+      userId: 'owner',
+      assignedTo: employeeId,
+      assignedToName: 'Funcionário responsável',
+      amount: 150,
+      quantity: 2,
+    });
+    await assertPermissionDenied(() => updateDoc(doc(client.db, 'salesLedger', orderId), {
+      userId: 'other',
+    }));
+  });
+
+  it('repara os vínculos ausentes do ledger legado ao atualizar o status do pedido', async () => {
+    const employeeId = 'new-employee';
+    const orderId = 'assigned-order-with-unlinked-ledger';
+    await seed(`orders/${orderId}`, {
+      ...order,
+      assignedTo: employeeId,
+      assignedToName: 'Funcionário responsável',
+      version: 1,
+    });
+    await seed(`salesLedger/${orderId}`, {
+      id: orderId,
+      orderId,
+      orderNumber: '#2026-0102',
+      assignedTo: '',
+      assignedToName: '',
+      amount: 100,
+      quantity: 1,
+      status: 'pending',
+    });
+
+    asUser(employeeId);
+    await firebaseOrderService.updateOrderStatus(orderId, 'completed', 1);
+
+    expect((await getDoc(doc(client.db, 'orders', orderId))).data()).toMatchObject({
+      status: 'completed',
+      version: 2,
+    });
+    expect((await getDoc(doc(client.db, 'salesLedger', orderId))).data()).toMatchObject({
+      userId: 'owner',
+      assignedTo: employeeId,
+      assignedToName: 'Funcionário responsável',
+      status: 'completed',
+    });
+  });
+
   it('R1 & R11: updateOrderStatus e updateOrder executam leituras antes de escritas e preservam remainingAmount', async () => {
     asUser('owner');
     const created = await firebaseOrderService.createOrder({

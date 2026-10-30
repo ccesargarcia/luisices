@@ -1,0 +1,90 @@
+{
+  "./users": [
+    "sendAdminPasswordReset",
+    "sendPasswordResetEmail",
+    "getUserAccountMetadata",
+    "recordUserPasswordChange",
+    "deleteUser",
+    "createUser",
+    "updateUser",
+    "revokeAllSessions",
+    "revokeDeviceSession",
+    "repairUserClaims"
+  ],
+  "./users/createUserInvitation": ["createUserInvitation"],
+  "./users/sendVerificationEmail": ["sendVerificationEmail"],
+  "./users/validateUserInvitation": ["validateUserInvitation"],
+  "./users/completeUserInvitation": ["completeUserInvitation"],
+  "./users/registerDeviceSession": ["registerDeviceSession"],
+  "./email/send": ["sendCustomEmail"],
+  "./email/webhook": ["resendReceivingWebhook"],
+  "./email/cleanup": ["cleanupEmailDrafts"],
+  "./email/usage": [
+    "getEmailUsage"
+  ],
+  "./whatsapp/send": ["sendWhatsAppDirectMessage"],
+  "./whatsapp/delete": ["deleteWhatsAppMessage"],
+  "./whatsapp/sync": ["syncWhatsAppChatMessages"],
+  "./whatsapp/status": ["getWhatsAppInstanceStatus"],
+  "./whatsapp/conversations": ["markWhatsAppChatRead", "ensureWhatsAppConversation"],
+  "./whatsapp/webhook": ["evolutionWhatsAppWebhook"],
+  "./orders": [
+    "submitPublicCatalogOrder",
+    "updateComplexOrder",
+    "createOrder"
+  ],
+  "./orders/tracking": [
+    "createOrderTrackingLink",
+    "listOrderTrackingLinks",
+    "revokeOrderTrackingLink",
+    "revokeOrderTrackingLinkById",
+    "deleteOrderTrackingLink",
+    "deleteOrderTrackingLinksBatch",
+    "getPublicOrderTracking"
+  ],
+  "./orders/catalog": [
+    "getPublicCatalogProducts"
+  ],
+  "./orders/superfrete": [
+    "calculateSuperfreteShipping",
+    "createSuperfreteLabel"
+  ],
+  "./ai/callables": [
+    "aiAgentChat"
+  ],
+  "./ai/enrichmentCallables": [
+    "enrichGalleryItemWithAi",
+    "enrichStoreProductWithAi"
+  ],
+  "./ai/usageCallable": [
+    "getAiUsage"
+  ],
+  "./alexa": [
+    "alexaWebhook",
+    "approveAlexaPairing",
+    "setAlexaPermission",
+    "revokeAlexaBinding",
+    "toggleGlobalAlexaIntegration",
+    "getAlexaIntegrationStatus",
+    "approveAlexaDraft",
+    "cancelAlexaDraft"
+  ],
+  "./mcp/callables": [
+    "getMcpSettingsStatus",
+    "createMcpApiKey",
+    "updateMcpApiKeyScopes",
+    "toggleMcpApiKey",
+    "revokeMcpApiKey",
+    "toggleGlobalMcp",
+    "setUserMcpEligibility",
+    "revokeMcpSession",
+    "getMcpAuditLogs",
+    "getMcpOpenApiSchema"
+  ],
+  "./mcp/endpoint": [
+    "chatGptToolsEndpoint"
+  ],
+  "./media/gallery": [
+    "galleryMedia"
+  ]
+}

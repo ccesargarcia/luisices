@@ -32,6 +32,34 @@ export function useUserSettings() {
     }
   };
 
+  const cleanupImage = async (url: string | undefined, description: string): Promise<void> => {
+    if (!url) return;
+    try {
+      await firebaseStorageService.deleteImage(url);
+    } catch (storageError) {
+      console.warn(`Não foi possível excluir ${description} do Storage:`, storageError);
+    }
+  };
+
+  const uploadAndReplaceImage = async (
+    file: File,
+    folder: Parameters<typeof firebaseStorageService.uploadImage>[2],
+    oldUrl: string | undefined,
+    description: string,
+    persist: (url: string) => Promise<void>
+  ): Promise<string> => {
+    if (!user) throw new Error('Usuário não autenticado');
+    const newUrl = await firebaseStorageService.uploadImage(file, user.uid, folder);
+    try {
+      await persist(newUrl);
+    } catch (error) {
+      await cleanupImage(newUrl, 'a nova imagem que não foi salva');
+      throw error;
+    }
+    if (oldUrl && oldUrl !== newUrl) await cleanupImage(oldUrl, description);
+    return newUrl;
+  };
+
   // Alternar publicação da loja (publicada / despublicada)
   const toggleStorePublished = async (
     storePublished: boolean,
@@ -55,22 +83,8 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      // Deletar avatar antigo se existir (não bloqueia se falhar)
-      if (settings?.avatar) {
-        try {
-          await firebaseStorageService.deleteImage(settings.avatar);
-        } catch (deleteError) {
-          console.warn('Não foi possível deletar avatar antigo (continuando):', deleteError);
-        }
-      }
-
-      // Upload novo avatar
-      const url = await firebaseStorageService.uploadImage(file, user.uid, 'avatar');
-
-      // Atualizar Firestore
-      await firebaseSettingsService.updateAvatar(user.uid, url);
-
-      return url;
+      return await uploadAndReplaceImage(file, 'avatar', settings?.avatar, 'o avatar antigo',
+        (url) => firebaseSettingsService.updateAvatar(user.uid, url));
     } catch (err) {
       setError(err as Error);
       throw err;
@@ -82,26 +96,18 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      // Deletar logo antiga se existir (não bloqueia se falhar)
-      if (settings?.logo) {
-        try {
-          await firebaseStorageService.deleteImage(settings.logo);
-        } catch (deleteError) {
-          console.warn('Não foi possível deletar logo antigo (continuando):', deleteError);
-        }
-      }
-
-      // Upload nova logo
-      const url = await firebaseStorageService.uploadImage(file, user.uid, 'logo');
-
-      // Atualizar Firestore
-      await firebaseSettingsService.updateLogo(user.uid, url);
-
-      return url;
+      return await uploadAndReplaceImage(file, 'logo', settings?.logo, 'a logo antiga',
+        (url) => firebaseSettingsService.updateLogo(user.uid, url));
     } catch (err) {
       setError(err as Error);
       throw err;
     }
+  };
+
+  // Logo exclusiva da página pública de acompanhamento; não altera a logo do painel.
+  const uploadOrderTrackingLogo = async (file: File): Promise<string> => {
+    if (!user) throw new Error('Usuário não autenticado');
+    return firebaseStorageService.uploadImage(file, user.uid, 'tracking-logo');
   };
 
   // Upload de logo exclusivo do catálogo / lojinha pública online
@@ -109,19 +115,8 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      const oldUrl = previousLogoUrl || settings?.catalogLogo;
-      if (oldUrl) {
-        try {
-          await firebaseStorageService.deleteImage(oldUrl);
-        } catch (deleteError) {
-          console.warn('Não foi possível deletar catalogLogo antigo (continuando):', deleteError);
-        }
-      }
-
-      const url = await firebaseStorageService.uploadImage(file, user.uid, 'catalog-logo');
-      await firebaseSettingsService.updateCatalogLogo(user.uid, url);
-
-      return url;
+      return await uploadAndReplaceImage(file, 'catalog-logo', previousLogoUrl || settings?.catalogLogo,
+        'a logo antiga do catálogo', (url) => firebaseSettingsService.updateCatalogLogo(user.uid, url));
     } catch (err) {
       setError(err as Error);
       throw err;
@@ -133,18 +128,8 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      if (oldUrl) {
-        try {
-          await firebaseStorageService.deleteImage(oldUrl);
-        } catch (deleteError) {
-          console.warn('Não foi possível deletar catalogBanner antigo (continuando):', deleteError);
-        }
-      }
-
-      const url = await firebaseStorageService.uploadImage(file, user.uid, 'catalog-banner');
-      await firebaseSettingsService.updateCatalogBanner(user.uid, url);
-
-      return url;
+      return await uploadAndReplaceImage(file, 'catalog-banner', oldUrl || settings?.catalogBanner,
+        'o banner antigo do catálogo', (url) => firebaseSettingsService.updateCatalogBanner(user.uid, url));
     } catch (err) {
       setError(err as Error);
       throw err;
@@ -176,18 +161,8 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      if (oldUrl) {
-        try {
-          await firebaseStorageService.deleteImage(oldUrl);
-        } catch (deleteError) {
-          console.warn('Não foi possível deletar catalogHeaderBackground antigo (continuando):', deleteError);
-        }
-      }
-
-      const url = await firebaseStorageService.uploadImage(file, user.uid, 'catalog-header');
-      await firebaseSettingsService.updateCatalogHeaderBackground(user.uid, url);
-
-      return url;
+      return await uploadAndReplaceImage(file, 'catalog-header', oldUrl || settings?.catalogHeaderBackground,
+        'o fundo antigo do cabeçalho', (url) => firebaseSettingsService.updateCatalogHeaderBackground(user.uid, url));
     } catch (err) {
       setError(err as Error);
       throw err;
@@ -199,22 +174,8 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      // Deletar banner antigo se existir (não bloqueia se falhar)
-      if (settings?.banner) {
-        try {
-          await firebaseStorageService.deleteImage(settings.banner);
-        } catch (deleteError) {
-          console.warn('Não foi possível deletar banner antigo (continuando):', deleteError);
-        }
-      }
-
-      // Upload novo banner
-      const url = await firebaseStorageService.uploadImage(file, user.uid, 'banner');
-
-      // Atualizar Firestore
-      await firebaseSettingsService.updateBanner(user.uid, url);
-
-      return url;
+      return await uploadAndReplaceImage(file, 'banner', settings?.banner, 'o banner antigo',
+        (url) => firebaseSettingsService.updateBanner(user.uid, url));
     } catch (err) {
       setError(err as Error);
       throw err;
@@ -226,16 +187,9 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      // Tentar deletar do Storage (não bloqueia se falhar)
-      if (settings?.avatar) {
-        try {
-          await firebaseStorageService.deleteImage(settings.avatar);
-        } catch (storageError) {
-          console.warn('Erro ao deletar imagem do Storage (continuando):', storageError);
-        }
-      }
-      // Sempre atualizar Firestore
+      const oldUrl = settings?.avatar;
       await firebaseSettingsService.updateAvatar(user.uid, null);
+      await cleanupImage(oldUrl, 'o avatar removido');
     } catch (err) {
       setError(err as Error);
       throw err;
@@ -247,16 +201,9 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      // Tentar deletar do Storage (não bloqueia se falhar)
-      if (settings?.logo) {
-        try {
-          await firebaseStorageService.deleteImage(settings.logo);
-        } catch (storageError) {
-          console.warn('Erro ao deletar imagem do Storage (continuando):', storageError);
-        }
-      }
-      // Sempre atualizar Firestore
+      const oldUrl = settings?.logo;
       await firebaseSettingsService.updateLogo(user.uid, null);
+      await cleanupImage(oldUrl, 'a logo removida');
     } catch (err) {
       setError(err as Error);
       throw err;
@@ -269,14 +216,8 @@ export function useUserSettings() {
 
     try {
       const urlToDelete = logoUrlToDelete || settings?.catalogLogo;
-      if (urlToDelete) {
-        try {
-          await firebaseStorageService.deleteImage(urlToDelete);
-        } catch (storageError) {
-          console.warn('Erro ao deletar catalogLogo do Storage (continuando):', storageError);
-        }
-      }
       await firebaseSettingsService.updateCatalogLogo(user.uid, null);
+      await cleanupImage(urlToDelete, 'a logo removida do catálogo');
     } catch (err) {
       setError(err as Error);
       throw err;
@@ -289,14 +230,8 @@ export function useUserSettings() {
 
     try {
       const urlToDelete = bannerUrlToDelete || settings?.catalogBanner;
-      if (urlToDelete) {
-        try {
-          await firebaseStorageService.deleteImage(urlToDelete);
-        } catch (storageError) {
-          console.warn('Erro ao deletar catalogBanner do Storage (continuando):', storageError);
-        }
-      }
       await firebaseSettingsService.updateCatalogBanner(user.uid, null);
+      await cleanupImage(urlToDelete, 'o banner removido do catálogo');
     } catch (err) {
       setError(err as Error);
       throw err;
@@ -309,14 +244,8 @@ export function useUserSettings() {
 
     try {
       const urlToDelete = bgUrlToDelete || settings?.catalogHeaderBackground;
-      if (urlToDelete) {
-        try {
-          await firebaseStorageService.deleteImage(urlToDelete);
-        } catch (storageError) {
-          console.warn('Erro ao deletar catalogHeaderBackground do Storage (continuando):', storageError);
-        }
-      }
       await firebaseSettingsService.updateCatalogHeaderBackground(user.uid, null);
+      await cleanupImage(urlToDelete, 'o fundo removido do cabeçalho');
     } catch (err) {
       setError(err as Error);
       throw err;
@@ -328,16 +257,9 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      // Tentar deletar do Storage (não bloqueia se falhar)
-      if (settings?.banner) {
-        try {
-          await firebaseStorageService.deleteImage(settings.banner);
-        } catch (storageError) {
-          console.warn('Erro ao deletar imagem do Storage (continuando):', storageError);
-        }
-      }
-      // Sempre atualizar Firestore
+      const oldUrl = settings?.banner;
       await firebaseSettingsService.updateBanner(user.uid, null);
+      await cleanupImage(oldUrl, 'o banner removido');
     } catch (err) {
       setError(err as Error);
       throw err;
@@ -349,18 +271,8 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      if (oldUrl) {
-        try {
-          await firebaseStorageService.deleteImage(oldUrl);
-        } catch (deleteError) {
-          console.warn('Não foi possível deletar catalogAboutImageUrl antigo (continuando):', deleteError);
-        }
-      }
-
-      const url = await firebaseStorageService.uploadImage(file, user.uid, 'catalog-about');
-      await firebaseSettingsService.updateCatalogAboutImage(user.uid, url);
-
-      return url;
+      return await uploadAndReplaceImage(file, 'catalog-about', oldUrl || settings?.catalogAboutImageUrl,
+        'a imagem antiga da seção Sobre', (url) => firebaseSettingsService.updateCatalogAboutImage(user.uid, url));
     } catch (err) {
       setError(err as Error);
       throw err;
@@ -373,14 +285,8 @@ export function useUserSettings() {
 
     try {
       const urlToDelete = oldUrl || settings?.catalogAboutImageUrl;
-      if (urlToDelete) {
-        try {
-          await firebaseStorageService.deleteImage(urlToDelete);
-        } catch (storageError) {
-          console.warn('Erro ao deletar imagem do Storage (continuando):', storageError);
-        }
-      }
       await firebaseSettingsService.updateCatalogAboutImage(user.uid, null);
+      await cleanupImage(urlToDelete, 'a imagem removida da seção Sobre');
     } catch (err) {
       setError(err as Error);
       throw err;
@@ -392,31 +298,30 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      // Deletar imagens do storage
-      if (settings?.avatar) {
-        await firebaseStorageService.deleteImage(settings.avatar);
-      }
-      if (settings?.logo) {
-        await firebaseStorageService.deleteImage(settings.logo);
-      }
-      if (settings?.catalogLogo) {
-        await firebaseStorageService.deleteImage(settings.catalogLogo);
-      }
-      if (settings?.catalogBanner) {
-        await firebaseStorageService.deleteImage(settings.catalogBanner);
-      }
-      if (settings?.catalogHeaderBackground) {
-        await firebaseStorageService.deleteImage(settings.catalogHeaderBackground);
-      }
-      if (settings?.catalogAboutImageUrl) {
-        await firebaseStorageService.deleteImage(settings.catalogAboutImageUrl);
-      }
-      if (settings?.banner) {
-        await firebaseStorageService.deleteImage(settings.banner);
-      }
+      const imageUrls = new Set([
+        settings?.avatar,
+        settings?.logo,
+        settings?.catalogLogo,
+        settings?.catalogBanner,
+        settings?.catalogHeaderBackground,
+        settings?.catalogAboutImageUrl,
+        settings?.banner,
+        settings?.orderTrackingTemplate?.logoUrl,
+        ...(settings?.catalogBanners || []).map((banner) => banner.imageUrl),
+      ].filter((url): url is string => Boolean(url)));
 
-      // Resetar Firestore
+      // Primeiro limpa as referências no banco; falha no Storage pode deixar
+      // um arquivo órfão, mas não uma configuração apontando para imagem apagada.
       await firebaseSettingsService.resetToDefaults(user.uid);
+
+      const deletionResults = await Promise.allSettled(
+        [...imageUrls].map((url) => firebaseStorageService.deleteImage(url))
+      );
+      deletionResults.forEach((result) => {
+        if (result.status === 'rejected') {
+          console.warn('Não foi possível excluir uma imagem após restaurar as configurações:', result.reason);
+        }
+      });
     } catch (err) {
       setError(err as Error);
       throw err;
@@ -431,6 +336,7 @@ export function useUserSettings() {
     toggleStorePublished,
     uploadAvatar,
     uploadLogo,
+    uploadOrderTrackingLogo,
     uploadCatalogLogo,
     uploadCatalogBanner,
     uploadCatalogBannerImage,

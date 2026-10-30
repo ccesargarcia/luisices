@@ -11,6 +11,46 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('Permutas', () => {
+  test('cria permuta com itens recebidos e registra o valor estimado', async ({ page }) => {
+    test.setTimeout(90000);
+    const stamp = Date.now();
+    const customerName = `Cliente Permuta E2E ${stamp}`;
+    const productName = `Produto Permuta E2E ${stamp}`;
+    const receivedName = `Divulgação Permuta E2E ${stamp}`;
+
+    await page.goto('/pedidos');
+    await page.getByRole('button', { name: /Novo Pedido/i }).click();
+    const dialog = page.getByRole('dialog').first();
+    await expect(dialog).toBeVisible();
+    await dialog.locator('button[role="combobox"]').first().click();
+    await page.getByRole('option').filter({ hasText: /Novo Cliente/i }).click();
+    await dialog.locator('#customerName').fill(customerName);
+    await dialog.locator('#customerPhone').fill(`1199${String(stamp).slice(-7)}`);
+    await dialog.getByPlaceholder('Produto 1').fill(productName);
+    await dialog.getByPlaceholder('0,00').first().fill('120,00');
+    await dialog.locator('#deliveryDate').fill(new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10));
+    await dialog.getByRole('switch').click();
+    const receivedItem = dialog.locator('input[aria-label="Item recebido 1"]:visible').first();
+    const receivedQuantity = dialog.locator('input[aria-label="Quantidade recebida 1"]:visible').first();
+    const receivedValue = dialog.locator('input[aria-label="Valor estimado 1"]:visible').first();
+    await expect(receivedItem).toBeVisible();
+    await receivedItem.fill(receivedName);
+    await receivedQuantity.fill('2');
+    await receivedValue.fill('25,00');
+    await dialog.locator('button[type="submit"]').click();
+    await expect(dialog).not.toBeVisible({ timeout: 20000 });
+
+    await page.goto('/permutas');
+    const searchInput = page.getByPlaceholder(/Buscar por produto ou observação/i).first();
+    await searchInput.fill(productName);
+    const orderRow = page.locator('tr').filter({ hasText: productName }).first();
+    await expect(orderRow).toBeVisible({ timeout: 15000 });
+    await orderRow.click();
+    const details = page.getByRole('dialog').first();
+    await expect(details.getByText(receivedName)).toBeVisible();
+    await expect(details.getByText('R$ 50,00').first()).toBeVisible();
+  });
+
   test('deve carregar tela de permutas com KPIs e ações', async ({ page }) => {
     await page.goto('/permutas');
     await page.waitForLoadState('domcontentloaded');

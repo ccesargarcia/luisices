@@ -168,6 +168,67 @@ describe('Inteligência Comercial: Raio X, Ticket Médio e Faixas de Clientes', 
 
       expect(getPreferredPaymentMethod(orders)).toBe('pix');
     });
+
+    it('respeita a contagem de transações agregada (count) ao identificar a forma predominante após compactação', () => {
+      const orders = [{
+        status: 'completed',
+        payment: {
+          method: 'pix',
+          history: [
+            // Entrada consolidada com 40 pagamentos via pix
+            { amount: 400, method: 'pix', count: 40 },
+            // 3 pagamentos recentes via credit
+            { amount: 50, method: 'credit' },
+            { amount: 50, method: 'credit' },
+            { amount: 50, method: 'credit' },
+          ],
+        },
+      }];
+
+      // 40 transações de pix vs 3 de credit -> pix deve vencer com folga
+      expect(getPreferredPaymentMethod(orders)).toBe('pix');
+    });
+
+    it('preserva a métrica de forma preferida mesmo quando o saldo consolidado fica zero por estorno total', () => {
+      const orders = [{
+        status: 'completed',
+        payment: {
+          method: 'pix',
+          history: [
+            // Entrada consolidada com 30 pagamentos via pix que foram totalmente estornados (amount: 0, count: 30)
+            { amount: 0, method: 'pix', count: 30 },
+            // 2 pagamentos recentes via cash
+            { amount: 50, method: 'cash' },
+            { amount: 50, method: 'cash' },
+          ],
+        },
+      }];
+
+      // 30 transações históricas de pix (mesmo com saldo final zerado) vs 2 de cash -> pix deve ser a preferida
+      expect(getPreferredPaymentMethod(orders)).toBe('pix');
+    });
+
+    it('reconhece a forma preferida a partir de resumo recompactado com saldo zero', () => {
+      const orders = [{
+        status: 'completed',
+        payment: {
+          method: 'pix',
+          history: [
+            // Resumo recompactado de dinheiro com saldo zero mas 10 pagamentos originais
+            { amount: 0, method: 'cash', count: 10 },
+            // 5 pagamentos recentes via pix
+            { amount: 10, method: 'pix' },
+            { amount: 10, method: 'pix' },
+            { amount: 10, method: 'pix' },
+            { amount: 10, method: 'pix' },
+            { amount: 10, method: 'pix' },
+          ],
+        },
+      }];
+
+      // 10 transações em dinheiro vs 5 via pix -> dinheiro deve ser a preferida
+      expect(getPreferredPaymentMethod(orders)).toBe('cash');
+    });
   });
 
   describe('4. Classificação por Faixas de Gasto (Tiers) Configuráveis', () => {

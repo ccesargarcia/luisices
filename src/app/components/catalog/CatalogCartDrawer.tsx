@@ -129,6 +129,7 @@ export function CatalogCartDrawer({
                     <input
                       type="text"
                       placeholder="Ex: Nome da criança ou tema"
+                      maxLength={200}
                       value={item.customName || ''}
                       onChange={(e) => onUpdateCustomName(item.id, e.target.value)}
                       className="w-full px-2.5 py-1.5 text-base sm:text-xs rounded-lg bg-white dark:bg-[#161214] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[var(--store-primary,#613d3e)]"
@@ -154,7 +155,8 @@ export function CatalogCartDrawer({
                     </span>
                     <button
                       onClick={() => onUpdateQuantity(item.id, 1)}
-                      className="p-1 rounded text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800 cursor-pointer"
+                      disabled={item.quantity >= 100}
+                      className="p-1 rounded text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                       aria-label="Aumentar quantidade"
                     >
                       <Plus size={12} />
@@ -173,6 +175,7 @@ export function CatalogCartDrawer({
               </label>
               <textarea
                 rows={2}
+                maxLength={2000}
                 placeholder="Ex: Preciso receber até dia 20 para o aniversário..."
                 value={customerNotes}
                 onChange={(e) => onUpdateCustomerNotes(e.target.value)}

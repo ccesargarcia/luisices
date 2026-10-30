@@ -35,7 +35,7 @@ import {
   generateProductInquiryWhatsAppMessage,
   generateBespokeConsultationWhatsAppMessage,
 } from '../utils/whatsapp';
-import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
 import { CatalogFloatingWhatsApp } from '../components/catalog/CatalogFloatingWhatsApp';
@@ -73,6 +73,38 @@ export interface CatalogProduct {
   order?: number;
   status?: 'active' | 'paused' | 'hidden';
   createdAt?: string;
+}
+
+const CATALOG_PRODUCTS_CACHE_KEY = 'luisices_public_catalog_products_v1';
+const CATALOG_PRODUCTS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
+function readCachedCatalogProducts(): CatalogProduct[] {
+  try {
+    const raw = localStorage.getItem(CATALOG_PRODUCTS_CACHE_KEY);
+    if (!raw) return [];
+
+    const cached = JSON.parse(raw);
+    if (
+      !cached ||
+      !Number.isFinite(cached.savedAt) ||
+      Date.now() - cached.savedAt > CATALOG_PRODUCTS_CACHE_TTL_MS ||
+      !Array.isArray(cached.products)
+    ) {
+      localStorage.removeItem(CATALOG_PRODUCTS_CACHE_KEY);
+      return [];
+    }
+
+    return cached.products.filter((product: CatalogProduct) =>
+      product &&
+      typeof product.id === 'string' &&
+      typeof product.name === 'string' &&
+      typeof product.category === 'string' &&
+      Number.isFinite(product.price) &&
+      typeof product.imageUrl === 'string'
+    );
+  } catch {
+    return [];
+  }
 }
 
 export interface CartItem {
@@ -187,8 +219,9 @@ export function PublicCatalog() {
   }, [isCategoryDropdownOpen, isBottomSheetOpen]);
 
   // Produtos reais carregados em tempo real via Firestore (IndexedDB nativo do SDK)
-  const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [products, setProducts] = useState<CatalogProduct[]>(readCachedCatalogProducts);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [catalogLoadError, setCatalogLoadError] = useState(false);
 
   // Limpeza de caches obsoletos de produtos no localStorage
   useEffect(() => {
@@ -371,6 +404,7 @@ export function PublicCatalog() {
       return parsed.map((item: any, idx: number) => ({
         ...item,
         id: item.id || `cart-${idx}-${Date.now()}-${secureRandomId()}`,
+        quantity: Math.min(100, Math.max(1, Math.floor(Number(item.quantity) || 1))),
       }));
     } catch {
       return [];
@@ -379,7 +413,9 @@ export function PublicCatalog() {
 
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [selectedProductPreview, setSelectedProductPreview] = useState<CatalogProduct | null>(null);
-  const [customerNotes, setCustomerNotes] = useState<string>('');
+  const [customerNotes, setCustomerNotes] = useState<string>(() => {
+    try { return sessionStorage.getItem('luisices_catalog_customer_notes') || ''; } catch { return ''; }
+  });
   const [previewCustomName, setPreviewCustomName] = useState<string>('');
   const [submittedOrderInfo, setSubmittedOrderInfo] = useState<{ orderCode: string; whatsappUrl: string } | null>(null);
   const [submittingOrder, setSubmittingOrder] = useState<boolean>(false);
@@ -459,6 +495,13 @@ export function PublicCatalog() {
       localStorage.setItem('luisices_catalog_cart', JSON.stringify(cart));
     } catch {}
   }, [cart]);
+
+  useEffect(() => {
+    try {
+      if (customerNotes) sessionStorage.setItem('luisices_catalog_customer_notes', customerNotes);
+      else sessionStorage.removeItem('luisices_catalog_customer_notes');
+    } catch {}
+  }, [customerNotes]);
 
   // Carregar configurações públicas da loja com cache local inteligente
   useEffect(() => {
@@ -654,7 +697,7 @@ export function PublicCatalog() {
     };
   }, []);
 
-  // Carregar produtos da vitrine via getDocs pontual com cache para visitantes
+  // Carregar apenas a projeção pública filtrada pelo backend.
   useEffect(() => {
     let isMounted = true;
 
@@ -699,6 +742,13 @@ export function PublicCatalog() {
       if (!isMounted) return;
       setProducts(storeList);
       setLoadingProducts(false);
+      setCatalogLoadError(false);
+      try {
+        localStorage.setItem(CATALOG_PRODUCTS_CACHE_KEY, JSON.stringify({
+          savedAt: Date.now(),
+          products: storeList,
+        }));
+      } catch {}
 
       // Sincronizar carrinho: atualizar dados/preços vigentes e remover itens que foram excluídos da vitrine
       setCart((prevCart) => {
@@ -717,14 +767,17 @@ export function PublicCatalog() {
       });
     };
 
-    getDocs(collection(db, 'storeProducts'))
-      .then((snap) => {
+    firebaseCatalogOrderService.getPublicCatalogProducts()
+      .then((publicProducts) => {
         if (!isMounted) return;
-        processProducts(snap.docs.map((d) => ({ id: d.id, data: () => d.data() })));
+        processProducts(publicProducts.map((product) => ({ id: product.id, data: () => product })));
       })
       .catch((err) => {
         console.warn('Erro ao carregar produtos da vitrine pública:', err);
-        if (isMounted) setLoadingProducts(false);
+        if (isMounted) {
+          setCatalogLoadError(true);
+          setLoadingProducts(false);
+        }
       });
 
     return () => {
@@ -918,7 +971,7 @@ export function PublicCatalog() {
       );
       if (existingIndex > -1) {
         return prev.map((item, idx) =>
-          idx === existingIndex ? { ...item, quantity: item.quantity + quantity } : item
+          idx === existingIndex ? { ...item, quantity: Math.min(100, item.quantity + quantity) } : item
         );
       }
       const newItemId = `item-${Date.now()}-${secureRandomId()}`;
@@ -932,7 +985,7 @@ export function PublicCatalog() {
         .map((item) => {
           if (item.id === cartItemId) {
             const newQ = item.quantity + delta;
-            return newQ > 0 ? { ...item, quantity: newQ } : null;
+            return newQ > 100 ? { ...item, quantity: 100 } : newQ > 0 ? { ...item, quantity: newQ } : null;
           }
           return item;
         })
@@ -960,9 +1013,18 @@ export function PublicCatalog() {
     window.open(url, '_blank', 'noopener,noreferrer');
   }, [businessInfo.whatsapp, businessInfo.name, isAllCategories, selectedCategories]);
 
-  const [checkoutIdempotencyKey, setCheckoutIdempotencyKey] = useState<string>(
-    () => `pub_${Date.now()}_${secureRandomId()}`
-  );
+  const getCheckoutIdempotencyKey = (fingerprint: string): string => {
+    const storageKey = 'luisices_catalog_checkout_attempt';
+    try {
+      const stored = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+      if (stored?.fingerprint === fingerprint && typeof stored.key === 'string') return stored.key;
+      const key = `pub_${Date.now()}_${secureRandomId()}`;
+      sessionStorage.setItem(storageKey, JSON.stringify({ fingerprint, key }));
+      return key;
+    } catch {
+      return `pub_${Date.now()}_${secureRandomId()}`;
+    }
+  };
 
   // Envio de Pedido no WhatsApp com Deep Link formatado e registro no histórico
   const handleSendToWhatsApp = async () => {
@@ -978,9 +1040,17 @@ export function PublicCatalog() {
 
     // Registrar no histórico de pedidos do Firestore via Cloud Function confiável
     try {
+      const checkoutFingerprint = JSON.stringify({
+        items: cart.map((item) => ({
+          productId: item.product.id,
+          quantity: item.quantity,
+          customName: (item.customName || '').trim(),
+        })),
+        customerNotes: customerNotes.trim(),
+      });
       const receipt = await firebaseCatalogOrderService.createCatalogOrder({
         orderCode: '',
-        idempotencyKey: checkoutIdempotencyKey,
+        idempotencyKey: getCheckoutIdempotencyKey(checkoutFingerprint),
         customerNotes: customerNotes.trim() || undefined,
         items: cart.map((item) => {
           const itemData: any = {
@@ -1045,8 +1115,6 @@ export function PublicCatalog() {
         toast.info('Clique no botão abaixo para abrir a conversa no WhatsApp.', { duration: 4000 });
       }
 
-      // Resetar chave de idempotência para o próximo pedido
-      setCheckoutIdempotencyKey(`pub_${Date.now()}_${secureRandomId()}`);
     } catch (err: any) {
       console.error('Erro ao registrar pedido:', err);
       const errorMsg = err?.message || 'Erro ao registrar o pedido. Por favor, revise seu carrinho.';
@@ -1783,6 +1851,11 @@ export function PublicCatalog() {
               ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8'
               : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 lg:gap-6'
           }>
+            {catalogLoadError && products.length > 0 && (
+              <div className="col-span-full rounded-xl border border-amber-300/70 bg-amber-50/90 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-100" role="status">
+                Exibindo os produtos carregados anteriormente. Aguarde alguns instantes e atualize a página para tentar novamente.
+              </div>
+            )}
             {loadingProducts && products.length === 0 ? (
               Array.from({ length: 8 }).map((_, i) => (
                 <div
@@ -2003,10 +2076,16 @@ export function PublicCatalog() {
             <div className="text-center py-16 text-[#504444] dark:text-[#c9c0b8] bg-white/40 dark:bg-[#1f191b]/50 rounded-3xl p-8 border border-white/50 max-w-lg mx-auto">
               <Search size={32} className="mx-auto text-stone-400 mb-2 opacity-50" />
               <p className="text-sm font-semibold">
-                {products.length === 0 ? 'Nenhum produto cadastrado no catálogo ainda.' : 'Nenhum produto encontrado para sua busca.'}
+                {catalogLoadError && products.length === 0
+                  ? 'Não foi possível carregar o catálogo agora.'
+                  : products.length === 0
+                    ? 'Nenhum produto cadastrado no catálogo ainda.'
+                    : 'Nenhum produto encontrado para sua busca.'}
               </p>
               <p className="text-xs text-stone-400 mt-1">
-                {products.length === 0
+                {catalogLoadError && products.length === 0
+                  ? 'A conexão pode estar temporariamente limitada. Aguarde um pouco e atualize a página.'
+                  : products.length === 0
                   ? 'Os produtos marcados como públicos no painel aparecerão aqui.'
                   : 'Tente buscar por outros termos ou selecione "Todos os produtos".'}
               </p>
@@ -2594,6 +2673,8 @@ export function PublicCatalog() {
             setCustomerNotes('');
             setIsCartOpen(false);
             setSubmittedOrderInfo(null);
+            try { sessionStorage.removeItem('luisices_catalog_checkout_attempt'); } catch {}
+            try { sessionStorage.removeItem('luisices_catalog_customer_notes'); } catch {}
           }}
         />
 

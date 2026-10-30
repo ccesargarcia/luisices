@@ -6,11 +6,13 @@ import { firebasePricingService } from '../../services/firebasePricingService';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { firebaseQuoteService } from '../../services/firebaseQuoteService';
+import { loadPendingOrderOperation, savePendingOrderOperation, clearPendingOrderOperation, isDefinitiveOrderRejection } from '../../services/pendingOrderOperations';
 import {
   SupplyItem,
   ProductPricingRecipe,
   RecipeItem,
   Customer,
+  Order,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
@@ -97,7 +99,7 @@ interface LocalQuoteRecord {
 }
 
 export function ArtisanPricingPage() {
-  const { userProfile, isAdmin, hasPermission } = useAuth();
+  const { user, userProfile, isAdmin, hasPermission } = useAuth();
   const { refreshOrders } = useOrders();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -793,21 +795,28 @@ export function ArtisanPricingPage() {
   // HANDLER: LANÇAR VENDA DIRETA (Converte em Pedido Oficial no Dashboard)
   // -------------------------------------------------------------
   const [launchingSale, setLaunchingSale] = useState(false);
+  const [hasPendingSale, setHasPendingSale] = useState(false);
+  useEffect(() => {
+    setHasPendingSale(Boolean(user && loadPendingOrderOperation(user.uid, 'pricing-sale')));
+  }, [user?.uid]);
 
   const handleLaunchDirectSale = async () => {
+    if (!user || launchingSale) return;
+    let pending = loadPendingOrderOperation<{ orderData: Partial<Order>; items: CompositionItem[]; quantity: number }>(user.uid, 'pricing-sale');
+    const hadPending = Boolean(pending);
     if (!canCreateOrder) {
       toast.error('Você não tem permissão para criar pedidos.');
       return;
     }
-    if (compositionItems.length === 0) {
+    if (!pending && compositionItems.length === 0) {
       toast.error('Adicione insumos à composição antes de lançar a venda.');
       return;
     }
-    if (effectiveTotalPrice <= 0) {
+    if (!pending && effectiveTotalPrice <= 0) {
       toast.error('O valor total deve ser maior que zero.');
       return;
     }
-    const trackedSupplyIds = compositionItems
+    const trackedSupplyIds = (pending?.payload.items || compositionItems)
       .filter((item) => supplies.some((supply) => supply.id === item.supplyId && supply.currentStock !== undefined))
       .map((item) => item.supplyId);
     if (trackedSupplyIds.length > 0 && !canEdit) {
@@ -817,52 +826,56 @@ export function ArtisanPricingPage() {
 
     setLaunchingSale(true);
     try {
-      const prodName = orderName.trim() || compositionName.trim() || 'Encomenda Personalizada';
-      const deposit = depositValues.deposit;
-      const total = effectiveTotalPrice;
+      if (!pending) {
+        const prodName = orderName.trim() || compositionName.trim() || 'Encomenda Personalizada';
+        const deposit = depositValues.deposit;
+        const total = effectiveTotalPrice;
 
-      // Data de entrega sugerida (+7 dias)
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
-      const deliveryDateStr = futureDate.toISOString().split('T')[0];
+        // Data de entrega sugerida (+7 dias)
+        const futureDate = new Date();
+        futureDate.setDate(futureDate.getDate() + 7);
+        const deliveryDateStr = futureDate.toISOString().split('T')[0];
 
-      // Mapear método de pagamento compatível
-      const mappedMethod: PaymentMethod = paymentMethod === 'pix' ? 'pix' : paymentMethod === 'cartao' ? 'credit' : 'cash';
-      const paymentStatus: PaymentStatus = deposit >= total && total > 0 ? 'paid' : deposit > 0 ? 'partial' : 'pending';
+        // Mapear método de pagamento compatível
+        const mappedMethod: PaymentMethod = paymentMethod === 'pix' ? 'pix' : paymentMethod === 'cartao' ? 'credit' : 'cash';
+        const paymentStatus: PaymentStatus = deposit >= total && total > 0 ? 'paid' : deposit > 0 ? 'partial' : 'pending';
 
-      const order = await firebaseOrderService.createOrder({
-        customerName: resolvedCustomerName,
-        customerPhone: resolvedCustomerPhone,
-        customerId: selectedCustomerId !== 'avulso' ? selectedCustomerId : undefined,
-        productName: `${prodName} (${numEncomendadas} un)`,
-        quantity: numEncomendadas,
-        price: total,
-        status: 'pending' as OrderStatus,
-        deliveryDate: deliveryDateStr,
-        payment: {
-          status: paymentStatus,
-          method: mappedMethod,
-          totalAmount: total,
-          paidAmount: deposit,
-          remainingAmount: depositValues.remaining,
-          paymentDate: deposit > 0 ? new Date().toISOString() : null,
-          notes: `Lançado pela Calculadora de Insumos & Preços. Forma: ${paymentMethod.toUpperCase()}`,
-          history: deposit > 0 ? [{
-            amount: deposit,
-            date: new Date().toISOString(),
+        const orderData: Partial<Order> = {
+          customerName: resolvedCustomerName,
+          customerPhone: resolvedCustomerPhone,
+          customerId: selectedCustomerId !== 'avulso' ? selectedCustomerId : undefined,
+          productName: `${prodName} (${numEncomendadas} un)`,
+          quantity: numEncomendadas,
+          price: total,
+          status: 'pending' as OrderStatus,
+          deliveryDate: deliveryDateStr,
+          payment: {
+            status: paymentStatus,
             method: mappedMethod,
-            notes: 'Sinal de entrada da encomenda',
-          }] : [],
-        },
-        notes: `Venda lançada pela Calculadora de Insumos & Preços.\nForma de Pagto: ${paymentMethod.toUpperCase()}.\nSinal recebido: ${formatCurrency(deposit)}. Saldo pendente: ${formatCurrency(depositValues.remaining)}.\nComposição:\n${compositionItems.map((c) => `- ${c.quantity}x ${c.name}`).join('\n')}`,
-      });
+            totalAmount: total,
+            paidAmount: deposit,
+            remainingAmount: depositValues.remaining,
+            paymentDate: deposit > 0 ? new Date().toISOString() : null,
+            notes: `Lançado pela Calculadora de Insumos & Preços. Forma: ${paymentMethod.toUpperCase()}`,
+            history: deposit > 0 ? [{
+              amount: deposit,
+              date: new Date().toISOString(),
+              method: mappedMethod,
+              notes: 'Sinal de entrada da encomenda',
+            }] : [],
+          },
+          notes: `Venda lançada pela Calculadora de Insumos & Preços.\nForma de Pagto: ${paymentMethod.toUpperCase()}.\nSinal recebido: ${formatCurrency(deposit)}. Saldo pendente: ${formatCurrency(depositValues.remaining)}.\nComposição:\n${compositionItems.map((c) => `- ${c.quantity}x ${c.name}`).join('\n')}`,
+        };
+        pending = savePendingOrderOperation(user.uid, 'pricing-sale', { orderData, items: compositionItems, quantity: numEncomendadas });
+      }
+      const order = await firebaseOrderService.createOrder(pending.payload.orderData, undefined, undefined, pending.id);
 
       // Abate do estoque físico dos insumos utilizados
       let inventoryUpdated = true;
-      for (const item of compositionItems) {
+      for (const item of pending.payload.items) {
         const supply = supplies.find((s) => s.id === item.supplyId);
         if (supply && supply.currentStock !== undefined) {
-          const usedTotal = item.quantity * numEncomendadas;
+          const usedTotal = item.quantity * pending.payload.quantity;
           const updatedStock = Math.max(0, supply.currentStock - usedTotal);
           try {
             await firebasePricingService.updateSupply(supply.id, { currentStock: updatedStock });
@@ -873,6 +886,8 @@ export function ArtisanPricingPage() {
         }
       }
 
+      clearPendingOrderOperation(user.uid, 'pricing-sale');
+      setHasPendingSale(false);
       refreshOrders();
       if (inventoryUpdated) {
         toast.success(`🎉 Venda lançada com sucesso! Pedido ${order.orderNumber} registrado no Dashboard.`);
@@ -880,6 +895,12 @@ export function ArtisanPricingPage() {
         toast.warning(`Pedido ${order.orderNumber} criado, mas o estoque não foi atualizado por completo. Confira os insumos utilizados.`);
       }
     } catch (err: any) {
+      if (!hadPending && isDefinitiveOrderRejection(err)) {
+        clearPendingOrderOperation(user.uid, 'pricing-sale');
+        setHasPendingSale(false);
+      } else {
+        setHasPendingSale(Boolean(loadPendingOrderOperation(user.uid, 'pricing-sale')));
+      }
       toast.error(err.message || 'Erro ao lançar pedido oficial.');
     } finally {
       setLaunchingSale(false);
@@ -892,6 +913,7 @@ export function ArtisanPricingPage() {
   const [approvingQuoteId, setApprovingQuoteId] = useState<string | null>(null);
 
   const handleApproveQuote = async (quote: LocalQuoteRecord) => {
+    if (!user || approvingQuoteId) return;
     if (!canCreateOrder) {
       toast.error('Você não tem permissão para criar pedidos.');
       return;
@@ -905,38 +927,44 @@ export function ArtisanPricingPage() {
     }
     setApprovingQuoteId(quote.id);
     try {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
-      const deliveryDateStr = futureDate.toISOString().split('T')[0];
+      const scope = `pricing-quote:${quote.id}`;
+      let pending = loadPendingOrderOperation<Partial<Order>>(user.uid, scope);
+      if (!pending) {
+        const futureDate = new Date();
+        futureDate.setDate(futureDate.getDate() + 7);
+        const deliveryDateStr = futureDate.toISOString().split('T')[0];
 
-      const mappedMethod: PaymentMethod = quote.paymentMethod === 'pix' ? 'pix' : quote.paymentMethod === 'cartao' ? 'credit' : 'cash';
-      const paymentStatus: PaymentStatus = quote.depositAmount >= quote.totalPrice && quote.totalPrice > 0 ? 'paid' : quote.depositAmount > 0 ? 'partial' : 'pending';
+        const mappedMethod: PaymentMethod = quote.paymentMethod === 'pix' ? 'pix' : quote.paymentMethod === 'cartao' ? 'credit' : 'cash';
+        const paymentStatus: PaymentStatus = quote.depositAmount >= quote.totalPrice && quote.totalPrice > 0 ? 'paid' : quote.depositAmount > 0 ? 'partial' : 'pending';
 
-      const order = await firebaseOrderService.createOrder({
-        customerName: quote.customerName,
-        customerPhone: quote.customerPhone,
-        productName: `${quote.productName} (${quote.quantity} un)`,
-        quantity: quote.quantity,
-        price: quote.totalPrice,
-        status: 'pending' as OrderStatus,
-        deliveryDate: deliveryDateStr,
-        payment: {
-          status: paymentStatus,
-          method: mappedMethod,
-          totalAmount: quote.totalPrice,
-          paidAmount: quote.depositAmount,
-          remainingAmount: quote.remainingAmount,
-          paymentDate: quote.depositAmount > 0 ? new Date().toISOString() : null,
-          notes: `Aprovado do orçamento rápido. Forma: ${quote.paymentMethod.toUpperCase()}`,
-          history: quote.depositAmount > 0 ? [{
-            amount: quote.depositAmount,
-            date: new Date().toISOString(),
+        const orderData: Partial<Order> = {
+          customerName: quote.customerName,
+          customerPhone: quote.customerPhone,
+          productName: `${quote.productName} (${quote.quantity} un)`,
+          quantity: quote.quantity,
+          price: quote.totalPrice,
+          status: 'pending' as OrderStatus,
+          deliveryDate: deliveryDateStr,
+          payment: {
+            status: paymentStatus,
             method: mappedMethod,
-            notes: 'Sinal de entrada do orçamento',
-          }] : [],
-        },
-        notes: `Aprovado a partir de orçamento rápido.\nSinal pago: ${formatCurrency(quote.depositAmount)}. Restante na entrega: ${formatCurrency(quote.remainingAmount)}.`,
-      });
+            totalAmount: quote.totalPrice,
+            paidAmount: quote.depositAmount,
+            remainingAmount: quote.remainingAmount,
+            paymentDate: quote.depositAmount > 0 ? new Date().toISOString() : null,
+            notes: `Aprovado do orçamento rápido. Forma: ${quote.paymentMethod.toUpperCase()}`,
+            history: quote.depositAmount > 0 ? [{
+              amount: quote.depositAmount,
+              date: new Date().toISOString(),
+              method: mappedMethod,
+              notes: 'Sinal de entrada do orçamento',
+            }] : [],
+          },
+          notes: `Aprovado a partir de orçamento rápido.\nSinal pago: ${formatCurrency(quote.depositAmount)}. Restante na entrega: ${formatCurrency(quote.remainingAmount)}.`,
+        };
+        pending = savePendingOrderOperation(user.uid, scope, orderData);
+      }
+      const order = await firebaseOrderService.createOrder(pending.payload, undefined, undefined, pending.id);
 
       let inventoryUpdated = true;
       for (const item of quote.items) {
@@ -960,6 +988,7 @@ export function ArtisanPricingPage() {
           : q
       );
       saveLocalQuotes(updated);
+      clearPendingOrderOperation(user.uid, scope);
       refreshOrders();
 
       if (inventoryUpdated) {
@@ -2069,7 +2098,7 @@ export function ArtisanPricingPage() {
                       className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-10 font-semibold shadow-xs"
                     >
                       {launchingSale ? <Loader2 className="size-4 animate-spin mr-1" /> : null}
-                      ✓ Lançar Venda
+                      {hasPendingSale ? 'Confirmar venda pendente' : '✓ Lançar Venda'}
                     </Button>
                   </div>
                 </CardContent>

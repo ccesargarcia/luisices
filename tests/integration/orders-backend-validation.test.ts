@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, beforeEach, afterAll, describe, it, expect } from 'vitest';
 import { initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, setDoc, updateDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, getDoc, deleteDoc, runTransaction, writeBatch, Timestamp } from 'firebase/firestore';
 
 let env: RulesTestEnvironment;
 const dbFor = (uid: string) => env.authenticatedContext(uid).firestore();
@@ -33,6 +33,8 @@ const baseOrder = {
   createdAt: Timestamp.now(),
   assignedTo: 'emp-assigned',
 };
+
+
 
 beforeAll(async () => {
   if (!process.env.FIRESTORE_EMULATOR_HOST) {
@@ -78,6 +80,48 @@ beforeEach(async () => {
       active: true,
       permissions: { orders: { view: true, edit: false, delete: false } },
     });
+    await fs.doc('userProfiles/emp-no-view').set({
+      role: 'funcionario',
+      active: true,
+      permissions: { orders: { view: false, edit: true, delete: false } },
+    });
+    await fs.doc('userProfiles/emp-delete-only').set({
+      role: 'funcionario',
+      active: true,
+      permissions: { orders: { view: true, edit: false, delete: true } },
+    });
+    await fs.doc('userProfiles/emp-archived-delete-only').set({
+      role: 'funcionario',
+      active: true,
+      permissions: {
+        orders: { view: true, edit: false, delete: false },
+        archivedOrders: { view: true, create: false, edit: false, delete: true },
+      },
+    });
+    await fs.doc('userProfiles/emp-archived-creator').set({
+      role: 'funcionario',
+      active: true,
+      permissions: {
+        orders: { view: true, edit: false, delete: false },
+        archivedOrders: { view: true, create: true, edit: false, delete: false },
+      },
+    });
+    await fs.doc('userProfiles/emp-archived-denied').set({
+      role: 'funcionario',
+      active: true,
+      permissions: {
+        orders: { view: true, edit: true, delete: false },
+        archivedOrders: { view: true, create: false, edit: false, delete: false },
+      },
+    });
+    await fs.doc('userProfiles/emp-archived-editor').set({
+      role: 'funcionario',
+      active: true,
+      permissions: {
+        orders: { view: true, edit: false, delete: false },
+        archivedOrders: { view: true, create: false, edit: true, delete: false },
+      },
+    });
     await fs.doc('userProfiles/admin').set({
       role: 'admin',
       active: true,
@@ -97,15 +141,81 @@ beforeEach(async () => {
 });
 
 describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () => {
-  describe('1. Autorização e Controle de Acesso', () => {
-    it('permite que o proprietário autorizado crie e edite o pedido', async () => {
+  it.each(['owner', 'admin'])('cliente %s não pode criar, alterar ou remover recibos de operação', async (uid) => {
+    const path = 'orders/order-receipt/operationReceipts/operation-one';
+    await assertFails(setDoc(doc(dbFor(uid), path), { userId: uid, payloadHash: 'forged', version: 2 }));
+    await env.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc(path).set({ userId: 'owner', payloadHash: 'server-only', version: 2 });
+    });
+    await assertFails(updateDoc(doc(dbFor(uid), path), { version: 100 }));
+    await assertFails(deleteDoc(doc(dbFor(uid), path)));
+  });
+  describe('Bloqueio Estrito de Criação Direta pelo Cliente (allow create: if false)', () => {
+    it('bloqueia criação direta individual de pedido simples, com itens ou permuta', async () => {
       const ownerDb = dbFor('owner');
-      await assertSucceeds(
-        setDoc(doc(ownerDb, 'orders/order-new'), {
-          ...baseOrder,
-          orderNumber: '#2026-0002',
-        })
-      );
+      // Pedido simples
+      await assertFails(setDoc(doc(ownerDb, 'orders/direct-simple'), {
+        ...baseOrder,
+        orderNumber: '#2026-0002',
+      }));
+      // Pedido com itens estruturados
+      await assertFails(setDoc(doc(ownerDb, 'orders/direct-items'), {
+        ...baseOrder,
+        orderNumber: '#2026-0003',
+        items: [{ name: 'Item', quantity: 1, unitPrice: 200, price: 200 }],
+      }));
+      // Pedido de permuta
+      await assertFails(setDoc(doc(ownerDb, 'orders/direct-exchange'), {
+        ...baseOrder,
+        orderNumber: '#2026-0004',
+        isExchange: true,
+        exchangeItems: [{ name: 'Divulgação', quantity: 1, value: 150 }],
+        payment: { status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0, method: null },
+      }));
+    });
+
+    it('bloqueia criação direta de pedido e salesLedger em transação pelo cliente', async () => {
+      const ownerDb = dbFor('owner');
+      const orderId = 'order-and-ledger-atomic-create';
+      const orderRef = doc(ownerDb, `orders/${orderId}`);
+      const saleRef = doc(ownerDb, `salesLedger/${orderId}`);
+
+      await assertFails(runTransaction(ownerDb, async (transaction) => {
+        transaction.set(orderRef, { ...baseOrder, orderNumber: '#2026-0099', version: 1 });
+        transaction.set(saleRef, {
+          id: orderId, orderId, userId: 'owner', amount: 200, isExchange: false,
+          quantity: 2, paymentStatus: 'partial', paidAmount: 50, paymentMethod: 'pix',
+        });
+      }));
+    });
+
+    it('bloqueia criação direta de pedido em lote (writeBatch) pelo cliente', async () => {
+      const ownerDb = dbFor('owner');
+      const orderRef = doc(ownerDb, 'orders/direct-batch');
+      const batch = writeBatch(ownerDb);
+      batch.set(orderRef, { ...baseOrder, orderNumber: '#2026-0098', version: 1 });
+      await assertFails(batch.commit());
+    });
+  });
+
+  describe('Permutas', () => {
+    it('bloqueia conversão direta em permuta para atualizar pagamento no backend', async () => {
+      const ownerDb = dbFor('owner');
+      await assertFails(updateOrder(ownerDb, 'orders/order-1', {
+        isExchange: true,
+        exchangeItems: [{ name: 'Divulgação', quantity: 1, value: 150 }],
+        payment: { status: 'paid', totalAmount: 0, paidAmount: 0, remainingAmount: 0, method: null },
+      }));
+      await assertFails(updateOrder(ownerDb, 'orders/order-1', {
+        isExchange: true,
+        payment: baseOrder.payment,
+      }, 3));
+    });
+  });
+
+  describe('1. Autorização e Controle de Acesso', () => {
+    it('permite que o proprietário autorizado edite o pedido', async () => {
+      const ownerDb = dbFor('owner');
       await assertSucceeds(
         updateOrder(ownerDb, 'orders/order-1', {
           customerName: 'Cliente Atualizado',
@@ -240,55 +350,25 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
         })
       );
     });
+
+    it('impede que o cliente altere diretamente os metadados do link público de rastreamento', async () => {
+      const ownerDb = dbFor('owner');
+      await assertFails(updateOrder(ownerDb, 'orders/order-1', {
+        publicTrackingHash: 'hash-forjado',
+        publicTrackingExpiresAt: '2099-12-31T00:00:00.000Z',
+        publicTrackingLinkId: 'link-forjado',
+      }));
+    });
   });
 
   describe('3. Validação de Itens Estruturados (items)', () => {
-    it('aceita items: null na criação e na edição de pedidos sem preços unitários', async () => {
+    it('aceita edição mantendo items: null', async () => {
       const ownerDb = dbFor('owner');
-      // Criação com items: null
-      await assertSucceeds(
-        setDoc(doc(ownerDb, 'orders/order-null-items'), {
-          ...baseOrder,
-          orderNumber: '#2026-0003',
-          items: null,
-        })
-      );
       // Edição mantendo/enviando items: null
       await assertSucceeds(
         updateOrder(ownerDb, 'orders/order-1', {
           items: null,
           notes: 'Pedido legado atualizado sem itens estruturados',
-        })
-      );
-    });
-
-    it('rejeita criação com items: null quando pricingMode ou unitPrice forem inválidos', async () => {
-      const ownerDb = dbFor('owner');
-      // pricingMode inválido com items: null
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-invalid-pricing-mode'), {
-          ...baseOrder,
-          orderNumber: '#2026-0005',
-          pricingMode: 'invalid_mode',
-          items: null,
-        })
-      );
-      // unitPrice negativo com items: null
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-negative-unit-price'), {
-          ...baseOrder,
-          orderNumber: '#2026-0006',
-          unitPrice: -10,
-          items: null,
-        })
-      );
-      // unitPrice excedendo 1.000.000 com items: null
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-huge-unit-price'), {
-          ...baseOrder,
-          orderNumber: '#2026-0007',
-          unitPrice: 1000001,
-          items: null,
         })
       );
     });
@@ -309,15 +389,15 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       );
     });
 
-    it('aceita lista válida de itens com preços distintos e unitPrice correspondente', async () => {
+    it('bloqueia edição direta de lista de itens que também altera preço e pagamento', async () => {
       const ownerDb = dbFor('owner');
       const structuredItems = [
         { name: 'Agenda 2026', quantity: 2, unitPrice: 80, price: 160 },
         { name: 'Caneta Luxo', quantity: 1, unitPrice: 40, price: 40 },
       ];
 
-      await assertSucceeds(
-        setDoc(doc(ownerDb, 'orders/order-multi-items'), {
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/order-multi-items').set({
           ...baseOrder,
           orderNumber: '#2026-0004',
           quantity: 3,
@@ -332,11 +412,12 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
             paidAmount: 200,
             remainingAmount: 0,
           },
-        })
-      );
+        });
+      });
 
-      // Edição atualizando os itens estruturados
-      await assertSucceeds(
+      // Alterações financeiras agora devem passar pela Function; o cliente não
+      // pode gravar itens/preço/pagamento diretamente no mesmo documento.
+      await assertFails(
         updateOrder(ownerDb, 'orders/order-multi-items', {
           quantity: 4,
           price: 240,
@@ -350,166 +431,6 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
             paidAmount: 240,
             remainingAmount: 0,
           },
-        })
-      );
-    });
-
-    it('rejeita item com preço unitário negativo', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-neg-price'), {
-          ...baseOrder,
-          orderNumber: '#2026-0005',
-          quantity: 1,
-          price: 10,
-          items: [{ name: 'Item', quantity: 1, unitPrice: -10, price: -10 }],
-        })
-      );
-    });
-
-    it('rejeita item com quantidade zero ou fracionária', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-zero-qty'), {
-          ...baseOrder,
-          orderNumber: '#2026-0006',
-          items: [{ name: 'Item', quantity: 0, unitPrice: 50, price: 0 }],
-        })
-      );
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-float-qty'), {
-          ...baseOrder,
-          orderNumber: '#2026-0007',
-          items: [{ name: 'Item', quantity: 1.5 as any, unitPrice: 50, price: 75 }],
-        })
-      );
-    });
-
-    it('rejeita item com nome vazio ou apenas espaços', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-empty-name'), {
-          ...baseOrder,
-          orderNumber: '#2026-0008',
-          quantity: 1,
-          price: 50,
-          items: [{ name: '   ', quantity: 1, unitPrice: 50, price: 50 }],
-        })
-      );
-    });
-
-    it('rejeita item com subtotal inconsistente (quantity * unitPrice != price)', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-bad-subtotal'), {
-          ...baseOrder,
-          orderNumber: '#2026-0009',
-          quantity: 2,
-          price: 100,
-          items: [{ name: 'Item', quantity: 2, unitPrice: 50, price: 80 }], // 2 * 50 != 80
-        })
-      );
-    });
-
-    it('rejeita campos extras não autorizados dentro do item', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-extra-field'), {
-          ...baseOrder,
-          orderNumber: '#2026-0010',
-          quantity: 1,
-          price: 50,
-          items: [{ name: 'Item', quantity: 1, unitPrice: 50, price: 50, evilField: 'hack' } as any],
-        })
-      );
-    });
-
-    it('rejeita lista acima do limite máximo de 10 itens estruturados', async () => {
-      const ownerDb = dbFor('owner');
-      const elevenItems = Array.from({ length: 11 }, (_, i) => ({
-        name: `Item ${i + 1}`,
-        quantity: 1,
-        unitPrice: 10,
-        price: 10,
-      }));
-
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-too-many-items'), {
-          ...baseOrder,
-          orderNumber: '#2026-0011',
-          quantity: 11,
-          price: 110,
-          items: elevenItems,
-        })
-      );
-    });
-  });
-
-  describe('4. Consistência Agregada (Pedido vs Itens)', () => {
-    it('rejeita quando a soma das quantidades dos itens diverge do total do pedido', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-qty-mismatch'), {
-          ...baseOrder,
-          orderNumber: '#2026-0012',
-          quantity: 5, // Errado: itens somam 3
-          price: 150,
-          items: [
-            { name: 'Item 1', quantity: 2, unitPrice: 50, price: 100 },
-            { name: 'Item 2', quantity: 1, unitPrice: 50, price: 50 },
-          ],
-        })
-      );
-    });
-
-    it('rejeita quando a soma dos preços dos itens diverge do valor total do pedido', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-price-mismatch'), {
-          ...baseOrder,
-          orderNumber: '#2026-0013',
-          quantity: 2,
-          price: 300, // Errado: itens somam 200
-          items: [
-            { name: 'Item 1', quantity: 1, unitPrice: 100, price: 100 },
-            { name: 'Item 2', quantity: 1, unitPrice: 100, price: 100 },
-          ],
-        })
-      );
-    });
-
-    it('aceita pedido com 1 item com unitPrice consistente', async () => {
-      const ownerDb = dbFor('owner');
-      await assertSucceeds(
-        setDoc(doc(ownerDb, 'orders/order-single-item'), {
-          ...baseOrder,
-          orderNumber: '#2026-0014',
-          quantity: 2,
-          price: 100,
-          pricingMode: 'unit',
-          unitPrice: 50,
-          items: [{ name: 'Convite', quantity: 2, unitPrice: 50, price: 100 }],
-          payment: {
-            status: 'paid',
-            totalAmount: 100,
-            paidAmount: 100,
-            remainingAmount: 0,
-          },
-        })
-      );
-    });
-
-    it('rejeita pedido com 1 item se o unitPrice do pedido divergir do item', async () => {
-      const ownerDb = dbFor('owner');
-      await assertFails(
-        setDoc(doc(ownerDb, 'orders/order-single-item-mismatch'), {
-          ...baseOrder,
-          orderNumber: '#2026-0015',
-          quantity: 2,
-          price: 100,
-          pricingMode: 'unit',
-          unitPrice: 80, // Diverge de 50
-          items: [{ name: 'Convite', quantity: 2, unitPrice: 50, price: 100 }],
         })
       );
     });
@@ -549,6 +470,91 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       );
     });
 
+    it('bloqueia edição direta de pagamento legado para exigir validação no backend', async () => {
+      const ownerDb = dbFor('owner');
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/legacy-payment-without-remaining').set({
+          ...baseOrder,
+          payment: {
+            status: 'partial',
+            method: 'pix',
+            totalAmount: 200,
+            paidAmount: 50,
+          },
+          version: 1,
+        });
+      });
+
+      await assertFails(updateOrder(ownerDb, 'orders/legacy-payment-without-remaining', {
+        price: 250,
+        payment: {
+          status: 'partial',
+          method: 'pix',
+          totalAmount: 250,
+          paidAmount: 50,
+        },
+      }, 2));
+
+      const saved = await getDoc(doc(ownerDb, 'orders/legacy-payment-without-remaining'));
+      expect(saved.data()?.price).toBe(200);
+      expect(saved.data()?.payment.remainingAmount).toBeUndefined();
+    });
+
+    it('permite consultar eventos financeiros, mas bloqueia criação e alteração pelo cliente', async () => {
+      const eventPath = 'orders/order-1/paymentEvents/event-1';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(eventPath).set({
+          type: 'payment', amount: 10, method: 'pix', actorUid: 'owner',
+        });
+      });
+
+      const ownerDb = dbFor('owner');
+      await assertSucceeds(getDoc(doc(ownerDb, eventPath)));
+      await assertFails(setDoc(doc(ownerDb, 'orders/order-1/paymentEvents/client-event'), {
+        type: 'payment', amount: 999, method: 'pix', actorUid: 'owner',
+      }));
+      await assertFails(updateDoc(doc(ownerDb, eventPath), { amount: 999 }));
+      await assertFails(getDoc(doc(dbFor('other-user'), eventPath)));
+    });
+
+    it('impede alterar o valor financeiro apenas no salesLedger', async () => {
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('salesLedger/order-1').set({
+          id: 'order-1', orderId: 'order-1', userId: 'owner', amount: 200,
+          isExchange: false, paymentStatus: 'partial', paidAmount: 50, paymentMethod: 'pix',
+        });
+      });
+
+      const ownerDb = dbFor('owner');
+      await assertFails(updateDoc(doc(ownerDb, 'salesLedger/order-1'), {
+        paidAmount: 200, paymentStatus: 'paid',
+      }));
+      await assertFails(updateDoc(doc(ownerDb, 'salesLedger/order-1'), { amount: 1 }));
+      await assertFails(setDoc(doc(ownerDb, 'salesLedger/fake-financial-record'), {
+        id: 'fake-financial-record', orderId: 'fake-financial-record', userId: 'owner',
+        amount: 9999, isExchange: false, paymentStatus: 'paid', paidAmount: 9999,
+        paymentMethod: 'pix',
+      }));
+
+      const saved = await getDoc(doc(ownerDb, 'salesLedger/order-1'));
+      expect(saved.data()).toMatchObject({ amount: 200, paidAmount: 50, paymentStatus: 'partial' });
+    });
+
+    it('bloqueia criar o pedido e seu salesLedger correspondente diretamente no cliente mesmo em transação', async () => {
+      const ownerDb = dbFor('owner');
+      const orderId = 'order-and-ledger-atomic-create';
+      const orderRef = doc(ownerDb, `orders/${orderId}`);
+      const saleRef = doc(ownerDb, `salesLedger/${orderId}`);
+
+      await assertFails(runTransaction(ownerDb, async (transaction) => {
+        transaction.set(orderRef, { ...baseOrder, orderNumber: '#2026-0099', version: 1 });
+        transaction.set(saleRef, {
+          id: orderId, orderId, userId: 'owner', amount: 200, isExchange: false,
+          quantity: 2, paymentStatus: 'partial', paidAmount: 50, paymentMethod: 'pix',
+        });
+      }));
+    });
+
     it('permite atualização legítima de status sem alteração de valores financeiros', async () => {
       const ownerDb = dbFor('owner');
       await assertSucceeds(
@@ -561,6 +567,29 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
           status: 'completed',
         }, 3)
       );
+    });
+
+    it('permite editar campos independentes de valores legados inválidos sem exigir sua correção imediata', async () => {
+      const ownerDb = dbFor('owner');
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/legacy-invalid-fields').set({
+          ...baseOrder,
+          customerName: '   ',
+          customerId: 'cliente-que-nao-existe',
+          deliveryDate: 'data-antiga-invalida',
+          tags: [{ name: '', color: 'cor-invalida' }],
+          version: 1,
+        });
+      });
+
+      await assertSucceeds(updateOrder(ownerDb, 'orders/legacy-invalid-fields', {
+        notes: 'Atualização sem relação com campos legados',
+      }, 2));
+
+      const saved = await getDoc(doc(ownerDb, 'orders/legacy-invalid-fields'));
+      expect(saved.data()?.notes).toBe('Atualização sem relação com campos legados');
+      expect(saved.data()?.customerId).toBe('cliente-que-nao-existe');
+      expect(saved.data()?.deliveryDate).toBe('data-antiga-invalida');
     });
   });
 
@@ -651,15 +680,34 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
     });
   });
 
-  describe('7. Limite de Expressões CEL e Atualização Complexa (20 Etiquetas + Itens + Preço + Pagamento)', () => {
-    it('permite atualizar pedido com 20 etiquetas, itens estruturados, unitPrice e pagamento consistente sem exceder limite CEL de 1000 expressões', async () => {
+  describe('7. Proteção de Escritas Financeiras Diretas (Pedidos com Etiquetas e Itens)', () => {
+    it.each(Array.from({ length: 10 }, (_, index) => index + 1))(
+      'bloqueia alteração direta de total em pedido com %i item(ns)', async (itemCount) => {
+        const ownerDb = dbFor('owner');
+        const orderId = `direct-total-edit-${itemCount}`;
+        const items = Array.from({ length: itemCount }, (_, index) => ({
+          name: `Item ${index + 1}`, quantity: 1, unitPrice: 10, price: 10,
+        }));
+        await env.withSecurityRulesDisabled(async (context) => {
+          await context.firestore().doc(`orders/${orderId}`).set({
+            ...baseOrder, quantity: itemCount, price: itemCount * 10,
+            pricingMode: 'items', unitPrice: null, items, payment: null, version: 1,
+          });
+        });
+
+        await assertFails(updateOrder(ownerDb, `orders/${orderId}`, { price: itemCount * 10 + 1 }, 2));
+        expect((await getDoc(doc(ownerDb, `orders/${orderId}`))).data()?.price).toBe(itemCount * 10);
+      },
+    );
+
+    it('bloqueia edição financeira direta de pedido com 20 etiquetas', async () => {
       const ownerDb = dbFor('owner');
       const tagNames = Array.from({ length: 20 }, (_, index) => `Etiqueta E2E ${String(index + 1).padStart(2, '0')}`);
       const tags = tagNames.map(name => ({ name, color: '#3b82f6' }));
 
       // Pedido inicial criado com 20 etiquetas, sem itens estruturados
-      await assertSucceeds(
-        setDoc(doc(ownerDb, 'orders/order-20-tags-complex'), {
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/order-20-tags-complex').set({
           ...baseOrder,
           orderNumber: '#2026-0020',
           quantity: 1,
@@ -676,27 +724,23 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
             remainingAmount: 69.50,
           },
           version: 1,
-        })
-      );
+        });
+      });
 
-      // Atualização que simula a tela de edição do E2E:
-      // Altera preço para 130.50, insere itens estruturados, unitPrice, recalcula pagamento e altera 1 etiqueta das 20
+      // Atualização que simula a edição de um pedido, pagamento e uma etiqueta
+      // alterada em uma lista com 20 etiquetas.
       const revisedTag = 'Etiqueta Atualizada E2E';
       const updatedTags = [...tags.slice(0, 19), { name: revisedTag, color: '#3b82f6' }];
+      const items = [{ name: 'Convite Luxo', quantity: 1, unitPrice: 130.50, price: 130.50 }];
 
-      await assertSucceeds(
+      await assertFails(
         updateOrder(ownerDb, 'orders/order-20-tags-complex', {
           customerName: 'Cliente Teste',
           customerPhone: '11999999999',
           productName: 'Convite Luxo',
           quantity: 1,
           price: 130.50,
-          items: [{
-            name: 'Convite Luxo',
-            quantity: 1,
-            unitPrice: 130.50,
-            price: 130.50,
-          }],
+          items,
           unitPrice: 130.50,
           pricingMode: 'unit',
           deliveryDate: '2026-11-20',
@@ -714,18 +758,57 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       );
 
       const saved = await getDoc(doc(ownerDb, 'orders/order-20-tags-complex'));
-      expect(saved.data()?.version).toBe(2);
-      expect(saved.data()?.price).toBe(130.50);
+      expect(saved.data()?.version).toBe(1);
+      expect(saved.data()?.price).toBe(100);
       expect(saved.data()?.tags).toHaveLength(20);
-      expect(saved.data()?.tags[19].name).toBe(revisedTag);
+      expect(saved.data()?.tags[19].name).toBe('Etiqueta E2E 20');
     });
 
-    it('permite atualizar pedido substituindo todas as 20 etiquetas por novas etiquetas sem exceder limite CEL', async () => {
+    it('bloqueia edição direta de quatro itens e pagamento em pedido com 20 etiquetas', async () => {
+      const ownerDb = dbFor('owner');
+      const tags = Array.from({ length: 20 }, (_, index) => ({ name: `Etiqueta ${index + 1}`, color: '#3b82f6' }));
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/order-20-tags-four-items').set({
+          ...baseOrder,
+          orderNumber: '#2026-0024',
+          quantity: 1,
+          price: 100,
+          items: null,
+          unitPrice: null,
+          pricingMode: 'total',
+          tags,
+          payment: { status: 'partial', method: 'pix', totalAmount: 100, paidAmount: 30, remainingAmount: 70 },
+          version: 1,
+        });
+      });
+
+      const items = [
+        { name: 'Produto 1', quantity: 1, unitPrice: 36, price: 36 },
+        { name: 'Produto 2', quantity: 1, unitPrice: 32, price: 32 },
+        { name: 'Produto 3', quantity: 7, unitPrice: 1.29, price: 9.03 },
+        { name: 'Produto 4', quantity: 1, unitPrice: 53.47, price: 53.47 },
+      ];
+      await assertFails(updateOrder(ownerDb, 'orders/order-20-tags-four-items', {
+        quantity: 10,
+        price: 130.50,
+        items,
+        unitPrice: null,
+        pricingMode: 'items',
+        payment: { status: 'partial', method: 'pix', totalAmount: 130.50, paidAmount: 30, remainingAmount: 100.50 },
+      }, 2));
+
+      const saved = await getDoc(doc(ownerDb, 'orders/order-20-tags-four-items'));
+      expect(saved.data()?.items).toBeNull();
+      expect(saved.data()?.tags).toHaveLength(20);
+      expect(saved.data()?.price).toBe(100);
+    });
+
+    it('bloqueia atualização direta de preço e pagamento ao trocar etiquetas', async () => {
       const ownerDb = dbFor('owner');
       const initialTags = Array.from({ length: 20 }, (_, j) => ({ name: `Original ${j}`, color: '#123456' }));
 
-      await assertSucceeds(
-        setDoc(doc(ownerDb, 'orders/order-20-tags-all-new'), {
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/order-20-tags-all-new').set({
           ...baseOrder,
           orderNumber: '#2026-0021',
           quantity: 2,
@@ -739,12 +822,12 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
             remainingAmount: 50,
           },
           version: 1,
-        })
-      );
+        });
+      });
 
       const brandNewTags = Array.from({ length: 20 }, (_, j) => ({ name: `Nova Etiqueta ${j}`, color: '#654321' }));
 
-      await assertSucceeds(
+      await assertFails(
         updateOrder(ownerDb, 'orders/order-20-tags-all-new', {
           tags: brandNewTags,
           price: 120,
@@ -759,53 +842,1093 @@ describe('Validação de Pedidos no Backend do Firestore (firestore.rules)', () 
       );
 
       const saved = await getDoc(doc(ownerDb, 'orders/order-20-tags-all-new'));
-      expect(saved.data()?.tags[0].name).toBe('Nova Etiqueta 0');
+      expect(saved.data()?.tags[0].name).toBe('Original 0');
     });
 
-    it('rejeita atualização quando a última etiqueta de 20 for inválida em pedido com itens estruturados', async () => {
+    it('aceita 20 etiquetas no pedido e continua rejeitando a 21ª etiqueta', async () => {
       const ownerDb = dbFor('owner');
       const tags = Array.from({ length: 20 }, (_, i) => ({ name: `Etiqueta ${i}`, color: '#3b82f6' }));
+      const commonOrder = {
+        ...baseOrder,
+        quantity: 1,
+        price: 130.50,
+        pricingMode: 'total',
+        unitPrice: null,
+        items: null,
+        payment: {
+          status: 'partial',
+          method: 'pix',
+          totalAmount: 130.50,
+          paidAmount: 30.50,
+          remainingAmount: 100.00,
+        },
+        version: 1,
+      };
 
-      await assertSucceeds(
-        setDoc(doc(ownerDb, 'orders/order-bad-20th-tag'), {
-          ...baseOrder,
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('orders/order-20-tags-with-item').set({
+          ...commonOrder,
           orderNumber: '#2026-0022',
-          quantity: 1,
-          price: 130.50,
-          pricingMode: 'unit',
-          unitPrice: 130.50,
-          items: [{
-            name: 'Convite Luxo',
-            quantity: 1,
-            unitPrice: 130.50,
-            price: 130.50,
-          }],
           tags,
+        });
+      });
+
+      // Edição direta com 21 etiquetas é bloqueada
+      await assertFails(updateOrder(ownerDb, 'orders/order-20-tags-with-item', {
+        tags: [...tags, { name: 'Etiqueta 21', color: '#3b82f6' }],
+      }, 2));
+    });
+  });
+
+  describe('4. Permissões transacionais entre pedidos atribuídos e salesLedger legado', () => {
+    it('bloqueia edição financeira direta no pedido atribuído e permite concluir preservando pagamento', async () => {
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('salesLedger/order-1').set({
+          id: 'order-1',
+          orderId: 'order-1',
+          orderNumber: baseOrder.orderNumber,
+          userId: 'owner',
+          customerName: baseOrder.customerName,
+          customerPhone: baseOrder.customerPhone,
+          productName: baseOrder.productName,
+          quantity: 2,
+          amount: 200,
+          isExchange: false,
+          paymentStatus: 'partial',
+          paidAmount: 50,
+          paymentMethod: 'pix',
+          date: '2026-10-24',
+          deliveryDate: baseOrder.deliveryDate,
+          status: 'pending',
+          createdAt: '2026-10-24T12:00:00.000Z',
+          updatedAt: '2026-10-24T12:00:00.000Z',
+        });
+      });
+
+      const employeeDb = dbFor('emp-assigned');
+      await assertFails(runTransaction(employeeDb, async (transaction) => {
+        const orderRef = doc(employeeDb, 'orders/order-1');
+        const saleRef = doc(employeeDb, 'salesLedger/order-1');
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+
+        transaction.update(orderRef, {
+          productName: 'Convite Luxo e envelope',
+          quantity: 3,
+          price: 300,
+          pricingMode: 'items',
+          items: [
+            { name: 'Convite Luxo', quantity: 2, unitPrice: 100, price: 200 },
+            { name: 'Envelope', quantity: 1, unitPrice: 100, price: 100 },
+          ],
+          payment: {
+            status: 'partial', method: 'pix', totalAmount: 300,
+            paidAmount: 75, remainingAmount: 225,
+          },
+          version: 2,
+          updatedAt: '2026-10-24T13:00:00.000Z',
+        });
+        transaction.update(saleRef, {
+          productName: 'Convite Luxo e envelope',
+          quantity: 3,
+          amount: 300,
+          paymentStatus: 'partial',
+          paidAmount: 75,
+          paymentMethod: 'pix',
+          assignedTo: 'emp-assigned',
+          assignedToName: null,
+          updatedAt: '2026-10-24T13:00:00.000Z',
+        });
+      }));
+
+      await assertSucceeds(runTransaction(employeeDb, async (transaction) => {
+        const orderRef = doc(employeeDb, 'orders/order-1');
+        const saleRef = doc(employeeDb, 'salesLedger/order-1');
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+        transaction.update(orderRef, {
+          status: 'completed',
+          version: 2,
+          updatedAt: '2026-10-24T14:00:00.000Z',
+        });
+        transaction.update(saleRef, {
+          status: 'completed',
+          updatedAt: '2026-10-24T14:00:00.000Z',
+        });
+      }));
+
+      const savedOrder = await getDoc(doc(employeeDb, 'orders/order-1'));
+      const savedLedger = await getDoc(doc(employeeDb, 'salesLedger/order-1'));
+      expect(savedOrder.data()?.status).toBe('completed');
+      expect(savedOrder.data()?.payment.paidAmount).toBe(50);
+      expect(savedLedger.data()?.assignedTo).toBeUndefined();
+      expect(savedLedger.data()?.amount).toBe(200);
+      expect(savedLedger.data()?.paidAmount).toBe(50);
+      expect(savedLedger.data()?.status).toBe('completed');
+    });
+
+    it('permite recriar o salesLedger ausente ao atualizar um pedido atribuído na produção', async () => {
+      const createdAt = '2026-10-24T12:00:00.000Z';
+      const orderId = 'order-without-ledger';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedToName: 'Funcionário responsável',
+          createdAt,
+          version: 1,
+        });
+      });
+
+      const employeeDb = dbFor('emp-assigned');
+      await assertSucceeds(runTransaction(employeeDb, async (transaction) => {
+        const orderRef = doc(employeeDb, `orders/${orderId}`);
+        const saleRef = doc(employeeDb, `salesLedger/${orderId}`);
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+        transaction.update(orderRef, {
+          status: 'in-progress',
+          version: 2,
+          updatedAt: '2026-10-24T13:00:00.000Z',
+        });
+        transaction.set(saleRef, {
+          id: orderId,
+          orderId,
+          orderNumber: baseOrder.orderNumber,
+          userId: 'owner',
+          assignedTo: 'emp-assigned',
+          assignedToName: 'Funcionário responsável',
+          customerId: null,
+          customerName: baseOrder.customerName,
+          customerPhone: baseOrder.customerPhone,
+          productName: baseOrder.productName,
+          quantity: baseOrder.quantity,
+          amount: baseOrder.price,
+          isExchange: false,
+          paymentStatus: 'partial',
+          paidAmount: 50,
+          paymentMethod: 'pix',
+          date: createdAt,
+          deliveryDate: baseOrder.deliveryDate,
+          status: 'in-progress',
+          isDeletedFromOrders: false,
+          notes: baseOrder.notes,
+          tags: null,
+          createdAt,
+          updatedAt: '2026-10-24T13:00:00.000Z',
+        });
+      }));
+
+      const savedLedger = await getDoc(doc(employeeDb, `salesLedger/${orderId}`));
+      expect(savedLedger.data()?.status).toBe('in-progress');
+      expect(savedLedger.data()?.assignedTo).toBe('emp-assigned');
+      expect(savedLedger.data()?.amount).toBe(baseOrder.price);
+    });
+
+    it('rejeita recriação de salesLedger com valor diferente do pedido vinculado', async () => {
+      const orderId = 'order-with-forged-ledger';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedToName: 'Funcionário responsável',
+          createdAt: '2026-10-24T12:00:00.000Z',
+          version: 1,
+        });
+      });
+
+      const employeeDb = dbFor('emp-assigned');
+      await assertFails(runTransaction(employeeDb, async (transaction) => {
+        const orderRef = doc(employeeDb, `orders/${orderId}`);
+        const saleRef = doc(employeeDb, `salesLedger/${orderId}`);
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+        transaction.update(orderRef, {
+          status: 'in-progress',
+          version: 2,
+          updatedAt: '2026-10-24T13:00:00.000Z',
+        });
+        transaction.set(saleRef, {
+          id: orderId,
+          orderId,
+          userId: 'owner',
+          assignedTo: 'emp-assigned',
+          assignedToName: 'Funcionário responsável',
+          customerId: null,
+          orderNumber: baseOrder.orderNumber,
+          customerName: baseOrder.customerName,
+          customerPhone: baseOrder.customerPhone,
+          productName: baseOrder.productName,
+          quantity: baseOrder.quantity,
+          amount: baseOrder.price + 1,
+          isExchange: false,
+          paymentStatus: 'partial',
+          paidAmount: 50,
+          paymentMethod: 'pix',
+          date: '2026-10-24T12:00:00.000Z',
+          deliveryDate: baseOrder.deliveryDate,
+          status: 'in-progress',
+          isDeletedFromOrders: false,
+          notes: baseOrder.notes,
+          tags: null,
+          createdAt: '2026-10-24T12:00:00.000Z',
+          updatedAt: '2026-10-24T13:00:00.000Z',
+        });
+      }));
+    });
+
+    it('nega leitura e edição do ledger legado para funcionário não atribuído', async () => {
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('salesLedger/order-1').set({
+          id: 'order-1',
+          orderId: 'order-1',
+          orderNumber: baseOrder.orderNumber,
+          userId: 'owner',
+          customerName: baseOrder.customerName,
+          productName: baseOrder.productName,
+          quantity: 2,
+          amount: 200,
+          paymentStatus: 'partial',
+          paidAmount: 50,
+          status: 'pending',
+        });
+      });
+
+      const unassignedDb = dbFor('emp-unassigned');
+      const saleRef = doc(unassignedDb, 'salesLedger/order-1');
+      await assertFails(getDoc(saleRef));
+      await assertFails(updateDoc(saleRef, { amount: 201 }));
+    });
+
+    it('impede funcionário autorizado a editar o pedido de alterar o valor do ledger isoladamente', async () => {
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc('salesLedger/order-1').set({
+          id: 'order-1',
+          orderId: 'order-1',
+          userId: 'owner',
+          assignedTo: 'emp-assigned',
+          amount: 200,
+          quantity: 2,
+          status: 'pending',
+        });
+      });
+
+      const employeeDb = dbFor('emp-assigned');
+      await assertFails(updateDoc(doc(employeeDb, 'salesLedger/order-1'), { amount: 1 }));
+    });
+
+    it('permite leitura ao funcionário atribuído, mas nega edição sem a permissão orders.edit', async () => {
+      const orderId = 'order-assigned-without-edit';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-no-edit',
+          version: 1,
+        });
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          orderNumber: baseOrder.orderNumber,
+          userId: 'owner',
+          assignedTo: 'emp-no-edit',
+          customerName: baseOrder.customerName,
+          productName: baseOrder.productName,
+          quantity: 2,
+          amount: 200,
+          paymentStatus: 'partial',
+          paidAmount: 50,
+          status: 'pending',
+        });
+      });
+
+      const readOnlyEmployeeDb = dbFor('emp-no-edit');
+      const orderRef = doc(readOnlyEmployeeDb, `orders/${orderId}`);
+      const saleRef = doc(readOnlyEmployeeDb, `salesLedger/${orderId}`);
+      await assertSucceeds(getDoc(orderRef));
+      await assertSucceeds(getDoc(saleRef));
+      await assertFails(updateDoc(saleRef, { amount: 201 }));
+      await assertFails(updateOrder(readOnlyEmployeeDb, `orders/${orderId}`, {
+        notes: 'Tentativa sem permissão de edição',
+      }));
+    });
+
+    it('nega leitura do pedido e do ledger ao funcionário atribuído sem orders.view', async () => {
+      const orderId = 'order-assigned-without-view';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-no-view',
+          version: 1,
+        });
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          userId: 'owner',
+          assignedTo: 'emp-no-view',
+          amount: 200,
+          quantity: 2,
+          status: 'pending',
+        });
+      });
+
+      const employeeDb = dbFor('emp-no-view');
+      await assertFails(getDoc(doc(employeeDb, `orders/${orderId}`)));
+      await assertFails(getDoc(doc(employeeDb, `salesLedger/${orderId}`)));
+    });
+
+    it('permite exclusão lógica a funcionário com delete mesmo sem orders.edit e sincroniza ledger legado', async () => {
+      const orderId = 'order-delete-only';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-delete-only',
+          version: 1,
+        });
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          userId: 'owner',
+          amount: baseOrder.price,
+          quantity: baseOrder.quantity,
+          status: baseOrder.status,
+        });
+      });
+
+      const employeeDb = dbFor('emp-delete-only');
+      const orderRef = doc(employeeDb, `orders/${orderId}`);
+      const saleRef = doc(employeeDb, `salesLedger/${orderId}`);
+      await assertSucceeds(updateOrder(employeeDb, `orders/${orderId}`, {
+        deletedAt: Timestamp.now(),
+        updatedAt: '2026-10-24T14:00:00.000Z',
+      }));
+      await assertSucceeds(updateDoc(saleRef, {
+        isDeletedFromOrders: true,
+        updatedAt: '2026-10-24T14:00:01.000Z',
+      }));
+
+      const savedOrder = await getDoc(orderRef);
+      const savedLedger = await getDoc(saleRef);
+      expect(savedOrder.data()?.deletedAt).toBeTruthy();
+      expect(savedLedger.data()?.isDeletedFromOrders).toBe(true);
+    });
+
+    it('usa archivedOrders.delete para exclusão lógica de pedido arquivado', async () => {
+      const orderId = 'archived-order-delete-only';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-archived-delete-only',
+          isArchived: true,
+          version: 1,
+        });
+      });
+
+      const employeeDb = dbFor('emp-archived-delete-only');
+      await assertSucceeds(updateOrder(employeeDb, `orders/${orderId}`, {
+        deletedAt: Timestamp.now(),
+        updatedAt: '2026-10-24T14:00:00.000Z',
+      }));
+    });
+
+    it('nega exclusão lógica quando funcionário atribuído não tem permissão delete', async () => {
+      const employeeDb = dbFor('emp-assigned');
+      await assertFails(updateOrder(employeeDb, 'orders/order-1', {
+        deletedAt: Timestamp.now(),
+        updatedAt: '2026-10-24T14:00:00.000Z',
+      }));
+    });
+
+    it('permite arquivamento por funcionário com archivedOrders.create mesmo sem orders.edit', async () => {
+      const orderId = 'order-archive-by-archivist';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-archived-creator',
+          status: 'completed',
+          version: 1,
+        });
+      });
+
+      const empDb = dbFor('emp-archived-creator');
+      await assertSucceeds(updateOrder(empDb, `orders/${orderId}`, {
+        isArchived: true,
+        archivedAt: '2026-10-25T14:00:00.000Z',
+        archivedBy: 'emp-archived-creator',
+      }));
+    });
+
+    it('bloqueia arquivamento quando archivedOrders.create é false, mesmo com orders.edit true', async () => {
+      const orderId = 'order-archive-denied';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-archived-denied',
+          status: 'completed',
+          version: 1,
+        });
+      });
+
+      const empDb = dbFor('emp-archived-denied');
+      await assertFails(updateOrder(empDb, `orders/${orderId}`, {
+        isArchived: true,
+        archivedAt: '2026-10-25T14:00:00.000Z',
+        archivedBy: 'emp-archived-denied',
+      }));
+    });
+
+    it('permite desarquivamento por funcionário com archivedOrders.edit mesmo sem orders.edit', async () => {
+      const orderId = 'order-unarchive-by-editor';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-archived-editor',
+          isArchived: true,
+          status: 'completed',
+          version: 1,
+        });
+      });
+
+      const empDb = dbFor('emp-archived-editor');
+      await assertSucceeds(updateOrder(empDb, `orders/${orderId}`, {
+        isArchived: false,
+        archivedAt: null,
+        archivedBy: null,
+      }));
+    });
+
+    it('permite exclusão física de pedido arquivado a funcionário com archivedOrders.delete', async () => {
+      const orderId = 'order-hard-delete-archived';
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set({
+          ...baseOrder,
+          assignedTo: 'emp-archived-delete-only',
+          isArchived: true,
+          version: 1,
+        });
+      });
+
+      const empDb = dbFor('emp-archived-delete-only');
+      await assertSucceeds(deleteDoc(doc(empDb, `orders/${orderId}`)));
+    });
+  });
+
+  describe('8. Edição de Pedido Existente com Link de Rastreamento (Adição de Itens e Limite CEL)', () => {
+    it('bloqueia gravação financeira direta no pedido sem link', async () => {
+      const orderId = 'order-cel-without-tracking';
+      const initialOrder = {
+        ...baseOrder,
+        orderNumber: '#2026-0001',
+        productName: 'Convite Luxo',
+        quantity: 1,
+        price: 100,
+        pricingMode: 'unit',
+        unitPrice: 100,
+        items: [{ name: 'Convite Luxo', quantity: 1, unitPrice: 100, price: 100 }],
+        tags: null,
+        payment: {
+          status: 'paid',
+          method: 'pix',
+          totalAmount: 100,
+          paidAmount: 100,
+          remainingAmount: 0,
+        },
+        version: 1,
+      };
+
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set(initialOrder);
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          orderNumber: '#2026-0001',
+          userId: 'owner',
+          customerName: 'Cliente Teste',
+          customerPhone: '11999999999',
+          productName: 'Convite Luxo',
+          quantity: 1,
+          amount: 100,
+          isExchange: false,
+          paymentStatus: 'paid',
+          paidAmount: 100,
+          paymentMethod: 'pix',
+          date: '2026-10-24',
+          deliveryDate: '2026-11-20',
+          status: 'pending',
+          createdAt: '2026-10-24T12:00:00.000Z',
+          updatedAt: '2026-10-24T12:00:00.000Z',
+        });
+      });
+
+      const ownerDb = dbFor('owner');
+      const now = new Date().toISOString();
+      const orderRef = doc(ownerDb, `orders/${orderId}`);
+      const saleRef = doc(ownerDb, `salesLedger/${orderId}`);
+
+      await assertFails(runTransaction(ownerDb, async (transaction) => {
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+
+        transaction.update(orderRef, {
+          customerName: 'Cliente Teste',
+          customerPhone: '11999999999',
+          productName: 'Convite Luxo, Envelope',
+          quantity: 2,
+          price: 150,
+          items: [
+            { name: 'Convite Luxo', quantity: 1, unitPrice: 100, price: 100 },
+            { name: 'Envelope', quantity: 1, unitPrice: 50, price: 50 },
+          ],
+          unitPrice: null,
+          pricingMode: 'items',
+          deliveryDate: '2026-11-20',
+          notes: null,
+          status: 'pending',
+          tags: [],
           payment: {
             status: 'partial',
             method: 'pix',
-            totalAmount: 130.50,
-            paidAmount: 30.50,
-            remainingAmount: 100.00,
+            totalAmount: 150,
+            paidAmount: 100,
+            remainingAmount: 50,
+            paymentDate: '2026-10-24T12:00:00.000Z',
+            notes: null,
+            history: null,
           },
-          version: 1,
-        })
-      );
+          isExchange: false,
+          exchangeNotes: null,
+          cardColor: null,
+          exchangeItems: [],
+          version: 2,
+          updatedAt: now,
+        });
 
-      const badTags = [...tags.slice(0, 19), { name: '', color: '#3b82f6' }]; // Nome vazio é inválido
+        transaction.update(saleRef, {
+          updatedAt: now,
+          amount: 150,
+          isExchange: false,
+          status: 'pending',
+          customerName: 'Cliente Teste',
+          customerPhone: '11999999999',
+          productName: 'Convite Luxo, Envelope',
+          quantity: 2,
+          deliveryDate: '2026-11-20',
+          paymentStatus: 'partial',
+          paidAmount: 100,
+          paymentMethod: 'pix',
+        });
+      }));
 
-      await assertFails(
-        updateOrder(ownerDb, 'orders/order-bad-20th-tag', {
-          tags: badTags,
-          price: 130.50,
-          items: [{
-            name: 'Convite Luxo',
-            quantity: 1,
-            unitPrice: 130.50,
-            price: 130.50,
-          }],
-        }, 2)
-      );
+      const updated = await getDoc(orderRef);
+      expect(updated.data()?.quantity).toBe(1);
+      expect(updated.data()?.price).toBe(100);
+      expect(updated.data()?.pricingMode).toBe('unit');
+    });
+
+    it('bloqueia gravação financeira direta em pedido com link de rastreamento', async () => {
+      const orderId = 'order-cel-with-tracking';
+      const initialOrder = {
+        ...baseOrder,
+        orderNumber: '#2026-0002',
+        productName: 'Convite Luxo',
+        quantity: 1,
+        price: 100,
+        pricingMode: 'unit',
+        unitPrice: 100,
+        items: [{ name: 'Convite Luxo', quantity: 1, unitPrice: 100, price: 100 }],
+        tags: null,
+        payment: {
+          status: 'paid',
+          method: 'pix',
+          totalAmount: 100,
+          paidAmount: 100,
+          remainingAmount: 0,
+        },
+        version: 1,
+        publicTrackingHash: 'hash-abc-123',
+        publicTrackingExpiresAt: '2026-12-31T00:00:00.000Z',
+        publicTrackingLinkId: 'link-123',
+      };
+
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set(initialOrder);
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          orderNumber: '#2026-0002',
+          userId: 'owner',
+          customerName: 'Cliente Teste',
+          customerPhone: '11999999999',
+          productName: 'Convite Luxo',
+          quantity: 1,
+          amount: 100,
+          isExchange: false,
+          paymentStatus: 'paid',
+          paidAmount: 100,
+          paymentMethod: 'pix',
+          date: '2026-10-24',
+          deliveryDate: '2026-11-20',
+          status: 'pending',
+          createdAt: '2026-10-24T12:00:00.000Z',
+          updatedAt: '2026-10-24T12:00:00.000Z',
+        });
+      });
+
+      const ownerDb = dbFor('owner');
+      const now = new Date().toISOString();
+      const orderRef = doc(ownerDb, `orders/${orderId}`);
+      const saleRef = doc(ownerDb, `salesLedger/${orderId}`);
+
+      await assertFails(runTransaction(ownerDb, async (transaction) => {
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+
+        transaction.update(orderRef, {
+          customerName: 'Cliente Teste',
+          customerPhone: '11999999999',
+          productName: 'Convite Luxo, Envelope',
+          quantity: 2,
+          price: 150,
+          items: [
+            { name: 'Convite Luxo', quantity: 1, unitPrice: 100, price: 100 },
+            { name: 'Envelope', quantity: 1, unitPrice: 50, price: 50 },
+          ],
+          unitPrice: null,
+          pricingMode: 'items',
+          deliveryDate: '2026-11-20',
+          notes: null,
+          status: 'pending',
+          tags: [],
+          payment: {
+            status: 'partial',
+            method: 'pix',
+            totalAmount: 150,
+            paidAmount: 100,
+            remainingAmount: 50,
+            paymentDate: '2026-10-24T12:00:00.000Z',
+            notes: null,
+            history: null,
+          },
+          isExchange: false,
+          exchangeNotes: null,
+          cardColor: null,
+          exchangeItems: [],
+          version: 2,
+          updatedAt: now,
+        });
+
+        transaction.update(saleRef, {
+          updatedAt: now,
+          amount: 150,
+          isExchange: false,
+          status: 'pending',
+          customerName: 'Cliente Teste',
+          customerPhone: '11999999999',
+          productName: 'Convite Luxo, Envelope',
+          quantity: 2,
+          deliveryDate: '2026-11-20',
+          paymentStatus: 'partial',
+          paidAmount: 100,
+          paymentMethod: 'pix',
+        });
+      }));
+
+      const updated = await getDoc(orderRef);
+      expect(updated.data()?.quantity).toBe(1);
+      expect(updated.data()?.price).toBe(100);
+      expect(updated.data()?.publicTrackingHash).toBe('hash-abc-123');
+    });
+
+    it('bloqueia alteração direta do pedido #2026-0088 para exigir a Function', async () => {
+      const orderId = 'tS3wHmGaBxCdFABBXF9l';
+      const initialOrder = {
+        userId: 'admin',
+        orderNumber: '#2026-0088',
+        customerName: 'Ccesar',
+        customerPhone: '11975526876',
+        productName: 'Teste 1, Teste 2, Teste 3 (7x)',
+        quantity: 9,
+        price: 77.03,
+        pricingMode: 'items',
+        unitPrice: null,
+        items: [
+          { name: 'Teste 1', quantity: 1, unitPrice: 36, price: 36 },
+          { name: 'Teste 2', quantity: 1, unitPrice: 32, price: 32 },
+          { name: 'Teste 3', quantity: 7, unitPrice: 1.29, price: 9.03 },
+        ],
+        status: 'in-progress',
+        deliveryDate: '2026-10-21',
+        notes: null,
+        tags: null,
+        payment: {
+          status: 'paid',
+          method: 'pix',
+          totalAmount: 77.03,
+          paidAmount: 77.03,
+          remainingAmount: 0,
+          paymentDate: '2026-10-21T20:32:14.803Z',
+          notes: 'Pagamento inicial registrado',
+          history: [{ amount: 32, notes: 'Pagamento inicial registrado', date: '2026-10-21T20:32:14.803Z', method: 'pix' }],
+        },
+        version: 18,
+        createdAt: Timestamp.now(),
+        updatedAt: '2026-10-24T20:49:47.931864000Z',
+        isExchange: false,
+        exchangeNotes: null,
+        cardColor: null,
+        exchangeItems: [],
+        publicTrackingHash: 'hash-xyz',
+        publicTrackingExpiresAt: '2026-12-31T00:00:00.000Z',
+        publicTrackingLinkId: 'link-uuid-123',
+      };
+
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set(initialOrder);
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          orderNumber: '#2026-0088',
+          userId: 'admin',
+          amount: 77.03,
+          isExchange: false,
+          status: 'in-progress',
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: 'Teste 1, Teste 2, Teste 3 (7x)',
+          quantity: 9,
+          deliveryDate: '2026-10-21',
+          paymentStatus: 'paid',
+          paidAmount: 77.03,
+          paymentMethod: 'pix',
+          updatedAt: '2026-10-24T20:49:47.931864000Z',
+        });
+      });
+
+      const adminDb = dbFor('admin');
+      const orderRef = doc(adminDb, `orders/${orderId}`);
+      const saleRef = doc(adminDb, `salesLedger/${orderId}`);
+
+      await assertFails(runTransaction(adminDb, async (transaction) => {
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+
+        transaction.update(orderRef, {
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: 'Teste 1, Teste 2, Teste 3 (7x), ffff',
+          quantity: 10,
+          price: 83.03,
+          items: [
+            { name: 'Teste 1', quantity: 1, unitPrice: 36, price: 36 },
+            { name: 'Teste 2', quantity: 1, unitPrice: 32, price: 32 },
+            { name: 'Teste 3', quantity: 7, unitPrice: 1.29, price: 9.03 },
+            { name: 'ffff', quantity: 1, unitPrice: 6, price: 6 },
+          ],
+          unitPrice: null,
+          pricingMode: 'items',
+          deliveryDate: '2026-10-21',
+          notes: null,
+          status: 'in-progress',
+          tags: null,
+          payment: {
+            status: 'partial',
+            method: 'pix',
+            totalAmount: 83.03,
+            paidAmount: 77.03,
+            remainingAmount: 6,
+            paymentDate: '2026-10-21T20:32:14.803Z',
+            notes: 'Estorno/crédito automático de R$ 1.00 por redução do valor pago (de R$ 32.00 para R$ 31.00). Forma pix: R$ 1.00.',
+            history: [
+              { amount: 32, notes: 'Pagamento inicial registrado', date: '2026-10-21T20:32:14.803Z', method: 'pix' },
+              { amount: -1, date: '2026-10-22T01:06:35.628Z', notes: 'Estorno/crédito automático de R$ 1.00 por redução do valor pago (de R$ 32.00 para R$ 31.00). Forma pix: R$ 1.00.', method: 'pix' },
+            ],
+          },
+          isExchange: false,
+          exchangeNotes: null,
+          cardColor: null,
+          exchangeItems: [],
+          version: 19,
+          updatedAt: '2026-10-25T00:40:08.110Z',
+        });
+
+        transaction.update(saleRef, {
+          updatedAt: '2026-10-25T00:40:08.110Z',
+          amount: 83.03,
+          isExchange: false,
+          status: 'in-progress',
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: 'Teste 1, Teste 2, Teste 3 (7x), ffff',
+          quantity: 10,
+          deliveryDate: '2026-10-21',
+          paymentStatus: 'partial',
+          paidAmount: 77.03,
+          paymentMethod: 'pix',
+        });
+      }));
+
+      const updated = await getDoc(orderRef);
+      expect(updated.data()?.quantity).toBe(9);
+      expect(updated.data()?.price).toBe(77.03);
+      expect(updated.data()?.items).toHaveLength(3);
+      expect(updated.data()?.version).toBe(18);
+    });
+
+    it('nega gravação direta de item agregado acima de quatro para exigir validação da Function', async () => {
+      const orderId = 'tS3wHmGaBxCdFABBXF9l-5';
+      const initialOrder = {
+        userId: 'admin',
+        orderNumber: '#2026-0089',
+        customerName: 'Ccesar',
+        customerPhone: '11975526876',
+        productName: 'Teste 1, Teste 2, Teste 3 (7x), ffff',
+        quantity: 10,
+        price: 83.03,
+        pricingMode: 'items',
+        unitPrice: null,
+        items: [
+          { name: 'Teste 1', quantity: 1, unitPrice: 36, price: 36 },
+          { name: 'Teste 2', quantity: 1, unitPrice: 32, price: 32 },
+          { name: 'Teste 3', quantity: 7, unitPrice: 1.29, price: 9.03 },
+          { name: 'ffff', quantity: 1, unitPrice: 6, price: 6 },
+        ],
+        status: 'in-progress',
+        deliveryDate: '2026-10-21',
+        notes: null,
+        tags: null,
+        payment: {
+          status: 'partial',
+          method: 'pix',
+          totalAmount: 83.03,
+          paidAmount: 77.03,
+          remainingAmount: 6,
+          paymentDate: '2026-10-21T20:32:14.803Z',
+          notes: 'Pagamento inicial registrado',
+          history: [{ amount: 32, notes: 'Pagamento inicial registrado', date: '2026-10-21T20:32:14.803Z', method: 'pix' }],
+        },
+        version: 19,
+        createdAt: Timestamp.now(),
+        updatedAt: '2026-10-24T20:49:47.931864000Z',
+        isExchange: false,
+        exchangeNotes: null,
+        cardColor: null,
+        exchangeItems: [],
+        publicTrackingHash: 'hash-xyz',
+        publicTrackingExpiresAt: '2026-12-31T00:00:00.000Z',
+        publicTrackingLinkId: 'link-uuid-123',
+      };
+
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set(initialOrder);
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          orderNumber: '#2026-0089',
+          userId: 'admin',
+          amount: 83.03,
+          isExchange: false,
+          status: 'in-progress',
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: 'Teste 1, Teste 2, Teste 3 (7x), ffff',
+          quantity: 10,
+          deliveryDate: '2026-10-21',
+          paymentStatus: 'partial',
+          paidAmount: 77.03,
+          paymentMethod: 'pix',
+          updatedAt: '2026-10-24T20:49:47.931864000Z',
+        });
+      });
+
+      const adminDb = dbFor('admin');
+      const orderRef = doc(adminDb, `orders/${orderId}`);
+      const saleRef = doc(adminDb, `salesLedger/${orderId}`);
+
+      await assertFails(runTransaction(adminDb, async (transaction) => {
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+
+        transaction.update(orderRef, {
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: 'Teste 1, Teste 2, Teste 3 (7x), ffff, item 5',
+          quantity: 11,
+          price: 93.03,
+          items: [
+            { name: 'Teste 1', quantity: 1, unitPrice: 36, price: 36 },
+            { name: 'Teste 2', quantity: 1, unitPrice: 32, price: 32 },
+            { name: 'Teste 3', quantity: 7, unitPrice: 1.29, price: 9.03 },
+            { name: 'ffff', quantity: 1, unitPrice: 6, price: 6 },
+            { name: 'item 5', quantity: 1, unitPrice: 10, price: 10 },
+          ],
+          unitPrice: null,
+          pricingMode: 'items',
+          deliveryDate: '2026-10-21',
+          notes: null,
+          status: 'in-progress',
+          tags: null,
+          payment: {
+            status: 'partial',
+            method: 'pix',
+            totalAmount: 93.03,
+            paidAmount: 77.03,
+            remainingAmount: 16,
+            paymentDate: '2026-10-21T20:32:14.803Z',
+            notes: 'Estorno/crédito automático de R$ 1.00 por redução do valor pago (de R$ 32.00 para R$ 31.00). Forma pix: R$ 1.00.',
+            history: [
+              { amount: 32, notes: 'Pagamento inicial registrado', date: '2026-10-21T20:32:14.803Z', method: 'pix' },
+              { amount: -1, notes: 'Estorno/crédito automático de R$ 1.00 por redução do valor pago (de R$ 32.00 para R$ 31.00). Forma pix: R$ 1.00.', date: '2026-10-22T01:06:35.628Z', method: 'pix' },
+            ],
+          },
+          isExchange: false,
+          exchangeNotes: null,
+          cardColor: null,
+          exchangeItems: [],
+          version: 20,
+          updatedAt: '2026-10-25T00:40:08.110Z',
+        });
+
+        transaction.update(saleRef, {
+          updatedAt: '2026-10-25T00:40:08.110Z',
+          amount: 93.03,
+          isExchange: false,
+          status: 'in-progress',
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: 'Teste 1, Teste 2, Teste 3 (7x), ffff, item 5',
+          quantity: 11,
+          deliveryDate: '2026-10-21',
+          paymentStatus: 'partial',
+          paidAmount: 77.03,
+          paymentMethod: 'pix',
+        });
+      }));
+
+      const unchanged = await getDoc(orderRef);
+      expect(unchanged.data()?.quantity).toBe(10);
+      expect(unchanged.data()?.items).toHaveLength(4);
+    });
+
+    it('nega gravação direta de pedido com link e dez itens para exigir validação da Function', async () => {
+      const orderId = 'tS3wHmGaBxCdFABBXF9l-10';
+      const initialOrder = {
+        userId: 'admin',
+        orderNumber: '#2026-0090',
+        customerName: 'Ccesar',
+        customerPhone: '11975526876',
+        productName: '10 itens',
+        quantity: 1,
+        price: 10,
+        pricingMode: 'items',
+        unitPrice: null,
+        items: [{ name: 'Item 1', quantity: 1, unitPrice: 10, price: 10 }],
+        status: 'in-progress',
+        deliveryDate: '2026-10-21',
+        notes: null,
+        tags: null,
+        payment: {
+          status: 'paid',
+          method: 'pix',
+          totalAmount: 10,
+          paidAmount: 10,
+          remainingAmount: 0,
+        },
+        version: 1,
+        createdAt: Timestamp.now(),
+        updatedAt: '2026-10-24T20:49:47.931864000Z',
+        isExchange: false,
+        exchangeNotes: null,
+        cardColor: null,
+        exchangeItems: [],
+        publicTrackingHash: 'hash-xyz',
+        publicTrackingExpiresAt: '2026-12-31T00:00:00.000Z',
+        publicTrackingLinkId: 'link-uuid-123',
+      };
+
+      await env.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`orders/${orderId}`).set(initialOrder);
+        await context.firestore().doc(`salesLedger/${orderId}`).set({
+          id: orderId,
+          orderId,
+          orderNumber: '#2026-0090',
+          userId: 'admin',
+          amount: 10,
+          isExchange: false,
+          status: 'in-progress',
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: '10 itens',
+          quantity: 1,
+          deliveryDate: '2026-10-21',
+          paymentStatus: 'paid',
+          paidAmount: 10,
+          paymentMethod: 'pix',
+          updatedAt: '2026-10-24T20:49:47.931864000Z',
+        });
+      });
+
+      const adminDb = dbFor('admin');
+      const orderRef = doc(adminDb, `orders/${orderId}`);
+      const saleRef = doc(adminDb, `salesLedger/${orderId}`);
+
+      const items10 = Array.from({ length: 10 }, (_, i) => ({
+        name: `Item ${i + 1}`,
+        quantity: 1,
+        unitPrice: 10,
+        price: 10,
+      }));
+
+      await assertFails(runTransaction(adminDb, async (transaction) => {
+        await transaction.get(orderRef);
+        await transaction.get(saleRef);
+
+        transaction.update(orderRef, {
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: '10 itens atualizados',
+          quantity: 10,
+          price: 100,
+          items: items10,
+          unitPrice: null,
+          pricingMode: 'items',
+          deliveryDate: '2026-10-21',
+          notes: null,
+          status: 'in-progress',
+          tags: null,
+          payment: {
+            status: 'paid',
+            method: 'pix',
+            totalAmount: 100,
+            paidAmount: 100,
+            remainingAmount: 0,
+            paymentDate: '2026-10-21T20:32:14.803Z',
+            notes: 'Pagamento total',
+            history: null,
+          },
+          isExchange: false,
+          exchangeNotes: null,
+          cardColor: null,
+          exchangeItems: [],
+          version: 2,
+          updatedAt: '2026-10-25T00:40:08.110Z',
+        });
+
+        transaction.update(saleRef, {
+          updatedAt: '2026-10-25T00:40:08.110Z',
+          amount: 100,
+          isExchange: false,
+          status: 'in-progress',
+          customerName: 'Ccesar',
+          customerPhone: '11975526876',
+          productName: '10 itens atualizados',
+          quantity: 10,
+          deliveryDate: '2026-10-21',
+          paymentStatus: 'paid',
+          paidAmount: 100,
+          paymentMethod: 'pix',
+        });
+      }));
+
+      const updated = await getDoc(orderRef);
+      expect(updated.data()?.items).toHaveLength(1);
+      expect(updated.data()?.version).toBe(1);
     });
   });
 });

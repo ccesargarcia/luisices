@@ -7,7 +7,12 @@ const PROVIDER_TIMEZONE = 'America/Los_Angeles'; // Fuso de reset das cotas da A
 
 // Orçamento de tempo por operação (ms)
 const TIMEOUTS = {
-  CHAT_TOTAL_MS: 55000,
+  // Conversa interativa: limita o tempo gasto numa tentativa lenta antes de
+  // avançar para um modelo alternativo, mantendo margem para fallback.
+  CHAT_TOTAL_MS: 30000,
+  CHAT_ATTEMPT_MS: 12000,
+  CHAT_FALLBACK_ATTEMPT_MS: 9000,
+  CHAT_FALLBACK_DELAY_MS: 250,
   VISION_TOTAL_MS: 60000,
   STORE_COPY_TOTAL_MS: 40000,
   FETCH_STREAM_MS: 35000,
@@ -19,12 +24,12 @@ const TIMEOUTS = {
 const MODEL_CONFIG = {
   PRIMARY_CHAT_MODEL: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
   FALLBACK_CHAT_MODELS: [
-    'gemini-3.1-flash-lite',
+    'gemini-3.6-flash',
     'gemini-3.5-flash-lite',
-    'gemini-3-flash-preview',
-    'gemini-3.8-pro',
+    'gemini-3.1-flash-lite',
   ],
   FALLBACK_CHAT_MODEL: 'gemini-3.1-flash-lite',
+  CHAT_THINKING_LEVEL: 'LOW',
   PRIMARY_VISION_MODEL: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
   FALLBACK_VISION_MODEL: 'gemini-3.1-flash-lite',
   MAX_FALLBACK_ATTEMPTS: 3, // Percorre as variantes da Geração 3 em caso de falha

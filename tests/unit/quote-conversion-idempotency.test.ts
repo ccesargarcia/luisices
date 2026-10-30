@@ -173,4 +173,27 @@ describe('Etapa 5: Aprovação Idempotente de Orçamentos (Achado 8)', () => {
 
     expect(mockTransactionSet).not.toHaveBeenCalled();
   });
+
+  it('não sobrescreve o pedido nem incrementa contador se o ID do pedido já existir no fallback', async () => {
+    mockOrderGet.mockReturnValue({
+      exists: () => true,
+      data: () => ({
+        id: 'order-already-exists',
+        orderNumber: '#2026-0001',
+        customerName: 'Cliente Existente',
+      }),
+    });
+
+    const order = await firebaseOrderService.createOrder(
+      { customerName: 'Tentativa de Sobrescrita', price: 999 },
+      undefined,
+      undefined,
+      'order-already-exists'
+    );
+
+    expect(order).toBeDefined();
+    // NÃO deve incrementar contador nem sobrescrever
+    expect(mockTransactionSet).not.toHaveBeenCalled();
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
+  });
 });

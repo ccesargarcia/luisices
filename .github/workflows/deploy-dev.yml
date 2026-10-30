@@ -55,6 +55,8 @@ jobs:
     permissions:
       contents: read
       actions: read
+      checks: read
+      pull-requests: read
     outputs:
       frontend: ${{ steps.targets.outputs.frontend }}
       functions: ${{ steps.targets.outputs.functions }}
@@ -69,6 +71,7 @@ jobs:
       need_frontend_validation: ${{ steps.targets.outputs.need_frontend_validation }}
       has_changes: ${{ steps.targets.outputs.has_changes }}
       mcp_metadata: ${{ steps.targets.outputs.mcp_metadata }}
+      merged_pr_e2e_verified: ${{ steps.pr_checks.outputs.verified }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -96,9 +99,15 @@ jobs:
                 status: 'completed', per_page: 30, page
               });
               for (const run of data.workflow_runs) {
-                const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
-                  ...context.repo, run_id: run.id, per_page: 100
-                });
+                let jobs;
+                try {
+                  jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                    ...context.repo, run_id: run.id, per_page: 100
+                  });
+                } catch (error) {
+                  core.warning(`Não foi possível consultar os jobs do run ${run.id} (HTTP ${error.status || 'desconhecido'}); buscando uma referência anterior.`);
+                  continue;
+                }
                 if (jobs.some(job => job.name === '🚀 Deploy Firebase Functions (Dev)' &&
                   job.conclusion === 'success' && job.steps?.some(step =>
                     step.name === 'Deploy Firebase Functions (Dev)' && step.conclusion === 'success'))) {
@@ -183,6 +192,103 @@ jobs:
               - 'scripts/order-integrity-audit-core.mjs'
               - 'scripts/select-functions-deploy.mjs'
 
+      - name: Reutilizar E2E aprovados da PR mesclada
+        id: pr_checks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.setOutput('verified', 'false');
+            if (context.eventName !== 'push') return;
+
+            try {
+              const { data: pullRequests } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                ...context.repo,
+                commit_sha: context.sha
+              });
+              const baseBranch = context.ref.replace('refs/heads/', '');
+              const mergedPr = pullRequests.find(pr =>
+                pr.merged_at && pr.base.ref === baseBranch && pr.merge_commit_sha === context.sha
+              );
+              if (!mergedPr) {
+                core.info('Nenhuma PR mesclada associada a este push; os testes serão avaliados normalmente.');
+                return;
+              }
+
+              const [mergeCommit, testedCommit] = await Promise.all([
+                github.rest.repos.getCommit({ ...context.repo, ref: context.sha }),
+                github.rest.repos.getCommit({ ...context.repo, ref: mergedPr.head.sha })
+              ]);
+              if (mergeCommit.data.commit.tree.sha !== testedCommit.data.commit.tree.sha) {
+                core.warning(`A árvore do merge da PR #${mergedPr.number} difere da árvore testada; os testes serão repetidos.`);
+                return;
+              }
+
+              const { data } = await github.rest.checks.listForRef({
+                ...context.repo,
+                ref: mergedPr.head.sha,
+                filter: 'latest',
+                per_page: 100
+              });
+              const requiredChecks = ['e2e-tests (1)', 'e2e-tests (2)'];
+              const latestByName = new Map();
+              for (const check of data.check_runs) {
+                if (!latestByName.has(check.name)) latestByName.set(check.name, check);
+              }
+              const allPassed = requiredChecks.every(name => {
+                const check = latestByName.get(name);
+                return check?.status === 'completed' && check.conclusion === 'success';
+              });
+
+              if (!allPassed) {
+                core.warning(`A PR #${mergedPr.number} não tem os dois checks E2E obrigatórios aprovados; os testes serão executados neste push.`);
+                return;
+              }
+
+              const runIds = new Set(requiredChecks.map(name => {
+                const detailsUrl = latestByName.get(name)?.details_url || '';
+                return detailsUrl.match(/\/actions\/runs\/(\d+)\//)?.[1] || '';
+              }));
+              if (runIds.size !== 1 || runIds.has('')) {
+                core.warning('Os checks E2E não pertencem à mesma execução completa; os testes serão repetidos.');
+                return;
+              }
+
+              const { data: workflows } = await github.rest.actions.listRepoWorkflows({
+                ...context.repo,
+                per_page: 100
+              });
+              const e2eWorkflow = workflows.workflows.find(workflow =>
+                workflow.path === '.github/workflows/test-actions.yml'
+              );
+              if (!e2eWorkflow) {
+                core.warning('A workflow E2E completa não foi localizada; os testes serão repetidos.');
+                return;
+              }
+
+              const runId = Number([...runIds][0]);
+              const { data: workflowRun } = await github.rest.actions.getWorkflowRun({
+                ...context.repo,
+                run_id: runId
+              });
+              const belongsToPullRequest = workflowRun.pull_requests?.some(pr =>
+                pr.number === mergedPr.number && pr.head?.sha === mergedPr.head.sha
+              );
+              if (workflowRun.workflow_id !== e2eWorkflow.id
+                || workflowRun.event !== 'pull_request'
+                || workflowRun.status !== 'completed'
+                || workflowRun.conclusion !== 'success'
+                || workflowRun.head_sha !== mergedPr.head.sha
+                || !belongsToPullRequest) {
+                core.warning(`Os checks não vieram de uma execução completa de E2E da PR #${mergedPr.number}; os testes serão repetidos.`);
+                return;
+              }
+
+              core.setOutput('verified', 'true');
+              core.info(`E2E completos da PR #${mergedPr.number} validaram a mesma árvore do merge; serão reutilizados.`);
+            } catch (error) {
+              core.warning(`Não foi possível verificar os checks da PR associada (HTTP ${error.status || 'desconhecido'}); mantendo os testes neste push.`);
+            }
+
       - name: Resolver Alvos e Estratégia de Testes
         id: targets
         env:
@@ -203,6 +309,7 @@ jobs:
           FILTER_MCP_METADATA: ${{ steps.filter.outputs.mcp_metadata }}
           FILTER_CLOUDFLARE_API: ${{ steps.filter.outputs.cloudflare_api }}
           FILTER_CLOUDFLARE_CDN: ${{ steps.filter.outputs.cloudflare_cdn }}
+          MERGED_PR_E2E_VERIFIED: ${{ steps.pr_checks.outputs.verified }}
         run: |
           # 1. Identificar flags na mensagem do commit e inputs
           SKIP_TESTS=false
@@ -213,6 +320,10 @@ jobs:
 
           if [ "$INPUT_SKIP_TESTS" = "true" ] || echo "$COMMIT_MSG" | grep -qiE '\[skip tests\]|\[skip-tests\]'; then
             SKIP_TESTS=true
+          fi
+          if [ "$EVENT_NAME" = "push" ] && [ "$MERGED_PR_E2E_VERIFIED" = "true" ]; then
+            SKIP_TESTS=true
+            echo 'Checks E2E aprovados da PR mesclada serão reutilizados; nenhuma suíte será executada novamente.'
           fi
           if [ "$INPUT_RUN_E2E" = "false" ] && [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             SKIP_E2E=true

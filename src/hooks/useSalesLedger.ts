@@ -15,15 +15,34 @@ export interface DateRange {
   end: Date;
 }
 
-export function getLedgerDateRange(period: LedgerPeriod, customRange?: { start?: string; end?: string }): DateRange {
-  if (period === 'yesterday') return getReportDateRange('today', 1);
-  return getReportDateRange(period, 0, customRange);
+export function getLedgerDateRange(
+  period: LedgerPeriod,
+  customRange?: { start?: string; end?: string },
+  now = new Date(),
+): DateRange {
+  if (period === 'yesterday') return getReportDateRange('today', 1, undefined, now);
+  return getReportDateRange(period, 0, customRange, now);
+}
+
+/** Serialize the same date boundaries used by ledger calculations for Firestore queries. */
+export function getLedgerDateRangeQueryInput(
+  period: LedgerPeriod,
+  customRange?: { start?: string; end?: string },
+  now = new Date(),
+): { start: string; end: string } {
+  const { start, end } = getLedgerDateRange(period, customRange, now);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+export function shouldAutoBackfillLedger(salesCount: number, hasAlreadySynced: boolean, enabled: boolean): boolean {
+  return enabled && salesCount === 0 && !hasAlreadySynced;
 }
 
 export function useSalesLedger(options?: {
   defaultPeriod?: LedgerPeriod;
   teamUserIds?: string[]; // IDs de usuários filtrados pelo AdminTeamFilter
   dateRange?: { start: string; end: string }; // Intervalo opcional para consulta filtrada no Firestore
+  autoBackfill?: boolean;
 }) {
   const { user, userProfile } = useAuth();
   const [allSales, setAllSales] = useState<SaleRecord[]>([]);
@@ -50,6 +69,7 @@ export function useSalesLedger(options?: {
     const isEmployee = userProfile?.role === 'funcionario';
     const startDate = options?.dateRange?.start;
     const endDate = options?.dateRange?.end;
+    const autoBackfillEnabled = options?.autoBackfill !== false;
 
     const baseQuery = startDate && endDate
       ? getSalesLedgerDateRangeQuery(user.uid, isAdmin ? 'all' : 'own', startDate, endDate)
@@ -103,7 +123,7 @@ export function useSalesLedger(options?: {
       setLoading(false);
 
       // Se o ledger estiver vazio e ainda não tiver feito sync, sincroniza pedidos existentes
-      if (list.length === 0 && !hasAutoSyncedRef.current) {
+      if (shouldAutoBackfillLedger(list.length, hasAutoSyncedRef.current, autoBackfillEnabled)) {
         hasAutoSyncedRef.current = true;
         firebaseLedgerService.syncExistingOrdersToLedger(user.uid, isAdmin).catch((err) => {
           console.warn('Erro ao sincronizar pedidos existentes com o ledger:', err);
@@ -152,7 +172,7 @@ export function useSalesLedger(options?: {
     }
 
     return () => unsubscribers.forEach((u) => u());
-  }, [user, userProfile?.role, options?.dateRange?.start, options?.dateRange?.end]);
+  }, [user, userProfile?.role, options?.dateRange?.start, options?.dateRange?.end, options?.autoBackfill]);
 
   // Filtro de equipe (multi-usuário)
   const teamFilteredSales = useMemo(() => {

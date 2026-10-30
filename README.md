@@ -2,7 +2,7 @@
 
 Aplicação de gestão de papelaria personalizada: pedidos, produção, clientes, orçamentos, precificação, galeria, loja pública, atendimento e assistência por IA.
 
-Documentação revisada em **20/10/2026**, com base na versão `1.0.5`. A presença de uma funcionalidade no código não comprova sua configuração ou publicação em um ambiente remoto.
+Documentação de pedidos e publicação revisada em **25/10/2026**, mantendo a versão `1.0.5`. A presença de uma funcionalidade no código não comprova sua configuração ou publicação em um ambiente remoto.
 
 ## Documentação
 
@@ -12,6 +12,7 @@ Documentação revisada em **20/10/2026**, com base na versão `1.0.5`. A presen
 - [Design system e critérios de revisão de UI](design.md)
 - [Funcionalidades e limites operacionais](docs/FUNCIONALIDADES.md)
 - [Arquitetura e dependências](docs/DEPENDENCIAS_E_ARQUITETURA.md)
+- [Pedidos: segurança, limite CEL](docs/SEGURANCA_LIMITE_CEL_PEDIDOS.md) e [recuperação após timeout](docs/IDEMPOTENCIA_PEDIDOS.md)
 - [Copiloto: capacidades e evolução do system prompt](docs/COPILOTO_IA.md)
 - [Backend e funções publicadas pelo código](functions/README.md)
 
@@ -71,7 +72,7 @@ Sem `--dry-run`, remove apenas os diretórios gerados previstos no script, dentr
 | Branch | Ambiente | Workflow principal |
 |---|---|---|
 | `develop` | Desenvolvimento/QA | [deploy-dev.yml](.github/workflows/deploy-dev.yml): seleciona frontend, Functions e regras/índices conforme alterações ou parâmetros |
-| `main` | Produção | [deploy.yml](.github/workflows/deploy.yml): frontend no GitHub Pages; backend tem workflow separado |
+| `main` | Produção | [deploy.yml](.github/workflows/deploy.yml): frontend no GitHub Pages e regras; Functions publicadas automaticamente pelo [workflow de backend](.github/workflows/deploy-functions-manual.yml) quando seus arquivos mudam |
 
 O workflow de DEV decide as validações conforme alterações e parâmetros; não executa obrigatoriamente todos os E2E em cada push. `[skip tests]` pula testes, mas permite deploy. `[skip ci]` evita os workflows de push/pull request; verificações gerenciadas pelo GitHub, como CodeQL, podem continuar.
 
@@ -83,5 +84,6 @@ Os índices são definidos em [firestore.indexes.json](firestore.indexes.json), 
 - O histórico financeiro de clientes usa o ledger; as consultas financeiras do Copiloto ainda usam pedidos. As bases podem divergir após exclusões ou mudanças históricas.
 - O modelo atual de chat WhatsApp associa um telefone a um proprietário. Contatos compartilhados entre parceiros exigem evolução desse modelo.
 - Manifest e ícones estão presentes; o entrypoint desregistra service workers. Não há promessa de funcionamento offline completo.
+- Criação de pedidos e edição financeira exigem as Functions publicadas; a regra bloqueia criação direta. Uma tentativa pendente deve ser confirmada com a mesma chave e dados antes de iniciar outra. A recuperação local cobre reload/reabertura na mesma sessão, sem promessa entre dispositivos.
 
 Detalhes e fontes estão nos guias vinculados acima.

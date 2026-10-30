@@ -20,8 +20,8 @@ describe('IA-06: Cliente Gemini, Resiliência e Política de Tentativas', () => 
 
     const client = new GeminiClient({
       apiKey: 'test-key',
-      primaryModel: 'model-primary',
-      fallbackModel: 'model-fallback',
+      primaryModel: 'gemini-3.8-flash',
+      fallbackModel: 'gemini-3.1-flash-lite',
       fetchFn: mockFetch,
     });
 
@@ -33,7 +33,7 @@ describe('IA-06: Cliente Gemini, Resiliência e Política de Tentativas', () => 
     let callCount = 0;
     const mockFetch = vi.fn().mockImplementation(async (url: string) => {
       callCount++;
-      if (url.includes('deprecated-model')) {
+      if (url.includes('gemini-3.8-flash')) {
         return {
           ok: false,
           status: 404,
@@ -52,15 +52,15 @@ describe('IA-06: Cliente Gemini, Resiliência e Política de Tentativas', () => 
 
     const client = new GeminiClient({
       apiKey: 'test-key',
-      primaryModel: 'deprecated-model',
-      fallbackModel: 'gemini-3.1-flash-lite',
-      fallbackModels: ['gemini-3.1-flash-lite', 'gemini-1.5-flash'],
+      primaryModel: 'gemini-3.8-flash',
+      fallbackModel: 'gemini-3.6-flash',
+      fallbackModels: ['gemini-3.6-flash', 'gemini-3.1-flash-lite'],
       fetchFn: mockFetch,
     });
 
     const res = await client.generateContent({ contents: [] });
     expect(callCount).toBe(2);
-    expect(res.modelUsed).toBe('gemini-3.1-flash-lite');
+    expect(res.modelUsed).toBe('gemini-3.6-flash');
     expect(res.tokens.totalTokens).toBe(120);
   });
 
@@ -68,7 +68,7 @@ describe('IA-06: Cliente Gemini, Resiliência e Política de Tentativas', () => 
     let callCount = 0;
     const mockFetch = vi.fn().mockImplementation(async (url: string) => {
       callCount++;
-      if (url.includes('model-primary')) {
+      if (url.includes('gemini-3.8-flash')) {
         return {
           ok: false,
           status: 503,
@@ -87,14 +87,14 @@ describe('IA-06: Cliente Gemini, Resiliência e Política de Tentativas', () => 
 
     const client = new GeminiClient({
       apiKey: 'test-key',
-      primaryModel: 'model-primary',
-      fallbackModel: 'model-fallback',
+      primaryModel: 'gemini-3.8-flash',
+      fallbackModel: 'gemini-3.1-flash-lite',
       fetchFn: mockFetch,
     });
 
     const res = await client.generateContent({ contents: [] });
     expect(callCount).toBe(2);
-    expect(res.modelUsed).toBe('model-fallback');
+    expect(res.modelUsed).toBe('gemini-3.1-flash-lite');
     expect(res.tokens.totalTokens).toBe(150);
   });
 
@@ -107,8 +107,8 @@ describe('IA-06: Cliente Gemini, Resiliência e Política de Tentativas', () => 
 
     const client = new GeminiClient({
       apiKey: 'test-key',
-      primaryModel: 'bad-model',
-      fallbackModel: 'bad-model-2',
+      primaryModel: 'gemini-3.8-flash',
+      fallbackModel: 'gemini-3.1-flash-lite',
       fetchFn: mockFetch,
     });
 
@@ -117,7 +117,20 @@ describe('IA-06: Cliente Gemini, Resiliência e Política de Tentativas', () => 
       await client.generateContent({ contents: [] }).catch(() => {});
     }
 
-    expect(client.isModelHealthy('bad-model')).toBe(false);
+    expect(client.isModelHealthy('gemini-3.8-flash')).toBe(false);
+  });
+
+  it('deve rejeitar modelos fora da família Gemini 3.x antes de chamar o provedor', async () => {
+    const mockFetch = vi.fn();
+    const client = new GeminiClient({
+      apiKey: 'test-key',
+      primaryModel: 'gemini-2.5-flash',
+      fallbackModel: 'gemini-3.1-flash-lite',
+      fetchFn: mockFetch,
+    });
+
+    await expect(client.generateContent({ contents: [] })).rejects.toThrow('Modelos fora da família Gemini 3.x');
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('deve rejeitar respostas bloqueadas por filtros de segurança (SAFETY)', async () => {

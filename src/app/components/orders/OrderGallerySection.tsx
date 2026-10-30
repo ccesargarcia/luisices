@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { GalleryItem } from '../../types';
 import { GalleryImage } from '../gallery/GalleryImage';
 import { Images, Plus, ZoomIn, X, Loader2 } from 'lucide-react';
@@ -12,6 +12,7 @@ import {
   DialogFooter,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
+import { toast } from 'sonner';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 
@@ -44,12 +45,32 @@ export function OrderGallerySection({
   const [galleryUploadSaving, setGalleryUploadSaving] = useState(false);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => () => {
+    if (galleryUploadPreview) URL.revokeObjectURL(galleryUploadPreview);
+  }, [galleryUploadPreview]);
+
   const handleGalleryFilePick = (f: File) => {
     if (!f.type.startsWith('image/')) return;
     setGalleryUploadFile(f);
     setGalleryUploadPreview(URL.createObjectURL(f));
     if (!galleryUploadTitle) setGalleryUploadTitle(f.name.replace(/\.[^.]+$/, ''));
     setGalleryUploadOpen(true);
+  };
+
+  const closeGalleryUpload = () => {
+    setGalleryUploadOpen(false);
+    setGalleryUploadFile(null);
+    setGalleryUploadTitle('');
+    setGalleryUploadPreview(null);
+  };
+
+  const handleGalleryUploadOpenChange = (open: boolean) => {
+    if (open) {
+      setGalleryUploadOpen(true);
+      return;
+    }
+    if (galleryUploadSaving) return;
+    closeGalleryUpload();
   };
 
   const handleGalleryUploadSave = async () => {
@@ -66,13 +87,12 @@ export function OrderGallerySection({
         orderId,
       });
       onGalleryUpdated([item, ...gallery]);
-      setGalleryUploadOpen(false);
-      setGalleryUploadFile(null);
-      if (galleryUploadPreview) URL.revokeObjectURL(galleryUploadPreview);
-      setGalleryUploadPreview(null);
-      setGalleryUploadTitle('');
+      setGalleryUploadSaving(false);
+      closeGalleryUpload();
+      toast.success('Arte adicionada ao pedido.');
     } catch (err) {
       console.error('Erro ao salvar arte na galeria:', err);
+      toast.error('Não foi possível enviar a arte. Confira sua conexão e tente novamente.');
     } finally {
       setGalleryUploadSaving(false);
     }
@@ -80,7 +100,7 @@ export function OrderGallerySection({
 
   return (
     <div className="border-t pt-4">
-      <div className="flex items-center justify-between gap-3 mb-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-medium text-sm flex items-center gap-2 min-w-0">
           <Images className="size-4 shrink-0" />{' '}
           <span className="truncate">Artes de {customerName}</span>
@@ -89,22 +109,22 @@ export function OrderGallerySection({
           )}
         </h3>
         {canCreate && (
-          <label className="cursor-pointer">
-            <input
-              ref={galleryInputRef}
-              type="file"
-              className="sr-only"
-              accept="image/*"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleGalleryFilePick(f);
-                e.target.value = '';
-              }}
-            />
-            <span className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors cursor-pointer">
-              <Plus className="size-3.5" /> Adicionar arte
-            </span>
-          </label>
+          <Button asChild variant="outline" size="sm" className="shrink-0 whitespace-nowrap">
+            <label className="cursor-pointer">
+              <input
+                ref={galleryInputRef}
+                type="file"
+                className="sr-only"
+                accept="image/*"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleGalleryFilePick(f);
+                  e.target.value = '';
+                }}
+              />
+              <Plus className="size-4" /> Adicionar arte
+            </label>
+          </Button>
         )}
       </div>
 
@@ -141,7 +161,7 @@ export function OrderGallerySection({
       )}
 
       {/* Upload arte — mini dialog */}
-      <Dialog open={galleryUploadOpen} onOpenChange={setGalleryUploadOpen}>
+      <Dialog open={galleryUploadOpen} onOpenChange={handleGalleryUploadOpenChange}>
         <DialogContent size="sm" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
           <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
             <DialogTitle>Adicionar Arte</DialogTitle>
@@ -171,7 +191,7 @@ export function OrderGallerySection({
             <Button
               type="button"
               variant="outline"
-              onClick={() => setGalleryUploadOpen(false)}
+              onClick={closeGalleryUpload}
               disabled={galleryUploadSaving}
             >
               Cancelar

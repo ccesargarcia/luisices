@@ -277,6 +277,14 @@
         { "fieldPath": "createdBy", "order": "ASCENDING" },
         { "fieldPath": "deliveryDate", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "orderTrackingLinks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdByUid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

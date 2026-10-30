@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef, Fragment } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { Link } from 'react-router';
 import { Order, OrderStatus, UserProfile, canAccessArchivedOrders } from '../types';
 import { OrderCard } from '../components/OrderCard';
@@ -37,13 +37,15 @@ import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
+import { orderTrackingService } from '../../services/orderTrackingService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
-import { useSalesLedger } from '../../hooks/useSalesLedger';
+import { getLedgerDateRangeQueryInput, useSalesLedger } from '../../hooks/useSalesLedger';
 import { DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
 import { calculatePaymentBalance } from '../utils/financialMath';
 import { parseLocalDate } from '../utils/date';
 import { exportOrdersToExcel } from '../utils/exportData';
+import { isCachedOrderTrackingLinkValid, type CachedOrderTrackingLink } from '../utils/orderTrackingCache';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -100,13 +102,19 @@ export function Dashboard() {
     teamMembers,
     selectedUserIds,
   } = useFirebaseOrders();
+  const ordersRef = useRef(orders);
+  ordersRef.current = orders;
   const { settings, updateSettings } = useUserSettings();
+  const dashboardLedgerDateRange = useMemo(
+    () => getLedgerDateRangeQueryInput('month'),
+    [],
+  );
   const {
     stats: ledgerStats,
     allSales,
     teamFilteredSales,
     loading: ledgerLoading,
-  } = useSalesLedger({ teamUserIds: selectedUserIds });
+  } = useSalesLedger({ teamUserIds: selectedUserIds, dateRange: dashboardLedgerDateRange, autoBackfill: false });
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -122,6 +130,8 @@ export function Dashboard() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
   const [creatorProfiles, setCreatorProfiles] = useState<UserProfile[]>([]);
+  const [trackingLinksByOrderId, setTrackingLinksByOrderId] = useState<Record<string, CachedOrderTrackingLink>>({});
+  const trackingLinkRequestsRef = useRef(new Map<string, Promise<string | null>>());
   const [viewMode, setViewMode] = useState<'grid' | 'table'>(() => {
     try {
       const saved = localStorage.getItem('orders_view_mode');
@@ -130,6 +140,8 @@ export function Dashboard() {
       return 'grid';
     }
   });
+  const currentUserIdRef = useRef(user?.uid);
+  currentUserIdRef.current = user?.uid;
 
   const handleSetViewMode = (mode: 'grid' | 'table') => {
     setViewMode(mode);
@@ -145,6 +157,97 @@ export function Dashboard() {
     }
     firebaseUserService.listUsers().then(setCreatorProfiles).catch(() => setCreatorProfiles([]));
   }, [userProfile?.role]);
+
+  useEffect(() => {
+    setTrackingLinksByOrderId({});
+    trackingLinkRequestsRef.current.clear();
+  }, [user?.uid]);
+
+  useEffect(() => {
+    setTrackingLinksByOrderId(current => {
+      let changed = false;
+      const next: Record<string, CachedOrderTrackingLink> = {};
+      for (const [orderId, cached] of Object.entries(current)) {
+        const order = orders.find(item => item.id === orderId);
+        if (isCachedOrderTrackingLinkValid(cached, order, user?.uid)) next[orderId] = cached;
+        else changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [orders, user?.uid]);
+
+  useEffect(() => {
+    const nextExpiry = Math.min(...Object.values(trackingLinksByOrderId)
+      .map(cached => cached.expiresAt === null ? Number.POSITIVE_INFINITY : Date.parse(cached.expiresAt))
+      .filter(Number.isFinite));
+    if (!Number.isFinite(nextExpiry)) return;
+
+    const delay = Math.max(0, Math.min(nextExpiry - Date.now(), 2_147_000_000));
+    const timer = window.setTimeout(() => {
+      setTrackingLinksByOrderId(current => {
+        const now = Date.now();
+        let changed = false;
+        const next = Object.fromEntries(Object.entries(current).filter(([, cached]) => {
+          const valid = cached.expiresAt === null || Date.parse(cached.expiresAt) > now;
+          if (!valid) changed = true;
+          return valid;
+        })) as Record<string, CachedOrderTrackingLink>;
+        return changed ? next : { ...current };
+      });
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [trackingLinksByOrderId]);
+
+  const loadTrackingUrlForOrder = useCallback((orderId: string): Promise<string | null> => {
+    const requestingUid = user?.uid;
+    if (!requestingUid) return Promise.resolve(null);
+    const currentOrder = orders.find(order => order.id === orderId);
+    const cached = trackingLinksByOrderId[orderId];
+    if (cached && isCachedOrderTrackingLinkValid(cached, currentOrder, user?.uid)) {
+      return Promise.resolve(cached.url);
+    }
+    if (cached) {
+      setTrackingLinksByOrderId(current => {
+        const next = { ...current };
+        delete next[orderId];
+        return next;
+      });
+    }
+
+    const pending = trackingLinkRequestsRef.current.get(orderId);
+    if (pending) return pending;
+
+    const request = orderTrackingService.getLinkForOrder(orderId)
+      .then((link) => {
+        const latestOrder = ordersRef.current.find(order => order.id === orderId);
+        if (currentUserIdRef.current !== requestingUid || !link?.token || link.revokedAt || (link.expiresAt && Date.parse(link.expiresAt) <= Date.now())) return null;
+        if (latestOrder?.publicTrackingLinkId && latestOrder.publicTrackingLinkId !== link.id) return null;
+        if (!latestOrder?.hasPublicTracking) return null;
+        const base = import.meta.env.BASE_URL || '/';
+        const url = new URL(`${base.replace(/\/$/, '')}/acompanhar/${link.token}`, window.location.origin).toString();
+        setTrackingLinksByOrderId(current => ({ ...current, [orderId]: {
+          url,
+          linkId: link.id,
+          expiresAt: link.expiresAt,
+          userId: requestingUid,
+        } }));
+        return url;
+      })
+      .catch((error) => {
+        console.warn('Não foi possível carregar o link de acompanhamento do pedido:', error);
+        return null;
+      })
+      .finally(() => trackingLinkRequestsRef.current.delete(orderId));
+
+    trackingLinkRequestsRef.current.set(orderId, request);
+    return request;
+  }, [orders, trackingLinksByOrderId, user?.uid]);
+
+  const getCachedTrackingUrlForOrder = useCallback((order: Order | null | undefined): string | undefined => {
+    if (!order) return undefined;
+    const cached = trackingLinksByOrderId[order.id];
+    return cached && isCachedOrderTrackingLinkValid(cached, order, user?.uid) ? cached.url : undefined;
+  }, [trackingLinksByOrderId, user?.uid]);
 
   const currentMonthName = useMemo(() => {
     const name = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date());
@@ -164,6 +267,9 @@ export function Dashboard() {
       createdByName: creatorName,
     });
     setDetailsOpen(true);
+    if (order.hasPublicTracking) {
+      void loadTrackingUrlForOrder(order.id);
+    }
   };
 
   // Rotina silenciosa e idempotente de auto-arquivamento de pedidos concluídos expirados (Hot/Cold Data)
@@ -594,6 +700,8 @@ export function Dashboard() {
           <OrderCard
             key={order.id}
             order={order}
+            trackingUrl={getCachedTrackingUrlForOrder(order)}
+            onLoadTrackingUrl={loadTrackingUrlForOrder}
             isSelected={selectedOrderIds.includes(order.id)}
             onToggleSelect={toggleOrderSelection}
             onClick={() => handleOrderClick(order)}
@@ -1193,6 +1301,12 @@ export function Dashboard() {
 
       <OrderDetailsDialog
         order={selectedOrder}
+        trackingUrl={getCachedTrackingUrlForOrder(selectedOrder)}
+        onTrackingLinkChanged={(orderId) => setTrackingLinksByOrderId(current => {
+          const next = { ...current };
+          delete next[orderId];
+          return next;
+        })}
         open={detailsOpen}
         onOpenChange={(open) => {
           setDetailsOpen(open);

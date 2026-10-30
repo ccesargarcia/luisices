@@ -72,6 +72,7 @@ export interface PaymentHistory {
   date: string;
   method: PaymentMethod;
   notes?: string;
+  count?: number; // Contagem ponderada de transações quando consolidado
 }
 
 export interface Order {
@@ -104,7 +105,7 @@ export interface Order {
   orderNumber?: string;
   isExchange?: boolean;    // Permuta / parceria
   exchangeNotes?: string | null;  // Detalhes da permuta
-  exchangeItems?: ExchangeItem[]; // Itens recebidos na permuta
+  exchangeItems?: ExchangeItem[] | null; // Itens recebidos na permuta
   cardColor?: string | null;      // Cor de destaque do card
   realCost?: number;       // Custo real da produção
   version?: number;        // Versão para controle de concorrência
@@ -127,6 +128,10 @@ export interface Order {
   shippingServiceName?: string | null;
   shippingCost?: number | null;
   shippingUpdatedAt?: string | null;
+  /** Indica apenas se existe um link público ativo; o hash secreto não é exposto ao cliente. */
+  hasPublicTracking?: boolean;
+  publicTrackingLinkId?: string;
+  publicTrackingExpiresAt?: string | null;
 }
 
 export interface OrderItem {
@@ -803,6 +808,7 @@ export interface SaleRecord {
   productName: string;
   quantity: number;
   amount: number; // Valor monetário total
+  isExchange?: boolean; // Permuta não representa faturamento monetário
   paymentStatus: PaymentStatus;
   paidAmount: number;
   paymentMethod?: PaymentMethod | null;
@@ -894,81 +900,6 @@ export interface AiChatMessage {
     tags?: string[];
     aiTags?: string[];
   }> | null;
-}
-
-export interface AiModelQuotaItem {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  isDefault?: boolean;
-  isActive: boolean;
-  daily: {
-    used: number;
-    limit: number | null;
-    percentage: number | null;
-  };
-  rpm: {
-    used: number | null;
-    limit: number | null;
-  };
-  monthly: {
-    used: number | null;
-  };
-  tpmLimit?: number | null;
-  unknownUsageAttempts?: number;
-  liveStatus?: 'ONLINE' | 'QUOTA_EXCEEDED' | 'HIGH_DEMAND' | 'UNAVAILABLE' | 'OFFLINE' | 'DADOS_REGISTRADOS' | 'SEM_DADOS' | 'METRICA_INCOMPLETA' | 'INDISPONIVEL';
-  liveCode?: number | null;
-  liveMessage?: string;
-}
-
-export interface AiRecentLogItem {
-  id: string;
-  model: string;
-  action: string;
-  promptTokens?: number;
-  candidatesTokens?: number;
-  totalTokens?: number;
-  timestamp: string;
-  userId?: string | null;
-}
-
-export interface AiUsageData {
-  success: boolean;
-  activeModel: string;
-  provider: string;
-  resetsAt: string | null;
-  totalDaily: {
-    used: number;
-    limit: number | null;
-    percentage: number | null;
-  };
-  totalMonthly: {
-    used: number;
-    limit: number | null;
-    percentage: number | null;
-  };
-  isAvailable?: boolean;
-  models: AiModelQuotaItem[];
-  recentLogs?: AiRecentLogItem[];
-  totalTokensToday?: number;
-  daily?: {
-    used: number;
-    limit: number | null;
-    percentage: number | null;
-    resetsAt: string | null;
-  };
-  rpm?: {
-    used: number | null;
-    limit: number | null;
-    percentage: number | null;
-  };
-  monthly?: {
-    used: number;
-    limit: number | null;
-    percentage: number | null;
-    resetsAt: string;
-  };
 }
 
 export interface AiCopilotSheetProps {

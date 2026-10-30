@@ -70,6 +70,12 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: node scripts/ensure-mcp-cache-bypass.mjs
 
+      - name: Configurar rate limit WAF para acompanhamento e loja pública
+        if: inputs.target_worker != 'cache'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/ensure-order-tracking-rate-limit.mjs
+
       - name: Aplicar Ajustes de Conformidade & WAF (Desativar BIC / Erro 1010, SSL Strict, DKIM, VPN DNS)
         if: inputs.target_worker != 'cache'
         env:

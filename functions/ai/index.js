@@ -7,7 +7,6 @@ const authorization = require('./authorization');
 const pricing = require('./pricing/pricingCalculator');
 const cache = require('./cache');
 const budget = require('./budget');
-const usage = require('./usage');
 const schemas = require('./schemas');
 const geminiClient = require('./geminiClient');
 const repositories = require('./repositories');
@@ -25,7 +24,7 @@ function createAiServices(adminInstance, apiKey) {
   const client = new geminiClient.GeminiClient({
     apiKey: apiKey || (typeof process.env.GEMINI_API_KEY === 'string' ? process.env.GEMINI_API_KEY : ''),
     primaryModel: config.MODEL_CONFIG.PRIMARY_CHAT_MODEL,
-    fallbackModel: config.MODEL_CONFIG.FALLBACK_CHAT_MODEL,
+    fallbackModels: config.MODEL_CONFIG.FALLBACK_CHAT_MODELS,
   });
 
   const repos = new repositories.AiDataRepositories(db, auth);
@@ -38,7 +37,6 @@ function createAiServices(adminInstance, apiKey) {
     pricing,
     cache: cache.globalAiCache,
     budgetManager: budgetMgr,
-    usage,
     schemas,
     geminiClient: client,
     repositories: repos,
@@ -52,7 +50,6 @@ function createAiServices(adminInstance, apiKey) {
         cache: cache.globalAiCache,
         db,
       }),
-      getAiUsage: handlers.createGetAiUsageHandler({ db }),
       enrichGalleryItemWithAi: handlers.createEnrichGalleryItemHandler({
         geminiClient: client,
         db,
@@ -77,7 +74,6 @@ module.exports = {
   pricing,
   cache,
   budget,
-  usage,
   schemas,
   geminiClient,
   repositories,

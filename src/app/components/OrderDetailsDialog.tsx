@@ -4,7 +4,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Order, OrderItem, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile, canAccessArchivedOrders, canAccessEmails } from '../types';
-import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore, Mail } from 'lucide-react';
+import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore, Mail, Loader2, Link2, Link2Off, MoreHorizontal, AlertTriangle } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
@@ -14,16 +14,28 @@ import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { firebaseGalleryService } from '../../services/firebaseGalleryService';
+import { orderTrackingService } from '../../services/orderTrackingService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
 import { toast } from 'sonner';
 import { parseDecimalMoneyInput } from '../utils/parseDecimalMoneyInput';
 import { formatDecimalMoneyInput } from '../utils/formatDecimalMoneyInput';
 import { reconstructOrderProducts } from '../utils/reconstructOrderProducts';
+import { secureRandomId } from '../utils/random';
+import { loadPendingOrderOperation, savePendingOrderOperation, clearPendingOrderOperation, isDefinitiveOrderRejection, PendingOrderOperation } from '../../services/pendingOrderOperations';
 import { OrderInfoView } from './orders/OrderInfoView';
 import { OrderEditForm, ProductItem, OrderEditState } from './orders/OrderEditForm';
 import { OrderAttachmentsSection } from './orders/OrderAttachmentsSection';
 import { OrderGallerySection } from './orders/OrderGallerySection';
+import { Input } from './ui/input';
+import { Progress } from './ui/progress';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 
 interface OrderDetailsDialogProps {
   order: Order | null;
@@ -33,6 +45,8 @@ interface OrderDetailsDialogProps {
   onDeleteOrder?: (orderId: string) => void;
   onToggleArchive?: (orderId: string, archive: boolean) => void;
   onOrderUpdated?: (order: Order) => void;
+  trackingUrl?: string;
+  onTrackingLinkChanged?: (orderId: string, url: string | null) => void;
 }
 
 const statusColors = {
@@ -49,7 +63,7 @@ const statusLabels = {
   cancelled: 'Cancelado',
 };
 
-export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder, onToggleArchive, onOrderUpdated }: OrderDetailsDialogProps) {
+export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder, onToggleArchive, onOrderUpdated, trackingUrl, onTrackingLinkChanged }: OrderDetailsDialogProps) {
   const { user, userProfile, isAdmin, hasPermission } = useAuth();
   const { settings } = useUserSettings();
   const { teamMembers } = useOrders();
@@ -57,17 +71,30 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
 
   const canArchive = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'create');
   const canUnarchive = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'edit');
+  const canShareTracking = Boolean(order && !order.isArchived && ['pending', 'in-progress'].includes(order.status)
+    && (isAdmin || (hasPermission(p => p.orders?.view ?? false)
+      && (order.userId === user?.uid || order.assignedTo === user?.uid))));
   const [isEditing, setIsEditing] = useState(false);
+  const [editOperationId, setEditOperationId] = useState<string | null>(null);
+  const [hasPendingEdit, setHasPendingEdit] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [attachmentUploadProgress, setAttachmentUploadProgress] = useState(0);
   const [localAttachments, setLocalAttachments] = useState<import('../types').OrderAttachment[]>([]);
   const [customerGallery, setCustomerGallery] = useState<GalleryItem[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [employees, setEmployees] = useState<UserProfile[]>([]);
   const [assigning, setAssigning] = useState(false);
+  const [creatingTrackingLink, setCreatingTrackingLink] = useState(false);
+  const [revokingTrackingLink, setRevokingTrackingLink] = useState(false);
+  const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
+  const [trackingExpiration, setTrackingExpiration] = useState('90');
+  const [trackingLinkActive, setTrackingLinkActive] = useState(Boolean(order?.hasPublicTracking));
+  const [generatedTrackingUrl, setGeneratedTrackingUrl] = useState('');
+  const [generatedTrackingExpiresAt, setGeneratedTrackingExpiresAt] = useState<string | null | undefined>(undefined);
 
   const [editProducts, setEditProducts] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
   const [editProductsBaseline, setEditProductsBaseline] = useState<ProductItem[]>([]);
@@ -153,10 +180,76 @@ Equipe ${settings?.businessName || 'Luisices'}`;
   const formatCurrencyEdit = (v: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
+  const currentTrackingExpiresAt = generatedTrackingExpiresAt !== undefined
+    ? generatedTrackingExpiresAt
+    : order?.publicTrackingExpiresAt;
+  const trackingExpiryLabel = currentTrackingExpiresAt === null
+    ? 'Este link não expira.'
+    : typeof currentTrackingExpiresAt === 'string' && Number.isFinite(Date.parse(currentTrackingExpiresAt))
+      ? `Validade até ${new Intl.DateTimeFormat('pt-BR').format(new Date(currentTrackingExpiresAt))}.`
+      : 'A validade deste link não está disponível.';
+
+  const handleCreateTrackingLink = async () => {
+    if (!order || creatingTrackingLink) return;
+    setCreatingTrackingLink(true);
+    const toastId = toast.loading('Gerando link seguro de acompanhamento...');
+    try {
+      const expirationDays = trackingExpiration === 'never' ? null : Number(trackingExpiration) as 7 | 30 | 90;
+      const link = await orderTrackingService.createLink(order.id, expirationDays);
+      const token = link.token;
+      setGeneratedTrackingExpiresAt(link.expiresAt);
+      const base = import.meta.env.BASE_URL || '/';
+      const url = new URL(`${base.replace(/\/$/, '')}/acompanhar/${token}`, window.location.origin).toString();
+      setGeneratedTrackingUrl(url);
+      onTrackingLinkChanged?.(order.id, url);
+      setTrackingLinkActive(true);
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success('Link copiado. Envie para o cliente acompanhar o pedido.', { id: toastId });
+      } catch {
+        toast.info('Link criado. Copie o endereço exibido abaixo.', { id: toastId });
+      }
+    } catch (error) {
+      console.error('Erro ao gerar link de acompanhamento:', error);
+      const code = (error as { code?: string })?.code;
+      toast.error(code === 'functions/already-exists' || code === 'already-exists'
+        ? 'Este pedido já tem um link ativo. Revogue-o antes de criar outro.'
+        : 'Não foi possível gerar o link de acompanhamento.', { id: toastId });
+    } finally {
+      setCreatingTrackingLink(false);
+    }
+  };
+
+  const handleRevokeTrackingLink = async () => {
+    if (!order || revokingTrackingLink) return;
+    setRevokingTrackingLink(true);
+    try {
+      await orderTrackingService.revokeLink(order.id);
+      setTrackingLinkActive(false);
+      setGeneratedTrackingUrl('');
+      setGeneratedTrackingExpiresAt(undefined);
+      onTrackingLinkChanged?.(order.id, null);
+      toast.success('Link de acompanhamento desativado.');
+    } catch (error) {
+      console.error('Erro ao desativar link de acompanhamento:', error);
+      toast.error('Não foi possível desativar o link.');
+    } finally {
+      setRevokingTrackingLink(false);
+    }
+  };
+
   // Resetar estado de edição sempre que o pedido aberto mudar
   useEffect(() => {
     setIsEditing(false);
-  }, [order?.id]);
+    setEditOperationId(null);
+    setHasPendingEdit(Boolean(user && order && loadPendingOrderOperation(user.uid, `edit:${order.id}`)));
+    setGeneratedTrackingUrl('');
+    setGeneratedTrackingExpiresAt(undefined);
+  }, [order?.id, user?.uid]);
+
+  useEffect(() => {
+    setTrackingLinkActive(Boolean(order?.hasPublicTracking));
+  }, [order?.id, order?.hasPublicTracking]);
 
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [singleCreatorName, setSingleCreatorName] = useState<string | null>(null);
@@ -306,12 +399,28 @@ Equipe ${settings?.businessName || 'Luisices'}`;
 
   const handleEditClick = () => {
     resetEditData();
+    const pending = user && loadPendingOrderOperation(user.uid, `edit:${order.id}`);
+    setHasPendingEdit(Boolean(pending));
+    setEditOperationId(pending ? pending.id : secureRandomId(20));
     setIsEditing(true);
   };
 
   const handleCancelEdit = () => {
     setIsEditing(false);
+    setEditOperationId(null);
     resetEditData();
+  };
+
+  const confirmEdit = async (operation: PendingOrderOperation<{ updates: Partial<Order>; expectedVersion: number }>) => {
+    await firebaseOrderService.updateOrder(order.id, operation.payload.updates, operation.payload.expectedVersion, operation.id);
+    // A replay may confirm an old version; show the actual current order instead
+    // of synthesizing version + 1 or overwriting a later concurrent edit locally.
+    const saved = await firebaseOrderService.getOrderByIdFromServer(order.id);
+    onOrderUpdated?.(saved);
+    if (user) clearPendingOrderOperation(user.uid, `edit:${order.id}`);
+    setHasPendingEdit(false);
+    setEditOperationId(null);
+    setIsEditing(false);
   };
 
   const handleAssign = async (value: string) => {
@@ -330,8 +439,34 @@ Equipe ${settings?.businessName || 'Luisices'}`;
   };
 
   const handleSaveEdit = async () => {
+    if (!user || isSaving) return;
+    const pending = loadPendingOrderOperation<{ updates: Partial<Order>; expectedVersion: number }>(user.uid, `edit:${order.id}`);
     setIsSaving(true);
     try {
+      if (pending) {
+        await confirmEdit(pending);
+        return;
+      }
+      const validProducts = editProducts.filter(p => p.name.trim());
+      if (validProducts.length === 0) {
+        toast.error('Informe pelo menos um produto para o pedido.');
+        return;
+      }
+      if (validProducts.length > 10) {
+        toast.error('O pedido não pode ter mais de 10 produtos.');
+        return;
+      }
+      const productQuantities = validProducts.map(p => Number(p.quantity));
+      if (productQuantities.some(quantity => !Number.isInteger(quantity) || quantity < 1 || quantity > 10000)) {
+        toast.error('A quantidade de cada produto deve ser um número inteiro entre 1 e 10.000.');
+        return;
+      }
+      const totalQuantity = productQuantities.reduce((sum, quantity) => sum + quantity, 0);
+      if (totalQuantity > 10000) {
+        toast.error('A quantidade total do pedido não pode ultrapassar 10.000 itens.');
+        return;
+      }
+
       const parsedPaidAmount = parseDecimalMoneyInput(String(editData.paidAmount || '0'));
       if (parsedPaidAmount === null) {
         toast.error('Informe um valor pago válido, com até duas casas decimais.');
@@ -343,21 +478,19 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       }
       const paidAmt = parsedPaidAmount;
       const price = totalPrice > 0 ? totalPrice : order.price;
+      if (price > 1000000) {
+        toast.error('O valor total do pedido não pode ultrapassar R$ 1.000.000,00.');
+        return;
+      }
       if (paidAmt > price) {
         toast.error('O valor pago não pode ser maior que o total do pedido.');
         return;
       }
       const remainingAmount = price - paidAmt;
 
-      const validProducts = editProducts.filter(p => p.name.trim());
-      if (validProducts.length > 10) {
-        toast.error('O pedido não pode ter mais de 10 produtos.');
-        return;
-      }
       const productName = validProducts
         .map(p => parseInt(p.quantity) > 1 ? `${p.name.trim()} (${p.quantity}x)` : p.name.trim())
         .join(', ');
-      const totalQuantity = validProducts.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
 
       const allHaveExplicitUnitPrice = validProducts.length > 0 && validProducts.every(p => {
         return p.unitPrice.trim() !== '' && parseDecimalMoneyInput(p.unitPrice) !== null;
@@ -427,7 +560,16 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         ? null
         : (existingPayment?.paymentDate || (isFirstPaymentRegistration ? new Date().toISOString() : null));
 
-      const paymentData: any = {
+      const paymentData: any = editData.isExchange ? {
+        status: 'paid',
+        method: null,
+        totalAmount: 0,
+        paidAmount: 0,
+        remainingAmount: 0,
+        paymentDate: null,
+        notes: null,
+        history: null,
+      } : {
         status: resolvedPaymentStatus,
         method: editData.paymentMethod || existingPayment?.method || null,
         totalAmount: price,
@@ -450,7 +592,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           deliveryDate: editData.deliveryDate,
           notes: editData.notes?.trim() ? editData.notes.trim() : null,
           status: editData.status,
-          tags: editTags,
+          tags: editTags.length > 0 ? editTags : null,
           payment: paymentData,
           isExchange: Boolean(editData.isExchange),
           exchangeNotes: editData.isExchange && editData.exchangeNotes?.trim() ? editData.exchangeNotes.trim() : null,
@@ -468,15 +610,24 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                 })
             : [],
         };
-      await firebaseOrderService.updateOrder(order.id, updates, order.version);
-      onOrderUpdated?.({
-        ...order,
-        ...updates,
-        version: (order.version || 1) + 1,
-        updatedAt: new Date().toISOString(),
-      });
-      setIsEditing(false);
+      const opId = editOperationId || secureRandomId(20);
+      if (!editOperationId) setEditOperationId(opId);
+      const operation = savePendingOrderOperation(user.uid, `edit:${order.id}`, {
+        updates, expectedVersion: order.version || 1,
+      }, opId);
+      await confirmEdit(operation);
     } catch (error: any) {
+      if ((!pending && isDefinitiveOrderRejection(error)) || error?.details?.operationState === 'not-applied') {
+        clearPendingOrderOperation(user.uid, `edit:${order.id}`);
+        setHasPendingEdit(false);
+        setEditOperationId(null);
+        if (error?.details?.operationState === 'not-applied') {
+          setIsEditing(false);
+          try { onOrderUpdated?.(await firebaseOrderService.getOrderByIdFromServer(order.id)); } catch { /* The user can refresh later. */ }
+        }
+      } else {
+        setHasPendingEdit(true);
+      }
       console.error('Erro ao atualizar pedido:', error);
       toast.error(error.message || 'Erro ao atualizar pedido');
     } finally {
@@ -485,10 +636,14 @@ Equipe ${settings?.businessName || 'Luisices'}`;
   };
 
   const handleDuplicate = async () => {
-    if (!order) return;
+    if (!order || !user || isDuplicating) return;
+    const scope = `duplicate:${order.id}`;
+    const operation = loadPendingOrderOperation(user.uid, scope)
+      || savePendingOrderOperation(user.uid, scope, { sourceId: order.id });
     setIsDuplicating(true);
     try {
-      await firebaseOrderService.duplicateOrder(order.id);
+      await firebaseOrderService.duplicateOrder(order.id, operation.id);
+      clearPendingOrderOperation(user.uid, scope);
       onOpenChange(false);
     } catch (error) {
       console.error('Erro ao duplicar pedido:', error);
@@ -523,6 +678,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
     const file = e.target.files?.[0];
     if (!file || !order || !user) return;
     setIsUploadingAttachment(true);
+    setAttachmentUploadProgress(0);
     const previewUrl = URL.createObjectURL(file);
     const optimistic: import('../types').OrderAttachment = {
       url: previewUrl,
@@ -532,7 +688,12 @@ Equipe ${settings?.businessName || 'Luisices'}`;
     };
     setLocalAttachments(prev => [...prev, optimistic]);
     try {
-      const attachment = await firebaseStorageService.uploadOrderAttachment(file, user.uid, order.id);
+      const attachment = await firebaseStorageService.uploadOrderAttachment(
+        file,
+        user.uid,
+        order.id,
+        setAttachmentUploadProgress,
+      );
       await firebaseOrderService.addAttachment(order.id, attachment);
       setLocalAttachments(prev => prev.map(a => a.url === previewUrl ? attachment : a));
       URL.revokeObjectURL(previewUrl);
@@ -557,6 +718,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       toast.error(error.message || 'Erro ao enviar arquivo');
     } finally {
       setIsUploadingAttachment(false);
+      setAttachmentUploadProgress(0);
       e.target.value = '';
     }
   };
@@ -576,18 +738,18 @@ Equipe ${settings?.businessName || 'Luisices'}`;
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="2xl" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
         <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+          <div className="flex flex-col gap-2">
             <DialogTitle className="text-base sm:text-lg">
               {isEditing ? 'Editar Pedido' : `Detalhes do Pedido ${order.orderNumber || '#' + order.id}`}
             </DialogTitle>
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               {!isEditing && (
                 <>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => exportOrderPDF(effectiveOrder || order, settings?.businessName)}
-                    className="gap-2"
+                    className="hidden shrink-0 gap-2 sm:inline-flex"
                   >
                     <Download className="size-4" />
                     PDF
@@ -597,11 +759,23 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                       size="sm"
                       variant="outline"
                       onClick={() => setEmailDialogOpen(true)}
-                      className="gap-2"
+                      className="hidden shrink-0 gap-2 sm:inline-flex"
                       title="Enviar detalhes por e-mail"
                     >
                       <Mail className="size-4 text-primary" />
                       E-mail
+                    </Button>
+                  )}
+                  {canShareTracking && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setTrackingDialogOpen(true)}
+                      className="shrink-0 gap-2"
+                      title="Compartilhar uma página segura de acompanhamento com o cliente"
+                    >
+                      <Link2 className="size-4" />
+                      {trackingLinkActive ? 'Gerenciar link' : 'Link do cliente'}
                     </Button>
                   )}
                   {hasPermission(p => p.orders?.create ?? false) && (
@@ -610,7 +784,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                       variant="outline"
                       onClick={handleDuplicate}
                       disabled={isDuplicating}
-                      className="gap-2"
+                      className="hidden shrink-0 gap-2 sm:inline-flex"
                     >
                       <Copy className="size-4" />
                       {isDuplicating ? 'Duplicando...' : 'Duplicar'}
@@ -621,7 +795,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                       size="sm"
                       variant="outline"
                       onClick={handleEditClick}
-                      className="gap-2"
+                      className="shrink-0 gap-2"
                     >
                       <Edit className="size-4" />
                       Editar
@@ -633,7 +807,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                       variant="outline"
                       onClick={handleToggleArchive}
                       disabled={isArchiving}
-                      className="gap-1.5"
+                      className="hidden shrink-0 gap-1.5 sm:inline-flex"
                       title={order.isArchived ? 'Desarquivar este pedido' : 'Arquivar este pedido'}
                     >
                       {order.isArchived ? (
@@ -651,13 +825,53 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                   )}
                 </>
               )}
+              {!isEditing && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0 sm:hidden"
+                      aria-label="Mais ações do pedido"
+                      title="Mais ações do pedido"
+                    >
+                      <MoreHorizontal className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem onSelect={() => exportOrderPDF(effectiveOrder || order, settings?.businessName)}>
+                      <Download className="size-4" /> Exportar PDF
+                    </DropdownMenuItem>
+                    {hasPermission(p => canAccessEmails(p, 'create')) && (
+                      <DropdownMenuItem onSelect={() => setEmailDialogOpen(true)}>
+                        <Mail className="size-4" /> Enviar por e-mail
+                      </DropdownMenuItem>
+                    )}
+                    {hasPermission(p => p.orders?.create ?? false) && (
+                      <DropdownMenuItem disabled={isDuplicating} onSelect={handleDuplicate}>
+                        <Copy className="size-4" /> {isDuplicating ? 'Duplicando...' : 'Duplicar pedido'}
+                      </DropdownMenuItem>
+                    )}
+                    {((order.isArchived && canUnarchive) || (!order.isArchived && canArchive)) && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem disabled={isArchiving} onSelect={handleToggleArchive}>
+                          {order.isArchived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
+                          {isArchiving ? 'Atualizando...' : order.isArchived ? 'Desarquivar pedido' : 'Arquivar pedido'}
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               {order.isArchived && (
                 <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700 flex items-center gap-1 font-medium">
                   <Archive className="size-3" />
                   Arquivado
                 </Badge>
               )}
-              <Badge className={statusColors[order.status]}>
+              <Badge className={`shrink-0 ${statusColors[order.status]}`}>
                 {statusLabels[order.status]}
               </Badge>
             </div>
@@ -670,6 +884,23 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         {isEditing ? (
           /* Modo de Edição */
           <DialogBody className="p-4 sm:p-6">
+            {hasPendingEdit ? (
+              <div className="space-y-4">
+                <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm text-amber-900 dark:text-amber-200 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="size-4 text-amber-600 flex-shrink-0" />
+                    <span>A tentativa anterior de salvar este pedido ainda está pendente de confirmação. Clique em Confirmar para validar o resultado.</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={handleSaveEdit} disabled={isSaving}>
+                    {isSaving && <Loader2 className="size-4 mr-2 animate-spin" />}
+                    {isSaving ? 'Confirmando...' : 'Confirmar edição pendente'}
+                  </Button>
+                  <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving}>Fechar edição</Button>
+                </div>
+              </div>
+            ) : (
             <OrderEditForm
               editData={editData}
               onEditDataChange={setEditData}
@@ -686,6 +917,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
               onSave={handleSaveEdit}
               isSaving={isSaving}
             />
+            )}
           </DialogBody>
         ) : (
           /* Modo de Visualização */
@@ -737,6 +969,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                 attachments={localAttachments}
                 canEdit={hasPermission(p => p.orders?.edit ?? false)}
                 isUploading={isUploadingAttachment}
+                uploadProgress={attachmentUploadProgress}
                 onUploadAttachment={handleUploadAttachment}
                 onRemoveAttachment={handleRemoveAttachment}
               />
@@ -809,6 +1042,64 @@ Equipe ${settings?.businessName || 'Luisices'}`;
           defaultBody={orderEmailBody}
         />
       )}
+
+      <Dialog open={trackingDialogOpen} onOpenChange={setTrackingDialogOpen}>
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle>Acompanhamento do cliente</DialogTitle>
+            <DialogDescription>
+              Compartilhe uma página com o status e a previsão do pedido. Dados pessoais e valores não aparecem nela.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {trackingLinkActive ? (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                <p className="font-medium text-foreground">Há um link ativo para este pedido.</p>
+                <p className="mt-1 text-muted-foreground">{trackingExpiryLabel}</p>
+                <p className="mt-1 text-muted-foreground">Para criar outro link, primeiro revogue este. O pedido mantém somente um link ativo por vez.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Escolha por quanto tempo o link ficará disponível. A validade é verificada pelo servidor.</p>
+                <label className="text-sm font-medium" htmlFor="tracking-expiration">Validade do link</label>
+                <Select value={trackingExpiration} onValueChange={setTrackingExpiration}>
+                  <SelectTrigger id="tracking-expiration"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="7">7 dias</SelectItem>
+                    <SelectItem value="30">30 dias</SelectItem>
+                    <SelectItem value="90">90 dias</SelectItem>
+                    <SelectItem value="never">Sem expiração</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Depois de revogar um link, você poderá criar outro.</p>
+              </div>
+            )}
+
+            {(generatedTrackingUrl || trackingUrl) && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="generated-tracking-url">Link criado</label>
+                <Input id="generated-tracking-url" readOnly value={generatedTrackingUrl || trackingUrl} onFocus={event => event.currentTarget.select()} />
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-between">
+            {trackingLinkActive ? (
+              <div className="flex flex-wrap gap-2">
+                {(generatedTrackingUrl || trackingUrl) && <Button variant="outline" onClick={() => void navigator.clipboard.writeText(generatedTrackingUrl || trackingUrl || '').then(() => toast.success('Link copiado.')).catch(() => toast.error('Não foi possível copiar o link.'))} className="gap-2"><Copy className="size-4" />Copiar link</Button>}
+                <Button variant="destructive" onClick={handleRevokeTrackingLink} disabled={revokingTrackingLink} className="gap-2">
+                  {revokingTrackingLink ? <Loader2 className="size-4 animate-spin" /> : <Link2Off className="size-4" />}
+                  Desativar link
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={handleCreateTrackingLink} disabled={creatingTrackingLink} className="gap-2">
+                {creatingTrackingLink ? <Loader2 className="size-4 animate-spin" /> : <Copy className="size-4" />}
+                {creatingTrackingLink ? 'Criando…' : 'Criar e copiar link'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

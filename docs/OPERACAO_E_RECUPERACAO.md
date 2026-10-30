@@ -8,6 +8,12 @@ O E2E de pedidos cobre preço em reais, pagamento parcial, vários produtos e co
 
 O workflow completo também roda em pull requests para `develop` e `main`. Alterações de frontend e regras passam pelo workflow de desenvolvimento antes do deploy em `develop`.
 
+## Tentativa de pedido sem confirmação
+
+Ao receber timeout, utilize a ação de confirmar a tentativa pendente no modal/calculadora. Ela preserva a chave e o payload e consulta o resultado pela Function; não é uma nova compra. Na edição, a confirmação reconhece o recibo original e depois carrega o pedido atual do servidor. Não limpe a sessão do navegador nem recrie o pedido enquanto o resultado for desconhecido.
+
+A retomada automática limita-se aos fluxos descritos em [Idempotência de pedidos](IDEMPOTENCIA_PEDIDOS.md), na mesma sessão. Em importação, novo dispositivo ou sessão apagada, confira a lista/resultado das linhas e os registros existentes antes de repetir. Anexos e estoque têm operações próprias e precisam de conferência em uma interrupção nesses passos.
+
 ## Auditar pedidos existentes
 
 Configure `.env.local` com a configuração Firebase e as variáveis `FIREBASE_ADMIN_EMAIL` e `FIREBASE_ADMIN_PASSWORD`. A conta precisa ter perfil de administrador ativo.
@@ -59,4 +65,8 @@ Migrações e correções de dados de produção não são executadas pelo merge
 - **Rules ou Functions:** reverta o código para a última versão conhecida como boa e acompanhe o deploy automático acionado pelo merge em `main`. O workflow manual continua disponível para publicação seletiva.
 - **Dados:** interrompa a rotina que causou a alteração e preserve o relatório. A recuperação depende de exportação, backup ou Point-in-Time Recovery previamente habilitado e testado; deploy de código não desfaz gravações do Firestore.
 
+Na entrega que migra criação para Function, um rollback precisa considerar frontend, regras, exports e backend juntos: o cliente antigo pode tentar escrita direta que a regra nova bloqueia. Preserve recibos, chaves e pedidos existentes, pause mutações durante a troca e reconcilie tentativas pendentes antes de retomar. Não apague recibos nem use `reset --hard`/force push para recuperar o ambiente. O plano específico de execução desta entrega é mantido localmente, fora do versionamento.
+
 Após a recuperação, rode o alvo `order-integrity` no CI e confirme um pedido controlado no ambiente de desenvolvimento antes de promover a correção.
+
+Se um deploy foi bloqueado pelos testes e o próximo commit altera apenas testes/documentação, o filtro do último push pode não selecionar o código que ficou sem publicar. Para entregar o conjunto já corrigido em DEV, use o marcador `[deploy all]` no commit ou execute `Deploy to Firebase (Dev)` na `develop` com `deploy_target=all`, testes habilitados e `run_e2e=true`. Confirme os três jobs de publicação; um novo run verde de testes sem esses jobs não comprova entrega.

@@ -161,10 +161,8 @@ describe('Área de Arquivamento e Ciclo de Vida de Pedidos Concluídos', () => {
 
       await firebaseOrderService.duplicateOrder('source-order');
 
-      expect(mockAddDoc).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'orders' }),
-        expect.objectContaining({ version: 1, status: 'pending' })
-      );
+      const savedDoc = mockAddDoc.mock.calls[0]?.[1] || mockTransactionSet.mock.calls.find(call => call[1]?.orderNumber)?.[1];
+      expect(savedDoc).toMatchObject({ version: 1, status: 'pending' });
     });
   });
 

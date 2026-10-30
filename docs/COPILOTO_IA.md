@@ -33,7 +33,7 @@ Alterar somente o prompt não modifica uma resposta que o handler monta diretame
 
 O chat retorna `reply`, `orderDraft`, `whatsappDraft`, `pricingEstimate` e/ou `galleryItems`, conforme a operação. Os botões da UI executam passos posteriores: um rascunho exibido não significa pedido salvo ou mensagem enviada.
 
-Há também `enrichGalleryItemWithAi` e `enrichStoreProductWithAi`, acionados pelos fluxos visuais. Eles não fazem parte das nove ferramentas oferecidas ao modelo do chat. `getAiUsage` consulta o consumo para administração. O handler interno de texto de personalização não é exportado como callable em `functions/index.js`; não anunciá-lo como endpoint disponível.
+Há também `enrichGalleryItemWithAi` e `enrichStoreProductWithAi`, acionados pelos fluxos visuais. Eles não fazem parte das nove ferramentas oferecidas ao modelo do chat. O painel administrativo de consumo foi removido e novas gravações de analytics de tokens foram desativadas. O callable legado `getAiUsage` permanece temporariamente para leitura de dados históricos e não é chamado pelo frontend. O handler interno de texto de personalização não é exportado como callable em `functions/index.js`; não anunciá-lo como endpoint disponível.
 
 ## Orientações aplicadas ao system prompt
 
@@ -60,7 +60,7 @@ Há também `enrichGalleryItemWithAi` e `enrichStoreProductWithAi`, acionados pe
 | Envio na interface | Estados `draft_prepared`, `user_confirmed`, `backend_completed`, `failed` (recusa explícita) e `unconfirmed`; sucesso somente com `success === true`. Callable inclui `requestId` exigido pelo contrato de idempotência existente | Sem retries automáticos. Resultado incerto bloqueia novo envio direto nesse compositor e orienta conferir Atendimento; WhatsApp Web permanece alternativa, sem comprovar envio |
 | Precificação | `contractVersion: 2`, `inputs`, `assumptions`, `requiresReview`; texto e card exibem premissas e origens | Argumento da ferramenta não comprova declaração humana. Simulação é revisável, não orçamento salvo |
 | Contexto | Catálogo vai como dados em parte da mensagem de usuário, separado de `system_instruction`; data atual/fuso gerados no servidor | Essa separação e o prompt não garantem imunidade à injeção; autorização continua no backend |
-| Cache/custo | Chave do chat versionada como `v3-response-contracts`; nenhuma chamada de modelo para explicar estados locais | Limites, fallback, orçamento e telemetria preservados; síntese opcional usa até 8.000 caracteres e é omitida se o conjunto exceder o teto, preservando respostas determinísticas completas |
+| Cache/custo | Chave do chat versionada como `v3-response-contracts`; nenhuma chamada de modelo para explicar estados locais | Limites e orçamento permanecem ativos; analytics detalhados de tokens no Firestore foram desativados; síntese opcional usa até 8.000 caracteres e é omitida se o conjunto exceder o teto, preservando respostas determinísticas completas |
 
 **Achado revalidado:** `dialog.js` já renovava `expiresAt` por 24 horas no modo `app_approval`; a revisão anterior considerou apenas o TTL inicial de `config.js`. Esse comportamento foi preservado e sua constante extraída. Não há janela genérica de 24h/48h: coleta/voz, modo app e encaminhamento de segurança possuem critérios diferentes. O teste do diálogo verifica a transição e compara a validade persistida com a fonte do prompt.
 
@@ -99,19 +99,17 @@ As propostas não estão disponíveis no chat atual. Não incluí-las no prompt 
 
 ## Orçamento e medição
 
-A configuração atual limita histórico a 6 mensagens/10.000 caracteres, entrada a 4.000 caracteres, até 4 chamadas de ferramentas e até 2 rodadas de modelo. A primeira resposta tem teto de 1.536 tokens; a síntese adicional, 768. Há cache local com TTL de 3 minutos para determinadas consultas sem histórico/imagem, além de orçamento persistido. São limites do código, não garantia de consumo exato.
+A configuração atual limita histórico a 6 mensagens/10.000 caracteres, entrada a 4.000 caracteres, até 4 chamadas de ferramentas e até 2 rodadas de modelo. A primeira resposta tem teto de 1.536 tokens; a síntese adicional, 768. Há cache local com TTL de 3 minutos para determinadas consultas sem histórico/imagem, além de orçamento persistido. São limites do código, não garantia de consumo exato. O orçamento é aplicado pelo backend e não depende do dashboard de analytics, que foi removido.
 
 O custo total inclui inferência, eventuais tentativas de fallback, leituras/escritas do Firebase, execução das Functions, imagens e observabilidade. Uma ferramenta que exibe 30 pedidos pode ler muito mais para filtrar/agregar.
 
 Para estimar somente a inferência de texto:
 
-`custo USD = tokens de entrada / 1.000.000 × tarifa de entrada + tokens de saída faturáveis / 1.000.000 × tarifa de saída`
+O custo real por token e as cotas devem ser acompanhados no console de billing/uso da API Gemini. O Luisices não mantém mais estimativas próprias de custo por chamada, pois a tabela pode ficar desatualizada e esses cálculos não representam a cobrança final.
 
-A tabela oficial consultada em 10/10/2026 indica, para **Gemini 3.8 Flash Standard**, US$ 0,75 por milhão de tokens de entrada e US$ 3,75 de saída, incluindo thinking, até 31/12/2026. Para 01/01/2027, a tabela anuncia US$ 1,50 e US$ 7,50. Uma hipótese de 2.000 tokens de entrada e 500 de saída custa US$ 0,003375 por inferência nas tarifas de 2026, antes dos outros custos. Não representa medição do Luisices.
+Para comparar modelos, consulte as fontes oficiais de [tarifas](https://ai.google.dev/gemini-api/docs/pricing) e [modelos](https://ai.google.dev/gemini-api/docs/models). A disponibilidade e o faturamento efetivos dependem do projeto/provedor; o Luisices não replica esses valores em um painel próprio.
 
-Fontes oficiais: [tarifas](https://ai.google.dev/gemini-api/docs/pricing) e [modelos](https://ai.google.dev/gemini-api/docs/models). A disponibilidade e o faturamento efetivos dependem do projeto/provedor. Revalidar a tabela interna antes da mudança de tarifa; registrar preço por modelo e vigência. Não estimar economia percentual sem comparar uso real.
-
-Priorize: prompt compacto; contexto sob demanda; eliminação de consultas repetidas dentro da mesma requisição; respostas determinísticas para somas/status; revisão da política de fallback; medição de latência, tokens, leituras e taxa de erro por intenção. Não é necessário introduzir banco vetorial ou nova infraestrutura para as primeiras melhorias.
+Priorize: prompt compacto; contexto sob demanda; eliminação de consultas repetidas dentro da mesma requisição; respostas determinísticas para somas/status; revisão da política de fallback; medição de latência e taxa de erro no Sentry, sem registrar conteúdo da conversa. Não é necessário introduzir banco vetorial ou nova infraestrutura para as primeiras melhorias.
 
 ## Validação local e próxima validação em DEV
 

@@ -13,7 +13,6 @@ import {
   getDoc,
   getDocFromServer,
   query,
-  where,
   orderBy,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -132,28 +131,31 @@ export class FirebaseUserService {
   async getUserProfile(uid: string, _email?: string, _displayName?: string): Promise<UserProfile | null> {
     try {
       const snap = await getDocFromServer(doc(db, USERS_COLLECTION, uid));
-      if (snap.exists()) return snap.data() as UserProfile;
+      if (snap.exists()) {
+        const profile = snap.data() as UserProfile;
+        // O ID do documento é a identidade canônica. Nunca associe permissões
+        // encontrando outro perfil pelo mesmo e-mail (por exemplo, UID antigo).
+        if (profile.uid && profile.uid !== uid) {
+          console.error('[getUserProfile] UID do perfil diverge do caminho do documento:', uid);
+          return null;
+        }
+        return { ...profile, uid };
+      }
     } catch {
       try {
         const snap = await getDoc(doc(db, USERS_COLLECTION, uid));
-        if (snap.exists()) return snap.data() as UserProfile;
+        if (snap.exists()) {
+          const profile = snap.data() as UserProfile;
+          if (profile.uid && profile.uid !== uid) {
+            console.error('[getUserProfile] UID do perfil em cache diverge do caminho do documento:', uid);
+            return null;
+          }
+          return { ...profile, uid };
+        }
       } catch (localErr) {
         console.warn('[getUserProfile] Falha ao consultar perfil local:', localErr);
       }
     }
-
-    if (_email) {
-      try {
-        const q = query(collection(db, USERS_COLLECTION), where('email', '==', _email.trim().toLowerCase()));
-        const querySnap = await getDocsFromServer(q).catch(() => getDocs(q));
-        if (!querySnap.empty) {
-          return querySnap.docs[0].data() as UserProfile;
-        }
-      } catch (err) {
-        console.warn('[getUserProfile] Falha ao consultar perfil por e-mail:', err);
-      }
-    }
-
     return null;
   }
 

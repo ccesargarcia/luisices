@@ -48,13 +48,11 @@ export class FirebaseAiAgentService {
    * @deprecated A sincronização manual não é mais necessária: o Copiloto agora opera com projeção em memória segura e em tempo real diretamente da coleção `orders`.
    */
   async syncAllOrders(): Promise<{ success: boolean; count: number; message: string }> {
-    const callable = httpsCallable<
-      void,
-      { success: boolean; count: number; message: string }
-    >(functions, 'syncAllOrdersToAiView');
-
-    const result = await callable();
-    return result.data;
+    return {
+      success: true,
+      count: 0,
+      message: 'A sincronização agora é nativa e em tempo real em memória.',
+    };
   }
 
   /**
@@ -79,18 +77,6 @@ export class FirebaseAiAgentService {
     return result.data;
   }
 
-  /**
-   * Consulta a cota e o consumo em tempo real do Gemini API
-   */
-  async getAiUsage(): Promise<import('../app/types').AiUsageData> {
-    const callable = httpsCallable<
-      void,
-      import('../app/types').AiUsageData
-    >(functions, 'getAiUsage');
-
-    const result = await callable();
-    return result.data;
-  }
 }
 
 export const firebaseAiAgentService = new FirebaseAiAgentService();

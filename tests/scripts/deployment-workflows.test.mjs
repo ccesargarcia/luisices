@@ -52,3 +52,40 @@ test('dev deployment publishes indexes before application changes and rules last
   assert.equal(dev.jobs['purge-mcp-cache'].with.target_worker, 'cache');
   assert.ok(dev.jobs['deploy-cloudflare'].needs.includes('cloudflare-validation'));
 });
+
+test('dev deployment reuses successful E2E checks from the merged PR and fails safe without them', async () => {
+  const dev = await workflow('deploy-dev.yml');
+  const detect = dev.jobs['detect-changes'];
+  const checksStep = detect.steps.find(step => step.name === 'Reutilizar E2E aprovados da PR mesclada');
+  const resolveStep = detect.steps.find(step => step.name === 'Resolver Alvos e Estratégia de Testes');
+
+  assert.ok(checksStep, 'expected merged pull request checks to be reused');
+  assert.equal(detect.permissions['pull-requests'], 'read');
+  assert.equal(detect.permissions.checks, 'read');
+  assert.match(checksStep.with.script, /listPullRequestsAssociatedWithCommit/);
+  assert.match(checksStep.with.script, /merge_commit_sha === context\.sha/);
+  assert.match(checksStep.with.script, /getCommit\([\s\S]*mergedPr\.head\.sha/);
+  assert.match(checksStep.with.script, /commit\.tree\.sha !== testedCommit\.data\.commit\.tree\.sha/);
+  assert.match(checksStep.with.script, /filter: 'latest'/);
+  assert.match(checksStep.with.script, /\['e2e-tests \(1\)', 'e2e-tests \(2\)'\]/);
+  assert.match(checksStep.with.script, /detailsUrl\.match\(\/\\\/actions\\\/runs\\\/\(\\d\+\)\\\//);
+  assert.match(checksStep.with.script, /workflow\.path === '\.github\/workflows\/test-actions\.yml'/);
+  assert.match(checksStep.with.script, /workflowRun\.event !== 'pull_request'/);
+  assert.match(checksStep.with.script, /workflowRun\.pull_requests\?\.some/);
+  assert.match(checksStep.with.script, /core\.setOutput\('verified', 'false'\)/);
+  assert.match(checksStep.with.script, /core\.setOutput\('verified', 'true'\)/);
+  assert.match(checksStep.with.script, /mantendo os testes neste push/);
+  assert.equal(resolveStep.env.MERGED_PR_E2E_VERIFIED, '${{ steps.pr_checks.outputs.verified }}');
+  assert.match(resolveStep.run, /MERGED_PR_E2E_VERIFIED.*true/);
+});
+
+test('dev deployment falls back to an older Functions baseline when GitHub API history is unavailable', async () => {
+  const dev = await workflow('deploy-dev.yml');
+  const baselineStep = dev.jobs['detect-changes'].steps.find(step =>
+    step.name === 'Localizar última publicação bem-sucedida das Functions');
+
+  assert.ok(baselineStep, 'expected the Functions baseline lookup step');
+  assert.match(baselineStep.with.script, /try\s*\{[\s\S]*github\.paginate[\s\S]*catch\s*\(error\)/);
+  assert.match(baselineStep.with.script, /core\.warning\([\s\S]*\);\s*continue;/);
+  assert.match(baselineStep.with.script, /core\.setOutput\('sha', ''\)/);
+});

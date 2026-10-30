@@ -1,6 +1,53 @@
 // Only reads objects in this project's bucket. Never fetch arbitrary client URLs.
 const MAX_ATTACHMENT_BYTES = 18 * 1024 * 1024;
 
+const {
+  ALLOWED_ATTACHMENT_MIMES,
+  CANONICAL_EXTENSIONS,
+  COMPATIBLE_EXTENSIONS,
+  detectBufferMime,
+} = require('./fileValidation');
+
+/**
+ * Normaliza o nome do anexo associando uma extensão canônica/compatível coerente com o MIME detectado.
+ * Impede que arquivos mascarados (ex.: 'documento.exe' com bytes de PDF) preservem extensões perigosas ou divergentes.
+ *
+ * @param {string} rawName - Nome fornecido pelo cliente
+ * @param {string} detectedMime - MIME validado estruturalmente no buffer
+ * @returns {string} Nome de arquivo higienizado com extensão compatível
+ */
+function resolveSafeAttachmentFilename(rawName, detectedMime) {
+  const canonicalExt = CANONICAL_EXTENSIONS[detectedMime] || 'bin';
+  const compatibleSet = COMPATIBLE_EXTENSIONS[detectedMime] || new Set();
+
+  if (typeof rawName !== 'string') return `anexo.${canonicalExt}`;
+
+  // Se o nome contiver separadores de diretório (/ ou \), extrai apenas o segmento final (basename)
+  const segments = rawName.split(/[/\\]+/).filter(Boolean);
+  const baseSegment = segments.length ? segments[segments.length - 1] : 'anexo';
+
+  // Sanitizar caracteres de controle e nulos
+  const clean = baseSegment.replace(/[\r\n\0]/g, '').trim();
+
+  const extMatch = clean.match(/\.([a-zA-Z0-9_-]+)$/);
+  const providedExt = extMatch ? extMatch[1].toLowerCase() : '';
+  const rawBase = extMatch ? clean.slice(0, extMatch.index) : clean;
+
+  // Higienizar caracteres no nome base
+  const safeBase = rawBase
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 150) || 'anexo';
+
+  // Se a extensão fornecida for compatível com o MIME real (ex: .jpg ou .jpeg para image/jpeg), preserva
+  if (providedExt && compatibleSet.has(providedExt)) {
+    return `${safeBase}.${providedExt}`;
+  }
+
+  // Caso contrário (extensão ausente, incompatível ou perigosa como .exe), força a extensão canônica
+  return `${safeBase}.${canonicalExt}`;
+}
+
 function attachmentPath(url, bucketName, projectId) {
   const parsed = new URL(url);
   if (parsed.protocol !== 'https:') throw new Error('URL de anexo inválida.');
@@ -68,10 +115,32 @@ async function prepareAttachments({ attachments = [], bucket, db, uid, profile, 
     const [content] = await bucket.file(path, { generation: metadata.generation }).download();
     totalBytes += content.length;
     if (totalBytes > MAX_ATTACHMENT_BYTES) throw new Error('Os anexos juntos não podem ultrapassar 18 MB.');
-    const filename = attachment.name.replace(/[\r\n/\\]/g, '_').slice(0, 200) || 'anexo';
-    result.push({ filename, path, content: content.toString('base64') });
+
+    const detection = detectBufferMime(content);
+    if (!detection.ok) {
+      const safeDisplayName = attachment.name.replace(/[\r\n\0/\\]/g, '_').slice(0, 80) || 'anexo';
+      throw new Error(`O anexo "${safeDisplayName}" possui formato inválido ou não suportado (permitido apenas imagens e PDF).`);
+    }
+
+    const filename = resolveSafeAttachmentFilename(attachment.name, detection.mime);
+    result.push({
+      filename,
+      path,
+      content: content.toString('base64'),
+      contentType: detection.mime,
+      size: content.length,
+    });
   }
   return result;
 }
 
-module.exports = { prepareAttachments, attachmentPath, MAX_ATTACHMENT_BYTES };
+module.exports = {
+  prepareAttachments,
+  attachmentPath,
+  MAX_ATTACHMENT_BYTES,
+  detectBufferMime,
+  resolveSafeAttachmentFilename,
+  ALLOWED_ATTACHMENT_MIMES,
+  CANONICAL_EXTENSIONS,
+  COMPATIBLE_EXTENSIONS,
+};

@@ -21,6 +21,7 @@ import {
   Archive,
   Calculator,
   Code2,
+  Link2,
 } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
@@ -187,6 +188,7 @@ export function Layout() {
       items: [
         { name: 'Clientes', href: '/clientes', icon: Users, check: (p) => p.customers?.view },
         { name: 'Orçamentos', href: '/orcamentos', icon: FileText, check: (p) => p.quotes?.view },
+        { name: 'Links de acompanhamento', href: '/links-acompanhamento', icon: Link2, check: (p) => p.orders?.view },
         { name: 'Permutas & Parcerias', href: '/permutas', icon: ArrowLeftRight, check: (p) => Boolean(p?.exchanges) },
         {
           name: 'Lojinha Online',

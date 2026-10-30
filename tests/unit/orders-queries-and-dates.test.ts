@@ -5,7 +5,7 @@ import {
   isBirthdayThisMonth,
   isBirthdayUpcoming,
 } from '../../src/app/utils/date';
-import { getLedgerDateRange } from '../../src/hooks/useSalesLedger';
+import { getLedgerDateRange, getLedgerDateRangeQueryInput, shouldAutoBackfillLedger } from '../../src/hooks/useSalesLedger';
 import { getSalesLedgerDateRangeQuery, getSalesLedgerQuery } from '../../src/services/firebaseLedgerService';
 
 vi.mock('../../src/lib/firebase', () => ({
@@ -21,6 +21,13 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 describe('Etapa 8: Consultas, Fusos Horários e Paginação (Achados 10, 11 e 18)', () => {
+  it('só executa backfill legado para ledger vazio quando a consulta permite a migração', () => {
+    expect(shouldAutoBackfillLedger(0, false, true)).toBe(true);
+    expect(shouldAutoBackfillLedger(0, false, false)).toBe(false);
+    expect(shouldAutoBackfillLedger(1, false, true)).toBe(false);
+    expect(shouldAutoBackfillLedger(0, true, true)).toBe(false);
+  });
+
   describe('Achado 11: Resolução de fusos horários locais em datas', () => {
     it('formatDateShort deve formatar tanto strings YYYY-MM-DD quanto ISO timestamps sem retornar Invalid Date', () => {
       // YYYY-MM-DD padrão
@@ -80,6 +87,19 @@ describe('Etapa 8: Consultas, Fusos Horários e Paginação (Achados 10, 11 e 18
       expect(range.end.getFullYear()).toBe(2026);
       expect(range.end.getHours()).toBe(23);
       expect(range.end.getMinutes()).toBe(59);
+    });
+
+    it('o intervalo enviado ao Firestore deve coincidir com os mesmos 30 dias usados nos cálculos do Dashboard', () => {
+      const now = new Date('2026-10-29T15:00:00.000Z');
+      const expected = getLedgerDateRange('month', undefined, now);
+      const queryRange = getLedgerDateRangeQueryInput('month', undefined, now);
+
+      expect(queryRange).toEqual({
+        start: expected.start.toISOString(),
+        end: expected.end.toISOString(),
+      });
+      expect(new Date(queryRange.start).getTime()).toBe(new Date('2026-09-29T15:00:00.000Z').getTime());
+      expect(new Date(queryRange.end).getTime()).toBe(now.getTime());
     });
   });
 
@@ -142,14 +162,29 @@ describe('Etapa 8: Consultas, Fusos Horários e Paginação (Achados 10, 11 e 18
     });
 
     it('getSalesLedgerDateRangeQuery deve construir filtros de data corretos', () => {
-      const qAll = getSalesLedgerDateRangeQuery('user-1', 'all', '2026-09-01T00:00:00.000Z', '2026-09-30T23:59:59.999Z');
-      expect(qAll).toBeDefined();
+      const range = getLedgerDateRangeQueryInput('month', undefined, new Date('2026-10-29T15:00:00.000Z'));
+      const qAll = getSalesLedgerDateRangeQuery('user-1', 'all', range.start, range.end);
+      expect(qAll.clauses).toEqual([
+        { field: 'date', op: '>=', val: range.start },
+        { field: 'date', op: '<=', val: range.end },
+        { field: 'date', dir: 'desc' },
+      ]);
 
-      const qOwn = getSalesLedgerDateRangeQuery('user-1', 'own', '2026-09-01T00:00:00.000Z', '2026-09-30T23:59:59.999Z');
-      expect(qOwn).toBeDefined();
+      const qOwn = getSalesLedgerDateRangeQuery('user-1', 'own', range.start, range.end);
+      expect(qOwn.clauses).toEqual([
+        { field: 'userId', op: '==', val: 'user-1' },
+        { field: 'date', op: '>=', val: range.start },
+        { field: 'date', op: '<=', val: range.end },
+        { field: 'date', dir: 'desc' },
+      ]);
 
-      const qAssigned = getSalesLedgerDateRangeQuery('user-1', 'assigned', '2026-09-01T00:00:00.000Z', '2026-09-30T23:59:59.999Z');
-      expect(qAssigned).toBeDefined();
+      const qAssigned = getSalesLedgerDateRangeQuery('user-1', 'assigned', range.start, range.end);
+      expect(qAssigned.clauses).toEqual([
+        { field: 'assignedTo', op: '==', val: 'user-1' },
+        { field: 'date', op: '>=', val: range.start },
+        { field: 'date', op: '<=', val: range.end },
+        { field: 'date', dir: 'desc' },
+      ]);
     });
   });
 
