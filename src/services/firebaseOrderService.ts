@@ -792,6 +792,7 @@ export class FirebaseOrderService {
       hasPublicTracking: Boolean(data.publicTrackingHash)
         && (data.publicTrackingExpiresAt === null
           || (typeof data.publicTrackingExpiresAt === 'string' && Date.parse(data.publicTrackingExpiresAt) > Date.now())),
+      publicTrackingLinkId: typeof data.publicTrackingLinkId === 'string' ? data.publicTrackingLinkId : undefined,
       publicTrackingExpiresAt: typeof data.publicTrackingExpiresAt === 'string' || data.publicTrackingExpiresAt === null
         ? data.publicTrackingExpiresAt
         : undefined,

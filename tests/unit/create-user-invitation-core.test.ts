@@ -151,4 +151,17 @@ describe('createUserInvitationCore', () => {
     await expect(createUserInvitationCore(request({ email: 'cliente@example.com' }), noResend.deps))
       .rejects.toMatchObject({ code: 'failed-precondition' });
   });
+
+  it('não confirma nem audita o convite quando Resend resolve com erro', async () => {
+    const state = setup();
+    state.emailSend.mockResolvedValueOnce({ error: { message: 'Recipient rejected' } });
+
+    await expect(createUserInvitationCore(request({ email: 'cliente@example.com' }), state.deps))
+      .rejects.toMatchObject({ code: 'internal', message: 'Não foi possível enviar o convite por e-mail.' });
+
+    expect(state.deps.logger.error).toHaveBeenCalledWith(
+      '[createUserInvitation] Resend:', JSON.stringify({ message: 'Recipient rejected' }),
+    );
+    expect(state.deps.writeUserAudit).not.toHaveBeenCalled();
+  });
 });

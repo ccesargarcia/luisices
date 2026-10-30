@@ -86,14 +86,16 @@ describe('Sentry Sanitization Suite', () => {
         'mcp.tool': 'create_order', 'mcp.outcome': 'preview',
         'db.query.text': 'customerName = Private Person',
         'http.request.header.authorization': 'Bearer sensitive-token',
+        'http.request.header.x-origin-secret': 'synthetic-origin-secret',
+        'url.query': 'access_token=private-query-token',
         'url.full': 'https://api.example.com/tools/create_order?access_token=private',
         customerName: 'Private Person',
       };
       const streamed = sanitizeSpan({ name: 'mcp.execute', attributes });
       expect(streamed.attributes).toMatchObject({ 'mcp.tool': 'create_order', 'mcp.outcome': 'preview', customerName: '[REDACTED]' });
-      expect(JSON.stringify(streamed)).not.toMatch(/Private Person|sensitive-token|access_token/);
-      const transaction = sanitizeEvent({ spans: [{ description: 'mcp.execute', data: attributes }] });
-      expect(JSON.stringify(transaction)).not.toMatch(/Private Person|sensitive-token|access_token/);
+      expect(JSON.stringify(streamed)).not.toMatch(/Private Person|sensitive-token|synthetic-origin-secret|access_token|private-query-token/);
+      const transaction = sanitizeEvent({ spans: [{ is_segment: true, description: 'mcp.execute', data: attributes }] });
+      expect(JSON.stringify(transaction)).not.toMatch(/Private Person|sensitive-token|synthetic-origin-secret|access_token|private-query-token/);
       expect(sanitizeText('oauth token lui_oauth_at_syntheticsecretvalue')).not.toContain('syntheticsecretvalue');
     });
     it('removes user identity, strips URL query parameters, and cleans exception values', () => {

@@ -133,10 +133,16 @@ export function PublicTrackingLinks() {
     try {
       const idsToDelete = Array.from(selectedLinkIds);
       const result = await orderTrackingService.deleteLinksBatch(idsToDelete);
-      setLinks(current => current.filter(link => !selectedLinkIds.has(link.id)));
-      setSelectedLinkIds(new Set());
+      const failedIds = new Set(result.failedIds);
+      const deletedIds = new Set(idsToDelete.filter(id => !failedIds.has(id)));
+      setLinks(current => current.filter(link => !deletedIds.has(link.id)));
+      setSelectedLinkIds(failedIds);
       setBulkDeleteDialogOpen(false);
-      toast.success(`${result.deletedCount ?? count} link(s) excluído(s) do histórico.`, { id: toastId });
+      if (failedIds.size > 0) {
+        toast.error(`${result.deletedCount} link(s) excluído(s). ${failedIds.size} falharam e continuam selecionados para nova tentativa.`, { id: toastId });
+      } else {
+        toast.success(`${result.deletedCount ?? count} link(s) excluído(s) do histórico.`, { id: toastId });
+      }
     } catch (err) {
       console.error('Falha ao excluir links em massa:', err);
       toast.error('Não foi possível excluir os links selecionados.', { id: toastId });
