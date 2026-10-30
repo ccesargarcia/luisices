@@ -21,9 +21,13 @@ Os jobs não relacionados à mudança são ignorados. O deploy de regras não re
 
 Quando um push em `develop` corresponde exatamente ao merge de uma PR, o workflow só reutiliza a validação se a árvore de arquivos do merge for idêntica à árvore testada e os dois checks obrigatórios (`e2e-tests (1)` e `e2e-tests (2)`) tiverem sido aprovados na mesma execução completa da workflow `test-actions.yml`, cujo evento seja `pull_request` e cujo SHA seja exatamente o da cabeça testada da PR. Nesse caso, unitários/E2E não são repetidos após o merge. Se qualquer validação falhar, faltar, divergir ou não puder ser consultada, os testes normais permanecem antes do deploy. Pushes diretos continuam executando os testes necessários.
 
+Quando a própria workflow `test-actions.yml` é disparada pelo push de merge em `develop`, ela usa a mesma prova (PR mesclada, árvore idêntica, dois shards aprovados na mesma execução) para não repetir a suíte. Pushes diretos, divergências ou falhas de consulta continuam executando os testes.
+
 ## Produção (`main`)
 
 O workflow `.github/workflows/deploy-production.yml` é o único orquestrador automático disparado por push em `main`. Ele não executa novamente E2E/unitários; recebe apenas commits que foram aceitos pela política de proteção de branch.
+
+Na PR de promoção `release/sync-develop-main` para `main`, a workflow `test-actions.yml` também pode reaproveitar a validação já concluída: só pula os shards de testes se o commit da PR for exatamente a junção limpa dos SHAs atuais de `main` e `develop`, e se ambos tiverem uma execução bem-sucedida dos respectivos workflows de deploy (`deploy-production.yml` e `deploy-dev.yml`). Isso evita repetir a suíte completa para uma promoção sem commits adicionais. PRs comuns, branches desatualizadas, merges com resolução manual, ausência de deploy bem-sucedido ou falha na consulta executam os testes normalmente. O job de verificação usa somente permissões de leitura.
 
 O plano identifica alterações desde a última release integralmente bem-sucedida. O seletor `scripts/select-functions-deploy.mjs` calcula as Functions afetadas no ambiente `prod`, excluindo as Functions exclusivas de dev. Se ainda não existir uma release bem-sucedida como referência, o seletor opera sem SHA-base e inclui todas as Functions elegíveis, de forma conservadora.
 
@@ -46,7 +50,7 @@ O YAML não consegue impor sozinho a política de branch. Nas configurações do
 - Proibir push direto e force push em `main`.
 - Não permitir ignorar os checks, exceto por administradores em uma emergência documentada.
 
-O workflow de produção não tenta repetir esses testes. A garantia depende desses requisitos estarem configurados no repositório e de o merge conter o mesmo código validado em `develop`.
+O workflow de produção não repete testes. A reutilização na PR de promoção é fail-safe: só ocorre com a árvore exata do merge e deploys bem-sucedidos nos dois ambientes; se a verificação não puder provar isso, os testes completos rodam. A garantia também depende desses requisitos estarem configurados no repositório e de o merge conter o mesmo código validado em `develop`.
 
 ## Entradas de deploy manual
 

@@ -36,6 +36,30 @@ test('production deployment entrypoints are reusable, with manual dispatch limit
   assert.deepEqual(indexes.on.workflow_dispatch.inputs.environment.options, ['dev']);
 });
 
+test('main promotion reuses tests only after exact main/develop deployments were verified', async () => {
+  const tests = await workflow('test-actions.yml');
+  const verify = tests.jobs['verify-promotion'];
+  const e2e = tests.jobs['e2e-tests'];
+  const trends = tests.jobs['test-trends'];
+
+  assert.match(verify.if, /github\.workflow == 'E2E Tests'/);
+  assert.match(verify.if, /base\.ref == 'main'/);
+  assert.match(verify.if, /head\.ref == 'release\/sync-develop-main'/);
+  assert.match(verify.if, /event_name == 'push'.*ref == 'refs\/heads\/develop'/);
+  assert.deepEqual(verify.permissions, {
+    actions: 'read',
+    checks: 'read',
+    contents: 'read',
+    'pull-requests': 'read',
+  });
+  assert.equal(verify.outputs.reuse_e2e, '${{ steps.verify.outputs.reuse_e2e }}');
+  assert.equal(e2e.needs, 'verify-promotion');
+  assert.match(e2e.if, /always\(\)/);
+  assert.match(e2e.if, /needs\.verify-promotion\.outputs\.reuse_e2e != 'true'/);
+  assert.ok(trends.needs.includes('verify-promotion'));
+  assert.match(trends.if, /reuse_e2e != 'true'/);
+});
+
 test('Functions deployment fetches the previous deployment commit before calculating its delta', async () => {
   const functions = await workflow('deploy-functions-manual.yml');
   const steps = functions.jobs['deploy-functions'].steps;
