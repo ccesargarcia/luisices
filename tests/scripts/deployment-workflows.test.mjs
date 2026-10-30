@@ -51,7 +51,7 @@ test('Functions deployment fetches the previous deployment commit before calcula
   assert.equal(steps[fetchBase].env.FUNCTIONS_BASE_SHA, '${{ steps.functions_base.outputs.sha }}');
   assert.match(steps[fetchBase].run, /git cat-file -e/);
   assert.match(steps[fetchBase].run, /git fetch --no-tags --depth=1 origin/);
-  assert.match(steps[fetchBase].run, /git fetch --no-tags origin main/);
+  assert.match(steps[fetchBase].run, /git fetch --no-tags --unshallow origin main/);
 });
 
 test('dev deployment publishes indexes before application changes and rules last', async () => {
