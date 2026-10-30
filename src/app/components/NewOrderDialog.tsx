@@ -327,6 +327,19 @@ export function NewOrderDialog({
       }
     }
 
+    if (!formData.isExchange && !pendingCreation.current) {
+      const productName = products
+        .filter(product => product.name.trim())
+        .map(product => parseInt(product.quantity, 10) > 1
+          ? `${product.name.trim()} (${product.quantity}x)`
+          : product.name.trim())
+        .join(', ');
+      if (productName.length > 300) {
+        toast.error('A descrição combinada dos produtos deve ter no máximo 300 caracteres.');
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
@@ -552,7 +565,7 @@ export function NewOrderDialog({
       resetForm();
     } catch (err: any) {
       console.error('Erro ao criar pedido:', err);
-      if (!hasUnconfirmedDraft && isDefinitiveOrderRejection(err)) {
+      if (isDefinitiveOrderRejection(err)) {
         clearPendingOrderOperation(user.uid, operationScope);
         pendingCreation.current = null;
         setIdempotencyKey(secureRandomId(20));

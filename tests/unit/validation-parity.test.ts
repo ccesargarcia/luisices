@@ -134,7 +134,7 @@ describe('Paridade de Validação Backend & Frontend (Zero Trust)', () => {
 
       await expect(
         firebaseOrderService.createOrder({ customerName: 'Valido', productName: 'Topo', quantity: -5 })
-      ).rejects.toThrow('A quantidade deve ser um número inteiro entre 1 e 10.000.');
+      ).rejects.toMatchObject({ code: 'invalid-argument', message: 'A quantidade deve ser um número inteiro entre 1 e 10.000.' });
 
       await expect(
         firebaseOrderService.createOrder({ customerName: 'Valido', productName: 'Topo', price: -50 })
@@ -143,6 +143,15 @@ describe('Paridade de Validação Backend & Frontend (Zero Trust)', () => {
       await expect(
         firebaseOrderService.createOrder({ customerName: 'Valido', productName: 'Topo', status: 'invalid-status' as any })
       ).rejects.toThrow('Status do pedido inválido');
+    });
+
+    it('classifica validação local de productName longo como definitiva antes de enviar', async () => {
+      await expect(firebaseOrderService.createOrder({
+        customerName: 'Cliente', productName: 'P'.repeat(301), quantity: 1, price: 100,
+      })).rejects.toMatchObject({
+        code: 'invalid-argument',
+        message: 'Nome do produto deve ter no máximo 300 caracteres.',
+      });
     });
 
     it('firebaseCustomerService rejeita criação e atualização inválida', async () => {

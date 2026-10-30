@@ -248,6 +248,21 @@ function hasOrderPermission(profile, action) {
   return permission === true || permission?.[action] === true;
 }
 
+function hasModulePermission(profile, module, action) {
+  const permission = profile.permissions?.[module];
+  return permission === true || permission?.[action] === true;
+}
+
+function canConvertCatalogOrder(profile) {
+  return profile.role === 'admin' || profile.permissions?.store === true;
+}
+
+function canConvertQuote(profile, quote, uid) {
+  return profile.role === 'admin'
+    || ((quote.userId === uid || profile.role === 'funcionario')
+      && hasModulePermission(profile, 'quotes', 'edit'));
+}
+
 function assertComplexOrderData(next, isExchange) {
   if (typeof next.price !== 'number' || !Number.isFinite(next.price) || next.price < 0 || next.price > 1000000
     || !Number.isSafeInteger(next.quantity) || next.quantity < 1 || next.quantity > 10000) {
@@ -902,6 +917,9 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
     // 2. Validação e Idempotência de catálogo
     let catalogRef = null;
     if (catalogOrderId && typeof catalogOrderId === 'string') {
+      if (!canConvertCatalogOrder(profile)) {
+        throw new HttpsError('permission-denied', 'Você não tem permissão para gerenciar pedidos da lojinha.');
+      }
       catalogRef = db.doc(`catalogOrders/${catalogOrderId}`);
       const catalogSnap = await transaction.get(catalogRef);
       if (!catalogSnap.exists) throw new HttpsError('not-found', 'Pedido da lojinha não encontrado.');
@@ -921,6 +939,9 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
       const quoteSnap = await transaction.get(quoteRef);
       if (!quoteSnap.exists) throw new HttpsError('not-found', 'Orçamento não encontrado.');
       const quote = quoteSnap.data() || {};
+      if (!canConvertQuote(profile, quote, uid)) {
+        throw new HttpsError('permission-denied', 'Você não tem permissão para aprovar este orçamento.');
+      }
       const existingOrderId = quote.convertedOrderId || quote.orderId;
       if (existingOrderId) {
         return { success: true, orderId: String(existingOrderId), alreadyExisted: true };
