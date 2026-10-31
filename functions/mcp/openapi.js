@@ -442,6 +442,26 @@ const TOOLS_METADATA = [
     },
   },
   {
+    name: 'add_order_item',
+    scope: 'orders:update',
+    summary: 'Adicionar Item a um Pedido Existente',
+    description: 'Adiciona um novo produto/item individualmente a um pedido existente, preservando todos os itens atuais e recalculando o total e a quantidade automaticamente. Mostra uma prévia das alterações antes de gravar. Só grave após apresentar as mudanças e receber confirmação explícita do usuário.',
+    requestBody: {
+      type: 'object',
+      required: ['orderNumber', 'name', 'quantity', 'unitPrice'],
+      properties: {
+        orderNumber: { type: 'string', description: 'Número do pedido, por exemplo #2026-0042, ou ID do documento.' },
+        name: { type: 'string', minLength: 1, maxLength: 200, description: 'Nome ou descrição do novo item a ser adicionado.' },
+        quantity: { type: 'integer', minimum: 1, maximum: 10000, description: 'Quantidade do novo item (número inteiro >= 1).' },
+        unitPrice: moneyInput('Preço unitário do novo item em reais (ex: 44,00 ou 44).', { minimum: 0, maximum: 1000000 }),
+        price: moneyInput('Opcional: subtotal do item em reais caso queira fixar um valor total específico.', { minimum: 0, maximum: 10000000 }),
+        expectedVersion: { type: 'integer', minimum: 1, description: 'Versão atual do pedido obtida na consulta. Opcional na prévia; recomendada ao confirmar.' },
+        idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{8,128}$', description: 'Campo interno: gere e preencha em silêncio; nunca peça, mostre ou explique este valor à pessoa.' },
+        confirmed: { type: 'boolean', description: 'Use false (padrão) para gerar a prévia com o item adicionado e o novo total. Use true somente após o usuário confirmar explicitamente.' },
+      },
+    },
+  },
+  {
     name: 'update_order_status',
     scope: 'orders:update',
     summary: 'Atualizar Etapa de Produção',

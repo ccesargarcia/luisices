@@ -31,7 +31,7 @@ const MCP_ASSISTANT_INSTRUCTIONS = [
   'Escreva para a pessoa, não para um sistema: comece pela resposta; use frases curtas e no máximo três tópicos quando ajudarem.',
   'Transforme os resultados das consultas em uma resposta simples. Não copie a saída técnica, não despeje campos e não repita informações que a pessoa já viu.',
   'Ao falar da rotina do ateliê, evite termos como MCP, API, ferramenta, JSON, parâmetro, escopo, versão, chave, código interno ou nome de campo. Use palavras comuns como pedido, etapa, acesso e confirmação; só use termos técnicos quando a pessoa pedir uma explicação técnica.',
-  'Quando a pessoa pedir para editar um pedido identificado, carregue os dados do pedido antes de perguntar detalhes. Em seguida, mostre todas as opções disponíveis — dados do cliente, produtos, quantidades, preços unitários, prazo, tema, observações e etapa quando puder avançar — e deixe claro que ela pode pedir várias mudanças juntas. Não pergunte apenas qual item ou campo quer editar.',
+  'Quando a pessoa pedir para editar um pedido identificado, carregue os dados do pedido antes de perguntar detalhes. Em seguida, mostre todas as opções disponíveis — dados do cliente, produtos, quantidades, preços unitários, prazo, tema, observações e etapa quando puder avançar — e deixe claro que ela pode pedir várias mudanças juntas. Não pergunte apenas qual item ou campo quer editar. Se a pessoa pedir apenas para incluir ou adicionar um produto/item a um pedido existente, use add_order_item informando o número do pedido, nome do item, quantidade e preço unitário.',
   'Nunca mencione idempotência, chaves de repetição ou mecanismos internos para evitar duplicidade. Gere e mantenha esses valores silenciosamente ao chamar as ferramentas; eles nunca são uma tarefa para a pessoa.',
   'Se uma ação falhar, diga em linguagem simples o que aconteceu e qual é o próximo passo seguro. Não invente causas nem diga que algo foi salvo sem confirmação explícita de sucesso.',
   'Antes de criar ou alterar dados, mostre uma prévia curta e aguarde confirmação explícita. Não peça confirmação de novo depois que a pessoa já confirmou a mesma prévia.',
@@ -69,6 +69,8 @@ async function executeToolByName(toolsExecutor, toolName, args, scope) {
       return await toolsExecutor.executeGetOrderEditForm(args, scope);
     case 'update_order':
       return await toolsExecutor.executeUpdateOrder(args, scope);
+    case 'add_order_item':
+      return await toolsExecutor.executeAddOrderItem(args, scope);
     case 'update_order_status':
       return await toolsExecutor.executeUpdateOrderStatus(args, scope);
     case 'update_delivery_details':

@@ -1778,6 +1778,87 @@ class AiToolsExecutor {
     return result;
   }
 
+  /** Adiciona um novo item individualmente a um pedido existente, preservando todos os itens atuais e recalculando o total com precisão. */
+  async executeAddOrderItem(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'edit', 'editar pedidos');
+    const identifier = String(args.orderNumber || '').trim();
+    if (!identifier) {
+      const error = new Error('Informe o número ou ID do pedido.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const name = typeof args.name === 'string' ? args.name.trim() : '';
+    if (!name || name.length > 200) {
+      const error = new Error('Informe o nome do item com até 200 caracteres.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const quantity = Number(args.quantity);
+    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000) {
+      const error = new Error('Informe uma quantidade inteira válida entre 1 e 10000.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const unitPrice = args.unitPrice;
+    if (typeof unitPrice !== 'number' || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1000000) {
+      const error = new Error('Informe um preço unitário válido em reais de até R$ 1.000.000,00.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+
+    const order = await this.repos.getScopedOrderDocument(scope, identifier);
+    if (!order || order.data.deletedAt || order.data.isDeleted) {
+      const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
+      error.code = 'not-found';
+      throw error;
+    }
+
+    const existingItems = Array.isArray(order.data.items) && order.data.items.length > 0
+      ? order.data.items.map((item, index) => ({
+          existingIndex: index,
+          name: String(item.name || item.productName || '').slice(0, 200),
+          quantity: Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+          unitPrice: item.unitPrice !== null && item.unitPrice !== undefined && item.unitPrice !== '' && Number.isFinite(Number(item.unitPrice))
+            ? getStoredItemUnitPrice(item)
+            : (Number(item.quantity) > 0 ? Number(item.price || 0) / Number(item.quantity) : Number(item.price || 0)),
+          ...(item.price !== undefined ? { price: Number(item.price) } : {}),
+        }))
+      : (order.data.productName ? [{
+          existingIndex: 0,
+          name: String(order.data.productName).slice(0, 200),
+          quantity: Number.isSafeInteger(Number(order.data.quantity)) && Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
+          unitPrice: order.data.unitPrice !== null && order.data.unitPrice !== undefined && order.data.unitPrice !== '' && Number.isFinite(Number(order.data.unitPrice)) && Number(order.data.unitPrice) > 0
+            ? Number(order.data.unitPrice)
+            : (Number(order.data.quantity) > 0
+                ? Math.round(((Number(order.data.price ?? order.data.totalPrice ?? 0)) / Number(order.data.quantity)) * 100) / 100
+                : Number(order.data.price ?? order.data.totalPrice ?? 0)),
+          price: Number(order.data.price ?? order.data.totalPrice ?? 0),
+        }] : []);
+
+    if (existingItems.length >= 10) {
+      const error = new Error('O pedido já atingiu o limite máximo de 10 itens.');
+      error.code = 'failed-precondition';
+      throw error;
+    }
+
+    const newItem = {
+      name,
+      quantity,
+      unitPrice: Math.round(unitPrice * 100) / 100,
+      ...(typeof args.price === 'number' && Number.isFinite(args.price) && args.price >= 0 ? { price: Math.round(args.price * 100) / 100 } : {}),
+    };
+
+    const updatedItems = [...existingItems, newItem];
+
+    return await this.executeUpdateOrder({
+      orderNumber: identifier,
+      items: updatedItems,
+      expectedVersion: args.expectedVersion ?? (Number.isSafeInteger(order.data.version) && order.data.version > 0 ? order.data.version : 1),
+      idempotencyKey: args.idempotencyKey,
+      confirmed: args.confirmed,
+    }, scope);
+  }
+
   /** Atualização de etapa com transição monotônica, prévia, versão e idempotência. */
   async executeUpdateOrderStatus(args = {}, scope) {
     requireMcpModulePermission(scope, 'orders', 'edit', 'atualizar a etapa de produção');
