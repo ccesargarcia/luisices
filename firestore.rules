@@ -47,7 +47,21 @@ service cloud.firestore {
 
     function userHasPerm(module, action) {
       return isActiveUser()
-        && (isAdmin() || hasPerm(getEmployeePermissions().get(module, false), action));
+        && (isAdmin() || hasPerm(getEmployeePermissions().get(module, false), action)
+          || (module == 'gallery' && action == 'edit' && legacyGalleryEditPerm()));
+    }
+
+    // Perfis antigos não armazenavam gallery.edit. Mantém a edição existente
+    // apenas para usuários legados com gallery.create, sem conceder a exceção a funcionários
+    // ou a perfis novos que tenham edit explicitamente definido como false.
+    function legacyGalleryEditPerm() {
+      let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
+      let permissions = profile.get('permissions', {});
+      let gallery = permissions.get('gallery', false);
+      return profile.get('role', '') != 'funcionario'
+        && gallery is map
+        && !('edit' in gallery)
+        && hasPerm(gallery, 'create');
     }
 
     function isAssignedEmployeeEditor(assignedTo) {
@@ -767,8 +781,8 @@ service cloud.firestore {
         || employeeHasGalleryPerm('create')) && isValidGalleryItem(request.resource.data);
       allow update: if (
         isAdmin()
-        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('gallery', 'delete'))
-        || employeeHasGalleryPerm('delete')
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('gallery', 'edit'))
+        || employeeHasGalleryPerm('edit')
       ) && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId)
         && isValidGalleryItem(request.resource.data);
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('gallery', 'delete'))

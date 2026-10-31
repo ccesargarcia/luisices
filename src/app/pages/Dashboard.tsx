@@ -327,7 +327,7 @@ export function Dashboard() {
       await firebaseOrderService.deleteOrder(orderId);
       // Preserva histórico se já gerou receita/foi concluído;
       // apenas decrementa do cliente se era um rascunho pendente nunca pago
-      if (order?.customerId && order.price && order.status === 'pending' && (!order.payment || order.payment.status === 'pending')) {
+      if (!order?.isExchange && order?.customerId && order.price && order.status === 'pending' && (!order.payment || order.payment.status === 'pending')) {
         await firebaseCustomerService.decrementCustomerStats(order.customerId, order.price).catch(() => {});
       }
       setDetailsOpen(false);
@@ -721,7 +721,7 @@ export function Dashboard() {
       await Promise.all(
         ordersToDelete.map(async (order) => {
           await firebaseOrderService.deleteOrder(order.id);
-          if (order.customerId && order.price && order.status === 'pending' && (!order.payment || order.payment.status === 'pending')) {
+          if (!order.isExchange && order.customerId && order.price && order.status === 'pending' && (!order.payment || order.payment.status === 'pending')) {
             await firebaseCustomerService.decrementCustomerStats(order.customerId, order.price).catch(() => {});
           }
         }),

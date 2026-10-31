@@ -343,6 +343,14 @@ async function commitOrderFromDraft({
 
     // 3. Construir e salvar o documento de pedido (orders/{orderId})
     const numericPrice = cleanPrice;
+    const resolvedUnitPrice = typeof draft.unitPriceCents === 'number' ? draft.unitPriceCents / 100 : null;
+    const displayUnitPrice = Math.round((numericPrice / cleanQuantity + Number.EPSILON) * 100) / 100;
+    const orderItems = [{
+      name: cleanProduct,
+      quantity: cleanQuantity,
+      unitPrice: displayUnitPrice,
+      price: numericPrice,
+    }];
     const orderData = {
       userId: uid,
       createdByName: profile.displayName || profile.email || uid,
@@ -352,9 +360,10 @@ async function commitOrderFromDraft({
       customerId: null,
       productName: cleanProduct,
       quantity: cleanQuantity,
+      items: orderItems,
       price: numericPrice,
       pricingMode: draft.pricingMode || 'total',
-      unitPrice: typeof draft.unitPriceCents === 'number' ? draft.unitPriceCents / 100 : null,
+      unitPrice: resolvedUnitPrice,
       status: 'pending',
       deliveryDate: cleanDate,
       notes: draft.notes ? String(draft.notes).trim() : `Pedido criado via Alexa (${config.environment})`,
@@ -414,14 +423,21 @@ async function commitOrderFromDraft({
       customerPhone: null,
       productName: orderData.productName,
       quantity: orderData.quantity,
+      items: orderItems,
+      pricingMode: orderData.pricingMode,
+      unitPrice: orderData.unitPrice,
       amount: numericPrice,
       totalAmount: numericPrice,
       paidAmount: 0,
+      paymentMethod: null,
+      isExchange: false,
+      isDeletedFromOrders: false,
       status: 'pending',
       paymentStatus: 'pending',
       date: new Date().toISOString(),
       deliveryDate: orderData.deliveryDate || null,
-      tags: ['Alexa', 'Voz'],
+      notes: orderData.notes || null,
+      tags: orderData.tags,
       source: 'alexa',
       createdBy: uid,
       createdAt: FieldValue.serverTimestamp(),

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { initializeTestEnvironment, assertSucceeds, assertFails, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { ref, uploadBytes } from 'firebase/storage';
+import { ref, uploadBytes, updateMetadata } from 'firebase/storage';
 
 let env: RulesTestEnvironment;
 
@@ -26,6 +26,7 @@ beforeEach(async () => {
       active: true,
       permissions: {
         orders: { create: true, edit: true, view: true, delete: true },
+        gallery: { view: true, create: true, edit: true, delete: true },
         emails: { create: true, view: true },
       },
     });
@@ -129,5 +130,74 @@ describe('Hardening de Storage: validação de contentType em anexos de pedidos'
       new Uint8Array([1, 2, 3]),
       { contentType: 'application/pdf' },
     ));
+  });
+});
+
+describe('Autorização granular de criação e edição no Storage', () => {
+  async function setOwnerPermissions(permissions: Record<string, unknown>) {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc('userProfiles/owner').update({ permissions });
+    });
+  }
+
+  it('permissão create permite novos arquivos, mas não sobrescrever anexos ou imagens existentes', async () => {
+    await setOwnerPermissions({
+      orders: { view: true, create: true, edit: false, delete: false },
+      gallery: { view: true, create: true, edit: false, delete: false },
+    });
+    const ownerStorage = env.authenticatedContext('owner').storage();
+    const suffix = `${Date.now()}-${Math.random()}`;
+    const orderFile = ref(ownerStorage as any, `users/owner/orders/create-only-${suffix}/file.png`);
+    const galleryFile = ref(ownerStorage as any, `users/owner/gallery/create-only-${suffix}.png`);
+
+    await assertSucceeds(uploadBytes(orderFile, new Uint8Array([1]), { contentType: 'image/png' }));
+    await assertFails(uploadBytes(orderFile, new Uint8Array([2]), { contentType: 'image/png' }));
+    await assertSucceeds(uploadBytes(galleryFile, new Uint8Array([1]), { contentType: 'image/png' }));
+    await assertFails(uploadBytes(galleryFile, new Uint8Array([2]), { contentType: 'image/png' }));
+  });
+
+  it('permissão edit permite editar metadados existentes, mas não enviar ou substituir conteúdo', async () => {
+    await setOwnerPermissions({
+      orders: { view: true, create: false, edit: true, delete: false },
+      gallery: { view: true, create: false, edit: true, delete: false },
+    });
+    const suffix = `${Date.now()}-${Math.random()}`;
+    const orderPath = `users/owner/orders/edit-only-${suffix}/file.png`;
+    const galleryPath = `users/owner/gallery/edit-only-${suffix}.png`;
+    await env.withSecurityRulesDisabled(async (context) => {
+      const storage = context.storage();
+      await uploadBytes(ref(storage as any, orderPath), new Uint8Array([1]), { contentType: 'image/png' });
+      await uploadBytes(ref(storage as any, galleryPath), new Uint8Array([1]), { contentType: 'image/png' });
+    });
+
+    const ownerStorage = env.authenticatedContext('owner').storage();
+    await assertSucceeds(updateMetadata(ref(ownerStorage as any, orderPath), { cacheControl: 'public,max-age=3600' }));
+    await assertFails(uploadBytes(ref(ownerStorage as any, `users/owner/orders/new-edit-only-${suffix}/file.png`), new Uint8Array([1]), { contentType: 'image/png' }));
+    await assertSucceeds(updateMetadata(ref(ownerStorage as any, galleryPath), { cacheControl: 'public,max-age=3600' }));
+    await assertFails(uploadBytes(ref(ownerStorage as any, `users/owner/gallery/new-edit-only-${suffix}.png`), new Uint8Array([1]), { contentType: 'image/png' }));
+    await assertFails(uploadBytes(ref(ownerStorage as any, orderPath), new Uint8Array([2]), { contentType: 'image/png' }));
+    await assertFails(uploadBytes(ref(ownerStorage as any, galleryPath), new Uint8Array([2]), { contentType: 'image/png' }));
+  });
+
+  it('mantém edição de metadados para proprietário legado sem gallery.edit, mas nega edit=false explícito', async () => {
+    const suffix = `${Date.now()}-${Math.random()}`;
+    const legacyPath = `users/owner/gallery/legacy-${suffix}.png`;
+    const revokedPath = `users/owner/gallery/revoked-${suffix}.png`;
+    await setOwnerPermissions({
+      gallery: { view: true, create: true, delete: true },
+    });
+    await env.withSecurityRulesDisabled(async (context) => {
+      await uploadBytes(ref(context.storage() as any, legacyPath), new Uint8Array([1]), { contentType: 'image/png' });
+    });
+    const ownerStorage = env.authenticatedContext('owner').storage();
+    await assertSucceeds(updateMetadata(ref(ownerStorage as any, legacyPath), { cacheControl: 'public,max-age=3600' }));
+
+    await setOwnerPermissions({
+      gallery: { view: true, create: true, edit: false, delete: true },
+    });
+    await env.withSecurityRulesDisabled(async (context) => {
+      await uploadBytes(ref(context.storage() as any, revokedPath), new Uint8Array([1]), { contentType: 'image/png' });
+    });
+    await assertFails(updateMetadata(ref(ownerStorage as any, revokedPath), { cacheControl: 'public,max-age=3600' }));
   });
 });

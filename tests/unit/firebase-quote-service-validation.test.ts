@@ -84,4 +84,33 @@ describe('Validação do serviço de orçamentos', () => {
       }),
     );
   });
+
+  it('permite que funcionário ativo com permissão quotes.edit atualize orçamento de outro usuário', async () => {
+    mocks.getDoc.mockImplementation(async (ref: { path: string }) => {
+      if (ref.path === 'quotes/quote-other') {
+        return {
+          exists: () => true,
+          id: 'quote-other',
+          data: () => ({ ...storedQuote, userId: 'another-owner' }),
+        };
+      }
+      if (ref.path === 'userProfiles/owner-1') {
+        return {
+          exists: () => true,
+          data: () => ({
+            role: 'funcionario',
+            active: true,
+            permissions: { quotes: { view: true, edit: true, delete: false } },
+          }),
+        };
+      }
+      return { exists: () => false, data: () => undefined };
+    });
+
+    await firebaseQuoteService.updateQuote('quote-other', { notes: 'Revisado pela equipe' });
+    expect(mocks.updateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'quote-other' }),
+      expect.objectContaining({ notes: 'Revisado pela equipe' }),
+    );
+  });
 });

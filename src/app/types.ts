@@ -314,7 +314,7 @@ export interface Permission {
   customers: ModulePermission;
   products: ModulePermission;
   quotes: ModulePermission;
-  gallery: { view: boolean; create: boolean; delete: boolean };
+  gallery: ModulePermission;
   reports: boolean;
   exchanges: boolean;
   settings: boolean;
@@ -630,7 +630,7 @@ export const ADMIN_PERMISSIONS: Permission = {
   customers: { view: true, create: true, edit: true, delete: true },
   products:  { view: true, create: true, edit: true, delete: true },
   quotes:    { view: true, create: true, edit: true, delete: true },
-  gallery:   { view: true, create: true, delete: true },
+  gallery:   { view: true, create: true, edit: true, delete: true },
   reports:   true,
   exchanges: true,
   settings:  true,
@@ -651,7 +651,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   customers: { view: true, create: true, edit: true, delete: true },
   products:  { view: true, create: true, edit: true, delete: true },
   quotes:    { view: true, create: true, edit: true, delete: true },
-  gallery:   { view: true, create: true, delete: true },
+  gallery:   { view: true, create: true, edit: true, delete: true },
   reports:   true,
   exchanges: true,
   settings:  true,
@@ -673,7 +673,7 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   customers: { view: true, create: false, edit: false, delete: false },
   products:  { view: true, create: false, edit: false, delete: false },
   quotes:    { view: true, create: false, edit: false, delete: false },
-  gallery:   { view: true, create: true, delete: false },
+  gallery:   { view: true, create: true, edit: false, delete: false },
   reports:   false,
   exchanges: false,
   settings:  false,

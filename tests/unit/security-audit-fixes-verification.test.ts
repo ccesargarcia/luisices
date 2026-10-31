@@ -53,6 +53,23 @@ describe('Auditoria de Segurança 2026: Verificação de Regras e Imutabilidade'
     // Cenário 5: Funcionário sem permissão de delete -> BLOQUEADO
     expect(canDeleteOrderAttachment('user-func', 'user-dono', false, true, { orders: { edit: true } })).toBe(false);
   });
+
+  it('garante que firestore.rules exige gallery.edit para atualizar itens da galeria e gallery.delete apenas para excluir', async () => {
+    const fs = await import('fs');
+    const rulesRaw = fs.readFileSync('firestore.rules', 'utf-8');
+    const galleryBlockMatch = rulesRaw.match(/match\s+\/gallery\/\{itemId\}\s*\{([\s\S]*?)\n\s*\}/);
+    expect(galleryBlockMatch).toBeTruthy();
+    const galleryBlock = galleryBlockMatch![1];
+
+    const updateRuleMatch = galleryBlock.match(/allow\s+update:\s*if([\s\S]*?);/);
+    expect(updateRuleMatch).toBeTruthy();
+    const updateRule = updateRuleMatch![1];
+
+    expect(updateRule).toContain("userHasPerm('gallery', 'edit')");
+    expect(updateRule).toContain("employeeHasGalleryPerm('edit')");
+    expect(updateRule).not.toContain("userHasPerm('gallery', 'delete')");
+    expect(updateRule).not.toContain("employeeHasGalleryPerm('delete')");
+  });
 });
 
 // ----------------------------------------------------------------------------

@@ -175,6 +175,7 @@ const PERMISSION_CATEGORIES: ModuleCategory[] = [
         actions: [
           { key: 'view', label: 'Ver Galeria' },
           { key: 'create', label: 'Enviar Fotos' },
+          { key: 'edit', label: 'Editar e Vincular Fotos' },
           { key: 'delete', label: 'Excluir Fotos' },
         ],
       },
@@ -352,7 +353,7 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
   function toggleGalleryField(field: keyof Permission['gallery']) {
     const next = deepClonePermission(permissions);
     if (!next.gallery) {
-      next.gallery = { view: false, create: false, delete: false };
+      next.gallery = { view: false, create: false, edit: false, delete: false };
     }
     next.gallery[field] = !next.gallery[field];
     onChange(next);
@@ -374,12 +375,13 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
         delete: targetState,
       };
     } else if (modConfig.type === 'gallery') {
-      const current = next.gallery || { view: false, create: false, delete: false };
-      const allEnabled = current.view && current.create && current.delete;
+      const current = next.gallery || { view: false, create: false, edit: false, delete: false };
+      const allEnabled = current.view && current.create && current.edit && current.delete;
       const targetState = !allEnabled;
       next.gallery = {
         view: targetState,
         create: targetState,
+        edit: targetState,
         delete: targetState,
       };
     }
@@ -408,7 +410,7 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
       next.products = { view: false, create: false, edit: false, delete: false };
       next.storeProducts = { view: false, create: false, edit: false, delete: false };
       next.quotes = { view: false, create: false, edit: false, delete: false };
-      next.gallery = { view: false, create: false, delete: false };
+      next.gallery = { view: false, create: false, edit: false, delete: false };
       next.users = { view: false, create: false, edit: false, delete: false };
       next.emails = { view: false, create: false, edit: false, delete: false };
       next.pricing = { view: false, create: false, edit: false, delete: false };
@@ -427,7 +429,7 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
       next.products = { view: true, create: false, edit: false, delete: false };
       next.storeProducts = { view: true, create: false, edit: false, delete: false };
       next.quotes = { view: true, create: false, edit: false, delete: false };
-      next.gallery = { view: true, create: false, delete: false };
+      next.gallery = { view: true, create: false, edit: false, delete: false };
       next.users = { view: false, create: false, edit: false, delete: false };
       next.emails = { view: true, create: false, edit: false, delete: false };
       next.pricing = { view: true, create: false, edit: false, delete: false };
@@ -451,9 +453,9 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
       return { count, total: 4, all: count === 4 };
     }
     if (modConfig.type === 'gallery') {
-      const current = permissions.gallery || { view: false, create: false, delete: false };
-      const count = [current.view, current.create, current.delete].filter(Boolean).length;
-      return { count, total: 3, all: count === 3 };
+      const current = permissions.gallery || { view: false, create: false, edit: false, delete: false };
+      const count = [current.view, current.create, current.edit, current.delete].filter(Boolean).length;
+      return { count, total: 4, all: count === 4 };
     }
     return { count: 0, total: 0, all: false };
   }

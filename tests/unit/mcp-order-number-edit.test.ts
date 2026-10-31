@@ -439,5 +439,71 @@ describe('MCP edição de pedidos pelo número apresentado ao usuário', () => {
       expect(preview.preview.itemChanges.changed[0].action).toBe('unchanged');
       expect(preview.preview.itemChanges.changed[0].before.name).toBe(longName);
     });
+
+    it('atualiza totalSpent do cliente ao editar preço via MCP e garante replay idempotente em pagamentos e entregas', async () => {
+      const executor = createExecutor({
+        ...storedOrder,
+        customerId: 'cust-42',
+        price: 80,
+        totalPrice: 80,
+      } as any);
+      (executor as any)._records.set('customers/cust-42', { id: 'cust-42', userId: 'owner', totalOrders: 1, totalSpent: 80 });
+
+      await executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: 'Adicional',
+        quantity: 1,
+        unitPrice: 20,
+        expectedVersion: 3,
+        confirmed: true,
+        idempotencyKey: 'idemp-cust-delta-test',
+      }, scope, scope.mcpScopes);
+
+      expect((executor as any)._records.get('customers/cust-42')).toMatchObject({
+        totalOrders: 1,
+        totalSpent: 100,
+      });
+
+      // update_delivery_details não deve converter idempotencyKey ausente em "undefined:delivery"
+      await expect(executeScopedToolByName(executor, 'update_delivery_details', {
+        orderNumber: '#2026-0042',
+        notes: 'Entregar na portaria',
+        expectedVersion: 4,
+        confirmed: true,
+      }, scope, scope.mcpScopes)).rejects.toThrow();
+
+      // register_order_payment deve permitir replay idempotente mesmo após quitar o saldo (remainingAmount === 0)
+      const paymentScope = {
+        ...scope,
+        mcpScopes: ['orders:update', 'payments:write'],
+      };
+      const firstPayment = await executor.executeRegisterOrderPayment({
+        orderNumber: '#2026-0042',
+        amount: 100,
+        method: 'pix',
+        idempotencyKey: 'pay-full-balance-key-1',
+        confirmed: true,
+      }, paymentScope);
+      expect(firstPayment).toMatchObject({
+        success: true,
+        paidAmount: 100,
+        remainingAmount: 0,
+        status: 'paid',
+      });
+      expect((executor as any)._records.get('orders/order-doc-id/paymentEvents/pay-full-balance-key-1')).toMatchObject({
+        type: 'payment',
+        amount: 100,
+        method: 'pix',
+      });
+
+      const replayPayment = await executor.executeRegisterOrderPayment({
+        orderNumber: '#2026-0042',
+        amount: 100,
+        method: 'pix',
+        idempotencyKey: 'pay-full-balance-key-1',
+        confirmed: true,
+      }, paymentScope);
+      expect(replayPayment).toEqual(firstPayment);
+    });
   });
 });

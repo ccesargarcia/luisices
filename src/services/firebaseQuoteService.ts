@@ -159,14 +159,31 @@ export class FirebaseQuoteService {
     return this.mapDoc(ref.id, snap.data()!);
   }
 
+  private async hasCrossUserQuotePermission(userId: string, action: 'view' | 'edit' | 'delete'): Promise<boolean> {
+    const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
+    if (!profileSnap || typeof profileSnap.exists !== 'function' || !profileSnap.exists()) return false;
+    const profile = profileSnap.data() || {};
+    if (profile.active === false) return false;
+    if (profile.role === 'admin') return true;
+    if (profile.role === 'funcionario') {
+      const quotesPerm = profile.permissions?.quotes;
+      if (quotesPerm === true) return true;
+      if (quotesPerm && typeof quotesPerm === 'object' && quotesPerm[action] === true) return true;
+    }
+    return false;
+  }
+
   // ─── Read all for user ────────────────────────────────────────────────────────
   async getQuotes(): Promise<Quote[]> {
     const userId = this.getCurrentUserId();
-    const q = query(
-      collection(db, QUOTES_COLLECTION),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
+    const canViewAll = await this.hasCrossUserQuotePermission(userId, 'view').catch(() => false);
+    const q = canViewAll
+      ? query(collection(db, QUOTES_COLLECTION), orderBy('createdAt', 'desc'))
+      : query(
+          collection(db, QUOTES_COLLECTION),
+          where('userId', '==', userId),
+          orderBy('createdAt', 'desc')
+        );
     const snap = await getDocs(q);
     return snap.docs.map((d) => this.mapDoc(d.id, d.data()));
   }
@@ -178,9 +195,8 @@ export class FirebaseQuoteService {
     if (!snap.exists()) throw new Error(`Orçamento ${id} não encontrado`);
     const data = snap.data();
     if (data.userId !== userId) {
-      // Verificar se é admin
-      const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
-      if (!profileSnap.exists() || profileSnap.data().role !== 'admin') {
+      const allowed = await this.hasCrossUserQuotePermission(userId, 'view');
+      if (!allowed) {
         throw new Error('Você não tem permissão para acessar este orçamento');
       }
     }
@@ -197,8 +213,8 @@ export class FirebaseQuoteService {
     const mathFields: (keyof Quote)[] = ['items', 'discount', 'discountType', 'totalPrice'];
     this.validateQuotePayload(merged, false, mathFields.some((field) => changes[field] !== undefined));
     if (quoteData.userId !== userId) {
-      const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
-      if (!profileSnap.exists() || profileSnap.data().role !== 'admin') {
+      const allowed = await this.hasCrossUserQuotePermission(userId, 'edit');
+      if (!allowed) {
         throw new Error('Você não tem permissão para editar este orçamento');
       }
     }
@@ -252,8 +268,8 @@ export class FirebaseQuoteService {
     if (!quoteSnap.exists()) throw new Error(`Orçamento ${id} não encontrado`);
     const quoteData = quoteSnap.data();
     if (quoteData.userId !== userId) {
-      const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
-      if (!profileSnap.exists() || profileSnap.data().role !== 'admin') {
+      const allowed = await this.hasCrossUserQuotePermission(userId, 'delete');
+      if (!allowed) {
         throw new Error('Você não tem permissão para excluir este orçamento');
       }
     }

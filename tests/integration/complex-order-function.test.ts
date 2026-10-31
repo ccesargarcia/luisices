@@ -167,6 +167,75 @@ describe('Cloud Function: atualização segura de pedidos com muitos itens', () 
     },
   );
 
+  it('edita pedido com subtotal exato, preço unitário arredondado e remove id legado do item', async () => {
+    const id = `complex-order-rounded-unit-${Date.now()}`;
+    const orderRef = adminDb.doc(`orders/${id}`);
+    const saleRef = adminDb.doc(`salesLedger/${id}`);
+    const initial = {
+      ...newOrder(id),
+      quantity: 120,
+      price: 92.19,
+      productName: 'Etiqueta',
+      unitPrice: null,
+      pricingMode: 'total',
+      items: [{ id: 'legacy-item-id', name: 'Etiqueta', quantity: 120, unitPrice: 0.77, price: 92.19 }],
+      payment: { status: 'pending', method: null, totalAmount: 92.19, paidAmount: 0, remainingAmount: 92.19 },
+    };
+    await Promise.all([
+      orderRef.set(initial),
+      adminDb.doc('userProfiles/complex-owner').set({ role: 'user', active: true, permissions: { orders: { edit: true } } }),
+      saleRef.set({ id, orderId: id, userId: initial.userId, amount: 92.19, quantity: 120, status: 'pending', paymentStatus: 'pending', paidAmount: 0 }),
+    ]);
+
+    const invalidItemPrice = {
+      auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+      data: {
+        orderId: id,
+        expectedVersion: 1,
+        updates: {
+          items: [{ name: 'Etiqueta', quantity: 120, unitPrice: 0.76, price: 92.19 }],
+          quantity: 120,
+          price: 92.19,
+        },
+      },
+    };
+    await expect(handleUpdateComplexOrder(invalidItemPrice, adminDb))
+      .rejects.toThrow(/preço unitário deve corresponder ao subtotal/);
+
+    const result = await handleUpdateComplexOrder({
+      auth: { uid: 'complex-owner', token: { auth_time: 1 } },
+      data: {
+        orderId: id,
+        expectedVersion: 1,
+        operationId: 'edit-rounded-unit-add-item',
+        updates: {
+          items: [
+            { id: 'legacy-item-id', name: 'Etiqueta', quantity: 120, unitPrice: 0.77, price: 92.19 },
+            { name: 'Embalagem', quantity: 1, unitPrice: 10, price: 10 },
+          ],
+          quantity: 121,
+          price: 102.19,
+          unitPrice: null,
+          pricingMode: 'items',
+          payment: { status: 'pending', method: null, totalAmount: 102.19, paidAmount: 0, remainingAmount: 102.19 },
+        },
+      },
+    }, adminDb);
+
+    expect(result.success).toBe(true);
+    const [savedOrder, savedSale] = await Promise.all([orderRef.get(), saleRef.get()]);
+    expect(savedOrder.data()).toMatchObject({
+      quantity: 121,
+      price: 102.19,
+      items: [
+        { name: 'Etiqueta', quantity: 120, unitPrice: 0.77, price: 92.19 },
+        { name: 'Embalagem', quantity: 1, unitPrice: 10, price: 10 },
+      ],
+    });
+    expect(savedOrder.data()?.items[0]).not.toHaveProperty('id');
+    expect(savedSale.data()).toMatchObject({ amount: 102.19, quantity: 121 });
+  });
+
   it('rejeita total divergente, usuário sem permissão e versão desatualizada sem gravar alterações', async () => {
     const id = `complex-order-denial-${Date.now()}`;
     const orderRef = adminDb.doc(`orders/${id}`);
