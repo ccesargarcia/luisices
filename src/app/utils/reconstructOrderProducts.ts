@@ -35,29 +35,89 @@ export function reconstructOrderProducts(
     });
   }
 
-  const names = productName.split(/,(?!\d)/).map(name => name.trim()).filter(Boolean);
+  const names = (productName || '')
+    .split(/(?:,(?!\d)|\n+|;\s*|\s+\+\s+)/)
+    .map(name => name.trim())
+    .filter(Boolean);
+
+  const pricePatterns = [
+    /(?:[-–—]\s*|\s+)(?:(?:no|ao)\s+valor\s+de|valor\s+de|valor:|preço\s+de|preço:)\s*(?:R\$\s*)?(\d+(?:[.,]\d{1,2})?)(?:\s*(?:reais|cada|\/un|unidade|por\s+unidade))?/i,
+    /(?:[-–—]\s*|\s+)(?:a|por|de)\s+(?:R\$\s*)(\d+(?:[.,]\d{1,2})?)(?:\s*(?:reais|cada|\/un|unidade|por\s+unidade))?/i,
+    /(?:[-–—]\s*|\s+)(\d+(?:[.,]\d{1,2})?)\s*(?:reais\s+cada|cada|\/un|por\s+unidade)/i,
+    /(?:[-–—]\s*|\s+)(?:R\$\s*|unit[.:]?\s*|cada\s*)(\d+(?:[.,]\d{1,2})?)(?:\s*(?:reais|cada|\/un|unidade|por\s+unidade))?/i,
+    /(?:[-–—]\s+)(\d+(?:[.,]\d{1,2})?)(?:\s*(?:reais|\/un|unidade))?$/i,
+  ];
+
   const rows = names.map(rawName => {
     let cleanName = rawName;
     let extractedUnitPrice: number | null = null;
 
-    // Detect embedded price in item string (e.g. "Caderno (2x) - R$ 50,00", "Caderno R$ 50 (2x)", "Caneca - 35,00")
-    const pricePattern = /(?:[-–—]\s*|\s+)(?:R\$\s*|unit[.:]?\s*|cada\s*|valor:\s*)(\d+(?:[.,]\d{1,2})?)/i;
-    const priceMatch = cleanName.match(pricePattern);
-    if (priceMatch) {
-      const parsed = parseDecimalMoneyInput(priceMatch[1]);
-      if (parsed !== null && parsed > 0) {
-        extractedUnitPrice = parsed;
-        cleanName = cleanName.replace(priceMatch[0], '').trim();
+    for (const pat of pricePatterns) {
+      const priceMatch = cleanName.match(pat);
+      if (priceMatch) {
+        const parsed = parseDecimalMoneyInput(priceMatch[1]);
+        if (parsed !== null && parsed > 0) {
+          extractedUnitPrice = parsed;
+          cleanName = cleanName.replace(priceMatch[0], '').trim();
+          break;
+        }
       }
     }
+    cleanName = cleanName.replace(/(?:[-–—]\s*|\s+)(?:cada|reais|no valor de)$/i, '').trim();
 
-    const match = cleanName.match(/^(.+?)\s*\((\d+)x\)$/);
+    let quantity = names.length === 1 ? orderQuantity : 1;
+    let match: RegExpMatchArray | null = null;
+    const packageUnitList = 'itens?|items?|unidades?|un|peças?|pcs|caixas?|cx|pacotes?|pct|latas?|garrafas?|pares|conjuntos?';
+    const packageUnitRegex = new RegExp(`^(\\d+)\\s+(?:${packageUnitList})\\s+de\\s+(.+)$`, 'i');
+    const packageWithNounRegex = new RegExp(`^(\\d+)\\s+(?:${packageUnitList})\\s+(.+)$`, 'i');
+    const packageOnlyRegex = new RegExp(`^(\\d+)\\s+(${packageUnitList})$`, 'i');
+
+    if ((match = cleanName.match(/^(.+?)\s*\((\d+)x\)$/i))) {
+      quantity = parseInt(match[2], 10);
+      cleanName = match[1].trim();
+    } else if ((match = cleanName.match(/^(.+?)\s*\((\d+)\s*(?:un(?:idades?)?|itens?|items?|pcs|peças?)\)$/i))) {
+      quantity = parseInt(match[2], 10);
+      cleanName = match[1].trim();
+    } else if ((match = cleanName.match(/^(.+?)\s*[-–—]\s*(\d+)x$/i))) {
+      quantity = parseInt(match[2], 10);
+      cleanName = match[1].trim();
+    } else if ((match = cleanName.match(/^(\d+)x\s+(.+)$/i))) {
+      quantity = parseInt(match[1], 10);
+      cleanName = match[2].trim();
+    } else if ((match = cleanName.match(packageUnitRegex))) {
+      quantity = parseInt(match[1], 10);
+      cleanName = match[2].trim();
+    } else if ((match = cleanName.match(packageWithNounRegex))) {
+      quantity = parseInt(match[1], 10);
+      cleanName = match[2].trim();
+    } else if ((match = cleanName.match(packageOnlyRegex))) {
+      quantity = parseInt(match[1], 10);
+      cleanName = match[2].trim();
+    } else if (names.length > 1 && (match = cleanName.match(/^(\d{1,3})\s+(.+)$/i))) {
+      quantity = parseInt(match[1], 10);
+      cleanName = match[2].trim();
+    }
+
     return {
-      name: match ? match[1].trim() : cleanName,
-      quantity: match ? Number.parseInt(match[2], 10) : names.length === 1 ? orderQuantity : 1,
+      name: cleanName,
+      quantity,
       extractedUnitPrice,
     };
   });
+
+  // Infer missing unit price when exactly one row is missing its price and all other rows have known extracted unit prices
+  const rowsMissingPrice = rows.filter(r => r.extractedUnitPrice === null);
+  if (rowsMissingPrice.length === 1 && rows.length > 1) {
+    const knownTotalCents = rows
+      .filter(r => r.extractedUnitPrice !== null)
+      .reduce((sum, r) => sum + Math.round(r.extractedUnitPrice! * 100) * r.quantity, 0);
+    const orderTotalCents = Math.round(orderPrice * 100);
+    const remainingCents = orderTotalCents - knownTotalCents;
+    const targetRow = rowsMissingPrice[0];
+    if (remainingCents > 0 && targetRow.quantity > 0 && remainingCents % targetRow.quantity === 0) {
+      targetRow.extractedUnitPrice = (remainingCents / targetRow.quantity) / 100;
+    }
+  }
 
   const quantity = rows.reduce((sum, row) => sum + row.quantity, 0) || orderQuantity || 1;
   const average = orderPrice / quantity;

@@ -1381,6 +1381,26 @@ class AiToolsExecutor {
       throw error;
     }
     const statusAliases = { pending: 'pending', pendente: 'pending', received: 'pending', recebido: 'pending', in_contact: 'pending', 'in-progress': 'in-progress', in_progress: 'in-progress', em_producao: 'in-progress', 'em produção': 'in-progress', 'em producao': 'in-progress', 'em-andamento': 'in-progress', em_andamento: 'in-progress', producao: 'in-progress', produção: 'in-progress', completed: 'completed', concluido: 'completed', concluído: 'completed', delivered: 'completed', entregue: 'completed', pronto: 'completed', finished: 'completed', cancelled: 'cancelled', canceled: 'cancelled', cancelado: 'cancelled', cancelada: 'cancelled' };
+    const hasStoredItems = Array.isArray(order.data.items) && order.data.items.length > 0;
+    const resolvedItems = hasStoredItems
+      ? order.data.items.map((item, existingIndex) => ({
+          existingIndex,
+          name: String(item.name || item.productName || '').slice(0, 200),
+          quantity: Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+          unitPrice: item.unitPrice !== null && item.unitPrice !== undefined && item.unitPrice !== '' && Number.isFinite(Number(item.unitPrice))
+            ? getStoredItemUnitPrice(item)
+            : (Number(item.quantity) > 0 ? Number(item.price || 0) / Number(item.quantity) : Number(item.price || 0)),
+        }))
+      : (order.data.productName ? [{
+          existingIndex: 0,
+          name: String(order.data.productName).slice(0, 200),
+          quantity: Number.isSafeInteger(Number(order.data.quantity)) && Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
+          unitPrice: order.data.unitPrice !== null && order.data.unitPrice !== undefined && order.data.unitPrice !== '' && Number.isFinite(Number(order.data.unitPrice)) && Number(order.data.unitPrice) > 0
+            ? Number(order.data.unitPrice)
+            : (Number(order.data.quantity) > 0
+                ? Math.round(((Number(order.data.price ?? order.data.totalPrice ?? 0)) / Number(order.data.quantity)) * 100) / 100
+                : Number(order.data.price ?? order.data.totalPrice ?? 0)),
+        }] : []);
     return {
       state: 'editing',
       order: {
@@ -1388,14 +1408,7 @@ class AiToolsExecutor {
         customerName: order.data.customerName || '',
         customerPhone: order.data.customerPhone || '',
         productName: order.data.productName || '',
-        items: Array.isArray(order.data.items) ? order.data.items.map((item, existingIndex) => ({
-          existingIndex,
-          name: String(item.name || item.productName || '').slice(0, 200),
-          quantity: Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
-          unitPrice: item.unitPrice !== null && item.unitPrice !== undefined && item.unitPrice !== '' && Number.isFinite(Number(item.unitPrice))
-            ? getStoredItemUnitPrice(item)
-            : (Number(item.quantity) > 0 ? Number(item.price || 0) / Number(item.quantity) : Number(item.price || 0)),
-        })) : [],
+        items: resolvedItems,
         quantity: Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
         totalPrice: Number(order.data.price ?? order.data.totalPrice ?? order.data.payment?.totalAmount ?? 0),
         deliveryDate: order.data.deliveryDate || '',
@@ -1407,7 +1420,7 @@ class AiToolsExecutor {
       editableOptions: [
         'Nome e telefone do cliente',
         'Produtos: nome, quantidade e preço unitário de cada item; adicionar ou remover itens (até 10)',
-        ...(!Array.isArray(order.data.items) || order.data.items.length === 0 ? ['Quantidade geral e valor total ou preço unitário do pedido'] : []),
+        ...(!hasStoredItems ? ['Quantidade geral e valor total ou preço unitário do pedido'] : []),
         'Prazo de entrega',
         'Tema do pedido',
         'Observações',
@@ -1488,7 +1501,9 @@ class AiToolsExecutor {
         if (existingIndex !== undefined) usedSourceIndexes.add(existingIndex);
         itemSourceIndexes.push(existingIndex ?? null);
         const unitCents = Math.round(unitPrice * 100);
-        const lineCents = unitCents * quantity;
+        const lineCents = (typeof item?.price === 'number' && Number.isFinite(item.price) && item.price >= 0)
+          ? Math.round(item.price * 100)
+          : unitCents * quantity;
         totalCents += lineCents;
         totalQuantity += quantity;
         if (!Number.isSafeInteger(totalCents) || totalCents > 1000000000 || totalQuantity > 100000) {
@@ -1539,7 +1554,18 @@ class AiToolsExecutor {
       throw error;
     }
     if (itemSourceIndexes) {
-      const currentItems = Array.isArray(order.data.items) ? order.data.items : [];
+      const currentItems = Array.isArray(order.data.items) && order.data.items.length > 0
+        ? order.data.items
+        : (order.data.productName ? [{
+            name: String(order.data.productName).slice(0, 200),
+            quantity: Number.isSafeInteger(Number(order.data.quantity)) && Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
+            unitPrice: order.data.unitPrice !== null && order.data.unitPrice !== undefined && order.data.unitPrice !== '' && Number.isFinite(Number(order.data.unitPrice)) && Number(order.data.unitPrice) > 0
+              ? Number(order.data.unitPrice)
+              : (Number(order.data.quantity) > 0
+                  ? Math.round(((Number(order.data.price ?? order.data.totalPrice ?? 0)) / Number(order.data.quantity)) * 100) / 100
+                  : Number(order.data.price ?? order.data.totalPrice ?? 0)),
+            price: Number(order.data.price ?? order.data.totalPrice ?? 0),
+          }] : []);
       const staleIndex = itemSourceIndexes.find((index) => index !== null && index >= currentItems.length);
       if (staleIndex !== undefined) {
         const error = new Error('Os itens do pedido mudaram desde a consulta. Carregue novamente antes de editar.');
@@ -1547,14 +1573,30 @@ class AiToolsExecutor {
         throw error;
       }
       const retainedIndexes = new Set(itemSourceIndexes.filter((index) => index !== null));
+      let reconciledTotalCents = 0;
       updates.items = updates.items.map((item, index) => {
         const sourceIndex = itemSourceIndexes[index];
-        if (sourceIndex === null) return item;
+        if (sourceIndex === null) {
+          reconciledTotalCents += Math.round(item.price * 100);
+          return item;
+        }
+        const orig = currentItems[sourceIndex];
         const preservedItemData = Object.fromEntries(
-          Object.entries(currentItems[sourceIndex] || {}).filter(([key]) => key !== 'existingIndex')
+          Object.entries(orig || {}).filter(([key]) => !['existingIndex', 'price'].includes(key))
         );
-        return { ...preservedItemData, ...item };
+        const merged = { ...preservedItemData, ...item };
+        const origPrice = orig?.price !== undefined ? Number(orig.price) : (Number(orig?.quantity || 1) * getStoredItemUnitPrice(orig));
+        if (orig && orig.quantity === merged.quantity && Number.isFinite(origPrice) && origPrice > 0 && typeof args.items[index]?.price !== 'number') {
+          const calcCents = Math.round(merged.unitPrice * 100) * merged.quantity;
+          const origCents = Math.round(origPrice * 100);
+          if (Math.abs(calcCents - origCents) <= Math.max(merged.quantity, 50)) {
+            merged.price = origCents / 100;
+          }
+        }
+        reconciledTotalCents += Math.round(merged.price * 100);
+        return merged;
       });
+      updates.price = reconciledTotalCents / 100;
       itemChanges = {
         changed: updates.items.map((after, index) => {
           const sourceIndex = itemSourceIndexes[index];
@@ -1563,12 +1605,12 @@ class AiToolsExecutor {
           const beforeUnitPrice = before?.unitPrice !== null && before?.unitPrice !== undefined && Number.isFinite(Number(before.unitPrice))
             ? getStoredItemUnitPrice(before)
             : Number(before?.price || 0) / beforeQuantity;
-          const same = before && before.name === after.name && beforeQuantity === after.quantity && Math.round(beforeUnitPrice * 100) === Math.round(after.unitPrice * 100);
+          const same = before && before.name === after.name && beforeQuantity === after.quantity && (Math.round(beforeUnitPrice * 100) === Math.round(after.unitPrice * 100) || Math.round(Number(before.price ?? 0) * 100) === Math.round(after.price * 100));
           const metadataPreserved = Boolean(before && Object.keys(before).some((key) => !['name', 'quantity', 'unitPrice', 'price', 'existingIndex'].includes(key)));
           return {
             action: before ? (same ? 'unchanged' : 'updated') : 'added',
             metadataPreserved,
-            ...(before ? { before: { name: before.name || before.productName || '', quantity: beforeQuantity, unitPrice: Math.round(beforeUnitPrice * 100) / 100, subtotal: Number(before.price ?? beforeQuantity * beforeUnitPrice) } } : {}),
+            ...(before ? { before: { name: before.name || before.productName || '', quantity: beforeQuantity, unitPrice: Math.round(beforeUnitPrice * 100) / 100, subtotal: Number(before.price !== undefined ? before.price : (beforeQuantity * beforeUnitPrice)) } } : {}),
             after: { name: after.name, quantity: after.quantity, unitPrice: after.unitPrice, subtotal: after.price },
           };
         }),
@@ -1665,6 +1707,10 @@ class AiToolsExecutor {
         throw error;
       }
       const orderUpdates = { ...updates, version: currentVersion + 1, updatedAt: now };
+      if (args.items !== undefined) {
+        orderUpdates.pricingMode = updates.items.length > 1 ? 'items' : 'unit';
+        orderUpdates.unitPrice = updates.items.length === 1 ? updates.items[0].unitPrice : null;
+      }
       if (requestedPrice !== undefined) {
         orderUpdates.totalPrice = updates.price;
         const payment = current.payment && typeof current.payment === 'object' ? current.payment : {};
@@ -1683,6 +1729,10 @@ class AiToolsExecutor {
         const saleUpdates = { updatedAt: now };
         for (const field of ['customerName', 'customerPhone', 'productName', 'quantity', 'deliveryDate', 'items']) {
           if (updates[field] !== undefined) saleUpdates[field] = updates[field];
+        }
+        if (args.items !== undefined) {
+          saleUpdates.pricingMode = orderUpdates.pricingMode;
+          saleUpdates.unitPrice = orderUpdates.unitPrice;
         }
         if (requestedPrice !== undefined) {
           saleUpdates.amount = updates.price;
@@ -1705,6 +1755,8 @@ class AiToolsExecutor {
           productName: updates.productName ?? current.productName ?? 'Produto',
           quantity: updates.quantity ?? current.quantity ?? 1,
           items: updates.items ?? current.items ?? [],
+          pricingMode: orderUpdates.pricingMode ?? current.pricingMode ?? 'unit',
+          unitPrice: orderUpdates.unitPrice ?? current.unitPrice ?? null,
           amount: updates.price,
           paymentStatus: payment.status,
           paidAmount: payment.paidAmount,
