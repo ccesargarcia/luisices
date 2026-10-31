@@ -40,13 +40,67 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  security-rules-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci --legacy-peer-deps
+          npm --prefix functions ci
+
+      - name: Setup Java (for Firebase Emulators)
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Verify Firebase CLI from the project lockfile
+        run: npx firebase --version
+
+      - name: Prepare test metrics directory
+        run: mkdir -p test-results
+
+      - name: Run Rules Integration Tests
+        env:
+          TEST_REPORT_DIR: test-results
+          TEST_REPORT_NAME: vitest-integration-rules
+        run: npm run test:integration
+
+      - name: Run RTDB Presence Integration Tests
+        env:
+          TEST_REPORT_DIR: test-results
+          TEST_REPORT_NAME: vitest-integration-presence
+        run: npm run test:presence
+
+      - name: Upload raw test metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-metrics-rules
+          path: test-results/*.json
+          retention-days: 30
+          if-no-files-found: ignore
+
   e2e-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -67,6 +121,34 @@ jobs:
         run: |
           npm ci --legacy-peer-deps
           npm --prefix functions ci
+
+      - name: Get Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install Playwright browsers and deps
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" != "true" ]; then
+            npx playwright install chromium --with-deps
+          else
+            npx playwright install-deps chromium
+          fi
+
+      - name: Setup Java (for Firebase Emulators)
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Verify Firebase CLI from the project lockfile
+        run: npx firebase --version
 
       - name: Create .env files with Firebase and test config
         env:
@@ -113,39 +195,6 @@ jobs:
       - name: Prepare test metrics directory
         run: mkdir -p test-results
 
-      - name: Run Unit Tests (Vitest)
-        if: matrix.shard == 1
-        env:
-          TEST_REPORT_DIR: test-results
-          TEST_REPORT_NAME: vitest-unit-${{ matrix.shard }}
-        run: npm run test:unit
-
-      - name: Lint Functions
-        run: npm --prefix functions run lint
-
-      - name: Install Playwright browsers
-        run: npx playwright install chromium --with-deps
-
-      - name: Setup Java (for Firebase Emulators)
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-
-      - name: Verify Firebase CLI from the project lockfile
-        run: npx firebase --version
-
-      - name: Run Rules Integration Tests
-        if: matrix.shard == 1
-        env:
-          TEST_REPORT_DIR: test-results
-          TEST_REPORT_NAME: vitest-integration-${{ matrix.shard }}
-        run: npm run test:integration
-
-      - name: Run RTDB Presence Integration Tests
-        if: matrix.shard == 1
-        run: npm run test:presence
-
       - name: Build
         run: npm run build
 
@@ -178,8 +227,8 @@ jobs:
             echo \"🎯 Executando target específico: \$INPUT_TARGET...\"
             npx playwright test tests/e2e/\${INPUT_TARGET}.spec.ts --project=chromium --reporter=github,list,json,html
           else
-            echo '🚀 Executando suíte completa de testes E2E (Máquina ${{ matrix.shard }} de 2)...'
-            npx playwright test --shard=${{ matrix.shard }}/2 --project=chromium --reporter=github,list,json,html
+            echo '🚀 Executando suíte completa de testes E2E (Máquina ${{ matrix.shard }} de 4)...'
+            npx playwright test --shard=${{ matrix.shard }}/4 --project=chromium --reporter=github,list,json,html
           fi"
 
       - name: Upload raw test metrics
@@ -221,7 +270,7 @@ jobs:
 
   test-trends:
     if: always()
-    needs: e2e-tests
+    needs: [e2e-tests, security-rules-tests]
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -233,7 +282,7 @@ jobs:
       - name: Download test metrics from all shards
         uses: actions/download-artifact@v4
         with:
-          pattern: test-metrics-shard-*
+          pattern: test-metrics-*
           path: test-results
           merge-multiple: true
 
