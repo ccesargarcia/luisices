@@ -92,7 +92,7 @@ return userDoc.data.role == 'admin' && userDoc.data.active == true;
   - In `firestore.rules`, always pair ownership checks (`resource.data.userId == request.auth.uid`) with `userHasPerm(module, action)`.
   - In `storage.rules`, never write `request.auth.uid == userId || ...` on mutating rules (`create`, `update`, `delete`) without verifying `ownerHasPerm(userId, module, action)`.
 - **Gallery Create, Edit vs Delete**:
-  - Updating `/gallery/{itemId}` in `firestore.rules` requires `userHasPerm('gallery', 'edit') || employeeHasGalleryPerm('edit')` (never `'delete'`).
+  - Updating `/gallery/{itemId}` in `firestore.rules` uses `canUpdateGalleryItem`: soft-delete transitions touching `deletedAt` require `gallery.delete` (`userHasPerm('gallery', 'delete') || employeeHasGalleryPerm('delete')`), while ordinary metadata updates require `gallery.edit` (`userHasPerm('gallery', 'edit') || employeeHasGalleryPerm('edit')`).
   - In `storage.rules`, keep `allow create` and `allow update` separate for both order attachments and gallery images, and require `resource == null` for create and `resource != null` for update. Create requires `'create'`; update is for existing object metadata and requires `'edit'`. Replacing content requires delete plus a new upload.
   - Legacy non-employee profiles whose `gallery` map has no `edit` key retain their old edit behavior through `gallery.create`; a profile with `edit: false` explicitly is denied. Add tests for both cases and remove this compatibility fallback after profile migration.
 - **Exact Cent Math on Quotes (`isValidQuoteMath`)**:

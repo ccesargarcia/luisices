@@ -54,7 +54,7 @@ describe('Auditoria de Segurança 2026: Verificação de Regras e Imutabilidade'
     expect(canDeleteOrderAttachment('user-func', 'user-dono', false, true, { orders: { edit: true } })).toBe(false);
   });
 
-  it('garante que firestore.rules exige gallery.edit para atualizar itens da galeria e gallery.delete apenas para excluir', async () => {
+  it('garante que firestore.rules diferencia gallery.edit para metadados e gallery.delete para soft-delete e exclusao', async () => {
     const fs = await import('fs');
     const rulesRaw = fs.readFileSync('firestore.rules', 'utf-8');
     const galleryBlockMatch = rulesRaw.match(/match\s+\/gallery\/\{itemId\}\s*\{([\s\S]*?)\n\s*\}/);
@@ -64,11 +64,18 @@ describe('Auditoria de Segurança 2026: Verificação de Regras e Imutabilidade'
     const updateRuleMatch = galleryBlock.match(/allow\s+update:\s*if([\s\S]*?);/);
     expect(updateRuleMatch).toBeTruthy();
     const updateRule = updateRuleMatch![1];
+    expect(updateRule).toContain("canUpdateGalleryItem(resource.data, request.resource.data)");
 
-    expect(updateRule).toContain("userHasPerm('gallery', 'edit')");
-    expect(updateRule).toContain("employeeHasGalleryPerm('edit')");
-    expect(updateRule).not.toContain("userHasPerm('gallery', 'delete')");
-    expect(updateRule).not.toContain("employeeHasGalleryPerm('delete')");
+    const canUpdateHelperMatch = rulesRaw.match(/function\s+canUpdateGalleryItem\s*\([^)]*\)\s*\{([\s\S]*?)\n\s*\}/);
+    expect(canUpdateHelperMatch).toBeTruthy();
+    const helperBody = canUpdateHelperMatch![1];
+
+    // Verifica que soft-delete com deletedAt exige gallery.delete e edição de metadados exige gallery.edit
+    expect(helperBody).toContain("changed.hasAny(['deletedAt'])");
+    expect(helperBody).toContain("userHasPerm('gallery', 'delete')");
+    expect(helperBody).toContain("employeeHasGalleryPerm('delete')");
+    expect(helperBody).toContain("userHasPerm('gallery', 'edit')");
+    expect(helperBody).toContain("employeeHasGalleryPerm('edit')");
   });
 });
 
