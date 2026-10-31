@@ -1385,7 +1385,7 @@ class AiToolsExecutor {
     const resolvedItems = hasStoredItems
       ? order.data.items.map((item, existingIndex) => ({
           existingIndex,
-          name: String(item.name || item.productName || '').slice(0, 200),
+          name: String(item.name || item.productName || '').slice(0, 300),
           quantity: Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
           unitPrice: item.unitPrice !== null && item.unitPrice !== undefined && item.unitPrice !== '' && Number.isFinite(Number(item.unitPrice))
             ? getStoredItemUnitPrice(item)
@@ -1393,7 +1393,7 @@ class AiToolsExecutor {
         }))
       : (order.data.productName ? [{
           existingIndex: 0,
-          name: String(order.data.productName).slice(0, 200),
+          name: String(order.data.productName).slice(0, 300),
           quantity: Number.isSafeInteger(Number(order.data.quantity)) && Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
           unitPrice: order.data.unitPrice !== null && order.data.unitPrice !== undefined && order.data.unitPrice !== '' && Number.isFinite(Number(order.data.unitPrice)) && Number(order.data.unitPrice) > 0
             ? Number(order.data.unitPrice)
@@ -1432,13 +1432,25 @@ class AiToolsExecutor {
   }
 
   /** Atualiza dados operacionais e valor do pedido autorizado, preservando o histórico de pagamentos. */
-  async executeUpdateOrder(args = {}, scope) {
+  async executeUpdateOrder(args = {}, scope, options = {}) {
     requireMcpModulePermission(scope, 'orders', 'edit', 'editar pedidos');
     const identifier = String(args.orderNumber || '').trim();
     if (!identifier) {
       const error = new Error('Informe o número ou ID do pedido.');
       error.code = 'invalid-argument';
       throw error;
+    }
+    const db = this.repos.db;
+    let idempotency = options.idempotencyContext || null;
+    if (isConfirmed(args.confirmed)) {
+      if (!idempotency) {
+        idempotency = getMcpIdempotencyContext(db, scope, options.toolName || 'update_order', args.idempotencyKey, options.idempotencyArgs || args);
+      }
+      if (typeof idempotency.ref?.get === 'function') {
+        const previous = await idempotency.ref.get();
+        const replay = readIdempotentResult(previous, idempotency.payloadHash);
+        if (replay) return replay;
+      }
     }
     const updates = {};
     const textFields = { customerName: 200, customerPhone: 50, productName: 300, theme: 200, notes: 1000 };
@@ -1488,7 +1500,7 @@ class AiToolsExecutor {
         const quantity = Number(item?.quantity);
         const unitPrice = item?.unitPrice;
         const existingIndex = item?.existingIndex;
-        if (!name || name.length > 200 || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000 || typeof unitPrice !== 'number' || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1000000) {
+        if (!name || name.length > 300 || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000 || typeof unitPrice !== 'number' || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1000000) {
           const error = new Error('Cada item precisa de nome, quantidade inteira entre 1 e 10000 e preço unitário válido de até R$ 1.000.000,00.');
           error.code = 'invalid-argument';
           throw error;
@@ -1557,7 +1569,7 @@ class AiToolsExecutor {
       const currentItems = Array.isArray(order.data.items) && order.data.items.length > 0
         ? order.data.items
         : (order.data.productName ? [{
-            name: String(order.data.productName).slice(0, 200),
+            name: String(order.data.productName).slice(0, 300),
             quantity: Number.isSafeInteger(Number(order.data.quantity)) && Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
             unitPrice: order.data.unitPrice !== null && order.data.unitPrice !== undefined && order.data.unitPrice !== '' && Number.isFinite(Number(order.data.unitPrice)) && Number(order.data.unitPrice) > 0
               ? Number(order.data.unitPrice)
@@ -1671,14 +1683,14 @@ class AiToolsExecutor {
     };
     if (!isConfirmed(args.confirmed)) return { success: true, status: 'preview', requiresConfirmation: true, preview: summary, message: 'Prévia pronta. Mostre as alterações ao usuário e só grave após confirmação explícita.' };
 
-    if (typeof args.idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(args.idempotencyKey)) {
-      const error = new Error('Informe uma chave de idempotência válida para confirmar a alteração.');
-      error.code = 'invalid-argument';
-      throw error;
+    if (!idempotency) {
+      if (typeof args.idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(args.idempotencyKey)) {
+        const error = new Error('Informe uma chave de idempotência válida para confirmar a alteração.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
+      idempotency = getMcpIdempotencyContext(db, scope, options.toolName || 'update_order', args.idempotencyKey, options.idempotencyArgs || args);
     }
-
-    const db = this.repos.db;
-    const idempotency = getMcpIdempotencyContext(db, scope, 'update_order', args.idempotencyKey, args);
     const now = new Date().toISOString();
     const result = await db.runTransaction(async (transaction) => {
       const orderRef = db.collection('orders').doc(order.id);
@@ -1776,6 +1788,110 @@ class AiToolsExecutor {
       return response;
     });
     return result;
+  }
+
+  /** Adiciona um novo item individualmente a um pedido existente, preservando todos os itens atuais e recalculando o total com precisão. */
+  async executeAddOrderItem(args = {}, scope) {
+    requireMcpModulePermission(scope, 'orders', 'edit', 'editar pedidos');
+    const identifier = String(args.orderNumber || '').trim();
+    if (!identifier) {
+      const error = new Error('Informe o número ou ID do pedido.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const name = typeof args.name === 'string' ? args.name.trim() : '';
+    if (!name || name.length > 300) {
+      const error = new Error('Informe o nome do item com até 300 caracteres.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const quantity = Number(args.quantity);
+    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000) {
+      const error = new Error('Informe uma quantidade inteira válida entre 1 e 10000.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const unitPrice = args.unitPrice;
+    if (typeof unitPrice !== 'number' || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1000000) {
+      const error = new Error('Informe um preço unitário válido em reais de até R$ 1.000.000,00.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+
+    if (isConfirmed(args.confirmed)) {
+      if (!Number.isSafeInteger(Number(args.expectedVersion)) || Number(args.expectedVersion) < 1) {
+        const error = new Error('Informe a versão do pedido (expectedVersion) obtida na prévia para confirmar a alteração.');
+        error.code = 'invalid-argument';
+        throw error;
+      }
+    }
+
+    const db = this.repos.db;
+    let idempotency = null;
+    if (isConfirmed(args.confirmed)) {
+      idempotency = getMcpIdempotencyContext(db, scope, 'add_order_item', args.idempotencyKey, args);
+      if (typeof idempotency.ref?.get === 'function') {
+        const previous = await idempotency.ref.get();
+        const replay = readIdempotentResult(previous, idempotency.payloadHash);
+        if (replay) return replay;
+      }
+    }
+
+    const order = await this.repos.getScopedOrderDocument(scope, identifier);
+    if (!order || order.data.deletedAt || order.data.isDeleted) {
+      const error = new Error('Pedido não encontrado ou sem permissão para editá-lo.');
+      error.code = 'not-found';
+      throw error;
+    }
+
+    const existingItems = Array.isArray(order.data.items) && order.data.items.length > 0
+      ? order.data.items.map((item, index) => ({
+          existingIndex: index,
+          name: String(item.name || item.productName || '').slice(0, 300),
+          quantity: Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+          unitPrice: item.unitPrice !== null && item.unitPrice !== undefined && item.unitPrice !== '' && Number.isFinite(Number(item.unitPrice))
+            ? getStoredItemUnitPrice(item)
+            : (Number(item.quantity) > 0 ? Number(item.price || 0) / Number(item.quantity) : Number(item.price || 0)),
+          ...(item.price !== undefined ? { price: Number(item.price) } : {}),
+        }))
+      : (order.data.productName ? [{
+          existingIndex: 0,
+          name: String(order.data.productName).slice(0, 300),
+          quantity: Number.isSafeInteger(Number(order.data.quantity)) && Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
+          unitPrice: order.data.unitPrice !== null && order.data.unitPrice !== undefined && order.data.unitPrice !== '' && Number.isFinite(Number(order.data.unitPrice)) && Number(order.data.unitPrice) > 0
+            ? Number(order.data.unitPrice)
+            : (Number(order.data.quantity) > 0
+                ? Math.round(((Number(order.data.price ?? order.data.totalPrice ?? 0)) / Number(order.data.quantity)) * 100) / 100
+                : Number(order.data.price ?? order.data.totalPrice ?? 0)),
+          price: Number(order.data.price ?? order.data.totalPrice ?? 0),
+        }] : []);
+
+    if (existingItems.length >= 10) {
+      const error = new Error('O pedido já atingiu o limite máximo de 10 itens.');
+      error.code = 'failed-precondition';
+      throw error;
+    }
+
+    const newItem = {
+      name,
+      quantity,
+      unitPrice: Math.round(unitPrice * 100) / 100,
+      ...(typeof args.price === 'number' && Number.isFinite(args.price) && args.price >= 0 ? { price: Math.round(args.price * 100) / 100 } : {}),
+    };
+
+    const updatedItems = [...existingItems, newItem];
+
+    return await this.executeUpdateOrder({
+      orderNumber: identifier,
+      items: updatedItems,
+      expectedVersion: args.expectedVersion ?? (Number.isSafeInteger(order.data.version) && order.data.version > 0 ? order.data.version : 1),
+      idempotencyKey: args.idempotencyKey,
+      confirmed: args.confirmed,
+    }, scope, {
+      toolName: 'add_order_item',
+      idempotencyArgs: args,
+      idempotencyContext: idempotency,
+    });
   }
 
   /** Atualização de etapa com transição monotônica, prévia, versão e idempotência. */

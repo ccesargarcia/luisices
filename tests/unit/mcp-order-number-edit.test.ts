@@ -268,4 +268,176 @@ describe('MCP edição de pedidos pelo número apresentado ao usuário', () => {
       price: 10,
     });
   });
+
+  describe('add_order_item - inclusão individual de itens via MCP', () => {
+    it('gera prévia atômica ao adicionar item a um pedido existente sem sobrescrever o item original', async () => {
+      const executor = createExecutor();
+
+      const preview = await executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: 'Caneca personalizada',
+        quantity: 5,
+        unitPrice: 44,
+      }, scope, scope.mcpScopes);
+
+      expect(preview.status).toBe('preview');
+      expect(preview.requiresConfirmation).toBe(true);
+      expect(preview.preview.pricing).toMatchObject({
+        mode: 'items',
+        totalPrice: 300,
+      });
+      expect(preview.preview.changes.items).toHaveLength(2);
+      expect(preview.preview.changes.items[0]).toMatchObject({
+        name: 'Caixa personalizada',
+        quantity: 2,
+        unitPrice: 40,
+        price: 80,
+      });
+      expect(preview.preview.changes.items[1]).toMatchObject({
+        name: 'Caneca personalizada',
+        quantity: 5,
+        unitPrice: 44,
+        price: 220,
+      });
+      expect(preview.preview.itemChanges.changed).toMatchObject([
+        { action: 'unchanged', before: { name: 'Caixa personalizada' }, after: { name: 'Caixa personalizada' } },
+        { action: 'added', after: { name: 'Caneca personalizada', quantity: 5, unitPrice: 44, subtotal: 220 } },
+      ]);
+      expect(preview.preview.version).toBe(3);
+    });
+
+    it('grava o novo item com confirmação, atualiza salesLedger e evita repetição por idempotência', async () => {
+      const executor = createExecutor();
+
+      const result = await executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: 'Caneca personalizada',
+        quantity: 5,
+        unitPrice: 44,
+        expectedVersion: 3,
+        confirmed: true,
+        idempotencyKey: 'idemp-add-item-test-999',
+      }, scope, scope.mcpScopes);
+
+      expect(result).toMatchObject({
+        success: true,
+        orderNumber: '#2026-0042',
+        version: 4,
+      });
+
+      // 1. Confere o pedido salvo
+      const savedOrder = (executor as any)._records.get('orders/order-doc-id');
+      expect(savedOrder.pricingMode).toBe('items');
+      expect(savedOrder.unitPrice).toBeNull();
+      expect(savedOrder.quantity).toBe(7);
+      expect(savedOrder.price).toBe(300);
+      expect(savedOrder.totalPrice).toBe(300);
+      expect(savedOrder.items).toHaveLength(2);
+      expect(savedOrder.items[0]).toMatchObject({ name: 'Caixa personalizada', quantity: 2, unitPrice: 40 });
+      expect(savedOrder.items[1]).toMatchObject({ name: 'Caneca personalizada', quantity: 5, unitPrice: 44 });
+
+      // 2. Confere o registro correspondente no salesLedger
+      const savedLedger = (executor as any)._records.get('salesLedger/order-doc-id');
+      expect(savedLedger).toBeDefined();
+      expect(savedLedger.amount).toBe(300);
+      expect(savedLedger.pricingMode).toBe('items');
+      expect(savedLedger.items).toHaveLength(2);
+      expect(savedLedger.quantity).toBe(7);
+
+      // 3. Repetição com a mesma chave de idempotência retorna a resposta gravada sem duplicar
+      const replayedResult = await executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: 'Caneca personalizada',
+        quantity: 5,
+        unitPrice: 44,
+        expectedVersion: 3,
+        confirmed: true,
+        idempotencyKey: 'idemp-add-item-test-999',
+      }, scope, scope.mcpScopes);
+
+      expect(replayedResult).toMatchObject({
+        success: true,
+        orderNumber: '#2026-0042',
+        version: 4,
+      });
+      // A versão do pedido no banco permanece 4 (não foi incrementada novamente)
+      expect((executor as any)._records.get('orders/order-doc-id').version).toBe(4);
+      expect((executor as any)._records.get('orders/order-doc-id').items).toHaveLength(2);
+    });
+
+    it('exige expectedVersion na confirmação para prevenir condições de corrida e conflitos de versão', async () => {
+      const executor = createExecutor();
+
+      // Confirmação sem expectedVersion é bloqueada
+      await expect(executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: 'Item Novo',
+        quantity: 1,
+        unitPrice: 25,
+        confirmed: true,
+        idempotencyKey: 'idemp-without-version-1',
+      }, scope, scope.mcpScopes)).rejects.toThrow('Informe a versão do pedido (expectedVersion) obtida na prévia para confirmar a alteração.');
+
+      // Confirmação com versão desatualizada é rejeitada
+      await expect(executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: 'Item Novo',
+        quantity: 1,
+        unitPrice: 25,
+        expectedVersion: 1, // Versão real é 3
+        confirmed: true,
+        idempotencyKey: 'idemp-stale-version-1',
+      }, scope, scope.mcpScopes)).rejects.toThrow(/versão do pedido mudou/i);
+    });
+
+    it('valida argumentos obrigatórios e limites de itens', async () => {
+      const executor = createExecutor();
+
+      await expect(executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: '',
+        quantity: 1,
+        unitPrice: 10,
+      }, scope, scope.mcpScopes)).rejects.toThrow('arguments.name é muito curto.');
+
+      await expect(executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: 'Teste',
+        quantity: 0,
+        unitPrice: 10,
+      }, scope, scope.mcpScopes)).rejects.toThrow();
+
+      await expect(executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: 'Teste',
+        quantity: 1,
+        unitPrice: -5,
+      }, scope, scope.mcpScopes)).rejects.toThrow();
+    });
+
+    it('preserva nomes de itens existentes com mais de 200 caracteres ao adicionar um novo item', async () => {
+      const longName = 'Caixa personalizada de luxo para casamento com acabamento em hot stamping dourado e fita de cetim '.repeat(3).slice(0, 250);
+      const orderWithLongName = {
+        ...storedOrder,
+        productName: longName,
+        totalPrice: 100,
+        quantity: 1,
+      };
+      const executor = createExecutor(orderWithLongName);
+
+      const preview = await executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: 'Item adicional '.repeat(10).slice(0, 250),
+        quantity: 2,
+        unitPrice: 30,
+        confirmed: false,
+      }, scope, scope.mcpScopes);
+
+      expect(preview.status).toBe('preview');
+      expect(preview.preview.changes.items[0].name).toBe(longName);
+      expect(preview.preview.changes.items[0].name.length).toBe(250);
+      expect(preview.preview.itemChanges.changed[0].action).toBe('unchanged');
+      expect(preview.preview.itemChanges.changed[0].before.name).toBe(longName);
+    });
+  });
 });

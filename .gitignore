@@ -87,3 +87,14 @@ assets/*.png
 assets/*.jpg
 assets/*.jpeg
 
+# Temporary screenshots and root image captures
+Screenshot*
+/*.jpg
+/*.jpeg
+/*.png
+
+# Local briefings and transition notes
+BRIEF_*
+HANDOFF_*
+PLANO_*
+

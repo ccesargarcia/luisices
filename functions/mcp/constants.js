@@ -173,6 +173,7 @@ const TOOL_SCOPE_MAP = {
   get_order_edit_form: 'orders:update',
   create_order: 'orders:create',
   update_order: 'orders:update',
+  add_order_item: 'orders:update',
   update_order_status: 'orders:update',
   update_delivery_details: 'orders:update',
   query_order_payments: 'payments:read',
