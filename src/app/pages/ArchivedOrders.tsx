@@ -327,7 +327,7 @@ export function ArchivedOrders() {
       await Promise.all(
         toDelete.map(async (order) => {
           await firebaseOrderService.deleteOrder(order.id);
-          if (order.customerId && order.price && order.status === 'pending') {
+          if (!order.isExchange && order.customerId && order.price && order.status === 'pending' && (!order.payment || order.payment.status === 'pending')) {
             await firebaseCustomerService.decrementCustomerStats(order.customerId, order.price).catch(() => {});
           }
         })

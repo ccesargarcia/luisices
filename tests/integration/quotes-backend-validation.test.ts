@@ -157,4 +157,38 @@ describe('Validação matemática de orçamentos nas regras do Firestore', () =>
       totalPrice: 112.5,
     }));
   });
+
+  it('aceita orçamento gerado pelo MCP com divisão não exata de centavos (ex: 3 unidades por R$ 100,00) e permite edição posterior', async () => {
+    const { AiDataRepositories } = require('../../functions/ai/repositories');
+    let savedQuoteData: any = null;
+    const mockDb = {
+      collection: () => ({
+        doc: () => ({
+          collection: () => ({
+            doc: () => ({
+              get: async () => ({ exists: true, data: () => ({ quoteCount: 1 }) }),
+              set: async () => undefined,
+            }),
+          }),
+        }),
+        add: async (data: any) => {
+          savedQuoteData = data;
+          return { id: 'mcp-quote-3-for-100' };
+        },
+      }),
+    };
+    const repos = new AiDataRepositories(mockDb);
+    await repos.createQuote({ uid: 'owner' }, {
+      customerName: 'Ana',
+      productName: 'Kit Festa',
+      quantity: 3,
+      totalPrice: 100,
+    });
+
+    await assertSucceeds(setDoc(doc(dbFor('owner'), 'quotes/mcp-quote-3-for-100'), savedQuoteData));
+    await assertSucceeds(updateDoc(doc(dbFor('owner'), 'quotes/mcp-quote-3-for-100'), {
+      notes: 'Editado pelo app após criação via MCP',
+      status: 'sent',
+    }));
+  });
 });

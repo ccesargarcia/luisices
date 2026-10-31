@@ -87,12 +87,29 @@ return userDoc.data.role == 'admin' && userDoc.data.active == true;
 
 ---
 
-## 🧪 5. Testing & Verification
+### 5. RBAC Module Permission Parity (`firestore.rules` & `storage.rules`)
+- **Never short-circuit owner permissions on `create`/`update`/`delete`**:
+  - In `firestore.rules`, always pair ownership checks (`resource.data.userId == request.auth.uid`) with `userHasPerm(module, action)`.
+  - In `storage.rules`, never write `request.auth.uid == userId || ...` on mutating rules (`create`, `update`, `delete`) without verifying `ownerHasPerm(userId, module, action)`.
+- **Gallery Create, Edit vs Delete**:
+  - Updating `/gallery/{itemId}` in `firestore.rules` requires `userHasPerm('gallery', 'edit') || employeeHasGalleryPerm('edit')` (never `'delete'`).
+  - In `storage.rules`, keep `allow create` and `allow update` separate for both order attachments and gallery images, and require `resource == null` for create and `resource != null` for update. Create requires `'create'`; update is for existing object metadata and requires `'edit'`. Replacing content requires delete plus a new upload.
+  - Legacy non-employee profiles whose `gallery` map has no `edit` key retain their old edit behavior through `gallery.create`; a profile with `edit: false` explicitly is denied. Add tests for both cases and remove this compatibility fallback after profile migration.
+- **Exact Cent Math on Quotes (`isValidQuoteMath`)**:
+  - `isValidQuoteMath` requires `subtotalCents == sum(quantity * round(unitPrice * 100))` and `totalPriceCents == subtotalCents - discountValueCents + shippingValueCents`. Any backend/MCP quote generator (such as `createQuote` in `functions/ai/repositories.js`) must use `Math.ceil(totalPriceCents / quantity)` for `unitPriceCents` and put any remainder cents into `discount` (`discountType: 'fixed'`) so subsequent client edits pass `firestore.rules`.
+- See also the `luisices-platform-security` skill for end-to-end platform security invariants and Red Team attack simulations.
 
-Every change to `firestore.rules` **must** be validated against the Firestore Emulator integration suite before merging. These test files must run with the integration config and emulators, not standalone under the default Vitest configuration:
+---
+
+## 🧪 6. Testing & Verification
+
+Every change to `firestore.rules` or `storage.rules` **must** be validated against both the unit security suites and the Firestore Emulator integration suite before merging:
 
 ```bash
-# Test order and quote validations:
+# Run unit security & attack simulation checks:
+npx vitest run tests/unit/security-attack-simulations.test.ts tests/unit/security-audit-fixes-verification.test.ts
+
+# Test order, gallery, and quote validations in the Firestore Emulator:
 npm run test:integration
 ```
 

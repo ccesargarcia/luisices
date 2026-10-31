@@ -208,10 +208,12 @@ function assertComplexOrderItems(items, quantity, price) {
     throw new HttpsError('invalid-argument', 'O pedido deve ter de 1 a 10 itens.');
   }
   let itemQuantity = 0;
-  let itemTotalCents = 0;
+  let totalItemsCents = 0;
+  const normalizedItems = [];
   for (const item of items) {
     if (!item || typeof item !== 'object' || Array.isArray(item)
-      || Object.keys(item).some((key) => !['name', 'quantity', 'unitPrice', 'price'].includes(key))
+      || Object.keys(item).some((key) => !['id', 'name', 'quantity', 'unitPrice', 'price'].includes(key))
+      || (item.id !== undefined && (typeof item.id !== 'string' || item.id.length > 100))
       || typeof item.name !== 'string' || !item.name.trim() || item.name.trim().length > 300
       || !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 10000
       || typeof item.unitPrice !== 'number' || !Number.isFinite(item.unitPrice)
@@ -222,25 +224,35 @@ function assertComplexOrderItems(items, quantity, price) {
     if (Math.abs(item.unitPrice * 100 - unitPriceCents) > 0.001) {
       throw new HttpsError('invalid-argument', 'O preço unitário deve usar centavos inteiros.');
     }
-    const expectedItemCents = item.quantity * unitPriceCents;
-    if (item.price !== undefined && (typeof item.price !== 'number' || !Number.isFinite(item.price)
-      || Math.abs(item.price * 100 - expectedItemCents) > 5)) {
-      throw new HttpsError('invalid-argument', 'O subtotal de um item não corresponde à quantidade e ao preço unitário.');
+    let lineTotalCents = item.quantity * unitPriceCents;
+    if (item.price !== undefined) {
+      if (typeof item.price !== 'number' || !Number.isFinite(item.price) || item.price < 0
+        || item.price > 1000000
+        || Math.abs(item.price * 100 - Math.round(item.price * 100)) > 0.001) {
+        throw new HttpsError('invalid-argument', 'O subtotal de um item deve ser um valor monetário válido em centavos.');
+      }
+      lineTotalCents = Math.round(item.price * 100);
+      const roundedUnitPriceCents = Math.round(lineTotalCents / item.quantity);
+      if (unitPriceCents !== roundedUnitPriceCents) {
+        throw new HttpsError('invalid-argument', 'O preço unitário deve corresponder ao subtotal do item, arredondado para centavos.');
+      }
     }
     itemQuantity += item.quantity;
-    itemTotalCents += expectedItemCents;
+    totalItemsCents += lineTotalCents;
+    const itemWithoutId = Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'id'));
+    normalizedItems.push({
+      ...itemWithoutId,
+      name: item.name.trim(),
+      unitPrice: unitPriceCents / 100,
+      price: lineTotalCents / 100,
+    });
   }
   if (!Number.isSafeInteger(quantity) || quantity !== itemQuantity
     || typeof price !== 'number' || !Number.isFinite(price)
-    || Math.abs(price * 100 - itemTotalCents) > 5) {
+    || Math.abs(price * 100 - totalItemsCents) > 5) {
     throw new HttpsError('invalid-argument', 'A quantidade e o total do pedido devem corresponder à soma dos itens.');
   }
-  return items.map((item) => ({
-    ...item,
-    name: item.name.trim(),
-    unitPrice: Math.round(item.unitPrice * 100) / 100,
-    price: Math.round(item.quantity * item.unitPrice * 100) / 100,
-  }));
+  return normalizedItems;
 }
 
 function hasOrderPermission(profile, action) {
@@ -607,7 +619,7 @@ async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
       paidAmount: next.isExchange ? 0 : (next.payment?.paidAmount || 0),
       paymentMethod: next.isExchange ? null : (next.payment?.method || null),
     };
-    for (const key of ['status', 'customerName', 'customerPhone', 'customerId', 'productName', 'deliveryDate']) {
+    for (const key of ['status', 'customerName', 'customerPhone', 'customerId', 'productName', 'deliveryDate', 'items', 'pricingMode', 'unitPrice', 'notes', 'tags']) {
       if (normalizedUpdates[key] !== undefined) saleUpdate[key] = normalizedUpdates[key];
     }
     if (normalizedUpdates.isExchange !== undefined) saleUpdate.isExchange = Boolean(normalizedUpdates.isExchange);
@@ -624,7 +636,9 @@ async function handleUpdateComplexOrder(request, firestore = getFirestore()) {
         userId: order.userId || uid, assignedTo: order.assignedTo || null,
         assignedToName: order.assignedToName || null, customerId: next.customerId || null,
         customerName: next.customerName || 'Cliente não informado', customerPhone: next.customerPhone || null,
-        productName: next.productName || 'Produto', quantity: next.quantity, amount: next.isExchange ? 0 : next.price,
+        productName: next.productName || 'Produto', quantity: next.quantity,
+        items: next.items || [], pricingMode: next.pricingMode || 'unit', unitPrice: next.unitPrice ?? null,
+        amount: next.isExchange ? 0 : next.price,
         isExchange: Boolean(next.isExchange), paymentStatus: next.payment?.status || 'pending',
         paidAmount: next.isExchange ? 0 : (next.payment?.paidAmount || 0),
         paymentMethod: next.isExchange ? null : (next.payment?.method || null),
@@ -1144,6 +1158,9 @@ async function handleSubmitPublicCatalogOrder(request, dependencies = {}) {
 
   const data = request.data || {};
   const { items, customerNotes, submittedSubtotal, idempotencyKey } = data;
+  const sanitizedCustomerNotes = typeof customerNotes === 'string'
+    ? customerNotes.replace(/[\u0000-\u001F\u007F]+/g, ' ').trim().slice(0, 2000)
+    : '';
 
   if (
     submittedSubtotal !== undefined &&
@@ -1287,8 +1304,17 @@ async function handleSubmitPublicCatalogOrder(request, dependencies = {}) {
       leadTimeDays,
     };
 
-    if (item.customName && typeof item.customName === 'string' && item.customName.trim()) {
-      cleanItem.customName = item.customName.trim().slice(0, 200);
+    if (item.customName && typeof item.customName === 'string') {
+      const sanitizedCustomName = item.customName.replace(/[\u0000-\u001F\u007F]+/g, ' ').trim();
+      if (sanitizedCustomName) {
+        cleanItem.customName = sanitizedCustomName.slice(0, 200);
+      }
+    }
+    if (item.customTheme && typeof item.customTheme === 'string') {
+      const sanitizedCustomTheme = item.customTheme.replace(/[\u0000-\u001F\u007F]+/g, ' ').trim();
+      if (sanitizedCustomTheme) {
+        cleanItem.customTheme = sanitizedCustomTheme.slice(0, 200);
+      }
     }
     if (pData.imageUrl && typeof pData.imageUrl === 'string' && pData.imageUrl.trim()) {
       cleanItem.imageUrl = pData.imageUrl.trim();
@@ -1331,7 +1357,7 @@ async function handleSubmitPublicCatalogOrder(request, dependencies = {}) {
       customName: i.customName || '',
       customTheme: i.customTheme || '',
     })),
-    customerNotes: customerNotes && typeof customerNotes === 'string' ? customerNotes.trim().slice(0, 2000) : '',
+    customerNotes: sanitizedCustomerNotes,
     subtotal: computedSubtotal,
   });
   const payloadHash = crypto.createHash('sha256').update(payloadForHash).digest('hex');
@@ -1351,8 +1377,8 @@ async function handleSubmitPublicCatalogOrder(request, dependencies = {}) {
     updatedAt: now,
   };
 
-  if (customerNotes && typeof customerNotes === 'string' && customerNotes.trim()) {
-    docData.customerNotes = customerNotes.trim().slice(0, 2000);
+  if (sanitizedCustomerNotes) {
+    docData.customerNotes = sanitizedCustomerNotes;
   }
   if (safeIdempotencyKey) {
     docData.idempotencyKey = safeIdempotencyKey;

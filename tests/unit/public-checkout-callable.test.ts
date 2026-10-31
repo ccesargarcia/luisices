@@ -80,7 +80,7 @@ describe('submitPublicCatalogOrder callable real', () => {
 
   it('recalcula preço e total a partir do catálogo e persiste somente dados verificados', async () => {
     const result = await invokeCheckout({
-      items: [{ productId: 'mug', quantity: 2, price: 0.01, productName: 'Adulterado', imageUrl: 'javascript:bad' }],
+      items: [{ productId: 'mug', quantity: 2, price: 0.01, productName: 'Adulterado', customName: '  Maria  ', customTheme: '  Floral Azul  ', imageUrl: 'javascript:bad' }],
       submittedSubtotal: 90,
       customerNotes: '  entregar após as 14h  ',
       idempotencyKey: 'checkout-key-0001',
@@ -94,7 +94,7 @@ describe('submitPublicCatalogOrder callable real', () => {
       submittedSubtotal: 90,
       verifiedByServer: true,
       customerNotes: 'entregar após as 14h',
-      items: [{ productId: 'mug', productName: 'Caneca', price: 45, quantity: 2, leadTimeDays: 3 }],
+      items: [{ productId: 'mug', productName: 'Caneca', price: 45, quantity: 2, leadTimeDays: 3, customName: 'Maria', customTheme: 'Floral Azul' }],
     });
     expect(stored.items[0]).not.toHaveProperty('imageUrl');
     expect(stored.items[0]).not.toHaveProperty('productName', 'Adulterado');

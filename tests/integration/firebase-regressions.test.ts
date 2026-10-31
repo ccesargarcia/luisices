@@ -835,4 +835,55 @@ describe('Reverificação e Correções Críticas (R1, R2, R3, R11)', () => {
     const ownerDb = dbFor('owner');
     await assertSucceeds(getDoc(doc(ownerDb as any, 'salesLedger/owner-valid-order')));
   });
+
+  it('Permissões da Galeria: exige gallery.edit para atualizar e gallery.delete para excluir', async () => {
+    await seed('gallery/item-1', {
+      userId: 'owner',
+      title: 'Arte Original',
+      imageUrl: 'users/owner/gallery/art.webp',
+    });
+    await seed('userProfiles/editor-staff', {
+      role: 'funcionario',
+      active: true,
+      permissions: {
+        ...DEFAULT_USER_PERMISSIONS,
+        gallery: { view: true, create: false, edit: true, delete: false },
+      },
+    });
+    await seed('userProfiles/deleter-staff', {
+      role: 'funcionario',
+      active: true,
+      permissions: {
+        ...DEFAULT_USER_PERMISSIONS,
+        gallery: { view: true, create: false, edit: false, delete: true },
+      },
+    });
+
+    const editorDb = dbFor('editor-staff');
+    const deleterDb = dbFor('deleter-staff');
+
+    // Funcionário com gallery.edit=true e gallery.delete=false pode atualizar, mas não excluir
+    await assertSucceeds(updateDoc(doc(editorDb as any, 'gallery/item-1'), { title: 'Arte Editada' }));
+    await assertPermissionDenied(() => deleteDoc(doc(editorDb as any, 'gallery/item-1')));
+
+    // Funcionário com gallery.edit=false e gallery.delete=true não pode atualizar, mas pode excluir
+    await assertPermissionDenied(() => updateDoc(doc(deleterDb as any, 'gallery/item-1'), { title: 'Tentativa Indevida' }));
+    await assertSucceeds(deleteDoc(doc(deleterDb as any, 'gallery/item-1')));
+  });
+
+  it('mantém compatibilidade de edição para perfil proprietário legado sem gallery.edit, mas respeita edit=false explícito', async () => {
+    await seed('gallery/legacy-item', { userId: 'legacy-gallery-owner', title: 'Arte Legada' });
+    await seed('userProfiles/legacy-gallery-owner', {
+      role: 'user', active: true,
+      permissions: { gallery: { view: true, create: true, delete: true } },
+    });
+    await seed('gallery/revoked-edit-item', { userId: 'revoked-gallery-owner', title: 'Arte Protegida' });
+    await seed('userProfiles/revoked-gallery-owner', {
+      role: 'user', active: true,
+      permissions: { gallery: { view: true, create: true, edit: false, delete: true } },
+    });
+
+    await assertSucceeds(updateDoc(doc(dbFor('legacy-gallery-owner') as any, 'gallery/legacy-item'), { title: 'Atualizada' }));
+    await assertPermissionDenied(() => updateDoc(doc(dbFor('revoked-gallery-owner') as any, 'gallery/revoked-edit-item'), { title: 'Não pode atualizar' }));
+  });
 });

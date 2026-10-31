@@ -241,7 +241,7 @@ describe('Unit tests: validação de criação de pedidos (handleCreateOrder)', 
         quantity: 2,
         price: 80,
         items: [{ name: 'Item', quantity: 2, unitPrice: 50, price: 80 }], // 2 * 50 != 80
-      }), mockDb)).rejects.toThrow('O subtotal de um item não corresponde à quantidade e ao preço unitário.');
+      }), mockDb)).rejects.toThrow('O preço unitário deve corresponder ao subtotal do item, arredondado para centavos.');
     });
 
     it('rejeita quando a soma das quantidades dos itens diverge do total do pedido', async () => {

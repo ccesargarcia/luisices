@@ -44,6 +44,26 @@ describe('MCP create_order: compatibilidade e gravação idempotente', () => {
     expect([...documents.keys()].filter((path) => path.startsWith('mcpIdempotency/'))).toHaveLength(1);
   });
 
+  it('grava subtotal exato para muitas unidades e usa preço unitário arredondado sem campos fora do contrato', async () => {
+    await executor.executeCreateOrder({
+      ...args,
+      quantity: 120,
+      totalPrice: 92.19,
+      idempotencyKey: 'mcp-create-120-units',
+      confirmed: true,
+    }, scope);
+
+    const created = documents.get('orders/generated-1');
+    expect(created).toMatchObject({
+      quantity: 120,
+      price: 92.19,
+      pricingMode: 'total',
+      unitPrice: null,
+      items: [{ name: 'Produto sintético', quantity: 120, unitPrice: 0.77, price: 92.19 }],
+    });
+    expect(created.items[0]).not.toHaveProperty('id');
+  });
+
   it.each([false, 'false'])('confirmed=%s retorna somente prévia e não inicia transação', async (confirmed) => {
     const result = await executor.executeCreateOrder(validateToolArguments('create_order', { ...args, confirmed }), scope);
     expect(result).toMatchObject({ success: true, status: 'preview', requiresConfirmation: true, preview: { totalPrice: 399 } });
@@ -128,5 +148,53 @@ describe('MCP create_order: compatibilidade e gravação idempotente', () => {
     delete db.runTransaction;
     await expect(executor.executeCreateOrder(args, scope)).rejects.toMatchObject({ code: 'failed-precondition' });
     expect(documents.size).toBe(0);
+  });
+
+  it('sincroniza salesLedger, estatísticas do cliente e usa payment.status="paid" e método válido quando pago integralmente', async () => {
+    documents.set('customers/cust-1', { id: 'cust-1', name: 'Cliente sintético', phone: '55119999922222', totalOrders: 2, totalSpent: 100 });
+    executor = new AiToolsExecutor({
+      db,
+      getScopedCustomers: vi.fn(async () => ({
+        customers: [{ id: 'cust-1', name: 'Cliente sintético', phone: '55119999922222' }],
+      })),
+    });
+
+    const { paymentMethod: _pm, ...withoutMethod } = args;
+    const result = await executor.executeCreateOrder({
+      ...withoutMethod,
+      paidAmount: 399,
+      idempotencyKey: 'mcp-create-paid-order-test',
+      confirmed: true,
+    }, scope);
+
+    expect(result).toMatchObject({ success: true, orderId: 'generated-1', remainingAmount: 0 });
+    const createdOrder = documents.get('orders/generated-1');
+    expect(createdOrder.payment).toMatchObject({
+      status: 'paid',
+      method: 'pix',
+      totalAmount: 399,
+      paidAmount: 399,
+      remainingAmount: 0,
+      history: [expect.objectContaining({ amount: 399, method: 'pix' })],
+    });
+    expect(typeof createdOrder.createdAt).toBe('string');
+
+    const createdLedger = documents.get('salesLedger/generated-1');
+    expect(createdLedger).toMatchObject({
+      orderId: 'generated-1',
+      amount: 399,
+      paidAmount: 399,
+      paymentStatus: 'paid',
+      paymentMethod: 'pix',
+      customerId: 'cust-1',
+      source: 'chatgpt-mcp',
+      isDeletedFromOrders: false,
+    });
+
+    const updatedCustomer = documents.get('customers/cust-1');
+    expect(updatedCustomer).toMatchObject({
+      totalOrders: 3,
+      totalSpent: 499,
+    });
   });
 });

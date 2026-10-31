@@ -138,6 +138,38 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
     }
   );
 
+  it('aceita total exato em centavos mesmo quando o preço unitário exibido é arredondado', async () => {
+    const uid = `rounded-unit-price-${Date.now()}`;
+    await adminDb.doc(`userProfiles/${uid}`).set({
+      role: 'user', active: true, permissions: { orders: { create: true } },
+    });
+
+    const result = await handleCreateOrder({
+      auth: { uid, token: { auth_time: 1 } },
+      data: {
+        orderData: {
+          customerName: 'Cliente Teste',
+          productName: 'Etiqueta',
+          quantity: 120,
+          price: 92.19,
+          deliveryDate: '2026-12-01',
+          pricingMode: 'total',
+          unitPrice: null,
+          items: [{ id: 'legacy-item-id', name: 'Etiqueta', quantity: 120, unitPrice: 0.77, price: 92.19 }],
+          payment: { paidAmount: 0 },
+        },
+      },
+    }, adminDb);
+
+    const saved = (await adminDb.doc(`orders/${result.orderId}`).get()).data();
+    expect(saved).toMatchObject({
+      quantity: 120,
+      price: 92.19,
+      items: [{ name: 'Etiqueta', quantity: 120, unitPrice: 0.77, price: 92.19 }],
+    });
+    expect(saved?.items[0]).not.toHaveProperty('id');
+  });
+
   it('garante idempotência reutilizando o mesmo identificador sem duplicar vendas ou contadores', async () => {
     const uid = `idempotent-user-${Date.now()}`;
     const idempotencyKey = `idem-order-${Date.now()}`;
