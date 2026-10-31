@@ -115,6 +115,7 @@ jobs:
               - 'tests/integration/**'
             mcp_metadata:
               - 'functions/mcp/**'
+              - 'functions/ai/**'
               - 'public/.well-known/**'
             ci:
               - '.github/workflows/deploy-dev.yml'
@@ -222,7 +223,7 @@ jobs:
               CHANGED_FUNCTION_FILES=$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA" -- functions/)
               if [ "$CHANGED_FUNCTION_FILES" = "functions/orders/superfrete.js" ]; then
                 FUNCTIONS_SCOPE="superfrete"
-              elif ! echo "$CHANGED_FUNCTION_FILES" | grep -qvE '^functions/(email|whatsapp|alexa|users|mcp|orders)/'; then
+              elif ! echo "$CHANGED_FUNCTION_FILES" | grep -qvE '^functions/(email|whatsapp|alexa|users|mcp|orders|ai)/'; then
                 MODULES=$(echo "$CHANGED_FUNCTION_FILES" | sed -E 's|^functions/([^/]+)/.*|\1|' | sort -u)
                 if [ $(echo "$MODULES" | wc -l) -eq 1 ]; then
                   FUNCTIONS_SCOPE="$MODULES"
@@ -735,18 +736,23 @@ jobs:
             deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
           elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "mcp" ]; then
             echo "🤖 Deploy seletivo das Functions do MCP..."
-            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint"
+            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
+          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "ai" ]; then
+            echo "🧠 Deploy seletivo das Functions de IA e seus consumidores MCP (chatGptToolsEndpoint e callables)..."
+            deploy_chunk "IA" "functions:aiAgentChat,functions:getAiUsage,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi"
+            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
           elif ! npx --yes firebase-tools@15.32.1 deploy --only functions --project luisices-dev --non-interactive; then
             echo "⚠️ Deploy em lote geral atingiu limite de concorrência. Aguardando 20s para drenagem de workers..."
             sleep 20
-            echo "Executando deploy particionado resiliente por módulos..."
+            echo "Executando deploy particionado resiliente por módulos (cobertura total 63 funções)..."
             deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
-            deploy_chunk "IA e Pedidos" "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia"
-            deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
-            deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
             deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
+            deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
+            deploy_chunk "IA e Mídia" "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:galleryMedia"
+            deploy_chunk "Pedidos e SuperFrete" "functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel"
+            deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
             deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
-            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint"
+            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
           fi
 
           echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Dev)..."

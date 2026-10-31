@@ -82,12 +82,12 @@ jobs:
           if matches '(^\*?$|^(firestore\.rules|storage\.rules|database\.rules\.json|firebase\.json)$)'; then rules=true; fi
           if matches '(^\*?$|^cloudflare/api-worker/|^scripts/(ensure-mcp-cache-bypass|ensure-order-tracking-rate-limit|purge-cloudflare-cache)\.mjs$)'; then cloudflare_api=true; fi
           if matches '(^\*?$|^cloudflare/cdn-worker/)'; then cloudflare_cdn=true; fi
-          if matches '(^\*?$|^functions/mcp/|^public/\.well-known/)'; then cloudflare_cache=true; fi
+          if matches '(^\*?$|^functions/(mcp|ai)/|^public/\.well-known/)'; then cloudflare_cache=true; fi
           if matches '(^\*?$|^functions/|^scripts/sync-secrets-safe\.mjs$)'; then
             functions=true
             if [ "$CHANGED" != '*' ] && [ -n "$BASE" ]; then
               CHANGED_FN=$(git diff --name-only "$BASE" "$HEAD_SHA" -- functions/)
-              if ! echo "$CHANGED_FN" | grep -qvE '^functions/(email|whatsapp|alexa|users|mcp|orders)/'; then
+              if ! echo "$CHANGED_FN" | grep -qvE '^functions/(email|whatsapp|alexa|users|mcp|orders|ai)/'; then
                 MODULES=$(echo "$CHANGED_FN" | sed -E 's|^functions/([^/]+)/.*|\1|' | sort -u)
                 if [ $(echo "$MODULES" | wc -l) -eq 1 ]; then
                   functions_scope="$MODULES"
