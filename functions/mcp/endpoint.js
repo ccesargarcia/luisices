@@ -156,6 +156,9 @@ async function executeScopedToolByName(toolsExecutor, toolName, args, scope, sco
       customers: Array.isArray(result.customers)
         ? result.customers.map(({ totalSpent, ...customer }) => customer)
         : result.customers,
+      sampleOrders: !canReadPaymentDetails && Array.isArray(result.sampleOrders)
+        ? result.sampleOrders.map(({ totalPrice, price, paidAmount, remainingAmount, payment, paymentStatus, ...order }) => order)
+        : result.sampleOrders,
       metrics: Object.fromEntries(Object.entries(result.metrics).filter(([key]) => !financialFields.has(key))),
     };
   }

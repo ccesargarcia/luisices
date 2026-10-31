@@ -157,6 +157,13 @@ describe('Alexa: Mapeamento de Pedido, Idempotência e Sequência de Gravação 
     expect(orderDoc.productName).toBe('caixinhas personalizadas');
     expect(orderDoc.quantity).toBe(20);
     expect(orderDoc.price).toBe(150.00);
+    expect(orderDoc.items).toEqual([{
+      name: 'caixinhas personalizadas',
+      quantity: 20,
+      unitPrice: 7.5,
+      price: 150,
+    }]);
+    expect(orderDoc.items[0]).not.toHaveProperty('id');
     expect(orderDoc.status).toBe('pending');
     expect(orderDoc.source).toBe('alexa');
     expect(orderDoc.voiceDraftId).toBe(draftId);

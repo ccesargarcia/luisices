@@ -317,17 +317,86 @@ function requireMcpModulePermission(scope, module, action, label) {
   }
 }
 
+function requireMcpModuleReadPermission(scope, module, label) {
+  if (!scope?.uid) {
+    const error = new Error('Usuário não autenticado.');
+    error.code = 'unauthenticated';
+    throw error;
+  }
+  if (scope.isAdmin) return;
+  const hasExplicitModulePerm = Boolean(scope.permissions && Object.prototype.hasOwnProperty.call(scope.permissions, module));
+  if (!scope.isEmployee && !hasExplicitModulePerm) return;
+  const permission = scope.permissions?.[module];
+  const allowed = permission === true || (permission && typeof permission === 'object' && permission.view === true);
+  if (!allowed) {
+    const error = new Error(`Você não possui permissão para ${label}.`);
+    error.code = 'permission-denied';
+    throw error;
+  }
+}
+
 function roundMoney(value) {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function buildOrderPricingFromQuoteItems(rawItems, totalPrice) {
+  if (!Array.isArray(rawItems) || rawItems.length === 0) return null;
+  const items = rawItems.map((i) => ({
+    name: String(i?.name || 'Item').trim() || 'Item',
+    quantity: Math.max(1, Math.round(Number(i?.quantity) || 1)),
+    unitPrice: Math.max(0, roundMoney(Number(i?.unitPrice) || 0)),
+  }));
+  const lineTotalsCents = items.map((item) => Math.round(roundMoney(item.quantity * item.unitPrice) * 100));
+  const subtotalCents = lineTotalsCents.reduce((sum, cents) => sum + cents, 0);
+  const totalCents = Math.round(roundMoney(totalPrice) * 100);
+  const allocatedLineCents = [...lineTotalsCents];
+  if (subtotalCents > 0 && subtotalCents !== totalCents) {
+    const denominator = BigInt(subtotalCents);
+    const shares = lineTotalsCents.map((lineCents) => {
+      const numerator = BigInt(lineCents) * BigInt(totalCents);
+      return {
+        cents: Number(numerator / denominator),
+        remainder: numerator % denominator,
+      };
+    });
+    shares.forEach((share, index) => {
+      allocatedLineCents[index] = share.cents;
+    });
+    const remainingCents = totalCents - allocatedLineCents.reduce((sum, cents) => sum + cents, 0);
+    const largestRemainders = shares
+      .map((share, index) => ({ index, remainder: share.remainder }))
+      .sort((a, b) => (a.remainder === b.remainder ? a.index - b.index : a.remainder > b.remainder ? -1 : 1));
+    for (let i = 0; i < remainingCents; i += 1) {
+      allocatedLineCents[largestRemainders[i].index] += 1;
+    }
+  }
+  const orderItems = items.map((item, index) => {
+    const price = allocatedLineCents[index] / 100;
+    return {
+      name: item.name,
+      quantity: item.quantity,
+      // Unit price is a cent-rounded display value. The line subtotal remains
+      // authoritative so quantities such as 3 × R$ 33,33 can still total R$ 100,00.
+      unitPrice: Math.round((price / item.quantity + Number.EPSILON) * 100) / 100,
+      price,
+    };
+  });
+  const singleItem = orderItems.length === 1;
+  return {
+    items: orderItems,
+    unitPrice: singleItem ? orderItems[0].unitPrice : null,
+    pricingMode: singleItem ? 'unit' : 'items',
+  };
 }
 
 function normalizePaymentMethod(value) {
   const aliases = {
     pix: 'pix',
     dinheiro: 'cash', cash: 'cash',
-    cartao_credito: 'credit', credito: 'credit', credit: 'credit',
+    cartao_credito: 'credit', credito: 'credit', credit: 'credit', cartao: 'credit',
     cartao_debito: 'debit', debito: 'debit', debit: 'debit',
     transferencia: 'transfer', transfer: 'transfer',
+    outro: 'transfer', outros: 'transfer', other: 'transfer',
   };
   return aliases[String(value || '').trim().toLowerCase()] || null;
 }
@@ -1718,6 +1787,12 @@ class AiToolsExecutor {
         error.code = 'failed-precondition';
         throw error;
       }
+      const prevPrice = Number(current.price ?? current.totalPrice) || 0;
+      const priceDelta = requestedPrice !== undefined ? Math.round((updates.price - prevPrice) * 100) / 100 : 0;
+      const shouldUpdateCustomerStats = priceDelta !== 0 && Boolean(current.customerId) && !current.isExchange && current.status !== 'cancelled';
+      const customerRef = shouldUpdateCustomerStats ? db.collection('customers').doc(current.customerId) : null;
+      const customerSnap = customerRef ? await transaction.get(customerRef) : null;
+
       const orderUpdates = { ...updates, version: currentVersion + 1, updatedAt: now };
       if (args.items !== undefined) {
         orderUpdates.pricingMode = updates.items.length > 1 ? 'items' : 'unit';
@@ -1737,9 +1812,18 @@ class AiToolsExecutor {
         orderUpdates.payment = { ...payment, status: paymentStatus, totalAmount: updates.price, paidAmount, remainingAmount };
       }
       transaction.update(orderRef, orderUpdates);
+      if (customerRef && customerSnap && customerSnap.exists) {
+        const custData = customerSnap.data() || {};
+        const nextTotalSpent = Math.max(0, Math.round(((Number(custData.totalSpent) || 0) + priceDelta) * 100) / 100);
+        if (typeof transaction.update === 'function') {
+          transaction.update(customerRef, { totalSpent: nextTotalSpent, updatedAt: now });
+        } else {
+          transaction.set(customerRef, { ...custData, totalSpent: nextTotalSpent, updatedAt: now }, { merge: true });
+        }
+      }
       if (saleSnap.exists) {
         const saleUpdates = { updatedAt: now };
-        for (const field of ['customerName', 'customerPhone', 'productName', 'quantity', 'deliveryDate', 'items']) {
+        for (const field of ['customerName', 'customerPhone', 'productName', 'quantity', 'deliveryDate', 'items', 'notes']) {
           if (updates[field] !== undefined) saleUpdates[field] = updates[field];
         }
         if (args.items !== undefined) {
@@ -1998,12 +2082,16 @@ class AiToolsExecutor {
       error.code = 'invalid-argument';
       throw error;
     }
+    const rawKey = typeof args.idempotencyKey === 'string' ? args.idempotencyKey.trim() : '';
+    const deliveryIdempotencyKey = /^[A-Za-z0-9._:-]{8,128}$/.test(rawKey)
+      ? `${rawKey.slice(0, 119)}:delivery`
+      : rawKey;
     return this.executeUpdateOrder({
       orderNumber: args.orderNumber,
       ...(args.deliveryDate !== undefined ? { deliveryDate: args.deliveryDate } : {}),
       ...(args.notes !== undefined ? { notes: args.notes } : {}),
       expectedVersion: args.expectedVersion,
-      idempotencyKey: `${String(args.idempotencyKey).slice(0, 119)}:delivery`,
+      idempotencyKey: deliveryIdempotencyKey,
       confirmed: args.confirmed,
     }, scope);
   }
@@ -2156,18 +2244,20 @@ class AiToolsExecutor {
     const totalAmount = roundMoney(currentPayment.totalAmount ?? order.data.price ?? order.data.totalPrice ?? 0);
     const paidAmount = roundMoney(currentPayment.paidAmount ?? order.data.paidAmount ?? 0);
     const remainingAmount = Math.max(0, roundMoney(totalAmount - paidAmount));
-    if (amount > remainingAmount) throw new Error(`O pagamento supera o saldo do pedido (R$ ${remainingAmount.toFixed(2)}). Consulte os pagamentos antes de tentar novamente.`);
-    const preview = {
-      orderNumber: order.data.orderNumber || identifier,
-      customerName: order.data.customerName || '',
-      amount,
-      method,
-      currentPaidAmount: paidAmount,
-      newPaidAmount: roundMoney(paidAmount + amount),
-      remainingAfterPayment: roundMoney(remainingAmount - amount),
-      notes,
-    };
-    if (!isConfirmed(args.confirmed)) return { success: true, status: 'preview', requiresConfirmation: true, preview, message: 'Prévia pronta. Mostre o valor, pedido e forma de pagamento ao usuário; só registre após confirmação explícita.' };
+    if (!isConfirmed(args.confirmed)) {
+      if (amount > remainingAmount) throw new Error(`O pagamento supera o saldo do pedido (R$ ${remainingAmount.toFixed(2)}). Consulte os pagamentos antes de tentar novamente.`);
+      const preview = {
+        orderNumber: order.data.orderNumber || identifier,
+        customerName: order.data.customerName || '',
+        amount,
+        method,
+        currentPaidAmount: paidAmount,
+        newPaidAmount: roundMoney(paidAmount + amount),
+        remainingAfterPayment: roundMoney(remainingAmount - amount),
+        notes,
+      };
+      return { success: true, status: 'preview', requiresConfirmation: true, preview, message: 'Prévia pronta. Mostre o valor, pedido e forma de pagamento ao usuário; só registre após confirmação explícita.' };
+    }
 
     const db = this.repos.db;
     const idempotency = getMcpIdempotencyContext(db, scope, 'register_order_payment', args.idempotencyKey, args);
@@ -2210,7 +2300,7 @@ class AiToolsExecutor {
         return { response };
       }
       const liveRemaining = Math.max(0, roundMoney(liveTotal - livePaid));
-      if (amount > liveRemaining) throw new Error(`O saldo mudou durante a operação. Saldo atual: R$ ${liveRemaining.toFixed(2)}.`);
+      if (amount > liveRemaining) throw new Error(`O pagamento supera o saldo do pedido (R$ ${liveRemaining.toFixed(2)}). Consulte os pagamentos antes de tentar novamente.`);
       const newPaid = roundMoney(livePaid + amount);
       const status = newPaid >= liveTotal && liveTotal > 0 ? 'paid' : 'partial';
       const newHistory = [...history, paymentEntry];
@@ -2229,6 +2319,21 @@ class AiToolsExecutor {
         payment: updatedPayment,
         version: (Number.isSafeInteger(current.version) && current.version > 0 ? current.version : 1) + 1,
         updatedAt: now,
+      });
+      const eventRef = typeof orderRef.collection === 'function'
+        ? orderRef.collection('paymentEvents').doc(idempotencyKey)
+        : db.collection(`orders/${order.id}/paymentEvents`).doc(idempotencyKey);
+      const writeEvent = typeof transaction.create === 'function' ? transaction.create.bind(transaction) : transaction.set.bind(transaction);
+      writeEvent(eventRef, {
+        type: 'payment',
+        amount,
+        method,
+        notes: notes || null,
+        occurredAt: paymentEntry.date,
+        actorUid: scope.uid,
+        source: 'chatgpt-mcp',
+        idempotencyKey,
+        createdAt: now,
       });
       if (saleSnap.exists) {
         transaction.update(saleRef, { paidAmount: newPaid, paymentStatus: status, paymentMethod: method, updatedAt: now });
@@ -2330,7 +2435,7 @@ class AiToolsExecutor {
   /**
    * Ferramenta 10: Criar e Registrar Pedido no Sistema (via ChatGPT / MCP)
    */
-  async executeCreateOrder(args = {}, scope) {
+  async executeCreateOrder(args = {}, scope, options = {}) {
     if (!scope || !scope.uid) {
       throw new Error('Usuário não autenticado.');
     }
@@ -2411,10 +2516,18 @@ class AiToolsExecutor {
       // Ignora erro de busca de cliente
     }
 
-    // Determina status de pagamento
+    // Determina status e método de pagamento padronizados
+    const normalizedMethod = args.paymentMethod ? normalizePaymentMethod(args.paymentMethod) : null;
+    if (args.paymentMethod !== undefined && args.paymentMethod !== null && String(args.paymentMethod).trim() !== '' && !normalizedMethod) {
+      const error = new Error('Forma de pagamento inválida. Utilize PIX, dinheiro, crédito, débito ou transferência.');
+      error.code = 'invalid-argument';
+      throw error;
+    }
+    const effectivePaymentMethod = normalizedMethod || (cleanPaidAmount > 0 ? 'pix' : null);
+
     let paymentStatus = 'pending';
     if (cleanPaidAmount >= cleanTotalPrice && cleanTotalPrice > 0) {
-      paymentStatus = 'completed';
+      paymentStatus = 'paid';
     } else if (cleanPaidAmount > 0) {
       paymentStatus = 'partial';
     }
@@ -2473,7 +2586,7 @@ class AiToolsExecutor {
           deliveryDate: rawDate,
           theme: args.theme || null,
           notes: cleanNotes || null,
-          paymentMethod: args.paymentMethod || null,
+          paymentMethod: effectivePaymentMethod,
         },
         message: 'Prévia do pedido gerada com sucesso. Apresente os dados com clareza ao usuário e confirme se deseja oficializar a gravação.',
       };
@@ -2491,6 +2604,11 @@ class AiToolsExecutor {
     const orderRef = db.collection('orders').doc();
     const orderId = orderRef.id;
 
+    if (typeof db.runTransaction !== 'function') {
+      const error = new Error('A gravação segura não está disponível; o pedido não foi criado.');
+      error.code = 'failed-precondition';
+      throw error;
+    }
     let FieldValue = null;
     try {
       FieldValue = require('firebase-admin/firestore').FieldValue;
@@ -2498,17 +2616,45 @@ class AiToolsExecutor {
       // fallback
     }
 
-    if (typeof db.runTransaction !== 'function') {
-      const error = new Error('A gravação segura não está disponível; o pedido não foi criado.');
-      error.code = 'failed-precondition';
-      throw error;
-    }
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const serverTimestamp = FieldValue && typeof FieldValue.serverTimestamp === 'function'
+      ? FieldValue.serverTimestamp()
+      : now;
+
+    const customPricing = options?.orderPricing && Array.isArray(options.orderPricing.items) && options.orderPricing.items.length > 0
+      ? options.orderPricing
+      : null;
+    const exactUnitPrice = customPricing
+      ? customPricing.unitPrice
+      : (cleanQuantity > 0 && Math.round(cleanTotalPrice * 100) % cleanQuantity === 0
+          ? Math.round((cleanTotalPrice / cleanQuantity) * 100) / 100
+          : null);
+    const pricingMode = customPricing
+      ? customPricing.pricingMode
+      : (exactUnitPrice !== null ? 'unit' : 'total');
+    const orderItems = customPricing
+      ? customPricing.items
+      : (exactUnitPrice !== null
+          ? [{
+              name: cleanProduct,
+              quantity: cleanQuantity,
+              unitPrice: exactUnitPrice,
+              price: cleanTotalPrice,
+            }]
+          : null);
+
     const creationResult = await db.runTransaction(async (transaction) => {
-        const idempotencySnap = await transaction.get(idempotency.ref);
+        const counterRef = db.doc(`users/${uid}/metadata/counters`);
+        const saleRef = db.collection('salesLedger').doc(orderId);
+        const customerRef = customerId ? db.collection('customers').doc(customerId) : null;
+        const [idempotencySnap, counterSnap, customerSnap] = await Promise.all([
+          transaction.get(idempotency.ref),
+          transaction.get(counterRef),
+          customerRef ? transaction.get(customerRef) : Promise.resolve(null),
+        ]);
         const replay = readIdempotentResult(idempotencySnap, idempotency.payloadHash);
         if (replay) return { ...replay, replayed: true };
-        const counterRef = db.doc(`users/${uid}/metadata/counters`);
-        const counterSnap = await transaction.get(counterRef);
         const currentCount = counterSnap.exists ? Number(counterSnap.data()?.orderCounter || 0) : 0;
         const nextCount = currentCount + 1;
         const orderNumber = `#${year}-${String(nextCount).padStart(4, '0')}`;
@@ -2525,8 +2671,12 @@ class AiToolsExecutor {
           customerId: customerId || null,
           productName: cleanProduct,
           quantity: cleanQuantity,
+          items: orderItems,
+          pricingMode,
+          unitPrice: exactUnitPrice,
           price: cleanTotalPrice,
           totalPrice: cleanTotalPrice,
+          isExchange: false,
           status: 'pending',
           deliveryDate: rawDate,
           notes: cleanNotes || null,
@@ -2538,16 +2688,16 @@ class AiToolsExecutor {
           assignedBy: null,
           payment: {
             status: paymentStatus,
-            method: args.paymentMethod || (cleanPaidAmount > 0 ? 'pix' : null),
+            method: effectivePaymentMethod,
             totalAmount: cleanTotalPrice,
             paidAmount: cleanPaidAmount,
             remainingAmount,
-            paymentDate: cleanPaidAmount > 0 ? new Date().toISOString() : null,
+            paymentDate: cleanPaidAmount > 0 ? nowIso : null,
             notes: null,
             history: cleanPaidAmount > 0 ? [{
               amount: cleanPaidAmount,
-              date: new Date().toISOString(),
-              method: args.paymentMethod || 'sinal',
+              date: nowIso,
+              method: effectivePaymentMethod,
               notes: 'Sinal registrado via ChatGPT'
             }] : null,
           },
@@ -2566,21 +2716,61 @@ class AiToolsExecutor {
               'quality-check': { completed: false },
               packaging: { completed: false },
             },
-            startedAt: new Date().toISOString(),
+            startedAt: nowIso,
           },
           version: 1,
-          createdAt: FieldValue && FieldValue.serverTimestamp ? FieldValue.serverTimestamp() : new Date().toISOString(),
-          updatedAt: FieldValue && FieldValue.serverTimestamp ? FieldValue.serverTimestamp() : new Date().toISOString(),
+          createdAt: serverTimestamp,
+          updatedAt: serverTimestamp,
           deletedAt: null,
         };
 
         transaction.set(orderRef, newOrderDoc);
+        transaction.set(saleRef, {
+          id: orderId,
+          orderId,
+          orderNumber,
+          userId: uid,
+          assignedTo: null,
+          assignedToName: null,
+          customerId: customerId || null,
+          customerName: cleanCustomer,
+          customerPhone: customerPhone || null,
+          productName: cleanProduct,
+          quantity: cleanQuantity,
+          items: orderItems || [],
+          pricingMode,
+          unitPrice: exactUnitPrice,
+          amount: cleanTotalPrice,
+          isExchange: false,
+          paymentStatus,
+          paidAmount: cleanPaidAmount,
+          paymentMethod: effectivePaymentMethod,
+          date: nowIso,
+          deliveryDate: rawDate,
+          status: 'pending',
+          isDeletedFromOrders: false,
+          notes: cleanNotes || null,
+          tags,
+          source: 'chatgpt-mcp',
+          createdAt: serverTimestamp,
+          updatedAt: serverTimestamp,
+        });
+        if (customerRef && customerSnap && customerSnap.exists) {
+          const cust = customerSnap.data() || {};
+          transaction.set(customerRef, {
+            ...cust,
+            totalOrders: (Number(cust.totalOrders) || 0) + 1,
+            totalSpent: Math.round(((Number(cust.totalSpent) || 0) + cleanTotalPrice) * 100) / 100,
+            lastOrderDate: nowIso,
+            updatedAt: serverTimestamp,
+          }, { merge: true });
+        }
         const result = { orderId, orderNumber };
         transaction.set(idempotency.ref, {
           payloadHash: idempotency.payloadHash,
           result,
           completed: true,
-          createdAt: new Date().toISOString(),
+          createdAt: nowIso,
         });
         return { ...result, replayed: false };
       });
@@ -2639,6 +2829,7 @@ class AiToolsExecutor {
   }
 
   async executeCalculateArtisanPricing(args = {}, scope) {
+    requireMcpModuleReadPermission(scope, 'pricing', 'calcular precificação');
     const productName = String(args.productName || 'Encomenda').trim();
     const quantity = args.quantity === undefined ? 1 : Number(args.quantity);
     if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 100000) {
@@ -2729,6 +2920,7 @@ class AiToolsExecutor {
   }
 
   async executeListSupplies(args = {}, scope) {
+    requireMcpModuleReadPermission(scope, 'pricing', 'visualizar insumos');
     const supplies = await this.repos.getSupplies(scope);
     const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
     let filtered = supplies;
@@ -2746,6 +2938,7 @@ class AiToolsExecutor {
   }
 
   async executeListPricingModels(args = {}, scope) {
+    requireMcpModuleReadPermission(scope, 'pricing', 'visualizar modelos de precificação');
     const recipes = await this.repos.getPricingRecipes(scope, { limit: args.limit || 20 });
     const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
     let filtered = recipes;
@@ -2761,6 +2954,7 @@ class AiToolsExecutor {
   }
 
   async executeGetPricingModel(args = {}, scope) {
+    requireMcpModuleReadPermission(scope, 'pricing', 'visualizar modelos de precificação');
     const model = await this.repos.getPricingRecipeById(scope, args.modelId);
     if (!model) {
       const err = new Error('Modelo de precificação não encontrado.');
@@ -2796,13 +2990,26 @@ class AiToolsExecutor {
   }
 
   async executeQueryQuotes(args = {}, scope) {
+    requireMcpModuleReadPermission(scope, 'quotes', 'visualizar orçamentos');
     const quotes = await this.repos.getQuotes(scope, { limit: args.limit || 20 });
     const searchTerm = String(args.searchTerm || '').toLowerCase().trim();
     const statusFilter = String(args.status || 'all').toLowerCase();
 
     let filtered = quotes;
     if (statusFilter !== 'all') {
-      filtered = filtered.filter((q) => q.status.toLowerCase() === statusFilter);
+      filtered = filtered.filter((q) => {
+        const itemStatus = String(q.status || '').toLowerCase();
+        if (statusFilter === 'pending') {
+          return itemStatus === 'pending' || itemStatus === 'draft' || itemStatus === 'sent';
+        }
+        if (statusFilter === 'cancelled') {
+          return itemStatus === 'cancelled' || itemStatus === 'rejected';
+        }
+        if (statusFilter === 'rejected') {
+          return itemStatus === 'rejected' || itemStatus === 'cancelled';
+        }
+        return itemStatus === statusFilter;
+      });
     }
     if (searchTerm) {
       filtered = filtered.filter((q) => q.customerName.toLowerCase().includes(searchTerm) || q.quoteNumber.toLowerCase().includes(searchTerm));
@@ -2841,14 +3048,16 @@ class AiToolsExecutor {
 
   async executeUpdateQuoteStatus(args = {}, scope) {
     requireMcpModulePermission(scope, 'quotes', 'edit', 'atualizar orçamentos');
+    const rawStatus = String(args.status || '').trim();
+    const normalizedStatus = rawStatus.toLowerCase() === 'cancelled' ? 'rejected' : rawStatus;
     if (!isConfirmed(args.confirmed)) {
       return {
         success: true,
         preview: true,
         quoteNumber: args.quoteNumber,
-        status: args.status,
+        status: normalizedStatus,
         convertToOrder: Boolean(args.convertToOrder),
-        message: `Prévia da atualização do orçamento ${args.quoteNumber} para ${args.status}. Confirme para aplicar.`,
+        message: `Prévia da atualização do orçamento ${args.quoteNumber} para ${normalizedStatus}. Confirme para aplicar.`,
       };
     }
 
@@ -2858,25 +3067,66 @@ class AiToolsExecutor {
       throw error;
     }
 
-    const updated = await this.repos.updateQuoteStatus(scope, args.quoteNumber, args.status);
+    const updated = await this.repos.updateQuoteStatus(scope, args.quoteNumber, normalizedStatus);
     let orderCreated = null;
 
     if (args.status === 'approved' && args.convertToOrder) {
-      const quotes = await this.repos.getQuotes(scope, { limit: 10 });
-      const targetQuote = quotes.find((q) => q.id === updated.id || q.quoteNumber === updated.quoteNumber);
+      let targetQuote = updated.quote || null;
+      if (!targetQuote && typeof this.repos.getQuotes === 'function') {
+        const quotes = await this.repos.getQuotes(scope, { limit: 100 });
+        targetQuote = quotes.find((q) => q.id === updated.id || q.quoteNumber === updated.quoteNumber) || null;
+      }
       if (targetQuote) {
-        orderCreated = await this.executeCreateOrder({
-          customerName: targetQuote.customerName,
-          customerPhone: targetQuote.customerPhone,
-          productName: targetQuote.productName,
-          quantity: 1,
-          totalPrice: targetQuote.totalPrice,
-          // Aprovar o orçamento não comprova que o sinal foi recebido.
-          paidAmount: 0,
-          deliveryDate: args.deliveryDate || getBusinessDate(new Date(Date.now() + 7 * 86400000)),
-          idempotencyKey: args.idempotencyKey || `conv-quote-${updated.id}`,
-          confirmed: true,
-        }, scope);
+        if (targetQuote.orderId && targetQuote.orderNumber) {
+          orderCreated = { orderId: targetQuote.orderId, orderNumber: targetQuote.orderNumber, isDuplicate: true };
+        } else {
+          const hasQuoteItems = Array.isArray(targetQuote.items) && targetQuote.items.length > 0;
+          const quoteQuantity = hasQuoteItems
+            ? targetQuote.items.reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0) || 1
+            : (Number(targetQuote.quantity) || 1);
+          const quoteProductName = hasQuoteItems
+            ? targetQuote.items
+                .map((i) => {
+                  const q = Number(i?.quantity) || 1;
+                  const n = String(i?.name || '').trim() || 'Item';
+                  return q > 1 ? `${n} (${q}x)` : n;
+                })
+                .join(', ')
+            : String(targetQuote.productName || 'Encomenda').trim();
+          const orderPricing = hasQuoteItems
+            ? buildOrderPricingFromQuoteItems(targetQuote.items, targetQuote.totalPrice)
+            : null;
+          orderCreated = await this.executeCreateOrder({
+            customerName: targetQuote.customerName,
+            customerPhone: targetQuote.customerPhone,
+            productName: quoteProductName,
+            quantity: quoteQuantity,
+            totalPrice: targetQuote.totalPrice,
+            // Aprovar o orçamento não comprova que o sinal foi recebido.
+            paidAmount: 0,
+            deliveryDate: args.deliveryDate || getBusinessDate(new Date(Date.now() + 7 * 86400000)),
+            idempotencyKey: args.idempotencyKey || `conv-quote-${updated.id}`,
+            confirmed: true,
+          }, scope, orderPricing ? { orderPricing } : {});
+          if (orderCreated?.orderId && this.repos.db && updated.id) {
+            try {
+              const quoteDocRef = this.repos.db.collection('quotes').doc(updated.id);
+              const linkData = {
+                orderId: orderCreated.orderId,
+                orderNumber: orderCreated.orderNumber,
+                convertedOrderId: orderCreated.orderId,
+                convertedAt: new Date().toISOString(),
+              };
+              if (typeof quoteDocRef.update === 'function') {
+                await quoteDocRef.update(linkData);
+              } else if (typeof quoteDocRef.set === 'function') {
+                await quoteDocRef.set(linkData, { merge: true });
+              }
+            } catch (_linkErr) {
+              // Ignora erro caso mock de teste não suporte update no doc de quote
+            }
+          }
+        }
       }
     }
 

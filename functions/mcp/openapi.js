@@ -348,7 +348,7 @@ const TOOLS_METADATA = [
         paidAmount: { ...moneyInput('Valor de entrada ou sinal efetivamente já recebido. Omita se não houve pagamento; exige payments:write.', { minimum: 0, maximum: 10000000 }), default: 0 },
         paymentMethod: {
           type: 'string',
-          enum: ['pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'transferencia', 'outro'],
+          enum: ['pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'transferencia', 'cash', 'credit', 'debit', 'transfer', 'outro'],
           description: 'Forma do pagamento inicial já recebido. Omita quando ainda não houve pagamento; exige payments:write.',
         },
         deliveryDate: {
@@ -723,11 +723,11 @@ const TOOLS_METADATA = [
     name: 'query_quotes',
     scope: 'quotes:read',
     summary: 'Consultar Orçamentos Enviados',
-    description: 'Pesquisa orçamentos formais por cliente, status (pendente, aprovado, cancelado) ou termo de busca.',
+    description: 'Pesquisa orçamentos formais por cliente, status (rascunho, enviado, pendente, aprovado, recusado/cancelado) ou termo de busca.',
     requestBody: {
       type: 'object',
       properties: {
-        status: { type: 'string', enum: ['all', 'pending', 'approved', 'cancelled', 'rejected'], default: 'all' },
+        status: { type: 'string', enum: ['all', 'draft', 'sent', 'pending', 'approved', 'rejected', 'cancelled', 'expired'], default: 'all' },
         searchTerm: { type: 'string', maxLength: 200, description: 'Nome do cliente ou número do orçamento (#ORC-...).' },
         limit: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
       },
@@ -760,13 +760,13 @@ const TOOLS_METADATA = [
     name: 'update_quote_status',
     scope: 'quotes:write',
     summary: 'Atualizar Status do Orçamento',
-    description: 'Altera o status de um orçamento para aprovado ou cancelado, ou converte o orçamento aprovado em pedido.',
+    description: 'Altera o status de um orçamento (draft, sent, approved, rejected, cancelled, expired), ou converte o orçamento aprovado em pedido.',
     requestBody: {
       type: 'object',
       required: ['quoteNumber', 'status', 'idempotencyKey'],
       properties: {
         quoteNumber: { type: 'string', description: 'Número do orçamento (ex: #ORC-0001) ou ID.' },
-        status: { type: 'string', enum: ['approved', 'cancelled', 'rejected'] },
+        status: { type: 'string', enum: ['draft', 'sent', 'approved', 'rejected', 'cancelled', 'expired'] },
         convertToOrder: { type: 'boolean', default: false, description: 'Se true e status=approved, gera automaticamente o pedido na fila.' },
         deliveryDate: { type: 'string', maxLength: 10, description: 'Data de entrega caso o orçamento seja convertido em pedido.' },
         idempotencyKey: { type: 'string', minLength: 8, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{8,128}$', description: 'Campo interno: gere e preencha em silêncio; nunca peça, mostre ou explique este valor à pessoa.' },

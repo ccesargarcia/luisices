@@ -47,7 +47,21 @@ service cloud.firestore {
 
     function userHasPerm(module, action) {
       return isActiveUser()
-        && (isAdmin() || hasPerm(getEmployeePermissions().get(module, false), action));
+        && (isAdmin() || hasPerm(getEmployeePermissions().get(module, false), action)
+          || (module == 'gallery' && action == 'edit' && legacyGalleryEditPerm()));
+    }
+
+    // Perfis antigos não armazenavam gallery.edit. Mantém a edição existente
+    // apenas para usuários legados com gallery.create, sem conceder a exceção a funcionários
+    // ou a perfis novos que tenham edit explicitamente definido como false.
+    function legacyGalleryEditPerm() {
+      let profile = get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
+      let permissions = profile.get('permissions', {});
+      let gallery = permissions.get('gallery', false);
+      return profile.get('role', '') != 'funcionario'
+        && gallery is map
+        && !('edit' in gallery)
+        && hasPerm(gallery, 'create');
     }
 
     function isAssignedEmployeeEditor(assignedTo) {
@@ -426,7 +440,22 @@ service cloud.firestore {
 
     function isValidGalleryItem(data) {
       return (!('title' in data) || (data.title is string && data.title.size() <= 200))
-        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 2048));
+        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 2048))
+        && (!('deletedAt' in data) || data.deletedAt == null || data.deletedAt is timestamp);
+    }
+
+    function canUpdateGalleryItem(previous, next) {
+      let changed = next.diff(previous).affectedKeys();
+      let requiresDelete = changed.hasAny(['deletedAt']);
+      let requiresEdit = !changed.hasOnly(['deletedAt']);
+      let hasDeletePerm = isAdmin()
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('gallery', 'delete'))
+        || employeeHasGalleryPerm('delete');
+      let hasEditPerm = isAdmin()
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('gallery', 'edit'))
+        || employeeHasGalleryPerm('edit');
+      return (!requiresDelete || hasDeletePerm)
+        && (!requiresEdit || hasEditPerm);
     }
 
     function isValidRecipe(data) {
@@ -765,11 +794,8 @@ service cloud.firestore {
       allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && userHasPerm('gallery', 'create'))
         || isAdmin()
         || employeeHasGalleryPerm('create')) && isValidGalleryItem(request.resource.data);
-      allow update: if (
-        isAdmin()
-        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('gallery', 'delete'))
-        || employeeHasGalleryPerm('delete')
-      ) && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId)
+      allow update: if canUpdateGalleryItem(resource.data, request.resource.data)
+        && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId)
         && isValidGalleryItem(request.resource.data);
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('gallery', 'delete'))
         || isAdmin()

@@ -9,7 +9,7 @@ const INVITED_USER_PERMISSIONS = {
   storeProducts: { view: true, create: false, edit: false, delete: false },
   store: false,
   quotes: { view: true, create: true, edit: true, delete: true },
-  gallery: { view: true, create: true, delete: true },
+  gallery: { view: true, create: true, edit: true, delete: true },
   exchanges: true,
   reports: false,
   settings: false,

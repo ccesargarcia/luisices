@@ -116,4 +116,156 @@ describe('backend MCP authorization', () => {
     })).rejects.toMatchObject({ code: 'permission-denied' });
     expect(updateQuoteStatus).not.toHaveBeenCalled();
   });
+
+  it('creates quotes with valid draft status and rounded unitPrice, and converts quotes directly without limit-10 truncation', async () => {
+    const { validateQuoteMath } = await import('../../src/app/components/quotes/quoteHelpers');
+    const addedQuotes: any[] = [];
+    const db = {
+      collection: vi.fn((name: string) => ({
+        doc: vi.fn(() => ({
+          collection: vi.fn(() => ({
+            doc: vi.fn(() => ({
+              get: vi.fn().mockResolvedValue({ exists: true, data: () => ({ quoteCount: 15 }) }),
+              set: vi.fn().mockResolvedValue(undefined),
+            })),
+          })),
+          update: vi.fn().mockResolvedValue(undefined),
+        })),
+        add: vi.fn(async (data: any) => {
+          addedQuotes.push(data);
+          return { id: 'quote-16' };
+        }),
+      })),
+    };
+    const repos = new AiDataRepositories(db);
+    const created = await repos.createQuote({ uid: 'user-1' }, {
+      customerName: 'Ana',
+      productName: 'Kit Festa',
+      quantity: 3,
+      totalPrice: 100,
+    });
+
+    expect(created.status).toBe('draft');
+    expect(created.items[0]).toEqual({
+      name: 'Kit Festa',
+      quantity: 3,
+      unitPrice: 33.34,
+    });
+    expect(created.subtotal).toBe(100.02);
+    expect(created.discount).toBe(0.02);
+    expect(created.discountType).toBe('fixed');
+    expect(created.totalPrice).toBe(100);
+    expect(addedQuotes[0].createdAt).toBeInstanceOf(Date);
+    expect(typeof created.createdAt).toBe('string');
+
+    // Garante que a matemática do orçamento (3 * 33.34 - 0.02 = 100.00) passa na validação das regras e do cliente
+    const validatedMath = validateQuoteMath(created.items, created.discount ?? 0, created.discountType ?? 'percent');
+    expect(validatedMath).toEqual({
+      subtotal: 100.02,
+      discountAmount: 0.02,
+      total: 100,
+    });
+
+    // Simula conversão de orçamento com múltiplos itens e desconto
+    const multiItemQuote = {
+      ...created,
+      items: [
+        { name: 'Caixa Milk', quantity: 2, unitPrice: 30 },
+        { name: 'Topo de Bolo', quantity: 1, unitPrice: 40 },
+      ],
+      discount: 0.02,
+      discountType: 'fixed',
+      totalPrice: 99.98,
+    };
+    const updateQuoteStatus = vi.fn().mockResolvedValue({
+      id: 'quote-16',
+      quoteNumber: 'ORC-0016',
+      status: 'approved',
+      previousStatus: 'draft',
+      quote: multiItemQuote,
+    });
+    const tools = new AiToolsExecutor({
+      db,
+      updateQuoteStatus,
+      getQuotes: vi.fn().mockResolvedValue([]), // simula mais de 10 orçamentos onde getQuotes(10) não traria o alvo
+    });
+    const createOrderSpy = vi.spyOn(tools, 'executeCreateOrder').mockResolvedValue({
+      success: true,
+      orderId: 'order-from-quote-16',
+      orderNumber: '#2026-0016',
+    });
+
+    const converted = await tools.executeUpdateQuoteStatus({
+      quoteNumber: 'ORC-0016',
+      status: 'approved',
+      convertToOrder: true,
+      confirmed: true,
+    }, {
+      uid: 'user-1',
+      permissions: { quotes: { edit: true }, orders: { create: true } },
+      mcpScopes: ['quotes:write', 'orders:create'],
+    });
+
+    expect(converted).toMatchObject({
+      success: true,
+      quoteNumber: 'ORC-0016',
+      status: 'approved',
+      orderCreated: '#2026-0016',
+    });
+    expect(createOrderSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerName: 'Ana',
+        productName: 'Caixa Milk (2x), Topo de Bolo',
+        quantity: 3,
+        totalPrice: 99.98,
+      }),
+      expect.anything(),
+      {
+        orderPricing: {
+          pricingMode: 'items',
+          unitPrice: null,
+          items: [
+            { name: 'Caixa Milk', quantity: 2, unitPrice: 30, price: 59.99 },
+            { name: 'Topo de Bolo', quantity: 1, unitPrice: 39.99, price: 39.99 },
+          ],
+        },
+      }
+    );
+  });
+
+  it('normaliza status "cancelled" para "rejected" e permite consulta de orçamentos pendentes/rascunhos', async () => {
+    const { validateToolArguments } = require('../../functions/mcp/validation');
+    const updateQuoteStatus = vi.fn().mockResolvedValue({
+      id: 'quote-1', quoteNumber: 'ORC-0001', status: 'rejected', previousStatus: 'sent',
+    });
+    const getQuotes = vi.fn().mockResolvedValue([
+      { id: 'q1', quoteNumber: 'ORC-0001', status: 'draft', customerName: 'Cliente 1', totalPrice: 100 },
+      { id: 'q2', quoteNumber: 'ORC-0002', status: 'sent', customerName: 'Cliente 2', totalPrice: 200 },
+      { id: 'q3', quoteNumber: 'ORC-0003', status: 'approved', customerName: 'Cliente 3', totalPrice: 300 },
+      { id: 'q4', quoteNumber: 'ORC-0004', status: 'rejected', customerName: 'Cliente 4', totalPrice: 400 },
+    ]);
+    const tools = new AiToolsExecutor({ updateQuoteStatus, getQuotes });
+
+    // Schema público aceita status canônicos e cancelamento legado
+    expect(() => validateToolArguments('update_quote_status', { quoteNumber: 'ORC-0001', status: 'cancelled', idempotencyKey: 'test-key-1234' })).not.toThrow();
+    expect(() => validateToolArguments('update_quote_status', { quoteNumber: 'ORC-0001', status: 'draft', idempotencyKey: 'test-key-1234' })).not.toThrow();
+    expect(() => validateToolArguments('query_quotes', { status: 'draft' })).not.toThrow();
+    expect(() => validateToolArguments('query_quotes', { status: 'pending' })).not.toThrow();
+
+    // Normalização na gravação
+    const result = await tools.executeUpdateQuoteStatus({
+      quoteNumber: 'ORC-0001', status: 'cancelled', confirmed: true,
+    }, { uid: 'user-1', permissions: { quotes: { edit: true } } });
+
+    expect(updateQuoteStatus).toHaveBeenCalledWith(expect.anything(), 'ORC-0001', 'rejected');
+    expect(result.status).toBe('rejected');
+
+    // Filtro de pending retorna draft e sent
+    const pendingQuotes = await tools.executeQueryQuotes({ status: 'pending' }, { uid: 'user-1' });
+    expect(pendingQuotes.quotes.map((q: any) => q.quoteNumber)).toEqual(['ORC-0001', 'ORC-0002']);
+
+    // Filtro de cancelled retorna rejected
+    const cancelledQuotes = await tools.executeQueryQuotes({ status: 'cancelled' }, { uid: 'user-1' });
+    expect(cancelledQuotes.quotes.map((q: any) => q.quoteNumber)).toEqual(['ORC-0004']);
+  });
 });

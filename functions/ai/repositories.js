@@ -760,20 +760,39 @@ class AiDataRepositories {
       quoteNum = `ORC-${Math.floor(1000 + Math.random() * 9000)}`;
     }
 
+    const nowIso = now.toISOString();
+    const quantity = Math.max(1, Math.round(Number(data.quantity) || 1));
+    const totalPriceCents = Math.max(0, Math.round(((Number(data.totalPrice) || 0) + Number.EPSILON) * 100));
+    const totalPrice = totalPriceCents / 100;
+    const unitPriceCents = Math.ceil(totalPriceCents / quantity);
+    const unitPrice = unitPriceCents / 100;
+    const subtotalCents = quantity * unitPriceCents;
+    const subtotal = subtotalCents / 100;
+    const roundingDiscountCents = subtotalCents - totalPriceCents;
+    const discountAmount = roundingDiscountCents / 100;
+    const validStatuses = new Set(['draft', 'sent']);
+    const initialStatus = validStatuses.has(data.status) ? data.status : 'draft';
+    const productName = String(data.productName || 'Encomenda').trim();
+
     const quoteData = {
       quoteNumber: quoteNum,
       customerName: String(data.customerName || 'Cliente').trim(),
       customerPhone: String(data.customerPhone || '').trim(),
-      productName: String(data.productName || 'Encomenda').trim(),
+      productName,
       items: [{
-        name: String(data.productName || 'Encomenda').trim(),
-        quantity: Number(data.quantity) || 1,
-        unitPrice: (Number(data.totalPrice) || 0) / (Number(data.quantity) || 1),
+        name: productName,
+        quantity,
+        unitPrice,
       }],
-      totalPrice: Number(data.totalPrice) || 0,
+      subtotal,
+      discount: roundingDiscountCents > 0 ? discountAmount : null,
+      discountType: roundingDiscountCents > 0 ? 'fixed' : null,
+      discountAmount,
+      deliveryFee: 0,
+      totalPrice,
       depositPercentage: Number(data.depositPercentage) || 50,
       paymentMethod: data.paymentMethod || 'pix',
-      status: 'pending',
+      status: initialStatus,
       validUntil: data.validUntil || '',
       notes: data.notes || '',
       createdAt: now,
@@ -782,7 +801,7 @@ class AiDataRepositories {
     };
 
     const docRef = await this.db.collection('quotes').add(quoteData);
-    return { id: docRef.id, ...quoteData, createdAt: now.toISOString() };
+    return { id: docRef.id, ...quoteData, createdAt: nowIso, updatedAt: nowIso };
   }
 
   /**
@@ -790,6 +809,13 @@ class AiDataRepositories {
    */
   async updateQuoteStatus(scope, quoteIdentifier, newStatus) {
     if (!this.db) throw new Error('Banco de dados não disponível.');
+    const normalizedStatus = String(newStatus || '').toLowerCase().trim() === 'cancelled' ? 'rejected' : newStatus;
+    const allowedStatuses = new Set(['draft', 'sent', 'approved', 'rejected', 'expired']);
+    if (!allowedStatuses.has(normalizedStatus)) {
+      const err = new Error('Status do orçamento inválido.');
+      err.code = 'invalid-argument';
+      throw err;
+    }
     let docRef = null;
     let docSnap = null;
 
@@ -814,18 +840,34 @@ class AiDataRepositories {
     }
 
     const data = docSnap.data();
-    if (!scope.isAdmin && data.userId !== scope.uid) {
+    const canEditQuotes = scope.isAdmin || data.userId === scope.uid || (scope.isEmployee && scope.permissions?.quotes?.edit === true);
+    if (!canEditQuotes) {
       const err = new Error('Permissão negada para alterar este orçamento.');
       err.code = 'permission-denied';
       throw err;
     }
 
+    const now = new Date();
     await docRef.update({
-      status: newStatus,
-      updatedAt: new Date(),
+      status: normalizedStatus,
+      updatedAt: now,
     });
 
-    return { id: docSnap.id, quoteNumber: data.quoteNumber || `#ORC-${docSnap.id.slice(-4)}`, status: newStatus, previousStatus: data.status };
+    const quoteNumber = data.quoteNumber || `#ORC-${docSnap.id.slice(-4)}`;
+    return {
+      id: docSnap.id,
+      quoteNumber,
+      status: normalizedStatus,
+      previousStatus: data.status,
+      updatedAt: now.toISOString(),
+      quote: {
+        id: docSnap.id,
+        ...data,
+        quoteNumber,
+        status: normalizedStatus,
+        updatedAt: now.toISOString(),
+      },
+    };
   }
 }
 

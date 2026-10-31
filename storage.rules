@@ -29,6 +29,24 @@ service firebase.storage {
         || (permField is bool && permField == true);
     }
 
+    function ownerHasPerm(userId, module, action) {
+      return request.auth.uid == userId
+        && ((!(module in getEmployeePermissions()) || hasPerm(getEmployeePermissions()[module], action))
+          || (module == 'gallery' && action == 'edit' && legacyGalleryEditPerm()));
+    }
+
+    // Compatibilidade temporária com perfis legados sem gallery.edit.
+    // Não concede edição a funcionários nem quando edit foi explicitamente revogado.
+    function legacyGalleryEditPerm() {
+      let profile = firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data;
+      let permissions = profile.get('permissions', {});
+      let gallery = permissions.get('gallery', false);
+      return profile.get('role', '') != 'funcionario'
+        && gallery is map
+        && !('edit' in gallery)
+        && hasPerm(gallery, 'create');
+    }
+
     function canViewOrders() {
       return isActiveUser() && (isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'view')));
     }
@@ -74,22 +92,31 @@ service firebase.storage {
     // Anexos de pedidos pertencem ao tenant ({userId}). Acesso restrito ao dono, admin ou funcionário autorizado.
     match /users/{userId}/orders/{orderId}/{allPaths=**} {
       allow read: if orderId != 'email_draft' && isActiveUser()
-        && (request.auth.uid == userId || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'view')));
-      allow create, update: if orderId != 'email_draft' && isActiveUser()
-        && (request.auth.uid == userId || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && (hasPerm(getEmployeePermissions().orders, 'create') || hasPerm(getEmployeePermissions().orders, 'edit'))))
+        && (ownerHasPerm(userId, 'orders', 'view') || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'view')));
+      allow create: if orderId != 'email_draft' && isActiveUser()
+        && resource == null
+        && (ownerHasPerm(userId, 'orders', 'create') || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'create')))
+        && request.resource.size < 100 * 1024 * 1024
+        && (request.resource.contentType.matches('image/(jpeg|png|webp|gif)') || request.resource.contentType == 'application/pdf');
+      allow update: if orderId != 'email_draft' && isActiveUser()
+        && resource != null
+        && (ownerHasPerm(userId, 'orders', 'edit') || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'edit')))
         && request.resource.size < 100 * 1024 * 1024
         && (request.resource.contentType.matches('image/(jpeg|png|webp|gif)') || request.resource.contentType == 'application/pdf');
       allow delete: if orderId != 'email_draft' && isActiveUser()
-        && (request.auth.uid == userId || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'delete')));
+        && (ownerHasPerm(userId, 'orders', 'delete') || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'delete')));
     }
 
     // Galeria de artes: apenas imagens, até 15MB
     match /users/{userId}/gallery/{fileName} {
-      allow read: if isActiveUser() && (request.auth.uid == userId || canViewGallery());
-      allow create, update: if isActiveUser() && (request.auth.uid == userId || isAdmin() || (isActiveEmployee() && ('gallery' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().gallery, 'create')))
+      allow read: if isActiveUser() && (ownerHasPerm(userId, 'gallery', 'view') || canViewGallery());
+      allow create: if isActiveUser() && resource == null && (ownerHasPerm(userId, 'gallery', 'create') || isAdmin() || (isActiveEmployee() && ('gallery' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().gallery, 'create')))
         && request.resource.size < 15 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
-      allow delete: if isActiveUser() && (request.auth.uid == userId || isAdmin() || (isActiveEmployee() && ('gallery' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().gallery, 'delete')));
+      allow update: if isActiveUser() && resource != null && (ownerHasPerm(userId, 'gallery', 'edit') || isAdmin() || (isActiveEmployee() && ('gallery' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().gallery, 'edit')))
+        && request.resource.size < 15 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
+      allow delete: if isActiveUser() && (ownerHasPerm(userId, 'gallery', 'delete') || isAdmin() || (isActiveEmployee() && ('gallery' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().gallery, 'delete')));
     }
 
     // Imagens de perfil, logo e banner do usuário: leitura pública, edição restrita ao dono/admin

@@ -185,7 +185,7 @@ export function Exchanges() {
     try {
       const order = orders.find(o => o.id === orderId);
       await firebaseOrderService.deleteOrder(orderId);
-      if (order?.customerId && order.price && order.status === 'pending' && (!order.payment || order.payment.status === 'pending')) {
+      if (!order?.isExchange && order?.customerId && order.price && order.status === 'pending' && (!order.payment || order.payment.status === 'pending')) {
         await firebaseCustomerService.decrementCustomerStats(order.customerId, order.price).catch(() => {});
       }
       setDetailsOpen(false);
