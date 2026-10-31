@@ -424,7 +424,7 @@ const TOOLS_METADATA = [
             type: 'object',
             required: ['name', 'quantity', 'unitPrice'],
             properties: {
-              name: { type: 'string', minLength: 1, maxLength: 200 },
+              name: { type: 'string', minLength: 1, maxLength: 300 },
               quantity: { type: 'integer', minimum: 1, maximum: 10000 },
               unitPrice: moneyInput('Preço unitário deste item em reais.', { minimum: 0, maximum: 1000000 }),
               price: moneyInput('Opcional: subtotal exato deste item em reais. Se informado, preserva centavos exatos de itens legados.', { minimum: 0, maximum: 10000000 }),
@@ -451,7 +451,7 @@ const TOOLS_METADATA = [
       required: ['orderNumber', 'name', 'quantity', 'unitPrice'],
       properties: {
         orderNumber: { type: 'string', description: 'Número do pedido, por exemplo #2026-0042, ou ID do documento.' },
-        name: { type: 'string', minLength: 1, maxLength: 200, description: 'Nome ou descrição do novo item a ser adicionado.' },
+        name: { type: 'string', minLength: 1, maxLength: 300, description: 'Nome ou descrição do novo item a ser adicionado.' },
         quantity: { type: 'integer', minimum: 1, maximum: 10000, description: 'Quantidade do novo item (número inteiro >= 1).' },
         unitPrice: moneyInput('Preço unitário do novo item em reais (ex: 44,00 ou 44).', { minimum: 0, maximum: 1000000 }),
         price: moneyInput('Opcional: subtotal do item em reais caso queira fixar um valor total específico.', { minimum: 0, maximum: 10000000 }),

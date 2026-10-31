@@ -1385,7 +1385,7 @@ class AiToolsExecutor {
     const resolvedItems = hasStoredItems
       ? order.data.items.map((item, existingIndex) => ({
           existingIndex,
-          name: String(item.name || item.productName || '').slice(0, 200),
+          name: String(item.name || item.productName || '').slice(0, 300),
           quantity: Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
           unitPrice: item.unitPrice !== null && item.unitPrice !== undefined && item.unitPrice !== '' && Number.isFinite(Number(item.unitPrice))
             ? getStoredItemUnitPrice(item)
@@ -1393,7 +1393,7 @@ class AiToolsExecutor {
         }))
       : (order.data.productName ? [{
           existingIndex: 0,
-          name: String(order.data.productName).slice(0, 200),
+          name: String(order.data.productName).slice(0, 300),
           quantity: Number.isSafeInteger(Number(order.data.quantity)) && Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
           unitPrice: order.data.unitPrice !== null && order.data.unitPrice !== undefined && order.data.unitPrice !== '' && Number.isFinite(Number(order.data.unitPrice)) && Number(order.data.unitPrice) > 0
             ? Number(order.data.unitPrice)
@@ -1500,7 +1500,7 @@ class AiToolsExecutor {
         const quantity = Number(item?.quantity);
         const unitPrice = item?.unitPrice;
         const existingIndex = item?.existingIndex;
-        if (!name || name.length > 200 || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000 || typeof unitPrice !== 'number' || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1000000) {
+        if (!name || name.length > 300 || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000 || typeof unitPrice !== 'number' || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1000000) {
           const error = new Error('Cada item precisa de nome, quantidade inteira entre 1 e 10000 e preço unitário válido de até R$ 1.000.000,00.');
           error.code = 'invalid-argument';
           throw error;
@@ -1569,7 +1569,7 @@ class AiToolsExecutor {
       const currentItems = Array.isArray(order.data.items) && order.data.items.length > 0
         ? order.data.items
         : (order.data.productName ? [{
-            name: String(order.data.productName).slice(0, 200),
+            name: String(order.data.productName).slice(0, 300),
             quantity: Number.isSafeInteger(Number(order.data.quantity)) && Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
             unitPrice: order.data.unitPrice !== null && order.data.unitPrice !== undefined && order.data.unitPrice !== '' && Number.isFinite(Number(order.data.unitPrice)) && Number(order.data.unitPrice) > 0
               ? Number(order.data.unitPrice)
@@ -1800,8 +1800,8 @@ class AiToolsExecutor {
       throw error;
     }
     const name = typeof args.name === 'string' ? args.name.trim() : '';
-    if (!name || name.length > 200) {
-      const error = new Error('Informe o nome do item com até 200 caracteres.');
+    if (!name || name.length > 300) {
+      const error = new Error('Informe o nome do item com até 300 caracteres.');
       error.code = 'invalid-argument';
       throw error;
     }
@@ -1847,7 +1847,7 @@ class AiToolsExecutor {
     const existingItems = Array.isArray(order.data.items) && order.data.items.length > 0
       ? order.data.items.map((item, index) => ({
           existingIndex: index,
-          name: String(item.name || item.productName || '').slice(0, 200),
+          name: String(item.name || item.productName || '').slice(0, 300),
           quantity: Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
           unitPrice: item.unitPrice !== null && item.unitPrice !== undefined && item.unitPrice !== '' && Number.isFinite(Number(item.unitPrice))
             ? getStoredItemUnitPrice(item)
@@ -1856,7 +1856,7 @@ class AiToolsExecutor {
         }))
       : (order.data.productName ? [{
           existingIndex: 0,
-          name: String(order.data.productName).slice(0, 200),
+          name: String(order.data.productName).slice(0, 300),
           quantity: Number.isSafeInteger(Number(order.data.quantity)) && Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
           unitPrice: order.data.unitPrice !== null && order.data.unitPrice !== undefined && order.data.unitPrice !== '' && Number.isFinite(Number(order.data.unitPrice)) && Number(order.data.unitPrice) > 0
             ? Number(order.data.unitPrice)

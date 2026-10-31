@@ -414,5 +414,30 @@ describe('MCP edição de pedidos pelo número apresentado ao usuário', () => {
         unitPrice: -5,
       }, scope, scope.mcpScopes)).rejects.toThrow();
     });
+
+    it('preserva nomes de itens existentes com mais de 200 caracteres ao adicionar um novo item', async () => {
+      const longName = 'Caixa personalizada de luxo para casamento com acabamento em hot stamping dourado e fita de cetim '.repeat(3).slice(0, 250);
+      const orderWithLongName = {
+        ...storedOrder,
+        productName: longName,
+        totalPrice: 100,
+        quantity: 1,
+      };
+      const executor = createExecutor(orderWithLongName);
+
+      const preview = await executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: 'Item adicional '.repeat(10).slice(0, 250),
+        quantity: 2,
+        unitPrice: 30,
+        confirmed: false,
+      }, scope, scope.mcpScopes);
+
+      expect(preview.status).toBe('preview');
+      expect(preview.preview.changes.items[0].name).toBe(longName);
+      expect(preview.preview.changes.items[0].name.length).toBe(250);
+      expect(preview.preview.itemChanges.changed[0].action).toBe('unchanged');
+      expect(preview.preview.itemChanges.changed[0].before.name).toBe(longName);
+    });
   });
 });
