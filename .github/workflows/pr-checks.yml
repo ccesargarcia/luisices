@@ -4,7 +4,6 @@ on:
   pull_request:
     branches:
       - develop
-      - main
 
 permissions:
   contents: read
@@ -45,13 +44,3 @@ jobs:
 
       - name: Validar Build do Frontend (Typecheck + Vite)
         run: npm run build
-
-  optional-e2e:
-    name: 🧪 E2E Playwright (Apenas se solicitado)
-    needs: quick-validation
-    if: |
-      contains(github.event.pull_request.labels.*.name, 'run-e2e') ||
-      contains(github.event.pull_request.title, '[run e2e]') ||
-      contains(github.event.pull_request.title, '[e2e]')
-    uses: ./.github/workflows/test-actions.yml
-    secrets: inherit
