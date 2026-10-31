@@ -122,7 +122,7 @@ describe('Cobertura e integridade das Cloud Functions nos workflows de deploy', 
     expect(prodWorkflow).toMatch(expectedPattern);
   });
 
-  it('roteia corretamente alterações isoladas de functions/ai para o escopo seletivo ai', () => {
+  it('roteia corretamente alterações isoladas de functions/ai e conjuntas com mcp para o escopo seletivo ai', () => {
     // Simula a lógica de shell dos workflows
     function resolveScope(changedFiles: string[]): string {
       const pattern = /^functions\/(email|whatsapp|alexa|users|mcp|orders|ai)\//;
@@ -132,17 +132,21 @@ describe('Cobertura e integridade das Cloud Functions nos workflows de deploy', 
       if (changedFiles.some(f => !pattern.test(f))) {
         return 'all';
       }
-      const modules = [...new Set(changedFiles.map(f => f.replace(/^functions\/([^/]+)\/.*/, '$1')))];
-      return modules.length === 1 ? modules[0] : 'all';
+      const modules = [...new Set(changedFiles.map(f => f.replace(/^functions\/([^/]+)\/.*/, '$1')))].sort();
+      if (modules.length === 1) return modules[0];
+      if (modules.join('\n') === 'ai\nmcp') return 'ai';
+      return 'all';
     }
 
     // Mudança isolada em IA
     expect(resolveScope(['functions/ai/callables.js', 'functions/ai/tools.js'])).toBe('ai');
+    // Mudança conjunta em IA + MCP -> escopo ai (publica IA e MCP juntos sem disparar all)
+    expect(resolveScope(['functions/ai/tools.js', 'functions/mcp/openapi.js'])).toBe('ai');
     // Mudança isolada no WhatsApp
     expect(resolveScope(['functions/whatsapp/send.js'])).toBe('whatsapp');
     // Mudança no index.js -> escopo all
     expect(resolveScope(['functions/index.js'])).toBe('all');
-    // Mudança mista (IA + E-mail) -> escopo all
+    // Mudança mista não suportada (IA + E-mail) -> escopo all
     expect(resolveScope(['functions/ai/callables.js', 'functions/email/send.js'])).toBe('all');
   });
 
