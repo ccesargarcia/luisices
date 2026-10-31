@@ -222,7 +222,7 @@ jobs:
               CHANGED_FUNCTION_FILES=$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA" -- functions/)
               if [ "$CHANGED_FUNCTION_FILES" = "functions/orders/superfrete.js" ]; then
                 FUNCTIONS_SCOPE="superfrete"
-              elif ! echo "$CHANGED_FUNCTION_FILES" | grep -qvE '^functions/(email|whatsapp|alexa|users|mcp|orders)/'; then
+              elif ! echo "$CHANGED_FUNCTION_FILES" | grep -qvE '^functions/(email|whatsapp|alexa|users|mcp|orders|ai)/'; then
                 MODULES=$(echo "$CHANGED_FUNCTION_FILES" | sed -E 's|^functions/([^/]+)/.*|\1|' | sort -u)
                 if [ $(echo "$MODULES" | wc -l) -eq 1 ]; then
                   FUNCTIONS_SCOPE="$MODULES"

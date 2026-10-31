@@ -111,4 +111,38 @@ describe('Cobertura e integridade das Cloud Functions nos workflows de deploy', 
     checkMcpSection(devWorkflow);
     checkMcpSection(manualWorkflow);
   });
+
+  it('reconhece o módulo ai nos filtros regex de detecção em deploy-dev e deploy-production', () => {
+    const devWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-dev.yml'), 'utf8');
+    const prodWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-production.yml'), 'utf8');
+
+    const expectedPattern = /\^functions\/\(email\|whatsapp\|alexa\|users\|mcp\|orders\|ai\)\//;
+
+    expect(devWorkflow).toMatch(expectedPattern);
+    expect(prodWorkflow).toMatch(expectedPattern);
+  });
+
+  it('roteia corretamente alterações isoladas de functions/ai para o escopo seletivo ai', () => {
+    // Simula a lógica de shell dos workflows
+    function resolveScope(changedFiles: string[]): string {
+      const pattern = /^functions\/(email|whatsapp|alexa|users|mcp|orders|ai)\//;
+      if (changedFiles.length === 1 && changedFiles[0] === 'functions/orders/superfrete.js') {
+        return 'superfrete';
+      }
+      if (changedFiles.some(f => !pattern.test(f))) {
+        return 'all';
+      }
+      const modules = [...new Set(changedFiles.map(f => f.replace(/^functions\/([^/]+)\/.*/, '$1')))];
+      return modules.length === 1 ? modules[0] : 'all';
+    }
+
+    // Mudança isolada em IA
+    expect(resolveScope(['functions/ai/callables.js', 'functions/ai/tools.js'])).toBe('ai');
+    // Mudança isolada no WhatsApp
+    expect(resolveScope(['functions/whatsapp/send.js'])).toBe('whatsapp');
+    // Mudança no index.js -> escopo all
+    expect(resolveScope(['functions/index.js'])).toBe('all');
+    // Mudança mista (IA + E-mail) -> escopo all
+    expect(resolveScope(['functions/ai/callables.js', 'functions/email/send.js'])).toBe('all');
+  });
 });
