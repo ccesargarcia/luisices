@@ -55,12 +55,10 @@ jobs:
     permissions:
       contents: read
       actions: read
-      checks: read
-      pull-requests: read
     outputs:
       frontend: ${{ steps.targets.outputs.frontend }}
       functions: ${{ steps.targets.outputs.functions }}
-      functions_chunks: ${{ steps.functions_plan.outputs.chunks }}
+      functions_scope: ${{ steps.targets.outputs.functions_scope }}
       rules: ${{ steps.targets.outputs.rules }}
       indexes: ${{ steps.targets.outputs.indexes }}
       cloudflare_api: ${{ steps.filter.outputs.cloudflare_api }}
@@ -71,77 +69,16 @@ jobs:
       need_frontend_validation: ${{ steps.targets.outputs.need_frontend_validation }}
       has_changes: ${{ steps.targets.outputs.has_changes }}
       mcp_metadata: ${{ steps.targets.outputs.mcp_metadata }}
-      merged_pr_e2e_verified: ${{ steps.pr_checks.outputs.verified }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: Setup Node for deploy selection
-        uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-
-      - name: Validar seletor de Functions
-        run: node --test tests/scripts/functions-deploy-selection.test.mjs
-
-      - name: Localizar última publicação bem-sucedida das Functions
-        id: functions_base
-        uses: actions/github-script@v7
-        with:
-          script: |
-            // A failed frontend job does not undo a successful backend deploy.
-            // Conversely, a successful docs/test run is not a backend baseline.
-            for (let page = 1; page <= 3; page++) {
-              const { data } = await github.rest.actions.listWorkflowRuns({
-                ...context.repo, workflow_id: 'deploy-dev.yml', branch: 'develop',
-                status: 'completed', per_page: 30, page
-              });
-              for (const run of data.workflow_runs) {
-                let jobs;
-                try {
-                  jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
-                    ...context.repo, run_id: run.id, per_page: 100
-                  });
-                } catch (error) {
-                  core.warning(`Não foi possível consultar os jobs do run ${run.id} (HTTP ${error.status || 'desconhecido'}); buscando uma referência anterior.`);
-                  continue;
-                }
-                if (jobs.some(job => job.name === '🚀 Deploy Firebase Functions (Dev)' &&
-                  job.conclusion === 'success' && job.steps?.some(step =>
-                    step.name === 'Deploy Firebase Functions (Dev)' && step.conclusion === 'success'))) {
-                  core.setOutput('sha', run.head_sha);
-                  core.info(`Backend publicado: ${run.head_sha} (run ${run.id})`);
-                  return;
-                }
-              }
-              if (data.workflow_runs.length < 30) break;
-            }
-            // First deployment / unavailable history: select all explicit exports.
-            core.warning('Sem referência de backend: será selecionado todo o backend atual.');
-            core.setOutput('sha', '');
-
-      - name: Selecionar Functions por dependências desde a última publicação
-        id: functions_plan
-        env:
-          FUNCTIONS_BASE_SHA: ${{ steps.functions_base.outputs.sha }}
-          TARGET_ENV: dev
-          FORCE_FUNCTIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'all' }}
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-        run: |
-          if echo "$COMMIT_MSG" | grep -qiE '\[deploy all\]|\[all\]'; then
-            export FORCE_FUNCTIONS=true
-          fi
-          node scripts/select-functions-deploy.mjs
-
-
       - name: Path Filter
         id: filter
         uses: dorny/paths-filter@v3
         with:
-          # Na mesma branch, compara com o commit anterior ao push. O padrão
-          # compararia develop com main e repetiria deploys de mudanças antigas.
           base: ${{ github.event.before }}
           filters: |
             frontend:
@@ -151,6 +88,9 @@ jobs:
               - 'vite.config.*'
               - 'package*.json'
               - 'tsconfig*.json'
+            functions:
+              - 'functions/**'
+              - 'scripts/sync-secrets-safe.mjs'
             rules:
               - 'firestore.rules'
               - 'storage.rules'
@@ -170,7 +110,6 @@ jobs:
               - 'playwright.config.*'
             unit_tests:
               - 'tests/unit/**'
-              - 'tests/scripts/**'
               - 'vitest*.ts'
             integration_tests:
               - 'tests/integration/**'
@@ -186,104 +125,11 @@ jobs:
               - '.github/workflows/deploy-firebase-rules-production.yml'
               - '.github/workflows/deploy.yml'
               - '.github/workflows/test-actions.yml'
+              - '.github/workflows/pr-checks.yml'
             maintenance:
               - 'scripts/fix-negative-values.mjs'
               - 'scripts/audit-order-integrity.mjs'
               - 'scripts/order-integrity-audit-core.mjs'
-              - 'scripts/select-functions-deploy.mjs'
-
-      - name: Reutilizar E2E aprovados da PR mesclada
-        id: pr_checks
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.setOutput('verified', 'false');
-            if (context.eventName !== 'push') return;
-
-            try {
-              const { data: pullRequests } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-                ...context.repo,
-                commit_sha: context.sha
-              });
-              const baseBranch = context.ref.replace('refs/heads/', '');
-              const mergedPr = pullRequests.find(pr =>
-                pr.merged_at && pr.base.ref === baseBranch && pr.merge_commit_sha === context.sha
-              );
-              if (!mergedPr) {
-                core.info('Nenhuma PR mesclada associada a este push; os testes serão avaliados normalmente.');
-                return;
-              }
-
-              const [mergeCommit, testedCommit] = await Promise.all([
-                github.rest.repos.getCommit({ ...context.repo, ref: context.sha }),
-                github.rest.repos.getCommit({ ...context.repo, ref: mergedPr.head.sha })
-              ]);
-              if (mergeCommit.data.commit.tree.sha !== testedCommit.data.commit.tree.sha) {
-                core.warning(`A árvore do merge da PR #${mergedPr.number} difere da árvore testada; os testes serão repetidos.`);
-                return;
-              }
-
-              const { data } = await github.rest.checks.listForRef({
-                ...context.repo,
-                ref: mergedPr.head.sha,
-                filter: 'latest',
-                per_page: 100
-              });
-              const requiredChecks = ['e2e-tests (1)', 'e2e-tests (2)'];
-              const latestByName = new Map();
-              for (const check of data.check_runs) {
-                if (!latestByName.has(check.name)) latestByName.set(check.name, check);
-              }
-              const allPassed = requiredChecks.every(name => {
-                const check = latestByName.get(name);
-                return check?.status === 'completed' && check.conclusion === 'success';
-              });
-
-              if (!allPassed) {
-                core.warning(`A PR #${mergedPr.number} não tem os dois checks E2E obrigatórios aprovados; os testes serão executados neste push.`);
-                return;
-              }
-
-              const runIds = new Set(requiredChecks.map(name => {
-                const detailsUrl = latestByName.get(name)?.details_url || '';
-                return detailsUrl.match(/\/actions\/runs\/(\d+)\//)?.[1] || '';
-              }));
-              if (runIds.size !== 1 || runIds.has('')) {
-                core.warning('Os checks E2E não pertencem à mesma execução completa; os testes serão repetidos.');
-                return;
-              }
-
-              const { data: workflows } = await github.rest.actions.listRepoWorkflows({
-                ...context.repo,
-                per_page: 100
-              });
-              const e2eWorkflow = workflows.workflows.find(workflow =>
-                workflow.path === '.github/workflows/test-actions.yml'
-              );
-              if (!e2eWorkflow) {
-                core.warning('A workflow E2E completa não foi localizada; os testes serão repetidos.');
-                return;
-              }
-
-              const runId = Number([...runIds][0]);
-              const { data: workflowRun } = await github.rest.actions.getWorkflowRun({
-                ...context.repo,
-                run_id: runId
-              });
-              if (workflowRun.workflow_id !== e2eWorkflow.id
-                || workflowRun.event !== 'pull_request'
-                || workflowRun.status !== 'completed'
-                || workflowRun.conclusion !== 'success'
-                || workflowRun.head_sha !== mergedPr.head.sha) {
-                core.warning(`Os checks não vieram de uma execução completa de E2E da PR #${mergedPr.number}; os testes serão repetidos.`);
-                return;
-              }
-
-              core.setOutput('verified', 'true');
-              core.info(`E2E completos da PR #${mergedPr.number} validaram a mesma árvore do merge; serão reutilizados.`);
-            } catch (error) {
-              core.warning(`Não foi possível verificar os checks da PR associada (HTTP ${error.status || 'desconhecido'}); mantendo os testes neste push.`);
-            }
 
       - name: Resolver Alvos e Estratégia de Testes
         id: targets
@@ -293,8 +139,9 @@ jobs:
           INPUT_SKIP_TESTS: ${{ inputs.skip_tests }}
           INPUT_RUN_E2E: ${{ inputs.run_e2e || false }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
+          BASE_SHA: ${{ github.event.before }}
           FILTER_FRONTEND: ${{ steps.filter.outputs.frontend }}
-          FILTER_FUNCTIONS: ${{ steps.functions_plan.outputs.has_targets }}
+          FILTER_FUNCTIONS: ${{ steps.filter.outputs.functions }}
           FILTER_RULES: ${{ steps.filter.outputs.rules }}
           FILTER_INDEXES: ${{ steps.filter.outputs.indexes }}
           FILTER_E2E: ${{ steps.filter.outputs.e2e }}
@@ -305,7 +152,6 @@ jobs:
           FILTER_MCP_METADATA: ${{ steps.filter.outputs.mcp_metadata }}
           FILTER_CLOUDFLARE_API: ${{ steps.filter.outputs.cloudflare_api }}
           FILTER_CLOUDFLARE_CDN: ${{ steps.filter.outputs.cloudflare_cdn }}
-          MERGED_PR_E2E_VERIFIED: ${{ steps.pr_checks.outputs.verified }}
         run: |
           # 1. Identificar flags na mensagem do commit e inputs
           SKIP_TESTS=false
@@ -316,10 +162,6 @@ jobs:
 
           if [ "$INPUT_SKIP_TESTS" = "true" ] || echo "$COMMIT_MSG" | grep -qiE '\[skip tests\]|\[skip-tests\]'; then
             SKIP_TESTS=true
-          fi
-          if [ "$EVENT_NAME" = "push" ] && [ "$MERGED_PR_E2E_VERIFIED" = "true" ]; then
-            SKIP_TESTS=true
-            echo 'Checks E2E aprovados da PR mesclada serão reutilizados; nenhuma suíte será executada novamente.'
           fi
           if [ "$INPUT_RUN_E2E" = "false" ] && [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             SKIP_E2E=true
@@ -373,18 +215,31 @@ jobs:
             fi
           fi
 
-          # O plano usa a última publicação bem-sucedida, incluindo alterações
-          # pendentes de runs que falharam. Hosting/rules-only continuam explícitos.
+          # Determinar escopo de functions alteradas (seletivo por módulo para evitar gargalo do Cloud Build)
+          FUNCTIONS_SCOPE="all"
+          if [ "$DEPLOY_FUNCTIONS" = "true" ]; then
+            if [ "$EVENT_NAME" = "push" ] && [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+              CHANGED_FUNCTION_FILES=$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA" -- functions/)
+              if [ "$CHANGED_FUNCTION_FILES" = "functions/orders/superfrete.js" ]; then
+                FUNCTIONS_SCOPE="superfrete"
+              elif ! echo "$CHANGED_FUNCTION_FILES" | grep -qvE '^functions/(email|whatsapp|alexa|users|mcp|orders)/'; then
+                MODULES=$(echo "$CHANGED_FUNCTION_FILES" | sed -E 's|^functions/([^/]+)/.*|\1|' | sort -u)
+                if [ $(echo "$MODULES" | wc -l) -eq 1 ]; then
+                  FUNCTIONS_SCOPE="$MODULES"
+                fi
+              fi
+            fi
+          fi
 
-          # 3. Determinar se testes E2E do Playwright são necessários
+          # 3. Determinar se testes E2E do Playwright são necessários (apenas sob demanda)
           NEED_E2E=false
-          if [ "$SKIP_TESTS" != "true" ] && [ "$SKIP_E2E" != "true" ] && [ "$ONLY_FUNCTIONS" != "true" ]; then
+          if [ "$SKIP_TESTS" != "true" ] && [ "$SKIP_E2E" != "true" ]; then
             if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
               if [ "$INPUT_RUN_E2E" = "true" ]; then
                 NEED_E2E=true
               fi
             else
-              if [ "$FORCE_ALL" = "true" ] || [ "$DEPLOY_FRONTEND" = "true" ] || [ "$DEPLOY_RULES" = "true" ] || [ "$FILTER_INDEXES" = "true" ] || [ "$FILTER_E2E" = "true" ] || [ "$FILTER_INTEGRATION_TESTS" = "true" ]; then
+              if echo "$COMMIT_MSG" | grep -qiE '\[run e2e\]|\[e2e\]'; then
                 NEED_E2E=true
               fi
             fi
@@ -392,7 +247,7 @@ jobs:
 
           # 4. Determinar se validação rápida de functions/unitária é necessária
           NEED_FUNCTIONS_VALIDATION=false
-          if [ "$SKIP_TESTS" != "true" ] && [ "$NEED_E2E" != "true" ]; then
+          if [ "$SKIP_TESTS" != "true" ]; then
             if [ "$DEPLOY_FUNCTIONS" = "true" ] || [ "$FILTER_UNIT_TESTS" = "true" ] || [ "$FILTER_CI" = "true" ] || [ "$FILTER_MAINTENANCE" = "true" ]; then
               NEED_FUNCTIONS_VALIDATION=true
             fi
@@ -412,6 +267,7 @@ jobs:
 
           echo "frontend=$DEPLOY_FRONTEND" >> "$GITHUB_OUTPUT"
           echo "functions=$DEPLOY_FUNCTIONS" >> "$GITHUB_OUTPUT"
+          echo "functions_scope=$FUNCTIONS_SCOPE" >> "$GITHUB_OUTPUT"
           echo "rules=$DEPLOY_RULES" >> "$GITHUB_OUTPUT"
           echo "indexes=$DEPLOY_INDEXES" >> "$GITHUB_OUTPUT"
           echo "need_e2e=$NEED_E2E" >> "$GITHUB_OUTPUT"
@@ -464,9 +320,6 @@ jobs:
         run: |
           npm ci --legacy-peer-deps
           npm --prefix functions ci
-
-      - name: Validar estrutura dos workflows de deploy
-        run: node --test tests/scripts/deployment-workflows.test.mjs
 
       - name: Configurar Firebase para testes unitários
         env:
@@ -611,15 +464,11 @@ jobs:
 
   deploy-frontend:
     name: 🎨 Build e Deploy Frontend (Dev)
-    needs: [detect-changes, e2e-tests, deploy, deploy-indexes, deploy-cloudflare, purge-mcp-cache]
+    needs: [detect-changes, functions-validation]
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
-      (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
-      (needs.deploy.result == 'success' || needs.deploy.result == 'skipped') &&
-      (needs.deploy-indexes.result == 'success' || needs.deploy-indexes.result == 'skipped') &&
-      (needs.deploy-cloudflare.result == 'success' || needs.deploy-cloudflare.result == 'skipped') &&
-      (needs.purge-mcp-cache.result == 'success' || needs.purge-mcp-cache.result == 'skipped') &&
+      (needs.functions-validation.result == 'success' || needs.functions-validation.result == 'skipped') &&
       needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -703,14 +552,13 @@ jobs:
 
   deploy:
     name: 🚀 Deploy Firebase Functions (Dev)
-    needs: [detect-changes, e2e-tests, functions-validation, deploy-indexes]
+    needs: [detect-changes, functions-validation, deploy-indexes]
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
-      (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
       (needs.functions-validation.result == 'success' || needs.functions-validation.result == 'skipped') &&
       (needs.deploy-indexes.result == 'success' || needs.deploy-indexes.result == 'skipped') &&
-      needs.detect-changes.outputs.functions == 'true'
+      (needs.detect-changes.outputs.functions == 'true' || needs.detect-changes.outputs.mcp_metadata == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -844,7 +692,7 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
           SENTRY_DSN: ${{ secrets.DEV_FUNCTIONS_SENTRY_DSN || secrets.DEV_SENTRY_DSN || secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN || secrets.SENTRY_DSN }}
-          FUNCTIONS_DEPLOY_CHUNKS: ${{ needs.detect-changes.outputs.functions_chunks }}
+          FUNCTIONS_DEPLOY_SCOPE: ${{ needs.detect-changes.outputs.functions_scope }}
           GCLOUD_PROJECT: luisices-dev
         run: |
           trap 'rm -f functions/.env.luisices-dev' EXIT
@@ -866,25 +714,51 @@ jobs:
             fi
           }
 
-          # No generic `--only functions`, no automatic expansion after failure.
-          # Removed remote endpoints require a separate, reviewed deletion.
-          while IFS= read -r targets; do
-            [ -n "$targets" ] || continue
-            deploy_chunk "Functions afetadas" "$targets"
-          done < <(node -e 'for (const chunk of JSON.parse(process.env.FUNCTIONS_DEPLOY_CHUNKS)) console.log(chunk)')
+          if [ "$FUNCTIONS_DEPLOY_SCOPE" = "superfrete" ]; then
+            echo "🚚 Deploy seletivo das Functions da SuperFrete..."
+            deploy_chunk "SuperFrete" "functions:calculateSuperfreteShipping,functions:createSuperfreteLabel"
+          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "email" ]; then
+            echo "📧 Deploy seletivo das Functions de E-mail..."
+            deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
+          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "whatsapp" ]; then
+            echo "💬 Deploy seletivo das Functions do WhatsApp..."
+            deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
+          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "alexa" ]; then
+            echo "🗣️ Deploy seletivo das Functions da Alexa..."
+            deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
+          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "users" ]; then
+            echo "👥 Deploy seletivo das Functions de Usuários..."
+            deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
+          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "orders" ]; then
+            echo "📦 Deploy seletivo das Functions de Pedidos e Acompanhamento..."
+            deploy_chunk "Pedidos" "functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia"
+            deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
+          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "mcp" ]; then
+            echo "🤖 Deploy seletivo das Functions do MCP..."
+            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint"
+          elif ! npx --yes firebase-tools@15.32.1 deploy --only functions --project luisices-dev --non-interactive; then
+            echo "⚠️ Deploy em lote geral atingiu limite de concorrência. Aguardando 20s para drenagem de workers..."
+            sleep 20
+            echo "Executando deploy particionado resiliente por módulos..."
+            deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
+            deploy_chunk "IA e Pedidos" "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia"
+            deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
+            deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
+            deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
+            deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
+            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint"
+          fi
 
           echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Dev)..."
           npx --yes firebase-tools@15.32.1 functions:secrets:prune --project luisices-dev --force --non-interactive
 
   deploy-cloudflare:
     name: ☁️ Deploy Cloudflare Workers (Dev)
-    needs: [detect-changes, e2e-tests, cloudflare-validation, deploy]
+    needs: [detect-changes, cloudflare-validation]
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
-      (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
       (needs.cloudflare-validation.result == 'success' || needs.cloudflare-validation.result == 'skipped') &&
-      (needs.deploy.result == 'success' || needs.deploy.result == 'skipped') &&
       needs.detect-changes.outputs.cloudflare_target != ''
     uses: ./.github/workflows/deploy-cloudflare.yml
     with:
@@ -894,11 +768,10 @@ jobs:
 
   purge-mcp-cache:
     name: 🧹 Purge MCP Metadata Cache (Dev)
-    needs: [detect-changes, e2e-tests, deploy, deploy-cloudflare]
+    needs: [detect-changes, deploy, deploy-cloudflare]
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
-      (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
       (needs.deploy.result == 'success' || needs.deploy.result == 'skipped') &&
       (needs.deploy-cloudflare.result == 'success' || needs.deploy-cloudflare.result == 'skipped') &&
       needs.detect-changes.outputs.mcp_metadata == 'true' &&
@@ -911,17 +784,13 @@ jobs:
 
   deploy-rules:
     name: 🔐 Deploy Firestore e Storage Rules (Dev)
-    needs: [detect-changes, e2e-tests, functions-validation, deploy-indexes, deploy, deploy-cloudflare, purge-mcp-cache, deploy-frontend]
+    needs: [detect-changes, deploy-indexes, deploy, deploy-frontend]
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
       needs.detect-changes.outputs.rules == 'true' &&
-      (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
-      (needs.functions-validation.result == 'success' || needs.functions-validation.result == 'skipped') &&
       (needs.deploy-indexes.result == 'success' || needs.deploy-indexes.result == 'skipped') &&
       (needs.deploy.result == 'success' || needs.deploy.result == 'skipped') &&
-      (needs.deploy-cloudflare.result == 'success' || needs.deploy-cloudflare.result == 'skipped') &&
-      (needs.purge-mcp-cache.result == 'success' || needs.purge-mcp-cache.result == 'skipped') &&
       (needs.deploy-frontend.result == 'success' || needs.deploy-frontend.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 15

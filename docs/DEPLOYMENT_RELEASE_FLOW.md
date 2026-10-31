@@ -21,21 +21,24 @@ Os jobs não relacionados à mudança são ignorados. O deploy de regras não re
 
 Quando um push em `develop` corresponde exatamente ao merge de uma PR, o workflow só reutiliza a validação se a árvore de arquivos do merge for idêntica à árvore testada e os dois checks obrigatórios (`e2e-tests (1)` e `e2e-tests (2)`) tiverem sido aprovados na mesma execução completa da workflow `test-actions.yml`, cujo evento seja `pull_request` e cujo SHA seja exatamente o da cabeça testada da PR. Nesse caso, unitários/E2E não são repetidos após o merge. Se qualquer validação falhar, faltar, divergir ou não puder ser consultada, os testes normais permanecem antes do deploy. Pushes diretos continuam executando os testes necessários.
 
+Quando a própria workflow `test-actions.yml` é disparada pelo push de merge em `develop`, ela usa a mesma prova (PR mesclada, árvore idêntica, dois shards aprovados na mesma execução) para não repetir a suíte. Pushes diretos, divergências ou falhas de consulta continuam executando os testes.
+
 ## Produção (`main`)
 
 O workflow `.github/workflows/deploy-production.yml` é o único orquestrador automático disparado por push em `main`. Ele não executa novamente E2E/unitários; recebe apenas commits que foram aceitos pela política de proteção de branch.
 
-O plano identifica alterações desde a última release integralmente bem-sucedida. O seletor `scripts/select-functions-deploy.mjs` calcula as Functions afetadas no ambiente `prod`, excluindo as Functions exclusivas de dev. No primeiro ciclo, sem histórico do novo orquestrador, o workflow procura a última execução bem-sucedida do deploy legado de Functions em `main` e a usa como baseline. Se nenhum baseline confiável existir, a seleção permanece fail-safe e inclui todas as Functions elegíveis.
+O plano identifica alterações usando `git diff` nativo em relação ao commit anterior no `main`. As Functions alteradas são publicadas de acordo com o módulo afetado (`orders`, `users`, `whatsapp`, etc.), ou o backend completo com deploy particionado resiliente caso haja alterações abrangentes. Se for o commit inicial sem base anterior conhecida, a seleção é conservadora e inclui todas as Functions elegíveis.
 
 Ordem de publicação:
 
 1. Índices Firestore, quando alterados.
 2. Functions afetadas, quando alteradas.
-3. Worker(s) Cloudflare afetados.
-4. Frontend, quando alterado.
-5. Firestore, RTDB e Storage Rules, quando alteradas, sempre por último.
+3. Worker(s) Cloudflare afetados (CDN e/ou API).
+4. Purge de cache Cloudflare para metadados MCP, quando alterados.
+5. Frontend, quando alterado.
+6. Firestore, RTDB e Storage Rules, quando alteradas, sempre por último.
 
-O workflow usa concorrência sem cancelamento para não interromper uma release já em andamento. Se uma etapa falhar, as etapas posteriores que dependem dela são bloqueadas e o resumo final marca a release como falha. Uma execução posterior compara com a última release integralmente concluída; isso pode repetir deploys já bem-sucedidos de uma execução parcialmente falha, o que é intencional e seguro.
+O workflow usa concorrência sem cancelamento para não interromper uma release já em andamento. Se uma etapa falhar, as etapas posteriores que dependem dela são bloqueadas e o resumo final marca a release como falha.
 
 ## Gate obrigatório antes do merge em `main`
 

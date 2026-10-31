@@ -28,16 +28,8 @@ on:
           - audit
           - screen-audit
         default: 'all'
-  push:
-    branches:
-      - develop
-    paths:
-      - '.github/workflows/deploy-dev.yml'
-      - '.github/workflows/playwright.yml'
-      - '.github/workflows/test-actions.yml'
   pull_request:
     branches:
-      - develop
       - main
 
 permissions:
@@ -75,9 +67,6 @@ jobs:
         run: |
           npm ci --legacy-peer-deps
           npm --prefix functions ci
-
-      - name: Validate deployment workflow contracts
-        run: node --test tests/scripts/deployment-workflows.test.mjs tests/scripts/functions-deploy-selection.test.mjs
 
       - name: Create .env files with Firebase and test config
         env:

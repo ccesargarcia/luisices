@@ -1,9 +1,41 @@
 import { describe, it, expect } from 'vitest';
 const { AiToolsExecutor, getPeriodInterval } = require('../../../functions/ai/tools');
 const { getCallerScope } = require('../../../functions/ai/authorization');
-const { sanitizeOrderForAi } = require('../../../functions/ai/repositories');
+const { AiDataRepositories, sanitizeOrderForAi } = require('../../../functions/ai/repositories');
 
 describe('IA-02: Cálculos Financeiros Exatos e Consultas Completas', () => {
+  it('não carrega amostra da galeria no contexto inicial do Copiloto', async () => {
+    const repos = new AiDataRepositories(null);
+    repos.getStoreProducts = async () => [];
+    repos.getSupplies = async () => [];
+    repos.getGalleryItems = async () => { throw new Error('a galeria é pesquisada sob demanda'); };
+
+    await expect(repos.getCatalogKnowledge(getCallerScope('user-admin', { role: 'admin', active: true }))).resolves.toBe('');
+  });
+
+  it('busca pedido por ID sem varredura e mantém o filtro de escopo', async () => {
+    const data = { orderNumber: '#2026-0001', customerName: 'Cliente', price: 125, userId: 'owner-1' };
+    const orderRef = { id: 'order-doc' };
+    const db = {
+      collection: (name: string) => {
+        if (name !== 'orders') throw new Error('coleção inesperada');
+        return {
+          doc: (id: string) => {
+            if (id !== 'order-doc') throw new Error('ID inesperado');
+            return { get: async () => ({ exists: true, id, ref: orderRef, data: () => data }) };
+          },
+          where: () => { throw new Error('não deve consultar a coleção'); },
+        };
+      },
+    };
+    const repos = new AiDataRepositories(db);
+
+    await expect(repos.getScopedOrderSummary(getCallerScope('owner-1', { role: 'funcionario', active: true }), 'order-doc'))
+      .resolves.toMatchObject({ orderId: 'order-doc', totalPrice: 125 });
+    await expect(repos.getScopedOrderSummary(getCallerScope('other-1', { role: 'funcionario', active: true }), 'order-doc'))
+      .resolves.toBeNull();
+  });
+
   const mockOrders = [
     {
       orderId: 'ord-1',
@@ -193,6 +225,21 @@ describe('IA-02: Cálculos Financeiros Exatos e Consultas Completas', () => {
   });
 
   describe('executeQueryOrdersView', () => {
+    it('usa busca pontual para número exato de pedido, sem varrer o histórico', async () => {
+      const order = { ...mockOrders[0] };
+      const getScopedOrders = vi.fn(async () => { throw new Error('não deve varrer o histórico'); });
+      const getScopedOrderSummary = vi.fn(async () => order);
+      const scopedExecutor = new AiToolsExecutor({ getScopedOrders, getScopedOrderSummary });
+      const scopeAdmin = getCallerScope('user-admin', { role: 'admin', active: true });
+
+      const result = await scopedExecutor.executeQueryOrdersView({ searchTerm: '#1001' }, scopeAdmin);
+
+      expect(getScopedOrderSummary).toHaveBeenCalledWith(scopeAdmin, '#1001');
+      expect(getScopedOrders).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ totalFound: 1, hasMore: false });
+      expect(result.orders[0].orderNumber).toBe('#1001');
+    });
+
     it('deve buscar pedidos por termo de pesquisa e retornar metadados de paginação', async () => {
       const scopeAdmin = getCallerScope('user-admin', { role: 'admin', active: true });
       const res = await executor.executeQueryOrdersView({ searchTerm: 'Safari' }, scopeAdmin);

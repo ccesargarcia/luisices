@@ -22,10 +22,9 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: read
     outputs:
-      base_sha: ${{ steps.base.outputs.sha }}
-      functions: ${{ steps.functions.outputs.has_targets }}
+      functions: ${{ steps.changes.outputs.functions }}
+      functions_scope: ${{ steps.changes.outputs.functions_scope }}
       indexes: ${{ steps.changes.outputs.indexes }}
       rules: ${{ steps.changes.outputs.rules }}
       cloudflare_api: ${{ steps.changes.outputs.cloudflare_api }}
@@ -41,85 +40,26 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Find last successful production release
-        id: base
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { data } = await github.rest.actions.listWorkflowRuns({
-              ...context.repo,
-              workflow_id: 'deploy-production.yml',
-              branch: 'main',
-              status: 'completed',
-              per_page: 50
-            });
-            const previous = data.workflow_runs.find(run => run.conclusion === 'success' && run.head_sha !== context.sha);
-            if (previous) {
-              core.setOutput('sha', previous.head_sha);
-              core.info(`Base da release coordenada: ${previous.head_sha} (run ${previous.id}).`);
-              return;
-            }
-
-            // Bootstrap: use the last successful legacy production Functions deploy
-            // as the baseline. This avoids redeploying every Function merely because
-            // the coordinated release workflow has no run history yet.
-            for (let page = 1; page <= 3; page++) {
-              const { data: legacyResponse } = await github.rest.actions.listWorkflowRuns({
-                ...context.repo,
-                workflow_id: 'deploy-functions-manual.yml',
-                branch: 'main',
-                status: 'completed',
-                per_page: 30,
-                page
-              });
-              const legacyRuns = legacyResponse.workflow_runs || [];
-              for (const run of legacyRuns) {
-                if (run.conclusion !== 'success' || run.event !== 'push' || run.head_sha === context.sha) continue;
-                const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
-                  ...context.repo, run_id: run.id, per_page: 100
-                });
-                const productionDeploySucceeded = jobs.some(job => job.name === 'deploy-functions' &&
-                  job.conclusion === 'success' && job.steps?.some(step =>
-                    step.name === 'Deploy Firebase Functions & Rules (Production)' && step.conclusion === 'success'));
-                if (productionDeploySucceeded) {
-                  core.setOutput('sha', run.head_sha);
-                  core.info(`Base da última publicação legada de Functions: ${run.head_sha} (run ${run.id}).`);
-                  return;
-                }
-              }
-              if (legacyRuns.length < 30) break;
-            }
-
-            core.setOutput('sha', '');
-            core.warning('Nenhum baseline de produção confiável encontrado; será usada a seleção fail-safe completa de Functions.');
-
-      - name: Setup Node for Functions selector
-        uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-
-      - name: Plan changed Functions
-        id: functions
-        env:
-          FUNCTIONS_BASE_SHA: ${{ steps.base.outputs.sha }}
-          TARGET_ENV: prod
-          GITHUB_SHA: ${{ github.sha }}
-        run: node scripts/select-functions-deploy.mjs
-
       - name: Detect production components
         id: changes
         env:
-          BASE_SHA: ${{ steps.base.outputs.sha }}
           BEFORE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          BASE="$BASE_SHA"
-          if [ -z "$BASE" ]; then BASE="$BEFORE_SHA"; fi
-          if [[ "$BASE" =~ ^[a-f0-9]{40}$ ]] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+          BASE="$BEFORE_SHA"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            if git rev-parse HEAD~1 >/dev/null 2>&1; then
+              BASE=$(git rev-parse HEAD~1)
+            else
+              BASE=""
+            fi
+          fi
+
+          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             CHANGED=$(git diff --name-only "$BASE" "$HEAD_SHA")
           else
-            echo '⚠️ Sem SHA-base confiável; release será conservadora e publicará todos os componentes.'
+            echo '⚠️ Sem commit base anterior conhecido; release será conservadora e publicará todos os componentes.'
             CHANGED='*'
           fi
 
@@ -127,25 +67,43 @@ jobs:
             local pattern="$1"
             printf '%s\n' "$CHANGED" | grep -Eq "$pattern"
           }
+
           frontend=false
           indexes=false
           rules=false
           cloudflare_api=false
           cloudflare_cdn=false
           cloudflare_cache=false
-          if matches '^(src/|public/|index\.html$|vite\.config\.|package(-lock)?\.json$|tsconfig[^/]*\.json$)'; then frontend=true; fi
+          functions=false
+          functions_scope="all"
+
+          if matches '(^\*?$|^(src/|public/|index\.html$|vite\.config\.|package(-lock)?\.json$|tsconfig[^/]*\.json$))'; then frontend=true; fi
           if matches '(^\*?$|^firestore\.indexes\.json$)'; then indexes=true; fi
           if matches '(^\*?$|^(firestore\.rules|storage\.rules|database\.rules\.json|firebase\.json)$)'; then rules=true; fi
           if matches '(^\*?$|^cloudflare/api-worker/|^scripts/(ensure-mcp-cache-bypass|ensure-order-tracking-rate-limit|purge-cloudflare-cache)\.mjs$)'; then cloudflare_api=true; fi
           if matches '(^\*?$|^cloudflare/cdn-worker/)'; then cloudflare_cdn=true; fi
           if matches '(^\*?$|^functions/mcp/|^public/\.well-known/)'; then cloudflare_cache=true; fi
+          if matches '(^\*?$|^functions/|^scripts/sync-secrets-safe\.mjs$)'; then
+            functions=true
+            if [ "$CHANGED" != '*' ] && [ -n "$BASE" ]; then
+              CHANGED_FN=$(git diff --name-only "$BASE" "$HEAD_SHA" -- functions/)
+              if ! echo "$CHANGED_FN" | grep -qvE '^functions/(email|whatsapp|alexa|users|mcp|orders)/'; then
+                MODULES=$(echo "$CHANGED_FN" | sed -E 's|^functions/([^/]+)/.*|\1|' | sort -u)
+                if [ $(echo "$MODULES" | wc -l) -eq 1 ]; then
+                  functions_scope="$MODULES"
+                fi
+              fi
+            fi
+          fi
+
           cloudflare_target=''
           if [ "$cloudflare_api" = true ] && [ "$cloudflare_cdn" = true ]; then cloudflare_target='all'
           elif [ "$cloudflare_api" = true ]; then cloudflare_target='api'
           elif [ "$cloudflare_cdn" = true ]; then cloudflare_target='cdn'
           fi
+
           has_changes=false
-          if [ "$frontend" = true ] || [ "$indexes" = true ] || [ "$rules" = true ] || [ "$cloudflare_target" != '' ] || [ "$cloudflare_cache" = true ] || [ '${{ steps.functions.outputs.has_targets }}' = true ]; then
+          if [ "$frontend" = true ] || [ "$indexes" = true ] || [ "$rules" = true ] || [ "$cloudflare_target" != '' ] || [ "$cloudflare_cache" = true ] || [ "$functions" = true ]; then
             has_changes=true
           fi
 
@@ -157,10 +115,13 @@ jobs:
             echo "cloudflare_cdn=$cloudflare_cdn"
             echo "cloudflare_cache=$cloudflare_cache"
             echo "cloudflare_target=$cloudflare_target"
+            echo "functions=$functions"
+            echo "functions_scope=$functions_scope"
             echo "has_changes=$has_changes"
           } >> "$GITHUB_OUTPUT"
-          printf 'Production plan: frontend=%s indexes=%s rules=%s cloudflare=%s functions=%s\n' \
-            "$frontend" "$indexes" "$rules" "$cloudflare_target" '${{ steps.functions.outputs.has_targets }}'
+
+          printf 'Production release plan: frontend=%s indexes=%s rules=%s cloudflare=%s functions=%s (scope=%s)\n' \
+            "$frontend" "$indexes" "$rules" "$cloudflare_target" "$functions" "$functions_scope"
 
   indexes:
     name: Firestore Indexes (Production)
@@ -173,13 +134,16 @@ jobs:
 
   functions:
     name: Functions (Production)
-    needs: plan
-    if: needs.plan.outputs.functions == 'true'
+    needs: [plan, indexes]
+    if: |
+      always() &&
+      needs.plan.result == 'success' &&
+      (needs.indexes.result == 'success' || needs.indexes.result == 'skipped') &&
+      needs.plan.outputs.functions == 'true'
     uses: ./.github/workflows/deploy-functions-manual.yml
     with:
       environment: prod
-      functions_target: auto
-      functions_base_sha: ${{ needs.plan.outputs.base_sha }}
+      functions_target: ${{ needs.plan.outputs.functions_scope }}
       deploy_rules_and_indexes: false
       update_secrets: false
     secrets: inherit

@@ -22,7 +22,7 @@ function expose(name, load) {
   Object.defineProperty(module.exports, name, { enumerable: true, get: load });
 }
 
-// Requires literais: também analisados por scripts/select-functions-deploy.mjs.
+// Requires literais com carregamento sob demanda (lazy evaluation).
 // O cache do CommonJS reutiliza o domínio e o mesmo handler nas próximas chamadas.
 // ─── Gestão de Usuários e Convites ─────────────────────────────────────────
 expose('sendAdminPasswordReset', () => require('./users').sendAdminPasswordReset);

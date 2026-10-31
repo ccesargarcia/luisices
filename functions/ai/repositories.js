@@ -271,6 +271,14 @@ class AiDataRepositories {
     return { id: doc.id, ref: doc.ref, data: doc.data() || {} };
   }
 
+  /** Busca e normaliza um único pedido para ferramentas que já receberam seu identificador. */
+  async getScopedOrderSummary(scope, identifier) {
+    const order = await this.getScopedOrderDocument(scope, identifier);
+    if (!order) return null;
+    const sanitized = sanitizeOrderForAi(order.id, order.data);
+    return sanitized.isDeleted ? null : sanitized;
+  }
+
   /**
    * Busca clientes autorizados no escopo do usuário com paginação e suporte a agregações completas
    */
@@ -554,10 +562,12 @@ class AiDataRepositories {
    */
   async getCatalogKnowledge(scope) {
     try {
-      const [products, supplies, gallery] = await Promise.all([
+      // A galeria tem ferramenta de busca sob demanda. Carregar uma amostra em
+      // toda conversa acrescentava até três consultas sem melhorar perguntas
+      // que não tratam do acervo.
+      const [products, supplies] = await Promise.all([
         this.getStoreProducts(),
         this.getSupplies(scope),
-        this.getGalleryItems(scope, { limit: 10 }),
       ]);
 
       const lines = [];
@@ -574,13 +584,6 @@ class AiDataRepositories {
         lines.push('AMOSTRA LIMITADA DE INSUMOS & CUSTOS (não é uma lista completa):');
         supplies.slice(0, 15).forEach((s) => {
           lines.push(`• ${s.name}${s.category ? ` [${s.category}]` : ''} | R$ ${s.unitCost.toFixed(2)}/${s.unit}`);
-        });
-      }
-
-      if (gallery.length > 0) {
-        lines.push('AMOSTRA LIMITADA DE DESTAQUES DO ACERVO AUTORIZADO:');
-        gallery.slice(0, 8).forEach((g) => {
-          lines.push(`• ${g.title}${g.category ? ` [${g.category}]` : ''}`);
         });
       }
 
