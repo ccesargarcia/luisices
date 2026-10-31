@@ -268,4 +268,89 @@ describe('MCP edição de pedidos pelo número apresentado ao usuário', () => {
       price: 10,
     });
   });
+
+  describe('add_order_item - inclusão individual de itens via MCP', () => {
+    it('gera prévia atômica ao adicionar item a um pedido existente sem sobrescrever o item original', async () => {
+      const executor = createExecutor();
+
+      const preview = await executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: 'Caneca personalizada',
+        quantity: 5,
+        unitPrice: 44,
+      }, scope, scope.mcpScopes);
+
+      expect(preview.status).toBe('preview');
+      expect(preview.requiresConfirmation).toBe(true);
+      expect(preview.preview.pricing).toMatchObject({
+        mode: 'items',
+        totalPrice: 300,
+      });
+      expect(preview.preview.changes.items).toHaveLength(2);
+      expect(preview.preview.changes.items[0]).toMatchObject({
+        name: 'Caixa personalizada',
+        quantity: 2,
+        unitPrice: 40,
+        price: 80,
+      });
+      expect(preview.preview.changes.items[1]).toMatchObject({
+        name: 'Caneca personalizada',
+        quantity: 5,
+        unitPrice: 44,
+        price: 220,
+      });
+      expect(preview.preview.itemChanges.changed).toMatchObject([
+        { action: 'unchanged', before: { name: 'Caixa personalizada' }, after: { name: 'Caixa personalizada' } },
+        { action: 'added', after: { name: 'Caneca personalizada', quantity: 5, unitPrice: 44, subtotal: 220 } },
+      ]);
+    });
+
+    it('grava o novo item com confirmação e idempotência atualizando ledger e modo de precificação', async () => {
+      const executor = createExecutor();
+
+      const result = await executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: 'Caneca personalizada',
+        quantity: 5,
+        unitPrice: 44,
+        expectedVersion: 3,
+        confirmed: true,
+        idempotencyKey: 'idemp-add-item-test-999',
+      }, scope, scope.mcpScopes);
+
+      expect(result).toMatchObject({
+        success: true,
+        orderNumber: '#2026-0042',
+        version: 4,
+      });
+
+      const savedOrder = (executor as any)._records.get('orders/order-doc-id');
+      expect(savedOrder.pricingMode).toBe('items');
+      expect(savedOrder.unitPrice).toBeNull();
+      expect(savedOrder.quantity).toBe(7);
+      expect(savedOrder.price).toBe(300);
+      expect(savedOrder.totalPrice).toBe(300);
+      expect(savedOrder.items).toHaveLength(2);
+      expect(savedOrder.items[0]).toMatchObject({ name: 'Caixa personalizada', quantity: 2, unitPrice: 40 });
+      expect(savedOrder.items[1]).toMatchObject({ name: 'Caneca personalizada', quantity: 5, unitPrice: 44 });
+    });
+
+    it('valida argumentos obrigatórios e limites de itens', async () => {
+      const executor = createExecutor();
+
+      await expect(executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: '',
+        quantity: 1,
+        unitPrice: 10,
+      }, scope, scope.mcpScopes)).rejects.toThrow('arguments.name é muito curto.');
+
+      await expect(executeScopedToolByName(executor, 'add_order_item', {
+        orderNumber: '#2026-0042',
+        name: 'Teste',
+        quantity: 0,
+        unitPrice: 10,
+      }, scope, scope.mcpScopes)).rejects.toThrow();
+    });
+  });
 });

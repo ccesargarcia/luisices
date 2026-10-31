@@ -169,6 +169,7 @@ function formatToolResultText(toolName, result) {
   const completionLabels = {
     create_order: '✅ Pedido registrado',
     update_order: '✅ Pedido atualizado',
+    add_order_item: '✅ Item adicionado ao pedido',
     update_order_status: '✅ Etapa do pedido atualizada',
     register_order_payment: '✅ Pagamento registrado',
     create_customer: '✅ Cliente cadastrado',
