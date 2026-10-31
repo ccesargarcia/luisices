@@ -1501,7 +1501,9 @@ class AiToolsExecutor {
         if (existingIndex !== undefined) usedSourceIndexes.add(existingIndex);
         itemSourceIndexes.push(existingIndex ?? null);
         const unitCents = Math.round(unitPrice * 100);
-        const lineCents = unitCents * quantity;
+        const lineCents = (typeof item?.price === 'number' && Number.isFinite(item.price) && item.price >= 0)
+          ? Math.round(item.price * 100)
+          : unitCents * quantity;
         totalCents += lineCents;
         totalQuantity += quantity;
         if (!Number.isSafeInteger(totalCents) || totalCents > 1000000000 || totalQuantity > 100000) {
@@ -1571,14 +1573,30 @@ class AiToolsExecutor {
         throw error;
       }
       const retainedIndexes = new Set(itemSourceIndexes.filter((index) => index !== null));
+      let reconciledTotalCents = 0;
       updates.items = updates.items.map((item, index) => {
         const sourceIndex = itemSourceIndexes[index];
-        if (sourceIndex === null) return item;
+        if (sourceIndex === null) {
+          reconciledTotalCents += Math.round(item.price * 100);
+          return item;
+        }
+        const orig = currentItems[sourceIndex];
         const preservedItemData = Object.fromEntries(
-          Object.entries(currentItems[sourceIndex] || {}).filter(([key]) => key !== 'existingIndex')
+          Object.entries(orig || {}).filter(([key]) => !['existingIndex', 'price'].includes(key))
         );
-        return { ...preservedItemData, ...item };
+        const merged = { ...preservedItemData, ...item };
+        const origPrice = orig?.price !== undefined ? Number(orig.price) : (Number(orig?.quantity || 1) * getStoredItemUnitPrice(orig));
+        if (orig && orig.quantity === merged.quantity && Number.isFinite(origPrice) && origPrice > 0 && typeof args.items[index]?.price !== 'number') {
+          const calcCents = Math.round(merged.unitPrice * 100) * merged.quantity;
+          const origCents = Math.round(origPrice * 100);
+          if (Math.abs(calcCents - origCents) <= Math.max(merged.quantity, 50)) {
+            merged.price = origCents / 100;
+          }
+        }
+        reconciledTotalCents += Math.round(merged.price * 100);
+        return merged;
       });
+      updates.price = reconciledTotalCents / 100;
       itemChanges = {
         changed: updates.items.map((after, index) => {
           const sourceIndex = itemSourceIndexes[index];
@@ -1587,12 +1605,12 @@ class AiToolsExecutor {
           const beforeUnitPrice = before?.unitPrice !== null && before?.unitPrice !== undefined && Number.isFinite(Number(before.unitPrice))
             ? getStoredItemUnitPrice(before)
             : Number(before?.price || 0) / beforeQuantity;
-          const same = before && before.name === after.name && beforeQuantity === after.quantity && Math.round(beforeUnitPrice * 100) === Math.round(after.unitPrice * 100);
+          const same = before && before.name === after.name && beforeQuantity === after.quantity && (Math.round(beforeUnitPrice * 100) === Math.round(after.unitPrice * 100) || Math.round(Number(before.price ?? 0) * 100) === Math.round(after.price * 100));
           const metadataPreserved = Boolean(before && Object.keys(before).some((key) => !['name', 'quantity', 'unitPrice', 'price', 'existingIndex'].includes(key)));
           return {
             action: before ? (same ? 'unchanged' : 'updated') : 'added',
             metadataPreserved,
-            ...(before ? { before: { name: before.name || before.productName || '', quantity: beforeQuantity, unitPrice: Math.round(beforeUnitPrice * 100) / 100, subtotal: Number(before.price ?? beforeQuantity * beforeUnitPrice) } } : {}),
+            ...(before ? { before: { name: before.name || before.productName || '', quantity: beforeQuantity, unitPrice: Math.round(beforeUnitPrice * 100) / 100, subtotal: Number(before.price !== undefined ? before.price : (beforeQuantity * beforeUnitPrice)) } } : {}),
             after: { name: after.name, quantity: after.quantity, unitPrice: after.unitPrice, subtotal: after.price },
           };
         }),

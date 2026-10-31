@@ -103,4 +103,12 @@ describe('reconstructOrderProducts', () => {
       { name: 'caixas', quantity: '5', unitPrice: '44,00' },
     ]);
   });
+
+  it('does not mistake leading years or numbers in single-product names for quantities', () => {
+    const products = reconstructOrderProducts('2026 Agenda Personalizada', 1, 60);
+
+    expect(products).toEqual([
+      { name: '2026 Agenda Personalizada', quantity: '1', unitPrice: '60,00' },
+    ]);
+  });
 });

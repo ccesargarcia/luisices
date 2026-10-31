@@ -427,6 +427,7 @@ const TOOLS_METADATA = [
               name: { type: 'string', minLength: 1, maxLength: 200 },
               quantity: { type: 'integer', minimum: 1, maximum: 10000 },
               unitPrice: moneyInput('Preço unitário deste item em reais.', { minimum: 0, maximum: 1000000 }),
+              price: moneyInput('Opcional: subtotal exato deste item em reais. Se informado, preserva centavos exatos de itens legados.', { minimum: 0, maximum: 10000000 }),
               existingIndex: { type: 'integer', minimum: 0, maximum: 49, description: 'Campo interno: índice do item carregado por get_order_edit_form. Preserve ao editar um item existente; omita para item novo.' },
             },
           },

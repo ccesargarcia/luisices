@@ -225,4 +225,47 @@ describe('MCP edição de pedidos pelo número apresentado ao usuário', () => {
     expect(savedOrder.items[0]).toMatchObject({ name: 'Caixa personalizada', quantity: 2, unitPrice: 40 });
     expect(savedOrder.items[1]).toMatchObject({ name: 'Caneca personalizada', quantity: 5, unitPrice: 44 });
   });
+
+  it('preserva subtotal exato ao adicionar item em pedido legado com divisão fracionada de centavos', async () => {
+    const legacyOrder = {
+      orderNumber: '#2026-0099',
+      userId: 'owner',
+      customerName: 'Cliente Legado',
+      productName: 'Etiqueta Adesiva',
+      quantity: 120,
+      totalPrice: 92.19,
+      price: 92.19,
+      unitPrice: null,
+      status: 'pending',
+      version: 1,
+      deliveryDate: '2099-10-18',
+    };
+    const executor = createExecutor(legacyOrder as any);
+
+    const form = await executeScopedToolByName(executor, 'get_order_edit_form', { orderNumber: '#2026-0099' }, scope, scope.mcpScopes);
+    expect(form.order.items).toEqual([
+      { existingIndex: 0, name: 'Etiqueta Adesiva', quantity: 120, unitPrice: 0.77 },
+    ]);
+
+    const preview = await executeScopedToolByName(executor, 'update_order', {
+      orderNumber: '#2026-0099',
+      expectedVersion: 1,
+      items: [
+        { existingIndex: 0, name: 'Etiqueta Adesiva', quantity: 120, unitPrice: 0.77 },
+        { name: 'Fita Crepe', quantity: 1, unitPrice: 10 },
+      ],
+    }, scope, scope.mcpScopes);
+
+    expect(preview.preview.pricing.totalPrice).toBe(102.19);
+    expect(preview.preview.changes.items[0]).toMatchObject({
+      name: 'Etiqueta Adesiva',
+      quantity: 120,
+      price: 92.19,
+    });
+    expect(preview.preview.changes.items[1]).toMatchObject({
+      name: 'Fita Crepe',
+      quantity: 1,
+      price: 10,
+    });
+  });
 });
