@@ -795,13 +795,13 @@ class AiDataRepositories {
       status: initialStatus,
       validUntil: data.validUntil || '',
       notes: data.notes || '',
-      createdAt: nowIso,
-      updatedAt: nowIso,
+      createdAt: now,
+      updatedAt: now,
       userId: scope.uid || 'system',
     };
 
     const docRef = await this.db.collection('quotes').add(quoteData);
-    return { id: docRef.id, ...quoteData };
+    return { id: docRef.id, ...quoteData, createdAt: nowIso, updatedAt: nowIso };
   }
 
   /**

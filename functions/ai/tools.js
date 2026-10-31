@@ -2608,7 +2608,19 @@ class AiToolsExecutor {
       error.code = 'failed-precondition';
       throw error;
     }
-    const now = new Date().toISOString();
+    let FieldValue = null;
+    try {
+      FieldValue = require('firebase-admin/firestore').FieldValue;
+    } catch (_e) {
+      // fallback
+    }
+
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const serverTimestamp = FieldValue && typeof FieldValue.serverTimestamp === 'function'
+      ? FieldValue.serverTimestamp()
+      : now;
+
     const customPricing = options?.orderPricing && Array.isArray(options.orderPricing.items) && options.orderPricing.items.length > 0
       ? options.orderPricing
       : null;
@@ -2622,12 +2634,14 @@ class AiToolsExecutor {
       : (exactUnitPrice !== null ? 'unit' : 'total');
     const orderItems = customPricing
       ? customPricing.items
-      : [{
-          name: cleanProduct,
-          quantity: cleanQuantity,
-          unitPrice: exactUnitPrice ?? Math.round((cleanTotalPrice / cleanQuantity) * 100) / 100,
-          price: cleanTotalPrice,
-        }];
+      : (exactUnitPrice !== null
+          ? [{
+              name: cleanProduct,
+              quantity: cleanQuantity,
+              unitPrice: exactUnitPrice,
+              price: cleanTotalPrice,
+            }]
+          : null);
 
     const creationResult = await db.runTransaction(async (transaction) => {
         const counterRef = db.doc(`users/${uid}/metadata/counters`);
@@ -2677,11 +2691,11 @@ class AiToolsExecutor {
             totalAmount: cleanTotalPrice,
             paidAmount: cleanPaidAmount,
             remainingAmount,
-            paymentDate: cleanPaidAmount > 0 ? now : null,
+            paymentDate: cleanPaidAmount > 0 ? nowIso : null,
             notes: null,
             history: cleanPaidAmount > 0 ? [{
               amount: cleanPaidAmount,
-              date: now,
+              date: nowIso,
               method: effectivePaymentMethod,
               notes: 'Sinal registrado via ChatGPT'
             }] : null,
@@ -2701,11 +2715,11 @@ class AiToolsExecutor {
               'quality-check': { completed: false },
               packaging: { completed: false },
             },
-            startedAt: now,
+            startedAt: nowIso,
           },
           version: 1,
-          createdAt: now,
-          updatedAt: now,
+          createdAt: serverTimestamp,
+          updatedAt: serverTimestamp,
           deletedAt: null,
         };
 
@@ -2722,7 +2736,7 @@ class AiToolsExecutor {
           customerPhone: customerPhone || null,
           productName: cleanProduct,
           quantity: cleanQuantity,
-          items: orderItems,
+          items: orderItems || [],
           pricingMode,
           unitPrice: exactUnitPrice,
           amount: cleanTotalPrice,
@@ -2730,15 +2744,15 @@ class AiToolsExecutor {
           paymentStatus,
           paidAmount: cleanPaidAmount,
           paymentMethod: effectivePaymentMethod,
-          date: now,
+          date: nowIso,
           deliveryDate: rawDate,
           status: 'pending',
           isDeletedFromOrders: false,
           notes: cleanNotes || null,
           tags,
           source: 'chatgpt-mcp',
-          createdAt: now,
-          updatedAt: now,
+          createdAt: serverTimestamp,
+          updatedAt: serverTimestamp,
         });
         if (customerRef && customerSnap && customerSnap.exists) {
           const cust = customerSnap.data() || {};
@@ -2746,8 +2760,8 @@ class AiToolsExecutor {
             ...cust,
             totalOrders: (Number(cust.totalOrders) || 0) + 1,
             totalSpent: Math.round(((Number(cust.totalSpent) || 0) + cleanTotalPrice) * 100) / 100,
-            lastOrderDate: now,
-            updatedAt: now,
+            lastOrderDate: nowIso,
+            updatedAt: serverTimestamp,
           }, { merge: true });
         }
         const result = { orderId, orderNumber };
@@ -2755,7 +2769,7 @@ class AiToolsExecutor {
           payloadHash: idempotency.payloadHash,
           result,
           completed: true,
-          createdAt: now,
+          createdAt: nowIso,
         });
         return { ...result, replayed: false };
       });

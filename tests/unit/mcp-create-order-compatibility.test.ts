@@ -44,7 +44,7 @@ describe('MCP create_order: compatibilidade e gravação idempotente', () => {
     expect([...documents.keys()].filter((path) => path.startsWith('mcpIdempotency/'))).toHaveLength(1);
   });
 
-  it('grava subtotal exato para muitas unidades e usa preço unitário arredondado sem campos fora do contrato', async () => {
+  it('grava pedido com pricingMode="total" e unitPrice=null quando não divisível em centavos exatos', async () => {
     await executor.executeCreateOrder({
       ...args,
       quantity: 120,
@@ -59,9 +59,8 @@ describe('MCP create_order: compatibilidade e gravação idempotente', () => {
       price: 92.19,
       pricingMode: 'total',
       unitPrice: null,
-      items: [{ name: 'Produto sintético', quantity: 120, unitPrice: 0.77, price: 92.19 }],
+      items: null,
     });
-    expect(created.items[0]).not.toHaveProperty('id');
   });
 
   it.each([false, 'false'])('confirmed=%s retorna somente prévia e não inicia transação', async (confirmed) => {
@@ -177,7 +176,7 @@ describe('MCP create_order: compatibilidade e gravação idempotente', () => {
       remainingAmount: 0,
       history: [expect.objectContaining({ amount: 399, method: 'pix' })],
     });
-    expect(typeof createdOrder.createdAt).toBe('string');
+    expect(typeof createdOrder.createdAt).not.toBe('string');
 
     const createdLedger = documents.get('salesLedger/generated-1');
     expect(createdLedger).toMatchObject({

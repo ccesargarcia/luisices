@@ -155,6 +155,8 @@ describe('backend MCP authorization', () => {
     expect(created.discount).toBe(0.02);
     expect(created.discountType).toBe('fixed');
     expect(created.totalPrice).toBe(100);
+    expect(addedQuotes[0].createdAt).toBeInstanceOf(Date);
+    expect(typeof created.createdAt).toBe('string');
 
     // Garante que a matemática do orçamento (3 * 33.34 - 0.02 = 100.00) passa na validação das regras e do cliente
     const validatedMath = validateQuoteMath(created.items, created.discount ?? 0, created.discountType ?? 'percent');
