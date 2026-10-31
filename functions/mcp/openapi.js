@@ -403,7 +403,7 @@ const TOOLS_METADATA = [
     name: 'update_order',
     scope: 'orders:update',
     summary: 'Editar um Pedido Existente',
-    description: 'Mostra uma prévia das alterações. Só grave após apresentar as mudanças e receber confirmação explícita; preserve os mesmos dados caso precise repetir a chamada. Pode alterar dados operacionais, valor total ou unitário do pedido, ou substituir os itens com seus preços unitários; nesse caso o total e a quantidade são recalculados. Não registra nem altera pagamentos recebidos. Não mencione controles internos de concorrência ou de repetição.',
+    description: 'Mostra uma prévia das alterações. Só grave após apresentar as mudanças e receber confirmação explícita; preserve os mesmos dados caso precise repetir a chamada. REGRA PARA ADICIONAR OU ALTERAR PRODUTOS: Se o usuário pedir para adicionar um novo item ou alterar produtos, NUNCA concatene o novo item no campo productName; em vez disso, consulte get_order_edit_form e envie a lista completa no campo items (preservando os existingIndex dos itens existentes e incluindo o novo item com seu name, quantity e unitPrice). O total e a quantidade geral são recalculados automaticamente pelos itens. Não registra nem altera pagamentos recebidos. Não mencione controles internos de concorrência ou de repetição.',
     requestBody: {
       type: 'object',
       required: ['orderNumber'],
@@ -411,7 +411,7 @@ const TOOLS_METADATA = [
         orderNumber: { type: 'string', description: 'Número do pedido, por exemplo #2026-0042, ou ID do documento.' },
         customerName: { type: 'string', maxLength: 200, description: 'Novo nome do cliente, se for alterar.' },
         customerPhone: { type: 'string', maxLength: 50, description: 'Novo telefone/WhatsApp, se for alterar.' },
-        productName: { type: 'string', maxLength: 300, description: 'Nova descrição do produto.' },
+        productName: { type: 'string', maxLength: 300, description: 'Descrição do produto principal para pedidos simples de item único. NÃO utilize este campo para adicionar itens ao pedido nem para listar múltiplos produtos; para adicionar ou alterar itens use sempre o array items.' },
         quantity: { type: 'integer', minimum: 1, maximum: 10000, description: 'Nova quantidade.' },
         totalPrice: moneyInput('Novo valor total do pedido em reais. Informe este campo OU unitPrice, nunca ambos.', { minimum: 0, maximum: 10000000 }),
         unitPrice: moneyInput('Novo valor por unidade em reais. O backend calcula o total multiplicando pela quantidade final do pedido. Informe este campo OU totalPrice, nunca ambos.', { minimum: 0, maximum: 1000000 }),
@@ -419,7 +419,7 @@ const TOOLS_METADATA = [
           type: 'array',
           minItems: 1,
           maxItems: 10,
-          description: 'Substitui os itens do pedido (até 10, como no formulário do sistema). Cada item aceita nome, quantidade de até 10000 e preço unitário em reais; a quantidade geral é a soma das quantidades dos itens e o total é a soma dos subtotais. Para editar um item existente, preserve em silêncio seu existingIndex retornado pelo formulário. Não combine com quantidade geral, totalPrice ou unitPrice.',
+          description: 'Substitui a lista de itens do pedido (até 10 itens). Use sempre este campo para adicionar itens a um pedido ou editar produtos individuais. Para adicionar um item a um pedido existente: consulte get_order_edit_form, inclua os itens existentes (mantendo seu existingIndex, name, quantity e unitPrice) e adicione o novo item com seu name, quantity e unitPrice (sem existingIndex). Não combine com quantidade geral, totalPrice ou unitPrice.',
           items: {
             type: 'object',
             required: ['name', 'quantity', 'unitPrice'],

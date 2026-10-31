@@ -1381,6 +1381,26 @@ class AiToolsExecutor {
       throw error;
     }
     const statusAliases = { pending: 'pending', pendente: 'pending', received: 'pending', recebido: 'pending', in_contact: 'pending', 'in-progress': 'in-progress', in_progress: 'in-progress', em_producao: 'in-progress', 'em produção': 'in-progress', 'em producao': 'in-progress', 'em-andamento': 'in-progress', em_andamento: 'in-progress', producao: 'in-progress', produção: 'in-progress', completed: 'completed', concluido: 'completed', concluído: 'completed', delivered: 'completed', entregue: 'completed', pronto: 'completed', finished: 'completed', cancelled: 'cancelled', canceled: 'cancelled', cancelado: 'cancelled', cancelada: 'cancelled' };
+    const hasStoredItems = Array.isArray(order.data.items) && order.data.items.length > 0;
+    const resolvedItems = hasStoredItems
+      ? order.data.items.map((item, existingIndex) => ({
+          existingIndex,
+          name: String(item.name || item.productName || '').slice(0, 200),
+          quantity: Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+          unitPrice: item.unitPrice !== null && item.unitPrice !== undefined && item.unitPrice !== '' && Number.isFinite(Number(item.unitPrice))
+            ? getStoredItemUnitPrice(item)
+            : (Number(item.quantity) > 0 ? Number(item.price || 0) / Number(item.quantity) : Number(item.price || 0)),
+        }))
+      : (order.data.productName ? [{
+          existingIndex: 0,
+          name: String(order.data.productName).slice(0, 200),
+          quantity: Number.isSafeInteger(Number(order.data.quantity)) && Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
+          unitPrice: order.data.unitPrice !== null && order.data.unitPrice !== undefined && order.data.unitPrice !== '' && Number.isFinite(Number(order.data.unitPrice)) && Number(order.data.unitPrice) > 0
+            ? Number(order.data.unitPrice)
+            : (Number(order.data.quantity) > 0
+                ? Math.round(((Number(order.data.price ?? order.data.totalPrice ?? 0)) / Number(order.data.quantity)) * 100) / 100
+                : Number(order.data.price ?? order.data.totalPrice ?? 0)),
+        }] : []);
     return {
       state: 'editing',
       order: {
@@ -1388,14 +1408,7 @@ class AiToolsExecutor {
         customerName: order.data.customerName || '',
         customerPhone: order.data.customerPhone || '',
         productName: order.data.productName || '',
-        items: Array.isArray(order.data.items) ? order.data.items.map((item, existingIndex) => ({
-          existingIndex,
-          name: String(item.name || item.productName || '').slice(0, 200),
-          quantity: Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
-          unitPrice: item.unitPrice !== null && item.unitPrice !== undefined && item.unitPrice !== '' && Number.isFinite(Number(item.unitPrice))
-            ? getStoredItemUnitPrice(item)
-            : (Number(item.quantity) > 0 ? Number(item.price || 0) / Number(item.quantity) : Number(item.price || 0)),
-        })) : [],
+        items: resolvedItems,
         quantity: Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
         totalPrice: Number(order.data.price ?? order.data.totalPrice ?? order.data.payment?.totalAmount ?? 0),
         deliveryDate: order.data.deliveryDate || '',
@@ -1407,7 +1420,7 @@ class AiToolsExecutor {
       editableOptions: [
         'Nome e telefone do cliente',
         'Produtos: nome, quantidade e preço unitário de cada item; adicionar ou remover itens (até 10)',
-        ...(!Array.isArray(order.data.items) || order.data.items.length === 0 ? ['Quantidade geral e valor total ou preço unitário do pedido'] : []),
+        ...(!hasStoredItems ? ['Quantidade geral e valor total ou preço unitário do pedido'] : []),
         'Prazo de entrega',
         'Tema do pedido',
         'Observações',
@@ -1539,7 +1552,18 @@ class AiToolsExecutor {
       throw error;
     }
     if (itemSourceIndexes) {
-      const currentItems = Array.isArray(order.data.items) ? order.data.items : [];
+      const currentItems = Array.isArray(order.data.items) && order.data.items.length > 0
+        ? order.data.items
+        : (order.data.productName ? [{
+            name: String(order.data.productName).slice(0, 200),
+            quantity: Number.isSafeInteger(Number(order.data.quantity)) && Number(order.data.quantity) > 0 ? Number(order.data.quantity) : 1,
+            unitPrice: order.data.unitPrice !== null && order.data.unitPrice !== undefined && order.data.unitPrice !== '' && Number.isFinite(Number(order.data.unitPrice)) && Number(order.data.unitPrice) > 0
+              ? Number(order.data.unitPrice)
+              : (Number(order.data.quantity) > 0
+                  ? Math.round(((Number(order.data.price ?? order.data.totalPrice ?? 0)) / Number(order.data.quantity)) * 100) / 100
+                  : Number(order.data.price ?? order.data.totalPrice ?? 0)),
+            price: Number(order.data.price ?? order.data.totalPrice ?? 0),
+          }] : []);
       const staleIndex = itemSourceIndexes.find((index) => index !== null && index >= currentItems.length);
       if (staleIndex !== undefined) {
         const error = new Error('Os itens do pedido mudaram desde a consulta. Carregue novamente antes de editar.');
@@ -1665,6 +1689,10 @@ class AiToolsExecutor {
         throw error;
       }
       const orderUpdates = { ...updates, version: currentVersion + 1, updatedAt: now };
+      if (args.items !== undefined) {
+        orderUpdates.pricingMode = updates.items.length > 1 ? 'items' : 'unit';
+        orderUpdates.unitPrice = updates.items.length === 1 ? updates.items[0].unitPrice : null;
+      }
       if (requestedPrice !== undefined) {
         orderUpdates.totalPrice = updates.price;
         const payment = current.payment && typeof current.payment === 'object' ? current.payment : {};
@@ -1683,6 +1711,10 @@ class AiToolsExecutor {
         const saleUpdates = { updatedAt: now };
         for (const field of ['customerName', 'customerPhone', 'productName', 'quantity', 'deliveryDate', 'items']) {
           if (updates[field] !== undefined) saleUpdates[field] = updates[field];
+        }
+        if (args.items !== undefined) {
+          saleUpdates.pricingMode = orderUpdates.pricingMode;
+          saleUpdates.unitPrice = orderUpdates.unitPrice;
         }
         if (requestedPrice !== undefined) {
           saleUpdates.amount = updates.price;
@@ -1705,6 +1737,8 @@ class AiToolsExecutor {
           productName: updates.productName ?? current.productName ?? 'Produto',
           quantity: updates.quantity ?? current.quantity ?? 1,
           items: updates.items ?? current.items ?? [],
+          pricingMode: orderUpdates.pricingMode ?? current.pricingMode ?? 'unit',
+          unitPrice: orderUpdates.unitPrice ?? current.unitPrice ?? null,
           amount: updates.price,
           paymentStatus: payment.status,
           paidAmount: payment.paidAmount,

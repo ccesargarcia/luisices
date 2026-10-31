@@ -76,4 +76,31 @@ describe('reconstructOrderProducts', () => {
       { name: 'Caneta Metal', quantity: '1', unitPrice: '12,00' },
     ]);
   });
+
+  it('reconstructs multi-item legacy additions with quantity and price phrases without zeroing original item', () => {
+    // Cenário relatado: pedido de R$ 60,00 original com adição de 5 itens no valor de 44 reais cada (total 280,00)
+    const products = reconstructOrderProducts(
+      'Agenda Personalizada, 5 itens no valor de 44 reais cada',
+      6,
+      280,
+    );
+
+    expect(products).toEqual([
+      { name: 'Agenda Personalizada', quantity: '1', unitPrice: '60,00' },
+      { name: 'itens', quantity: '5', unitPrice: '44,00' },
+    ]);
+  });
+
+  it('separates items joined with plus sign and parses leading quantity counts', () => {
+    const products = reconstructOrderProducts(
+      'Bolo de Cenoura + 5 caixas no valor de 44 reais cada',
+      6,
+      270,
+    );
+
+    expect(products).toEqual([
+      { name: 'Bolo de Cenoura', quantity: '1', unitPrice: '50,00' },
+      { name: 'caixas', quantity: '5', unitPrice: '44,00' },
+    ]);
+  });
 });

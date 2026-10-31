@@ -13,27 +13,55 @@ describe('MCP edição de pedidos pelo número apresentado ao usuário', () => {
 
   function createExecutor(order = storedOrder) {
     const records = new Map([['orders/order-doc-id', order]]);
-    const snapshot = (id: string) => ({
+    const snapshot = (id: string, coll = 'orders') => ({
       id,
-      exists: records.has(`orders/${id}`),
-      data: () => records.get(`orders/${id}`),
+      path: `${coll}/${id}`,
+      exists: records.has(`${coll}/${id}`),
+      data: () => records.get(`${coll}/${id}`),
     });
     const db = {
       collection: (name: string) => ({
-        doc: (id: string) => ({ get: async () => snapshot(id) }),
+        doc: (id: string) => ({
+          id,
+          path: `${name}/${id}`,
+          get: async () => snapshot(id, name),
+        }),
         where: (_field: string, _operator: string, value: string) => ({
           limit: (_count: number) => ({
             get: async () => ({
               docs: [...records.entries()]
                 .filter(([path, data]) => path.startsWith(`${name}/`) && data.orderNumber === value)
-                .map(([path]) => snapshot(path.split('/').at(-1)!)),
+                .map(([path]) => snapshot(path.split('/').at(-1)!, name)),
             }),
           }),
         }),
       }),
+      runTransaction: async (fn: any) => {
+        const tx = {
+          get: async (ref: any) => {
+            const key = ref.path || (ref.id ? `orders/${ref.id}` : '');
+            return {
+              id: ref.id,
+              path: key,
+              exists: records.has(key),
+              data: () => records.get(key),
+            };
+          },
+          set: (ref: any, data: any) => {
+            const key = ref.path || (ref.id ? `orders/${ref.id}` : '');
+            records.set(key, data);
+          },
+          update: (ref: any, data: any) => {
+            const key = ref.path || (ref.id ? `orders/${ref.id}` : '');
+            const existing = records.get(key) || {};
+            records.set(key, { ...existing, ...data });
+          },
+        };
+        return fn(tx);
+      },
     };
     const executor = new AiToolsExecutor(new AiDataRepositories(db));
-    return executor;
+    return Object.assign(executor, { _records: records });
   }
 
   const scope = {
@@ -122,5 +150,79 @@ describe('MCP edição de pedidos pelo número apresentado ao usuário', () => {
       }],
       removed: [{ name: 'Tag', quantity: 1 }],
     });
+  });
+
+  it('sintetiza o item existente com existingIndex 0 para pedidos simples e permite adicionar itens sem erro', async () => {
+    // Pedido simples sem items armazenado (apenas productName, quantity, totalPrice)
+    const executor = createExecutor();
+    const form = await executeScopedToolByName(executor, 'get_order_edit_form', { orderNumber: '#2026-0042' }, scope, scope.mcpScopes);
+
+    // Deve sintetizar o item original com existingIndex 0 e preço unitário correto
+    expect(form.order.items).toEqual([
+      { existingIndex: 0, name: 'Caixa personalizada', quantity: 2, unitPrice: 40 },
+    ]);
+
+    // Ao adicionar 5 itens no valor de 44 reais cada mantendo o existingIndex 0:
+    const preview = await executeScopedToolByName(executor, 'update_order', {
+      orderNumber: '#2026-0042',
+      expectedVersion: 3,
+      confirmed: false,
+      items: [
+        { existingIndex: 0, name: 'Caixa personalizada', quantity: 2, unitPrice: 40 },
+        { name: 'Caneca personalizada', quantity: 5, unitPrice: 44 },
+      ],
+    }, scope, scope.mcpScopes);
+
+    expect(preview.preview.changes).toMatchObject({
+      quantity: 7,
+      productName: 'Caixa personalizada (2x), Caneca personalizada (5x)',
+      price: 300,
+      items: [
+        { name: 'Caixa personalizada', quantity: 2, unitPrice: 40, price: 80 },
+        { name: 'Caneca personalizada', quantity: 5, unitPrice: 44, price: 220 },
+      ],
+    });
+    expect(preview.preview.pricing).toMatchObject({ mode: 'items', totalPrice: 300 });
+    expect(preview.preview.itemChanges).toMatchObject({
+      changed: [
+        {
+          action: 'unchanged',
+          before: { name: 'Caixa personalizada', quantity: 2, unitPrice: 40, subtotal: 80 },
+          after: { name: 'Caixa personalizada', quantity: 2, unitPrice: 40, subtotal: 80 },
+        },
+        {
+          action: 'added',
+          after: { name: 'Caneca personalizada', quantity: 5, unitPrice: 44, subtotal: 220 },
+        },
+      ],
+      removed: [],
+    });
+
+    // Salvar confirmação com idempotencyKey e confirmed: true
+    const confirmedResult = await executeScopedToolByName(executor, 'update_order', {
+      orderNumber: '#2026-0042',
+      expectedVersion: 3,
+      confirmed: true,
+      idempotencyKey: 'test-idemp-key-confirm-12345',
+      items: [
+        { existingIndex: 0, name: 'Caixa personalizada', quantity: 2, unitPrice: 40 },
+        { name: 'Caneca personalizada', quantity: 5, unitPrice: 44 },
+      ],
+    }, scope, scope.mcpScopes);
+
+    expect(confirmedResult).toMatchObject({
+      success: true,
+      orderNumber: '#2026-0042',
+      version: 4,
+    });
+
+    const savedOrder = (executor as any)._records.get('orders/order-doc-id');
+    expect(savedOrder.pricingMode).toBe('items');
+    expect(savedOrder.unitPrice).toBeNull();
+    expect(savedOrder.quantity).toBe(7);
+    expect(savedOrder.price).toBe(300);
+    expect(savedOrder.items).toHaveLength(2);
+    expect(savedOrder.items[0]).toMatchObject({ name: 'Caixa personalizada', quantity: 2, unitPrice: 40 });
+    expect(savedOrder.items[1]).toMatchObject({ name: 'Caneca personalizada', quantity: 5, unitPrice: 44 });
   });
 });
