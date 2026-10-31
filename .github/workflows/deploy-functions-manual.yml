@@ -234,7 +234,10 @@ jobs:
             deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
           elif [ "$INPUT_FN" = "mcp" ]; then
             echo "🤖 Deploy seletivo das Functions do MCP..."
-            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint"
+            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
+          elif [ "$INPUT_FN" = "ai" ]; then
+            echo "🧠 Deploy seletivo das Functions de IA..."
+            deploy_chunk "IA" "functions:aiAgentChat,functions:getAiUsage,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi"
           elif [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ] && [ "$INPUT_FN" != "auto" ]; then
             TARGETS=$(echo "$INPUT_FN" | tr ',' ' ' | tr -s ' ')
             DEPLOY_TARGET=""
@@ -253,15 +256,16 @@ jobs:
           else
             echo "🚀 Realizando deploy geral de functions em luisices-dev..."
             if ! firebase deploy --only functions --project luisices-dev --non-interactive --force; then
-              echo "⚠️ Deploy geral atingiu limite de concorrência. Particionando por domínios..."
+              echo "⚠️ Deploy geral atingiu limite de concorrência. Particionando por domínios (cobertura total 63 funções)..."
               sleep 20
               deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
-              deploy_chunk "IA e Pedidos" "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia"
-              deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
-              deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
               deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
+              deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
+              deploy_chunk "IA e Mídia" "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:galleryMedia"
+              deploy_chunk "Pedidos e SuperFrete" "functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel"
+              deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
               deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
-              deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint"
+              deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
             fi
           fi
 
@@ -470,7 +474,10 @@ jobs:
             deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
           elif [ "$INPUT_FN" = "mcp" ]; then
             echo "🤖 Deploy seletivo das Functions do MCP..."
-            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint"
+            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
+          elif [ "$INPUT_FN" = "ai" ]; then
+            echo "🧠 Deploy seletivo das Functions de IA..."
+            deploy_chunk "IA" "functions:aiAgentChat,functions:getAiUsage,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi"
           elif [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ] && [ "$INPUT_FN" != "auto" ]; then
             TARGETS=$(echo "$INPUT_FN" | tr ',' ' ' | tr -s ' ')
             DEPLOY_TARGET=""
@@ -489,15 +496,16 @@ jobs:
           else
             echo "🚀 Realizando deploy de functions em papelaria-dashboard..."
             if ! firebase deploy --only functions --project papelaria-dashboard --non-interactive --force; then
-              echo "⚠️ Deploy geral atingiu limite de concorrência. Particionando por domínios..."
+              echo "⚠️ Deploy geral atingiu limite de concorrência. Particionando por domínios (cobertura total 61 funções elegíveis)..."
               sleep 20
               deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
-              deploy_chunk "IA e Pedidos" "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:galleryMedia"
-              deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
-              deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
               deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
+              deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
+              deploy_chunk "IA e Mídia" "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:galleryMedia"
+              deploy_chunk "Pedidos" "functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts"
+              deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
               deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
-              deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:chatGptToolsEndpoint"
+              deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
             fi
           fi
 
