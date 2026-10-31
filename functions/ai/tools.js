@@ -393,9 +393,10 @@ function normalizePaymentMethod(value) {
   const aliases = {
     pix: 'pix',
     dinheiro: 'cash', cash: 'cash',
-    cartao_credito: 'credit', credito: 'credit', credit: 'credit',
+    cartao_credito: 'credit', credito: 'credit', credit: 'credit', cartao: 'credit',
     cartao_debito: 'debit', debito: 'debit', debit: 'debit',
     transferencia: 'transfer', transfer: 'transfer',
+    outro: 'transfer', outros: 'transfer', other: 'transfer',
   };
   return aliases[String(value || '').trim().toLowerCase()] || null;
 }

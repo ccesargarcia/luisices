@@ -348,7 +348,7 @@ const TOOLS_METADATA = [
         paidAmount: { ...moneyInput('Valor de entrada ou sinal efetivamente já recebido. Omita se não houve pagamento; exige payments:write.', { minimum: 0, maximum: 10000000 }), default: 0 },
         paymentMethod: {
           type: 'string',
-          enum: ['pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'transferencia', 'outro'],
+          enum: ['pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'transferencia', 'cash', 'credit', 'debit', 'transfer', 'outro'],
           description: 'Forma do pagamento inicial já recebido. Omita quando ainda não houve pagamento; exige payments:write.',
         },
         deliveryDate: {

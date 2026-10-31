@@ -196,4 +196,22 @@ describe('MCP create_order: compatibilidade e gravação idempotente', () => {
       totalSpent: 499,
     });
   });
+
+  it('normaliza paymentMethod="outro" anunciado no schema para método canônico válido', async () => {
+    const validated = validateToolArguments('create_order', {
+      ...args,
+      paymentMethod: 'outro',
+      paidAmount: 50,
+      idempotencyKey: 'mcp-create-outro-method',
+      confirmed: true,
+    });
+    expect(validated.paymentMethod).toBe('outro');
+
+    await executor.executeCreateOrder(validated, scope);
+    const createdOrder = documents.get('orders/generated-1');
+    expect(createdOrder.payment.method).toBe('transfer');
+    expect(createdOrder.payment.history[0].method).toBe('transfer');
+    const createdLedger = documents.get('salesLedger/generated-1');
+    expect(createdLedger.paymentMethod).toBe('transfer');
+  });
 });
