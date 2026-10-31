@@ -49,6 +49,12 @@ Quando uma requisição MCP **não** possui `financial:read` nem `payments:read`
 ### 2.3 Proteção de PII de Colaboradores
 - `sanitizeCollaboratorInfo` (`functions/ai/authorization.js`) nunca deve expor `email` de outro colaborador se o chamador não for `admin`, o próprio colaborador (`isSelf`), ou um `funcionario` ativo com o escopo `team:read`.
 
+### 2.4 Paridade entre Schema MCP Publicado e Valores Persistidos
+- Todo enum aceito em `functions/mcp/openapi.js` deve ser normalizado para o valor canônico **antes** de gravar no Firestore. Aliases legados ou em pt-BR continuam aceitos na entrada para não quebrar clientes MCP existentes.
+  - Forma de pagamento: `normalizePaymentMethod` (`functions/ai/financialMath.js`) mapeia `cartao`, `dinheiro`, `transferencia`, `outro` etc. para `pix | cash | credit | debit | transfer` em pedidos, ledger e orçamentos (`createQuote`).
+  - Status de orçamento: `cancelled` → `rejected`; filtro `pending` em `query_quotes` corresponde a `draft` + `sent`.
+- Ao restringir um enum na validação, atualize o schema publicado na mesma PR (e vice-versa). Adicione um teste unitário cobrindo cada alias anunciado.
+
 ---
 
 ## 3. Integridade Transacional, Idempotência e Matemática Financeira

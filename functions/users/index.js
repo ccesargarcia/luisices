@@ -466,7 +466,12 @@ const createUser = onCall(async (request) => {
     };
 
     try {
-      await getFirestore().doc(`userProfiles/${userRecord.uid}`).set(profile);
+      // Persiste createdAt como Timestamp para manter a ordenação de listUsers
+      // consistente com os demais criadores de perfil; a resposta mantém a string ISO.
+      await getFirestore().doc(`userProfiles/${userRecord.uid}`).set({
+        ...profile,
+        createdAt: FieldValue.serverTimestamp(),
+      });
     } catch (profileError) {
       await getAuth().deleteUser(userRecord.uid).catch((rollbackError) => {
         console.error('[createUser] Falha ao reverter usuário órfão:', rollbackError);

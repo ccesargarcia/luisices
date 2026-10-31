@@ -25,4 +25,21 @@ function sumPaymentCents(orders, field) {
   return orders.reduce((sum, order) => sum + resolvePaymentAmounts(order)[field], 0);
 }
 
-module.exports = { resolvePaymentAmounts, sumPaymentCents };
+/**
+ * Normaliza aliases de forma de pagamento (pt-BR e legados do schema MCP)
+ * para o enum canônico PaymentMethod ('pix' | 'cash' | 'credit' | 'debit' | 'transfer').
+ * Retorna null quando o valor não é reconhecido.
+ */
+function normalizePaymentMethod(value) {
+  const aliases = {
+    pix: 'pix',
+    dinheiro: 'cash', cash: 'cash',
+    cartao_credito: 'credit', credito: 'credit', credit: 'credit', cartao: 'credit',
+    cartao_debito: 'debit', debito: 'debit', debit: 'debit',
+    transferencia: 'transfer', transfer: 'transfer',
+    outro: 'transfer', outros: 'transfer', other: 'transfer',
+  };
+  return aliases[String(value || '').trim().toLowerCase()] || null;
+}
+
+module.exports = { resolvePaymentAmounts, sumPaymentCents, normalizePaymentMethod };

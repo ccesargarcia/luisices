@@ -117,6 +117,40 @@ describe('backend MCP authorization', () => {
     expect(updateQuoteStatus).not.toHaveBeenCalled();
   });
 
+  it('normaliza paymentMethod de orçamentos MCP (cartao/dinheiro) para o enum canônico antes de gravar', async () => {
+    const addedQuotes: any[] = [];
+    const db = {
+      collection: vi.fn(() => ({
+        doc: vi.fn(() => ({
+          collection: vi.fn(() => ({
+            doc: vi.fn(() => ({
+              get: vi.fn().mockResolvedValue({ exists: false, data: () => ({}) }),
+              set: vi.fn().mockResolvedValue(undefined),
+            })),
+          })),
+        })),
+        add: vi.fn(async (data: any) => {
+          addedQuotes.push(data);
+          return { id: `quote-${addedQuotes.length}` };
+        }),
+      })),
+    };
+    const repos = new AiDataRepositories(db);
+    const cases: Array<[string | undefined, string]> = [
+      ['cartao', 'credit'],
+      ['dinheiro', 'cash'],
+      ['pix', 'pix'],
+      ['desconhecido', 'pix'],
+      [undefined, 'pix'],
+    ];
+    for (const [input, expected] of cases) {
+      await repos.createQuote({ uid: 'user-1' }, {
+        customerName: 'Ana', productName: 'Kit', quantity: 1, totalPrice: 10, paymentMethod: input,
+      });
+      expect(addedQuotes.at(-1).paymentMethod).toBe(expected);
+    }
+  });
+
   it('creates quotes with valid draft status and rounded unitPrice, and converts quotes directly without limit-10 truncation', async () => {
     const { validateQuoteMath } = await import('../../src/app/components/quotes/quoteHelpers');
     const addedQuotes: any[] = [];
