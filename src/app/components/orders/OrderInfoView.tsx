@@ -17,6 +17,8 @@ import {
 import { formatDate } from '../../utils/date';
 import { formatCurrency } from '../../utils/currency';
 import { getTextColor } from '../../utils/tagColors';
+import { normalizeOrderItems } from '../../utils/normalizeOrderItems';
+import { reconstructOrderProducts } from '../../utils/reconstructOrderProducts';
 import { useOrders } from '../../../contexts/OrdersContext';
 import { OrderShippingSection } from './OrderShippingSection';
 
@@ -60,28 +62,60 @@ export function OrderInfoView({ order, customer, onOrderUpdated }: OrderInfoView
               <div className="text-sm text-muted-foreground">Produto(s)</div>
               {order.items && order.items.length > 0 ? (
                 <div className="space-y-1.5 mt-1">
-                  {order.items.map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-baseline text-sm gap-2">
-                      <span className="font-medium truncate">
-                        {item.name} {item.quantity > 1 ? `(${item.quantity}x)` : ''}
-                      </span>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {formatCurrency(item.unitPrice)} / un
-                      </span>
-                    </div>
-                  ))}
+                  {normalizeOrderItems(order.items).map((item, idx) => {
+                    const unitPrice = typeof item.unitPrice === 'number' && Number.isFinite(item.unitPrice) && item.unitPrice > 0
+                      ? item.unitPrice
+                      : (Number(item.quantity) > 0 && typeof item.price === 'number' && item.price > 0
+                          ? item.price / Number(item.quantity)
+                          : (typeof item.unitPrice === 'number' ? item.unitPrice : 0));
+                    return (
+                      <div key={idx} className="flex justify-between items-baseline text-sm gap-2">
+                        <span className="font-medium truncate">
+                          {item.name} {item.quantity > 1 ? `(${item.quantity}x)` : ''}
+                        </span>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {formatCurrency(unitPrice)} / un
+                        </span>
+                      </div>
+                    );
+                  })}
                   <div className="text-xs text-muted-foreground pt-1 border-t border-border/40">
                     Total: {order.quantity} {order.quantity === 1 ? 'unidade' : 'unidades'}
                   </div>
                 </div>
-              ) : (
-                <>
-                  <div className="font-medium">{order.productName}</div>
-                  <div className="text-sm text-muted-foreground mt-1">
-                    Quantidade: {order.quantity} unidades
-                  </div>
-                </>
-              )}
+              ) : (() => {
+                const reconstructed = reconstructOrderProducts(order.productName || '', order.quantity, order.price, order.unitPrice);
+                if (reconstructed.length > 1) {
+                  const totalQty = reconstructed.reduce((s, r) => s + (parseInt(r.quantity, 10) || 1), 0);
+                  return (
+                    <div className="space-y-1.5 mt-1">
+                      {reconstructed.map((item, idx) => (
+                        <div key={idx} className="flex justify-between items-baseline text-sm gap-2">
+                          <span className="font-medium truncate">
+                            {item.name} {parseInt(item.quantity, 10) > 1 ? `(${item.quantity}x)` : ''}
+                          </span>
+                          {item.unitPrice ? (
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">
+                              R$ {item.unitPrice} / un
+                            </span>
+                          ) : null}
+                        </div>
+                      ))}
+                      <div className="text-xs text-muted-foreground pt-1 border-t border-border/40">
+                        Total: {totalQty} {totalQty === 1 ? 'unidade' : 'unidades'}
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <>
+                    <div className="font-medium">{order.productName}</div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      Quantidade: {order.quantity} unidades
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -104,11 +138,23 @@ export function OrderInfoView({ order, customer, onOrderUpdated }: OrderInfoView
                 <div className="text-sm text-muted-foreground mt-1">
                   {order.items.length} itens no pedido
                 </div>
-              ) : (
-                <div className="text-sm text-muted-foreground mt-1">
-                  {formatCurrency(typeof order.unitPrice === 'number' ? order.unitPrice : order.price / (order.quantity || 1))} por unidade
-                </div>
-              )}
+              ) : (() => {
+                const count = !order.items?.length
+                  ? reconstructOrderProducts(order.productName || '', order.quantity, order.price, order.unitPrice).length
+                  : 1;
+                if (count > 1) {
+                  return (
+                    <div className="text-sm text-muted-foreground mt-1">
+                      {count} itens no pedido
+                    </div>
+                  );
+                }
+                return (
+                  <div className="text-sm text-muted-foreground mt-1">
+                    {formatCurrency(typeof order.unitPrice === 'number' ? order.unitPrice : order.price / (order.quantity || 1))} por unidade
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
