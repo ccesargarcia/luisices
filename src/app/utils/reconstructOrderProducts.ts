@@ -67,6 +67,11 @@ export function reconstructOrderProducts(
 
     let quantity = names.length === 1 ? orderQuantity : 1;
     let match: RegExpMatchArray | null = null;
+    const packageUnitList = 'itens?|items?|unidades?|un|peças?|pcs|caixas?|cx|pacotes?|pct|latas?|garrafas?|pares|conjuntos?';
+    const packageUnitRegex = new RegExp(`^(\\d+)\\s+(?:${packageUnitList})\\s+de\\s+(.+)$`, 'i');
+    const packageWithNounRegex = new RegExp(`^(\\d+)\\s+(?:${packageUnitList})\\s+(.+)$`, 'i');
+    const packageOnlyRegex = new RegExp(`^(\\d+)\\s+(${packageUnitList})$`, 'i');
+
     if ((match = cleanName.match(/^(.+?)\s*\((\d+)x\)$/i))) {
       quantity = parseInt(match[2], 10);
       cleanName = match[1].trim();
@@ -79,16 +84,16 @@ export function reconstructOrderProducts(
     } else if ((match = cleanName.match(/^(\d+)x\s+(.+)$/i))) {
       quantity = parseInt(match[1], 10);
       cleanName = match[2].trim();
-    } else if ((match = cleanName.match(/^(\d+)\s+(?:itens?|items?|unidades?|un|peças?|pcs)\s+de\s+(.+)$/i))) {
+    } else if ((match = cleanName.match(packageUnitRegex))) {
       quantity = parseInt(match[1], 10);
       cleanName = match[2].trim();
-    } else if ((match = cleanName.match(/^(\d+)\s+(?:itens?|items?|unidades?|un|peças?|pcs)\s+(.+)$/i))) {
+    } else if ((match = cleanName.match(packageWithNounRegex))) {
       quantity = parseInt(match[1], 10);
       cleanName = match[2].trim();
-    } else if ((match = cleanName.match(/^(\d+)\s+(itens?|items?|unidades?|un|peças?|pcs)$/i))) {
+    } else if ((match = cleanName.match(packageOnlyRegex))) {
       quantity = parseInt(match[1], 10);
       cleanName = match[2].trim();
-    } else if ((match = cleanName.match(/^(\d+)\s+(.+)$/i))) {
+    } else if (names.length > 1 && (match = cleanName.match(/^(\d{1,3})\s+(.+)$/i))) {
       quantity = parseInt(match[1], 10);
       cleanName = match[2].trim();
     }
