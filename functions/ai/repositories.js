@@ -809,8 +809,9 @@ class AiDataRepositories {
    */
   async updateQuoteStatus(scope, quoteIdentifier, newStatus) {
     if (!this.db) throw new Error('Banco de dados não disponível.');
+    const normalizedStatus = String(newStatus || '').toLowerCase().trim() === 'cancelled' ? 'rejected' : newStatus;
     const allowedStatuses = new Set(['draft', 'sent', 'approved', 'rejected', 'expired']);
-    if (!allowedStatuses.has(newStatus)) {
+    if (!allowedStatuses.has(normalizedStatus)) {
       const err = new Error('Status do orçamento inválido.');
       err.code = 'invalid-argument';
       throw err;
@@ -846,24 +847,25 @@ class AiDataRepositories {
       throw err;
     }
 
-    const updatedAt = new Date().toISOString();
+    const now = new Date();
     await docRef.update({
-      status: newStatus,
-      updatedAt,
+      status: normalizedStatus,
+      updatedAt: now,
     });
 
     const quoteNumber = data.quoteNumber || `#ORC-${docSnap.id.slice(-4)}`;
     return {
       id: docSnap.id,
       quoteNumber,
-      status: newStatus,
+      status: normalizedStatus,
       previousStatus: data.status,
+      updatedAt: now.toISOString(),
       quote: {
         id: docSnap.id,
         ...data,
         quoteNumber,
-        status: newStatus,
-        updatedAt,
+        status: normalizedStatus,
+        updatedAt: now.toISOString(),
       },
     };
   }

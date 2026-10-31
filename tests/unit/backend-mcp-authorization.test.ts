@@ -232,4 +232,40 @@ describe('backend MCP authorization', () => {
       }
     );
   });
+
+  it('normaliza status "cancelled" para "rejected" e permite consulta de orçamentos pendentes/rascunhos', async () => {
+    const { validateToolArguments } = require('../../functions/mcp/validation');
+    const updateQuoteStatus = vi.fn().mockResolvedValue({
+      id: 'quote-1', quoteNumber: 'ORC-0001', status: 'rejected', previousStatus: 'sent',
+    });
+    const getQuotes = vi.fn().mockResolvedValue([
+      { id: 'q1', quoteNumber: 'ORC-0001', status: 'draft', customerName: 'Cliente 1', totalPrice: 100 },
+      { id: 'q2', quoteNumber: 'ORC-0002', status: 'sent', customerName: 'Cliente 2', totalPrice: 200 },
+      { id: 'q3', quoteNumber: 'ORC-0003', status: 'approved', customerName: 'Cliente 3', totalPrice: 300 },
+      { id: 'q4', quoteNumber: 'ORC-0004', status: 'rejected', customerName: 'Cliente 4', totalPrice: 400 },
+    ]);
+    const tools = new AiToolsExecutor({ updateQuoteStatus, getQuotes });
+
+    // Schema público aceita status canônicos e cancelamento legado
+    expect(() => validateToolArguments('update_quote_status', { quoteNumber: 'ORC-0001', status: 'cancelled', idempotencyKey: 'test-key-1234' })).not.toThrow();
+    expect(() => validateToolArguments('update_quote_status', { quoteNumber: 'ORC-0001', status: 'draft', idempotencyKey: 'test-key-1234' })).not.toThrow();
+    expect(() => validateToolArguments('query_quotes', { status: 'draft' })).not.toThrow();
+    expect(() => validateToolArguments('query_quotes', { status: 'pending' })).not.toThrow();
+
+    // Normalização na gravação
+    const result = await tools.executeUpdateQuoteStatus({
+      quoteNumber: 'ORC-0001', status: 'cancelled', confirmed: true,
+    }, { uid: 'user-1', permissions: { quotes: { edit: true } } });
+
+    expect(updateQuoteStatus).toHaveBeenCalledWith(expect.anything(), 'ORC-0001', 'rejected');
+    expect(result.status).toBe('rejected');
+
+    // Filtro de pending retorna draft e sent
+    const pendingQuotes = await tools.executeQueryQuotes({ status: 'pending' }, { uid: 'user-1' });
+    expect(pendingQuotes.quotes.map((q: any) => q.quoteNumber)).toEqual(['ORC-0001', 'ORC-0002']);
+
+    // Filtro de cancelled retorna rejected
+    const cancelledQuotes = await tools.executeQueryQuotes({ status: 'cancelled' }, { uid: 'user-1' });
+    expect(cancelledQuotes.quotes.map((q: any) => q.quoteNumber)).toEqual(['ORC-0004']);
+  });
 });

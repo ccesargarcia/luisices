@@ -2996,7 +2996,19 @@ class AiToolsExecutor {
 
     let filtered = quotes;
     if (statusFilter !== 'all') {
-      filtered = filtered.filter((q) => q.status.toLowerCase() === statusFilter);
+      filtered = filtered.filter((q) => {
+        const itemStatus = String(q.status || '').toLowerCase();
+        if (statusFilter === 'pending') {
+          return itemStatus === 'pending' || itemStatus === 'draft' || itemStatus === 'sent';
+        }
+        if (statusFilter === 'cancelled') {
+          return itemStatus === 'cancelled' || itemStatus === 'rejected';
+        }
+        if (statusFilter === 'rejected') {
+          return itemStatus === 'rejected' || itemStatus === 'cancelled';
+        }
+        return itemStatus === statusFilter;
+      });
     }
     if (searchTerm) {
       filtered = filtered.filter((q) => q.customerName.toLowerCase().includes(searchTerm) || q.quoteNumber.toLowerCase().includes(searchTerm));
@@ -3035,14 +3047,16 @@ class AiToolsExecutor {
 
   async executeUpdateQuoteStatus(args = {}, scope) {
     requireMcpModulePermission(scope, 'quotes', 'edit', 'atualizar orçamentos');
+    const rawStatus = String(args.status || '').trim();
+    const normalizedStatus = rawStatus.toLowerCase() === 'cancelled' ? 'rejected' : rawStatus;
     if (!isConfirmed(args.confirmed)) {
       return {
         success: true,
         preview: true,
         quoteNumber: args.quoteNumber,
-        status: args.status,
+        status: normalizedStatus,
         convertToOrder: Boolean(args.convertToOrder),
-        message: `Prévia da atualização do orçamento ${args.quoteNumber} para ${args.status}. Confirme para aplicar.`,
+        message: `Prévia da atualização do orçamento ${args.quoteNumber} para ${normalizedStatus}. Confirme para aplicar.`,
       };
     }
 
@@ -3052,7 +3066,7 @@ class AiToolsExecutor {
       throw error;
     }
 
-    const updated = await this.repos.updateQuoteStatus(scope, args.quoteNumber, args.status);
+    const updated = await this.repos.updateQuoteStatus(scope, args.quoteNumber, normalizedStatus);
     let orderCreated = null;
 
     if (args.status === 'approved' && args.convertToOrder) {
