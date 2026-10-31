@@ -236,8 +236,9 @@ jobs:
             echo "🤖 Deploy seletivo das Functions do MCP..."
             deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
           elif [ "$INPUT_FN" = "ai" ]; then
-            echo "🧠 Deploy seletivo das Functions de IA..."
+            echo "🧠 Deploy seletivo das Functions de IA e seus consumidores MCP (chatGptToolsEndpoint e callables)..."
             deploy_chunk "IA" "functions:aiAgentChat,functions:getAiUsage,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi"
+            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
           elif [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ] && [ "$INPUT_FN" != "auto" ]; then
             TARGETS=$(echo "$INPUT_FN" | tr ',' ' ' | tr -s ' ')
             DEPLOY_TARGET=""
@@ -476,8 +477,9 @@ jobs:
             echo "🤖 Deploy seletivo das Functions do MCP..."
             deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
           elif [ "$INPUT_FN" = "ai" ]; then
-            echo "🧠 Deploy seletivo das Functions de IA..."
+            echo "🧠 Deploy seletivo das Functions de IA e seus consumidores MCP (chatGptToolsEndpoint e callables)..."
             deploy_chunk "IA" "functions:aiAgentChat,functions:getAiUsage,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi"
+            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
           elif [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ] && [ "$INPUT_FN" != "auto" ]; then
             TARGETS=$(echo "$INPUT_FN" | tr ',' ' ' | tr -s ' ')
             DEPLOY_TARGET=""

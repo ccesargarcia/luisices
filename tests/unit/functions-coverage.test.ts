@@ -145,4 +145,26 @@ describe('Cobertura e integridade das Cloud Functions nos workflows de deploy', 
     // Mudança mista (IA + E-mail) -> escopo all
     expect(resolveScope(['functions/ai/callables.js', 'functions/email/send.js'])).toBe('all');
   });
+
+  it('o escopo seletivo de IA publica tanto as functions de IA quanto os consumidores MCP', () => {
+    const devWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-dev.yml'), 'utf8');
+    const manualWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-functions-manual.yml'), 'utf8');
+
+    // Verifica que o bloco do escopo 'ai' publica tanto o chunk "IA" quanto o chunk "MCP"
+    const aiScopePattern = /Deploy seletivo das Functions de IA e seus consumidores MCP[\s\S]*?deploy_chunk "IA"[\s\S]*?deploy_chunk "MCP"/;
+
+    expect(devWorkflow).toMatch(aiScopePattern);
+    expect(manualWorkflow).toMatch(aiScopePattern);
+  });
+
+  it('mcp_metadata e cloudflare_cache incluem functions/ai/ para invalidar cache quando houver mudanças em tools', () => {
+    const devWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-dev.yml'), 'utf8');
+    const prodWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-production.yml'), 'utf8');
+
+    // Em dev, paths-filter de mcp_metadata deve incluir functions/ai/**
+    expect(devWorkflow).toMatch(/mcp_metadata:[\s\S]*?- 'functions\/ai\/\*\*'/);
+
+    // Em produção, a regex de cloudflare_cache deve incluir ai
+    expect(prodWorkflow).toMatch(/\^functions\/\(mcp\|ai\)\//);
+  });
 });

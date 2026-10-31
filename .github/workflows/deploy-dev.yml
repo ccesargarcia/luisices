@@ -115,6 +115,7 @@ jobs:
               - 'tests/integration/**'
             mcp_metadata:
               - 'functions/mcp/**'
+              - 'functions/ai/**'
               - 'public/.well-known/**'
             ci:
               - '.github/workflows/deploy-dev.yml'
@@ -737,8 +738,9 @@ jobs:
             echo "🤖 Deploy seletivo das Functions do MCP..."
             deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
           elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "ai" ]; then
-            echo "🧠 Deploy seletivo das Functions de IA..."
+            echo "🧠 Deploy seletivo das Functions de IA e seus consumidores MCP (chatGptToolsEndpoint e callables)..."
             deploy_chunk "IA" "functions:aiAgentChat,functions:getAiUsage,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi"
+            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
           elif ! npx --yes firebase-tools@15.32.1 deploy --only functions --project luisices-dev --non-interactive; then
             echo "⚠️ Deploy em lote geral atingiu limite de concorrência. Aguardando 20s para drenagem de workers..."
             sleep 20

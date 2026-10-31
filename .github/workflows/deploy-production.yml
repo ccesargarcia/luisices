@@ -82,7 +82,7 @@ jobs:
           if matches '(^\*?$|^(firestore\.rules|storage\.rules|database\.rules\.json|firebase\.json)$)'; then rules=true; fi
           if matches '(^\*?$|^cloudflare/api-worker/|^scripts/(ensure-mcp-cache-bypass|ensure-order-tracking-rate-limit|purge-cloudflare-cache)\.mjs$)'; then cloudflare_api=true; fi
           if matches '(^\*?$|^cloudflare/cdn-worker/)'; then cloudflare_cdn=true; fi
-          if matches '(^\*?$|^functions/mcp/|^public/\.well-known/)'; then cloudflare_cache=true; fi
+          if matches '(^\*?$|^functions/(mcp|ai)/|^public/\.well-known/)'; then cloudflare_cache=true; fi
           if matches '(^\*?$|^functions/|^scripts/sync-secrets-safe\.mjs$)'; then
             functions=true
             if [ "$CHANGED" != '*' ] && [ -n "$BASE" ]; then
