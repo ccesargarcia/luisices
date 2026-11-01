@@ -374,6 +374,18 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
+  it('módulo de usuários adia rateLimiters e userAdminActions até a execução do handler', () => {
+    checkStartup(`
+      const handler = functions.recordUserPasswordChange;
+      assert.equal(handler, require('./users').recordUserPasswordChange);
+      for (const modulePath of ['./common/rateLimiters', './users/userAdminActions', 'resend']) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
+      }
+      assert.equal(handler.__endpoint.availableMemoryMb, 512);
+      assert.equal(handler.__endpoint.cpu, 1);
+    `);
+  });
+
   it.each(['createOrder', 'updateComplexOrder'])(
     '%s carrega apenas o domínio necessário e reutiliza o handler protegido', (target) => {
       checkStartup(`

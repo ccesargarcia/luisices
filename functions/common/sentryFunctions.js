@@ -42,15 +42,17 @@ const DEFAULT_HTTP_RUNTIME_OPTIONS = {
   cpu: 1,
 };
 
-function wrapFactory(factory, trigger, defaultOptions = {}) {
+function wrapFactory(factory, trigger, defaultOptions = null) {
   return (...args) => {
     if (args.length === 1) {
-      if (Object.keys(defaultOptions).length === 0) {
-        return factory(wrapHandler(args[0], trigger));
-      }
-      return factory({ ...defaultOptions }, wrapHandler(args[0], trigger));
+      return defaultOptions
+        ? factory({ ...defaultOptions }, wrapHandler(args[0], trigger))
+        : factory(wrapHandler(args[0], trigger));
     }
-    return factory({ ...defaultOptions, ...args[0] }, wrapHandler(args[1], trigger));
+    const mergedOptions = defaultOptions && args[0] && typeof args[0] === 'object'
+      ? { ...defaultOptions, ...args[0] }
+      : args[0];
+    return factory(mergedOptions, wrapHandler(args[1], trigger));
   };
 }
 

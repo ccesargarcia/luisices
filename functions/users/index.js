@@ -10,7 +10,7 @@ const { RESEND_API_KEY, EVOLUTION_API_KEY } = require('../common/secrets');
 const getPasswordResetLimiter = () => require('../common/rateLimiters').passwordResetLimiter;
 const userSyncService = require('./userSyncService');
 const { validateProfileMcpScopes } = require('../mcp/profilePermissions');
-const { consumeAdminUserAction } = require('./userAdminActions');
+const consumeAdminUserAction = (uid) => require('./userAdminActions').consumeAdminUserAction(uid);
 const { writeUserAudit } = require('./userAudit');
 const helpers = require('../common/helpers');
 const {
