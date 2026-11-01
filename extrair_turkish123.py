@@ -93,7 +93,16 @@ def capturar_stream_episodio(url_episodio: str) -> str:
 
 
 def baixar_stream(stream_url: str, output_path: str, referer: str):
+    import urllib.parse
+    parsed = urllib.parse.urlparse(stream_url)
+    stream_origin = f"{parsed.scheme}://{parsed.netloc}"
+
     print(f"==> Iniciando download com FFmpeg em: {output_path}", flush=True)
+    header_str = (
+        f"Referer: {stream_origin}/\r\n"
+        f"Origin: {stream_origin}\r\n"
+        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\r\n"
+    )
     cmd = [
         "ffmpeg",
         "-hide_banner",
@@ -101,7 +110,7 @@ def baixar_stream(stream_url: str, output_path: str, referer: str):
         "warning",
         "-stats",
         "-headers",
-        f"Referer: {referer}\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n",
+        header_str,
         "-i",
         stream_url,
         "-c",
