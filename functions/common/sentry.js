@@ -122,6 +122,19 @@ function sanitizeSpan(span) {
   };
 }
 
+const UNUSED_SENTRY_INTEGRATIONS = new Set([
+  'Express',
+  'Fastify',
+  'Hapi',
+  'Hono',
+  'Koa',
+  'ChildProcess',
+  'WorkerThreads',
+  'ContextLines',
+  'LocalVariablesAsync',
+  'Modules',
+]);
+
 const dsn = process.env.SENTRY_DSN;
 if (dsn) {
   const sampleRate = Number(process.env.SENTRY_TRACES_SAMPLE_RATE);
@@ -133,6 +146,8 @@ if (dsn) {
     environment: process.env.SENTRY_ENVIRONMENT || (process.env.GCLOUD_PROJECT === 'luisices-dev' ? 'development' : 'production'),
     release: process.env.K_REVISION || undefined,
     sendDefaultPii: false,
+    registerEsmLoaderHooks: false,
+    integrations: (defaults) => defaults.filter((integration) => !UNUSED_SENTRY_INTEGRATIONS.has(integration.name)),
     tracesSampler({ name, attributes, inheritOrSampleWith }) {
       const isFunctionFirstInvocation = attributes?.['sentry.op'] === 'function.cold_start'
         || name?.startsWith('firebase.function.') && name.endsWith('.first_invocation');

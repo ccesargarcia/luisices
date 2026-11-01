@@ -5,7 +5,7 @@
 
 const { onRequest } = require('../common/sentryFunctions');
 const { getFirestore } = require('firebase-admin/firestore');
-const { getAuth } = require('firebase-admin/auth');
+const getAuth = () => require('firebase-admin/auth').getAuth();
 const { validateMcpRequest: validateMcpRequestWithoutTrace, touchKeyUsage } = require('./auth');
 const { traceMcpRequest, traceMcpStep } = require('./tracing');
 const {
@@ -229,7 +229,7 @@ function recordMcpAuditLog(db, {
 let sharedMcpServices = null;
 function getSharedMcpServices(db) {
   if (!sharedMcpServices) {
-    sharedMcpServices = createMcpAiServices({ firestore: db, auth: getAuth() });
+    sharedMcpServices = createMcpAiServices({ firestore: db });
   }
   return sharedMcpServices;
 }

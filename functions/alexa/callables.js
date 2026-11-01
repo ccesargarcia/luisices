@@ -7,8 +7,6 @@ const { FieldValue } = require('firebase-admin/firestore');
 const { HttpsError } = require('firebase-functions/v2/https');
 const { COLLECTIONS, recordAuditEvent } = require('./repository');
 const { getAlexaConfig } = require('./config');
-const { approveAlexaPairingAdmin } = require('./pairing');
-const { commitOrderFromDraft } = require('./orderService');
 const { assertActiveSession } = require('../common/helpers');
 
 /**
@@ -24,6 +22,7 @@ async function assertActiveAdmin(request) {
  * Aprova o pareamento de voz observado pelo administrador e vincula ao usuário selecionado.
  */
 async function approveAlexaPairingHandler(request, db) {
+  const { approveAlexaPairingAdmin } = require('./pairing');
   const { code, targetUid } = request.data || {};
   const config = await getAlexaConfig(db);
 
@@ -246,6 +245,7 @@ async function getAlexaIntegrationStatusHandler(request, db) {
  * Apenas o titular do rascunho pode aprovar, exigindo a revisão visualizada.
  */
 async function approveAlexaDraftHandler(request, db) {
+  const { commitOrderFromDraft } = require('./orderService');
   const session = await assertActiveSession(request);
 
   const { draftId, revision } = request.data || {};

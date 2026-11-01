@@ -37,10 +37,20 @@ function wrapHandler(handler, trigger) {
   };
 }
 
-function wrapFactory(factory, trigger) {
+const DEFAULT_HTTP_RUNTIME_OPTIONS = {
+  memory: '512MiB',
+  cpu: 1,
+};
+
+function wrapFactory(factory, trigger, defaultOptions = {}) {
   return (...args) => {
-    if (args.length === 1) return factory(wrapHandler(args[0], trigger));
-    return factory(args[0], wrapHandler(args[1], trigger));
+    if (args.length === 1) {
+      if (Object.keys(defaultOptions).length === 0) {
+        return factory(wrapHandler(args[0], trigger));
+      }
+      return factory({ ...defaultOptions }, wrapHandler(args[0], trigger));
+    }
+    return factory({ ...defaultOptions, ...args[0] }, wrapHandler(args[1], trigger));
   };
 }
 
@@ -57,11 +67,11 @@ function onCall(...args) {
     return handler(request);
   }, 'callable');
 
-  return firebaseHttps.onCall({ ...options, secrets }, protectedHandler);
+  return firebaseHttps.onCall({ ...DEFAULT_HTTP_RUNTIME_OPTIONS, ...options, secrets }, protectedHandler);
 }
 
 module.exports = {
   onCall,
-  onRequest: wrapFactory(firebaseHttps.onRequest, 'http'),
+  onRequest: wrapFactory(firebaseHttps.onRequest, 'http', DEFAULT_HTTP_RUNTIME_OPTIONS),
   onSchedule: wrapFactory(firebaseScheduler.onSchedule, 'schedule'),
 };

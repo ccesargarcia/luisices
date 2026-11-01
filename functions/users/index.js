@@ -3,11 +3,11 @@
  */
 
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
-const { getAuth } = require('firebase-admin/auth');
+const getAuth = () => require('firebase-admin/auth').getAuth();
 const { HttpsError } = require('firebase-functions/v2/https');
 const { onCall } = require('../common/sentryFunctions');
 const { RESEND_API_KEY, EVOLUTION_API_KEY } = require('../common/secrets');
-const { passwordResetLimiter } = require('../common/rateLimiters');
+const getPasswordResetLimiter = () => require('../common/rateLimiters').passwordResetLimiter;
 const userSyncService = require('./userSyncService');
 const { validateProfileMcpScopes } = require('../mcp/profilePermissions');
 const { consumeAdminUserAction } = require('./userAdminActions');
@@ -128,7 +128,7 @@ const sendPasswordResetEmail = onCall(
     }
 
     try {
-      await passwordResetLimiter.consume(email.toLowerCase());
+      await getPasswordResetLimiter().consume(email.toLowerCase());
     } catch (rateLimiterRes) {
       const retryAfter = Math.ceil(rateLimiterRes.msBeforeNext / 1000 / 60);
       console.warn(`[sendPasswordResetEmail] Rate limit excedido para: ${email}`);

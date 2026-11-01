@@ -8,7 +8,7 @@ const { HttpsError } = require('firebase-functions/v2/https');
 const { onCall } = require('../common/sentryFunctions');
 const { withFirstInvocationSpan } = require('../common/sentry');
 const crypto = require('crypto');
-const { publicCatalogOrderLimiter } = require('../common/rateLimiters');
+const getPublicCatalogOrderLimiter = () => require('../common/rateLimiters').publicCatalogOrderLimiter;
 const { getTrustedClientIp } = require('../originProtection');
 
 function canonicalStringify(value) {
@@ -1140,7 +1140,7 @@ const createOrder = onCall(
  * Valida produtos, preços oficiais e disponibilidade no servidor e grava de forma atômica e idempotente.
  */
 async function handleSubmitPublicCatalogOrder(request, dependencies = {}) {
-  const limiter = dependencies.publicCatalogOrderLimiter || publicCatalogOrderLimiter;
+  const limiter = dependencies.publicCatalogOrderLimiter || getPublicCatalogOrderLimiter();
   const firestore = dependencies.getFirestore || getFirestore;
   const timestamp = dependencies.Timestamp || Timestamp;
   const getClientIp = dependencies.getTrustedClientIp || getTrustedClientIp;

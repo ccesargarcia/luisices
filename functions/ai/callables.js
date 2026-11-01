@@ -5,7 +5,7 @@ const moduleInitializationStartedAt = process.hrtime.bigint();
  */
 
 const { getFirestore } = require('firebase-admin/firestore');
-const { getAuth } = require('firebase-admin/auth');
+const getAuth = () => require('firebase-admin/auth').getAuth();
 const { onCall } = require('../common/sentryFunctions');
 const { GEMINI_API_KEY } = require('../common/secrets');
 const { assertActiveSession } = require('../common/helpers');
