@@ -68,6 +68,8 @@ jobs:
               - 'vitest.integration.config.ts'
               - 'vitest.presence.config.ts'
               - 'tests/integration/**'
+              - 'functions/**'
+              - 'src/**'
               - 'package.json'
               - 'package-lock.json'
               - 'functions/package.json'

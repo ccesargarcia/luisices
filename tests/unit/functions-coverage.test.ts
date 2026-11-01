@@ -127,16 +127,34 @@ describe('Cobertura e integridade das Cloud Functions nos workflows de deploy', 
     expect(resolveFunctionsScope(['functions/index.js'])).toBe('all');
     expect(resolveFunctionsScope(['functions/common/sentry.js', 'functions/users/index.js'])).toBe('all');
 
-    // Mudança em arquivos com consumidores cross-domain -> inclui automaticamente os consumidores
+    // Mudança em arquivos com consumidores cross-domain (diretos e transitivos) -> inclui automaticamente os consumidores
     expect(resolveFunctionsScope(['functions/mcp/profilePermissions.js'])).toBe('mcp,users');
     expect(resolveFunctionsScope(['functions/mcp/profilePermissions.js', 'functions/email/send.js'])).toBe('email,mcp,users');
+    expect(resolveFunctionsScope(['functions/mcp/constants.js', 'functions/email/send.js'])).toBe('ai,email,users');
     expect(resolveFunctionsScope(['functions/mcp/tracing.js'])).toBe('ai'); // ai já publica IA + MCP
     expect(resolveFunctionsScope(['functions/alexa/constants.js'])).toBe('ai,alexa');
   });
 
-  it('todos os imports cross-domain em functions/ estão mapeados em CROSS_DOMAIN_CONSUMERS ou cobertos por bundle implícito', () => {
+  it('todos os imports cross-domain (diretos e transitivos) em functions/ estão mapeados em CROSS_DOMAIN_CONSUMERS ou cobertos por bundle implícito', () => {
     const domains = ['ai', 'alexa', 'email', 'mcp', 'media', 'orders', 'users', 'whatsapp'];
     const unmappedImports: string[] = [];
+
+    function collectTransitiveIntraDomainFiles(domain: string, entryFile: string, visited = new Set<string>()): string[] {
+      const relKey = `functions/${domain}/${entryFile}`;
+      if (visited.has(relKey)) return [];
+      visited.add(relKey);
+
+      const fullPath = path.resolve('functions', domain, entryFile);
+      if (!fs.existsSync(fullPath)) return [relKey];
+
+      const content = fs.readFileSync(fullPath, 'utf8');
+      const localMatches = [...content.matchAll(/require\(['"]\.\/([^'"]+)['"]\)/g)];
+      for (const m of localMatches) {
+        const sub = m[1].endsWith('.js') ? m[1] : `${m[1]}.js`;
+        collectTransitiveIntraDomainFiles(domain, sub, visited);
+      }
+      return [...visited];
+    }
 
     for (const consumerDomain of domains) {
       const domainDir = path.resolve('functions', consumerDomain);
@@ -164,17 +182,18 @@ describe('Cobertura e integridade das Cloud Functions nos workflows de deploy', 
             continue;
           }
 
-          const targetFileKey = `functions/${targetDomain}/${targetSubpath}`;
-          const mappedConsumers = CROSS_DOMAIN_CONSUMERS[targetFileKey as keyof typeof CROSS_DOMAIN_CONSUMERS] || [];
-
-          if (!mappedConsumers.includes(consumerDomain)) {
-            unmappedImports.push(`functions/${consumerDomain}/${file} -> ${targetFileKey}`);
+          const transitiveTargetKeys = collectTransitiveIntraDomainFiles(targetDomain, targetSubpath);
+          for (const targetFileKey of transitiveTargetKeys) {
+            const mappedConsumers = CROSS_DOMAIN_CONSUMERS[targetFileKey as keyof typeof CROSS_DOMAIN_CONSUMERS] || [];
+            if (!mappedConsumers.includes(consumerDomain)) {
+              unmappedImports.push(`functions/${consumerDomain}/${file} -> ${targetFileKey}`);
+            }
           }
         }
       }
     }
 
-    expect(unmappedImports, 'Imports entre domínios sem mapeamento em CROSS_DOMAIN_CONSUMERS').toEqual([]);
+    expect(unmappedImports, 'Imports entre domínios (diretos ou transitivos) sem mapeamento em CROSS_DOMAIN_CONSUMERS').toEqual([]);
   });
 
   it('resolveDeployPlan combina múltiplos domínios sem duplicar functions e bloqueia superfrete em produção', () => {

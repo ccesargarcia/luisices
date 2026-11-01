@@ -121,6 +121,7 @@ export const MAX_SELECTIVE_DOMAINS = 3;
 export const CROSS_DOMAIN_CONSUMERS = {
   'functions/mcp/profilePermissions.js': ['users'],
   'functions/mcp/tracing.js': ['ai'],
+  'functions/mcp/constants.js': ['ai', 'users'],
   'functions/alexa/constants.js': ['ai'],
 };
 
