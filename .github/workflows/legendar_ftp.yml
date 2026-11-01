@@ -11,6 +11,14 @@ on:
         description: 'Idioma do áudio original (ex: tr, en, auto)'
         required: false
         default: 'tr'
+      translator:
+        description: 'Motor de tradução'
+        required: true
+        type: choice
+        options:
+          - 'groq'
+          - 'gemini'
+        default: 'groq'
 
 jobs:
   transcribe-and-translate:
@@ -39,7 +47,6 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git
           cd whisper.cpp
-          # Compila com suporte máximo a instruções x86-64 do Actions (AVX2, FMA, OpenMP)
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_OPENMP=ON -DGGML_AVX2=ON -DGGML_FMA=ON
           cmake --build build --config Release -j$(nproc)
           sh ./models/download-ggml-model.sh large-v3-turbo-q8_0
@@ -69,12 +76,12 @@ jobs:
         run: |
           ffmpeg -hide_banner -loglevel warning -stats -threads $(nproc) -y \
             -i input_media -vn -acodec pcm_s16le -ar 16000 -ac 1 input.wav
-          rm -f input_media  # libera espaço em disco no runner
+          rm -f input_media  # libera espaço no runner
 
-      - name: Transcrever com Whisper Large-v3-Turbo + Silero VAD (Uso Máximo de CPU)
+      - name: Transcrever com Whisper Large-v3-Turbo + Silero VAD
         run: |
           NTHREADS=$(nproc)
-          echo "Rodando Whisper com todos os $NTHREADS núcleos disponíveis e Flash Attention..."
+          echo "Rodando Whisper com $NTHREADS núcleos..."
           ./whisper.cpp/build/bin/whisper-cli \
             -m ./whisper.cpp/models/ggml-large-v3-turbo-q8_0.bin \
             -vm ./whisper.cpp/models/ggml-silero-v6.2.0.bin \
@@ -88,14 +95,33 @@ jobs:
             -osrt \
             -of "${{ env.STEM }}"
 
-      - name: Traduzir para PT-BR e Gerar .ass (Tarja Preta + Amarelo)
+      - name: Salvar Backup da Transcrição Original no FTP (Imediato)
+        if: always()
+        run: |
+          ENCODED_DIR=$(python3 -c 'import urllib.parse, os; print(urllib.parse.quote(os.environ["FTP_BASE_DIR"]))')
+          if [ -f "${{ env.STEM }}.srt" ]; then
+            echo "Enviando arquivo original .srt para o FTP..."
+            curl -# --fail --ftp-pasv \
+              -u "${{ secrets.FTP_USER }}:${{ secrets.FTP_PASSWORD }}" \
+              -T "${{ env.STEM }}.srt" \
+              "ftp://${{ secrets.FTP_HOST }}:${{ secrets.FTP_PORT }}${ENCODED_DIR}/" || true
+          fi
+
+      - name: Traduzir para PT-BR (${{ inputs.translator }}) e Gerar .ass
         env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || secrets.GROK_API_KEY }}
           GEMINI_TRANSLATE_KEY: ${{ secrets.GEMINI_TRANSLATE_KEY }}
         run: |
-          python3 traduz_gemini.py "${{ env.STEM }}.srt" "${{ env.STEM }}.pt-BR.srt"
+          if [ "${{ inputs.translator }}" = "groq" ]; then
+            echo "Traduzindo via Groq Cloud (Llama 3.3 70B)..."
+            python3 traduz_groq.py "${{ env.STEM }}.srt" "${{ env.STEM }}.pt-BR.srt"
+          else
+            echo "Traduzindo via Google Gemini..."
+            python3 traduz_gemini.py "${{ env.STEM }}.srt" "${{ env.STEM }}.pt-BR.srt"
+          fi
           python3 srt_para_ass.py "${{ env.STEM }}.pt-BR.srt" "${{ env.STEM }}.ass"
 
-      - name: Enviar legendas (.pt-BR.srt e .ass) de volta para o FTP
+      - name: Enviar legendas traduzidas (.pt-BR.srt e .ass) de volta para o FTP
         run: |
           ENCODED_DIR=$(python3 -c 'import urllib.parse, os; print(urllib.parse.quote(os.environ["FTP_BASE_DIR"]))')
           
@@ -111,9 +137,10 @@ jobs:
             "ftp://${{ secrets.FTP_HOST }}:${{ secrets.FTP_PORT }}${ENCODED_DIR}/"
 
       - name: Salvar Legendas como Artifact de Backup no GitHub
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: legendas-${{ env.STEM }}
           path: |
-            ${{ env.STEM }}.pt-BR.srt
-            ${{ env.STEM }}.ass
+            ${{ env.STEM }}*.srt
+            ${{ env.STEM }}*.ass
