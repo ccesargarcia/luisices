@@ -36,15 +36,15 @@ expose('chatGptToolsEndpoint', () => require('./mcp/endpoint').chatGptToolsEndpo
 
 ## 🔍 1. Validating Domain Scope and Changes
 
-CI (`.github/workflows/deploy-production.yml`, step `Detect production components`) runs `git diff` against the previous commit and chooses `functions_scope`:
+CI (`deploy-dev.yml`, `deploy-production.yml`, and `deploy-functions-manual.yml`) delegates function scope resolution and chunk generation to the single source of truth `scripts/functions-deploy-map.mjs`:
 
 | Changed files under `functions/` | Resulting scope |
 |---|---|
-| Only one of `email`, `whatsapp`, `alexa`, `users`, `mcp`, `orders`, `ai` | That single domain (selective chunk deploy) |
-| Exactly `ai` + `mcp` | `ai` (deploys the IA chunk **and** the MCP chunk, because `chatGptToolsEndpoint` consumes `ai/tools.js`) |
-| Two or more other domains, or any file outside those folders (`common/`, `media/`, `index.js`, `package.json`, `scripts/sync-secrets-safe.mjs`) | `all` |
+| Only `functions/orders/superfrete.js` (in DEV) | `superfrete` |
+| 1 to 3 domains among `email`, `whatsapp`, `alexa`, `users`, `mcp`, `orders`, `ai`, `media` | Comma-separated selective scope (e.g. `ai`, `ai,users`, `email,orders,whatsapp`). Implicit overlaps are deduplicated (`ai` + `mcp` → `ai`; `orders` + `media` → `orders`). |
+| 4 or more domains, or any file outside those folders (`common/`, `index.js`, `package.json`, `scripts/sync-secrets-safe.mjs`) | `all` |
 
-**Important:** scope `all` runs a single `firebase deploy --only functions` (all exported functions are updated). The per-domain chunked deploy in `deploy-functions-manual.yml` is only a **fallback** when that full deploy fails with a concurrency/quota error — it is not the default for multi-domain releases. To keep production deploys small, prefer releases that touch a single domain.
+**Important:** Whenever a new Cloud Function is added to `functions/index.js`, register it in `scripts/functions-deploy-map.mjs` and `tests/fixtures/functions-exports.json` (verified by `tests/unit/functions-coverage.test.ts`). Scope `all` runs `firebase deploy --only functions` and falls back to `--scope=fallback` (8 partitioned chunks) if Cloud Build concurrency limits are hit.
 
 ### Expected function counts (DEV vs PROD)
 - `functions/index.js` exposes 61 functions in every environment.

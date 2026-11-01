@@ -87,13 +87,8 @@ jobs:
             functions=true
             if [ "$CHANGED" != '*' ] && [ -n "$BASE" ]; then
               CHANGED_FN=$(git diff --name-only "$BASE" "$HEAD_SHA" -- functions/)
-              if ! echo "$CHANGED_FN" | grep -qvE '^functions/(email|whatsapp|alexa|users|mcp|orders|ai)/'; then
-                MODULES=$(echo "$CHANGED_FN" | sed -E 's|^functions/([^/]+)/.*|\1|' | sort -u)
-                if [ $(echo "$MODULES" | wc -l) -eq 1 ]; then
-                  functions_scope="$MODULES"
-                elif [ "$MODULES" = "$(printf 'ai\nmcp')" ]; then
-                  functions_scope="ai"
-                fi
+              if [ -n "$CHANGED_FN" ] && ! echo "$CHANGED_FN" | grep -qvE '^functions/(email|whatsapp|alexa|users|mcp|orders|ai|media)/'; then
+                functions_scope=$(node scripts/functions-deploy-map.mjs --resolve-scope --env=prod "$CHANGED_FN")
               fi
             fi
           fi
@@ -183,14 +178,13 @@ jobs:
 
   frontend:
     name: Frontend (Production)
-    needs: [plan, indexes, functions, cloudflare, purge-mcp-cache]
+    needs: [plan, indexes, functions, cloudflare]
     if: |
       always() &&
       needs.plan.result == 'success' &&
       (needs.indexes.result == 'success' || needs.indexes.result == 'skipped') &&
       (needs.functions.result == 'success' || needs.functions.result == 'skipped') &&
       (needs.cloudflare.result == 'success' || needs.cloudflare.result == 'skipped') &&
-      (needs.purge-mcp-cache.result == 'success' || needs.purge-mcp-cache.result == 'skipped') &&
       needs.plan.outputs.frontend == 'true'
     uses: ./.github/workflows/deploy.yml
     secrets: inherit

@@ -213,60 +213,23 @@ jobs:
           fi
 
           INPUT_FN="${{ inputs.functions_target }}"
-          if [ "$INPUT_FN" = "superfrete" ]; then
-            echo "🚚 Deploy seletivo das Functions da SuperFrete..."
-            deploy_chunk "SuperFrete" "functions:calculateSuperfreteShipping,functions:createSuperfreteLabel"
-          elif [ "$INPUT_FN" = "email" ]; then
-            echo "📧 Deploy seletivo das Functions de E-mail..."
-            deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
-          elif [ "$INPUT_FN" = "whatsapp" ]; then
-            echo "💬 Deploy seletivo das Functions do WhatsApp..."
-            deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
-          elif [ "$INPUT_FN" = "alexa" ]; then
-            echo "🗣️ Deploy seletivo das Functions da Alexa..."
-            deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
-          elif [ "$INPUT_FN" = "users" ]; then
-            echo "👥 Deploy seletivo das Functions de Usuários..."
-            deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
-          elif [ "$INPUT_FN" = "orders" ]; then
-            echo "📦 Deploy seletivo das Functions de Pedidos e Acompanhamento..."
-            deploy_chunk "Pedidos" "functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia"
-            deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
-          elif [ "$INPUT_FN" = "mcp" ]; then
-            echo "🤖 Deploy seletivo das Functions do MCP..."
-            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
-          elif [ "$INPUT_FN" = "ai" ]; then
-            echo "🧠 Deploy seletivo das Functions de IA e seus consumidores MCP (chatGptToolsEndpoint e callables)..."
-            deploy_chunk "IA" "functions:aiAgentChat,functions:getAiUsage,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi"
-            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
-          elif [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ] && [ "$INPUT_FN" != "auto" ]; then
-            TARGETS=$(echo "$INPUT_FN" | tr ',' ' ' | tr -s ' ')
-            DEPLOY_TARGET=""
-            for fn in $TARGETS; do
-              fn_clean=$(echo "$fn" | sed 's/^functions://')
-              if [ -n "$fn_clean" ]; then
-                if [ -z "$DEPLOY_TARGET" ]; then
-                  DEPLOY_TARGET="functions:$fn_clean"
-                else
-                  DEPLOY_TARGET="$DEPLOY_TARGET,functions:$fn_clean"
-                fi
-              fi
-            done
-            echo "🚀 Realizando deploy direcionado de: $DEPLOY_TARGET"
-            firebase deploy --only "$DEPLOY_TARGET" --project luisices-dev --non-interactive --force
+          if [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ] && [ "$INPUT_FN" != "auto" ]; then
+            echo "🎯 Deploy seletivo de Functions (Dev) para escopo(s): $INPUT_FN"
+            CHUNKS=$(node scripts/functions-deploy-map.mjs --print-chunks --env=dev --scope="$INPUT_FN")
+            while IFS='|' read -r label targets; do
+              [ -z "$targets" ] && continue
+              deploy_chunk "$label" "$targets"
+            done <<< "$CHUNKS"
           else
             echo "🚀 Realizando deploy geral de functions em luisices-dev..."
             if ! firebase deploy --only functions --project luisices-dev --non-interactive --force; then
               echo "⚠️ Deploy geral atingiu limite de concorrência. Particionando por domínios (cobertura total 63 funções)..."
               sleep 20
-              deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
-              deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
-              deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
-              deploy_chunk "IA e Mídia" "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:galleryMedia"
-              deploy_chunk "Pedidos e SuperFrete" "functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel"
-              deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
-              deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
-              deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
+              CHUNKS=$(node scripts/functions-deploy-map.mjs --print-chunks --env=dev --scope=fallback)
+              while IFS='|' read -r label targets; do
+                [ -z "$targets" ] && continue
+                deploy_chunk "$label" "$targets"
+              done <<< "$CHUNKS"
             fi
           fi
 
@@ -451,63 +414,29 @@ jobs:
 
           INPUT_FN="${{ inputs.functions_target }}"
           case "$INPUT_FN" in
-            *calculateSuperfreteShipping*|*createSuperfreteLabel*|superfrete)
+            *calculateSuperfreteShipping*|*createSuperfreteLabel*|*superfrete*)
               echo "❌ A integração SuperFrete Sandbox só pode ser publicada no ambiente dev."
               exit 1
               ;;
           esac
 
-          if [ "$INPUT_FN" = "email" ]; then
-            echo "📧 Deploy seletivo das Functions de E-mail..."
-            deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
-          elif [ "$INPUT_FN" = "whatsapp" ]; then
-            echo "💬 Deploy seletivo das Functions do WhatsApp..."
-            deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
-          elif [ "$INPUT_FN" = "alexa" ]; then
-            echo "🗣️ Deploy seletivo das Functions da Alexa..."
-            deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
-          elif [ "$INPUT_FN" = "users" ]; then
-            echo "👥 Deploy seletivo das Functions de Usuários..."
-            deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
-          elif [ "$INPUT_FN" = "orders" ]; then
-            echo "📦 Deploy seletivo das Functions de Pedidos e Acompanhamento..."
-            deploy_chunk "Pedidos" "functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:galleryMedia"
-            deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
-          elif [ "$INPUT_FN" = "mcp" ]; then
-            echo "🤖 Deploy seletivo das Functions do MCP..."
-            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
-          elif [ "$INPUT_FN" = "ai" ]; then
-            echo "🧠 Deploy seletivo das Functions de IA e seus consumidores MCP (chatGptToolsEndpoint e callables)..."
-            deploy_chunk "IA" "functions:aiAgentChat,functions:getAiUsage,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi"
-            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
-          elif [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ] && [ "$INPUT_FN" != "auto" ]; then
-            TARGETS=$(echo "$INPUT_FN" | tr ',' ' ' | tr -s ' ')
-            DEPLOY_TARGET=""
-            for fn in $TARGETS; do
-              fn_clean=$(echo "$fn" | sed 's/^functions://')
-              if [ -n "$fn_clean" ]; then
-                if [ -z "$DEPLOY_TARGET" ]; then
-                  DEPLOY_TARGET="functions:$fn_clean"
-                else
-                  DEPLOY_TARGET="$DEPLOY_TARGET,functions:$fn_clean"
-                fi
-              fi
-            done
-            echo "🚀 Realizando deploy direcionado de: $DEPLOY_TARGET"
-            firebase deploy --only "$DEPLOY_TARGET" --project papelaria-dashboard --non-interactive --force
+          if [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ] && [ "$INPUT_FN" != "auto" ]; then
+            echo "🎯 Deploy seletivo de Functions (Prod) para escopo(s): $INPUT_FN"
+            CHUNKS=$(node scripts/functions-deploy-map.mjs --print-chunks --env=prod --scope="$INPUT_FN")
+            while IFS='|' read -r label targets; do
+              [ -z "$targets" ] && continue
+              deploy_chunk "$label" "$targets"
+            done <<< "$CHUNKS"
           else
             echo "🚀 Realizando deploy de functions em papelaria-dashboard..."
             if ! firebase deploy --only functions --project papelaria-dashboard --non-interactive --force; then
               echo "⚠️ Deploy geral atingiu limite de concorrência. Particionando por domínios (cobertura total 61 funções elegíveis)..."
               sleep 20
-              deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
-              deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
-              deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
-              deploy_chunk "IA e Mídia" "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:galleryMedia"
-              deploy_chunk "Pedidos" "functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts"
-              deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
-              deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
-              deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
+              CHUNKS=$(node scripts/functions-deploy-map.mjs --print-chunks --env=prod --scope=fallback)
+              while IFS='|' read -r label targets; do
+                [ -z "$targets" ] && continue
+                deploy_chunk "$label" "$targets"
+              done <<< "$CHUNKS"
             fi
           fi
 

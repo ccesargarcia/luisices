@@ -127,6 +127,7 @@ jobs:
               - '.github/workflows/deploy.yml'
               - '.github/workflows/test-actions.yml'
               - '.github/workflows/pr-checks.yml'
+              - 'scripts/functions-deploy-map.mjs'
             maintenance:
               - 'scripts/fix-negative-values.mjs'
               - 'scripts/audit-order-integrity.mjs'
@@ -216,20 +217,13 @@ jobs:
             fi
           fi
 
-          # Determinar escopo de functions alteradas (seletivo por módulo para evitar gargalo do Cloud Build)
+          # Determinar escopo de functions alteradas (seletivo por módulo ou combinação de até 3 módulos)
           FUNCTIONS_SCOPE="all"
           if [ "$DEPLOY_FUNCTIONS" = "true" ]; then
             if [ "$EVENT_NAME" = "push" ] && [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
               CHANGED_FUNCTION_FILES=$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA" -- functions/)
-              if [ "$CHANGED_FUNCTION_FILES" = "functions/orders/superfrete.js" ]; then
-                FUNCTIONS_SCOPE="superfrete"
-              elif ! echo "$CHANGED_FUNCTION_FILES" | grep -qvE '^functions/(email|whatsapp|alexa|users|mcp|orders|ai)/'; then
-                MODULES=$(echo "$CHANGED_FUNCTION_FILES" | sed -E 's|^functions/([^/]+)/.*|\1|' | sort -u)
-                if [ $(echo "$MODULES" | wc -l) -eq 1 ]; then
-                  FUNCTIONS_SCOPE="$MODULES"
-                elif [ "$MODULES" = "$(printf 'ai\nmcp')" ]; then
-                  FUNCTIONS_SCOPE="ai"
-                fi
+              if [ -n "$CHANGED_FUNCTION_FILES" ] && ! echo "$CHANGED_FUNCTION_FILES" | grep -qvE '^functions/(email|whatsapp|alexa|users|mcp|orders|ai|media)/'; then
+                FUNCTIONS_SCOPE=$(node scripts/functions-deploy-map.mjs --resolve-scope --env=dev "$CHANGED_FUNCTION_FILES")
               fi
             fi
           fi
@@ -717,44 +711,22 @@ jobs:
             fi
           }
 
-          if [ "$FUNCTIONS_DEPLOY_SCOPE" = "superfrete" ]; then
-            echo "🚚 Deploy seletivo das Functions da SuperFrete..."
-            deploy_chunk "SuperFrete" "functions:calculateSuperfreteShipping,functions:createSuperfreteLabel"
-          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "email" ]; then
-            echo "📧 Deploy seletivo das Functions de E-mail..."
-            deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
-          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "whatsapp" ]; then
-            echo "💬 Deploy seletivo das Functions do WhatsApp..."
-            deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
-          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "alexa" ]; then
-            echo "🗣️ Deploy seletivo das Functions da Alexa..."
-            deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
-          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "users" ]; then
-            echo "👥 Deploy seletivo das Functions de Usuários..."
-            deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
-          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "orders" ]; then
-            echo "📦 Deploy seletivo das Functions de Pedidos e Acompanhamento..."
-            deploy_chunk "Pedidos" "functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel,functions:galleryMedia"
-            deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
-          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "mcp" ]; then
-            echo "🤖 Deploy seletivo das Functions do MCP..."
-            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
-          elif [ "$FUNCTIONS_DEPLOY_SCOPE" = "ai" ]; then
-            echo "🧠 Deploy seletivo das Functions de IA e seus consumidores MCP (chatGptToolsEndpoint e callables)..."
-            deploy_chunk "IA" "functions:aiAgentChat,functions:getAiUsage,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi"
-            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
+          if [ -n "$FUNCTIONS_DEPLOY_SCOPE" ] && [ "$FUNCTIONS_DEPLOY_SCOPE" != "all" ] && [ "$FUNCTIONS_DEPLOY_SCOPE" != "auto" ]; then
+            echo "🎯 Deploy seletivo de Functions para escopo(s): $FUNCTIONS_DEPLOY_SCOPE"
+            CHUNKS=$(node scripts/functions-deploy-map.mjs --print-chunks --env=dev --scope="$FUNCTIONS_DEPLOY_SCOPE")
+            while IFS='|' read -r label targets; do
+              [ -z "$targets" ] && continue
+              deploy_chunk "$label" "$targets"
+            done <<< "$CHUNKS"
           elif ! npx --yes firebase-tools@15.32.1 deploy --only functions --project luisices-dev --non-interactive; then
             echo "⚠️ Deploy em lote geral atingiu limite de concorrência. Aguardando 20s para drenagem de workers..."
             sleep 20
             echo "Executando deploy particionado resiliente por módulos (cobertura total 63 funções)..."
-            deploy_chunk "WhatsApp" "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation"
-            deploy_chunk "Alexa" "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook"
-            deploy_chunk "E-mail" "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage"
-            deploy_chunk "IA e Mídia" "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:galleryMedia"
-            deploy_chunk "Pedidos e SuperFrete" "functions:createOrder,functions:updateComplexOrder,functions:submitPublicCatalogOrder,functions:getPublicCatalogProducts,functions:calculateSuperfreteShipping,functions:createSuperfreteLabel"
-            deploy_chunk "Acompanhamento" "functions:createOrderTrackingLink,functions:listOrderTrackingLinks,functions:revokeOrderTrackingLink,functions:revokeOrderTrackingLinkById,functions:deleteOrderTrackingLink,functions:deleteOrderTrackingLinksBatch,functions:getPublicOrderTracking"
-            deploy_chunk "Usuários" "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation"
-            deploy_chunk "MCP" "functions:getMcpSettingsStatus,functions:createMcpApiKey,functions:updateMcpApiKeyScopes,functions:toggleMcpApiKey,functions:revokeMcpApiKey,functions:toggleGlobalMcp,functions:setUserMcpEligibility,functions:revokeMcpSession,functions:getMcpAuditLogs,functions:getMcpOpenApiSchema,functions:chatGptToolsEndpoint"
+            CHUNKS=$(node scripts/functions-deploy-map.mjs --print-chunks --env=dev --scope=fallback)
+            while IFS='|' read -r label targets; do
+              [ -z "$targets" ] && continue
+              deploy_chunk "$label" "$targets"
+            done <<< "$CHUNKS"
           fi
 
           echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Dev)..."
