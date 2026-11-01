@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  CROSS_DOMAIN_CONSUMERS,
   DEV_ONLY_SANDBOX_FUNCTIONS,
   DOMAIN_FUNCTIONS,
   getFallbackChunks,
@@ -125,6 +126,55 @@ describe('Cobertura e integridade das Cloud Functions nos workflows de deploy', 
     // Mudança em arquivo raiz ou common -> 'all'
     expect(resolveFunctionsScope(['functions/index.js'])).toBe('all');
     expect(resolveFunctionsScope(['functions/common/sentry.js', 'functions/users/index.js'])).toBe('all');
+
+    // Mudança em arquivos com consumidores cross-domain -> inclui automaticamente os consumidores
+    expect(resolveFunctionsScope(['functions/mcp/profilePermissions.js'])).toBe('mcp,users');
+    expect(resolveFunctionsScope(['functions/mcp/profilePermissions.js', 'functions/email/send.js'])).toBe('email,mcp,users');
+    expect(resolveFunctionsScope(['functions/mcp/tracing.js'])).toBe('ai'); // ai já publica IA + MCP
+    expect(resolveFunctionsScope(['functions/alexa/constants.js'])).toBe('ai,alexa');
+  });
+
+  it('todos os imports cross-domain em functions/ estão mapeados em CROSS_DOMAIN_CONSUMERS ou cobertos por bundle implícito', () => {
+    const domains = ['ai', 'alexa', 'email', 'mcp', 'media', 'orders', 'users', 'whatsapp'];
+    const unmappedImports: string[] = [];
+
+    for (const consumerDomain of domains) {
+      const domainDir = path.resolve('functions', consumerDomain);
+      const files = fs.readdirSync(domainDir).filter(f => f.endsWith('.js'));
+
+      for (const file of files) {
+        const content = fs.readFileSync(path.join(domainDir, file), 'utf8');
+        const matches = [...content.matchAll(/require\(['"]\.\.\/([^/'"]+)\/([^'"]+)['"]\)/g)];
+
+        for (const match of matches) {
+          const targetDomain = match[1];
+          const targetSubpath = match[2].endsWith('.js') ? match[2] : `${match[2]}.js`;
+
+          if (!domains.includes(targetDomain) || targetDomain === consumerDomain) {
+            continue;
+          }
+
+          // Dependência implícita já garantida:
+          // - Alterar qualquer arquivo em functions/ai/* já publica os chunks IA + MCP
+          if (targetDomain === 'ai' && consumerDomain === 'mcp') {
+            continue;
+          }
+          // - Alterar qualquer arquivo em functions/orders/* já publica Pedidos (que inclui galleryMedia)
+          if (targetDomain === 'orders' && consumerDomain === 'media') {
+            continue;
+          }
+
+          const targetFileKey = `functions/${targetDomain}/${targetSubpath}`;
+          const mappedConsumers = CROSS_DOMAIN_CONSUMERS[targetFileKey as keyof typeof CROSS_DOMAIN_CONSUMERS] || [];
+
+          if (!mappedConsumers.includes(consumerDomain)) {
+            unmappedImports.push(`functions/${consumerDomain}/${file} -> ${targetFileKey}`);
+          }
+        }
+      }
+    }
+
+    expect(unmappedImports, 'Imports entre domínios sem mapeamento em CROSS_DOMAIN_CONSUMERS').toEqual([]);
   });
 
   it('resolveDeployPlan combina múltiplos domínios sem duplicar functions e bloqueia superfrete em produção', () => {

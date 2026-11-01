@@ -114,6 +114,17 @@ export const KNOWN_DOMAINS = new Set([
 export const MAX_SELECTIVE_DOMAINS = 3;
 
 /**
+ * Mapa explícito de arquivos pertencentes a um domínio que são importados diretamente
+ * por outros domínios via require('../<dominio>/<arquivo>').
+ * Quando um desses arquivos é alterado, os domínios consumidores também são incluídos no escopo.
+ */
+export const CROSS_DOMAIN_CONSUMERS = {
+  'functions/mcp/profilePermissions.js': ['users'],
+  'functions/mcp/tracing.js': ['ai'],
+  'functions/alexa/constants.js': ['ai'],
+};
+
+/**
  * Determina o escopo de deploy a partir da lista de arquivos alterados em functions/.
  * Suporta múltiplos domínios combinados (ex.: "ai,users" ou "orders,whatsapp") sem cair em "all".
  *
@@ -142,7 +153,19 @@ export function resolveFunctionsScope(changedFiles, options = {}) {
     return 'all';
   }
 
-  const rawModules = [...new Set(cleanFiles.map((f) => f.replace(/^functions\/([^/]+)\/.*/, '$1')))].sort();
+  const moduleSet = new Set(cleanFiles.map((f) => f.replace(/^functions\/([^/]+)\/.*/, '$1')));
+
+  // Expande consumidores cross-domain quando um arquivo compartilhado entre domínios é alterado
+  for (const file of cleanFiles) {
+    const consumers = CROSS_DOMAIN_CONSUMERS[file];
+    if (consumers) {
+      for (const consumer of consumers) {
+        moduleSet.add(consumer);
+      }
+    }
+  }
+
+  const rawModules = [...moduleSet].sort();
 
   // Normaliza dependências implícitas entre domínios:
   // - 'ai' já publica tanto o chunk IA quanto o chunk MCP

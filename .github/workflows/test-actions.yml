@@ -40,7 +40,93 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_rules: ${{ steps.decide.outputs.run_rules }}
+      run_e2e: ${{ steps.decide.outputs.run_e2e }}
+      run_all_shards: ${{ steps.decide.outputs.run_all_shards }}
+    steps:
+      - name: Checkout
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v5
+
+      - name: Check modified paths
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rules:
+              - 'firestore.rules'
+              - 'storage.rules'
+              - 'database.rules.json'
+              - 'firebase.json'
+              - 'firebase.test.json'
+              - 'vitest.integration.config.ts'
+              - 'vitest.presence.config.ts'
+              - 'tests/integration/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'functions/package.json'
+              - 'functions/package-lock.json'
+            e2e:
+              - 'src/**'
+              - 'public/**'
+              - 'index.html'
+              - 'vite.config.*'
+              - 'tsconfig*.json'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'firestore.rules'
+              - 'storage.rules'
+              - 'firebase.json'
+              - 'functions/**'
+              - 'tests/e2e/**'
+              - 'playwright.config.*'
+              - 'scripts/seed-emulator.mjs'
+
+      - name: Decide execution scope
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          INPUT_TARGET: ${{ inputs.test_target || github.event.inputs.test_target || '' }}
+          FILTER_RULES: ${{ steps.filter.outputs.rules }}
+          FILTER_E2E: ${{ steps.filter.outputs.e2e }}
+        run: |
+          FORCE_RUN="false"
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            FORCE_RUN="true"
+          elif printf '%s\n%s\n' "$COMMIT_MSG" "$PR_TITLE" | grep -qiE '\[e2e\]|\[run e2e\]|\[test:e2e\]|\[test:security\]|\[test:critical\]|\[fast\]|\[test:fast\]'; then
+            FORCE_RUN="true"
+          fi
+
+          if [ "$FORCE_RUN" = "true" ]; then
+            RUN_RULES="true"
+            RUN_E2E="true"
+          else
+            RUN_RULES="${FILTER_RULES:-false}"
+            RUN_E2E="${FILTER_E2E:-false}"
+          fi
+
+          RUN_ALL_SHARDS="true"
+          if [ -n "$INPUT_TARGET" ] && [ "$INPUT_TARGET" != "all" ]; then
+            RUN_ALL_SHARDS="false"
+          elif printf '%s\n' "$COMMIT_MSG" | grep -qiE '\[test:security\]|\[test:critical\]|\[fast\]|\[test:fast\]'; then
+            RUN_ALL_SHARDS="false"
+          fi
+
+          echo "run_rules=$RUN_RULES" >> "$GITHUB_OUTPUT"
+          echo "run_e2e=$RUN_E2E" >> "$GITHUB_OUTPUT"
+          echo "run_all_shards=$RUN_ALL_SHARDS" >> "$GITHUB_OUTPUT"
+          echo "📋 Escopo decidido: run_rules=$RUN_RULES | run_e2e=$RUN_E2E | run_all_shards=$RUN_ALL_SHARDS"
+
   security-rules-tests:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.run_rules == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -95,6 +181,10 @@ jobs:
           if-no-files-found: ignore
 
   e2e-tests:
+    needs: detect-changes
+    if: >-
+      needs.detect-changes.outputs.run_e2e == 'true'
+      && (needs.detect-changes.outputs.run_all_shards == 'true' || matrix.shard == 1)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -269,7 +359,13 @@ jobs:
           fi
 
   test-trends:
-    if: always()
+    if: >-
+      always() && (
+        needs.e2e-tests.result == 'success' ||
+        needs.e2e-tests.result == 'failure' ||
+        needs.security-rules-tests.result == 'success' ||
+        needs.security-rules-tests.result == 'failure'
+      )
     needs: [e2e-tests, security-rules-tests]
     runs-on: ubuntu-latest
     permissions:
