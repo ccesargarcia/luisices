@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       video_filename:
-        description: 'Nome do arquivo de vídeo (ex: Uzak_Sehir_-_Episode_33.mp4)'
+        description: 'Nome do arquivo de vídeo (ex: Uzak_Sehir_-_Episode_31.mp4)'
         required: true
         type: string
       lang:
@@ -19,16 +19,28 @@ jobs:
       - name: Checkout do repositório
         uses: actions/checkout@v4
 
-      - name: Instalar FFmpeg e Ferramentas de Compilação
+      - name: Instalar Dependências do Sistema
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg cmake build-essential python3 curl
+          sudo apt-get install -y ffmpeg cmake build-essential python3 curl libomp-dev
 
-      - name: Baixar e compilar whisper.cpp com Silero VAD
+      - name: Cache do Whisper.cpp e Modelos GGML
+        id: cache-whisper
+        uses: actions/cache@v4
+        with:
+          path: |
+            whisper.cpp/build/bin
+            whisper.cpp/models/ggml-large-v3-turbo-q8_0.bin
+            whisper.cpp/models/ggml-silero-v6.2.0.bin
+          key: whisper-avx2-turbo-q8-vad-v1
+
+      - name: Compilar whisper.cpp (Otimizado AVX2 + OpenMP) e Baixar Modelos
+        if: steps.cache-whisper.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git
           cd whisper.cpp
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          # Compila com suporte máximo a instruções x86-64 do Actions (AVX2, FMA, OpenMP)
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_OPENMP=ON -DGGML_AVX2=ON -DGGML_FMA=ON
           cmake --build build --config Release -j$(nproc)
           sh ./models/download-ggml-model.sh large-v3-turbo-q8_0
           sh ./models/download-vad-model.sh silero-v6.2.0
@@ -43,31 +55,33 @@ jobs:
           echo "VIDEO_NAME=$VIDEO_NAME" >> $GITHUB_ENV
           echo "STEM=$STEM" >> $GITHUB_ENV
 
-      - name: Baixar vídeo do FTP
+      - name: Baixar vídeo do FTP (Com Barra de Progresso)
         run: |
-          # Codifica espaços na URL para o curl
           ENCODED_PATH=$(python3 -c 'import urllib.parse, os; print(urllib.parse.quote(os.environ["FTP_BASE_DIR"] + "/" + os.environ["VIDEO_NAME"]))')
           
-          echo "Baixando vídeo do FTP..."
-          curl -sS --fail --ftp-pasv \
+          echo "Baixando vídeo do FTP com barra de progresso..."
+          curl -# --fail --ftp-pasv \
             -u "${{ secrets.FTP_USER }}:${{ secrets.FTP_PASSWORD }}" \
             "ftp://${{ secrets.FTP_HOST }}:${{ secrets.FTP_PORT }}${ENCODED_PATH}" \
             -o input_media
 
-      - name: Extrair áudio em 16kHz Mono
+      - name: Extrair áudio em 16kHz Mono (FFmpeg Multi-thread)
         run: |
-          ffmpeg -hide_banner -loglevel warning -y -i input_media -vn -acodec pcm_s16le -ar 16000 -ac 1 input.wav
+          ffmpeg -hide_banner -loglevel warning -stats -threads $(nproc) -y \
+            -i input_media -vn -acodec pcm_s16le -ar 16000 -ac 1 input.wav
           rm -f input_media  # libera espaço em disco no runner
 
-      - name: Transcrever com Whisper Large-v3-Turbo + Silero VAD
+      - name: Transcrever com Whisper Large-v3-Turbo + Silero VAD (Uso Máximo de CPU)
         run: |
+          NTHREADS=$(nproc)
+          echo "Rodando Whisper com todos os $NTHREADS núcleos disponíveis e Flash Attention..."
           ./whisper.cpp/build/bin/whisper-cli \
             -m ./whisper.cpp/models/ggml-large-v3-turbo-q8_0.bin \
             -vm ./whisper.cpp/models/ggml-silero-v6.2.0.bin \
             --vad \
             -f input.wav \
             -l ${{ inputs.lang }} \
-            -t $(nproc) \
+            -t $NTHREADS \
             -fa \
             -sns \
             -mc 0 \
@@ -86,12 +100,12 @@ jobs:
           ENCODED_DIR=$(python3 -c 'import urllib.parse, os; print(urllib.parse.quote(os.environ["FTP_BASE_DIR"]))')
           
           echo "Enviando legendas geradas de volta para o FTP..."
-          curl -sS --fail --ftp-pasv \
+          curl -# --fail --ftp-pasv \
             -u "${{ secrets.FTP_USER }}:${{ secrets.FTP_PASSWORD }}" \
             -T "${{ env.STEM }}.pt-BR.srt" \
             "ftp://${{ secrets.FTP_HOST }}:${{ secrets.FTP_PORT }}${ENCODED_DIR}/"
 
-          curl -sS --fail --ftp-pasv \
+          curl -# --fail --ftp-pasv \
             -u "${{ secrets.FTP_USER }}:${{ secrets.FTP_PASSWORD }}" \
             -T "${{ env.STEM }}.ass" \
             "ftp://${{ secrets.FTP_HOST }}:${{ secrets.FTP_PORT }}${ENCODED_DIR}/"
