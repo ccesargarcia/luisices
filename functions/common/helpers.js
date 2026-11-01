@@ -4,13 +4,19 @@
 
 const { getFirestore } = require('firebase-admin/firestore');
 const crypto = require('crypto');
-const { Resend } = require('resend');
 const { EVOLUTION_API_KEY } = require('./secrets');
 
 const EVOLUTION_API_URL = 'https://wa.luisices.com.br';
 const EVOLUTION_INSTANCE = 'homeassistant';
 
-const getResend = (apiKey) => (apiKey ? new Resend(apiKey) : null);
+let ResendClient;
+const getResend = (apiKey) => {
+  if (!apiKey) return null;
+  if (!ResendClient) {
+    ({ Resend: ResendClient } = require('resend'));
+  }
+  return new ResendClient(apiKey);
+};
 
 const normalizeWhatsAppNumber = (phone) => {
   const digits = String(phone || '').replace(/\D/g, '');

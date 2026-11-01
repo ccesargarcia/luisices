@@ -1,5 +1,24 @@
 /** Formatação das respostas do diálogo; sem acesso à persistência. */
-const { escapeXmlCharacters } = require('ask-sdk-core');
+const XML_ESCAPE_MAP = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&apos;',
+};
+
+const XML_UNESCAPE_MAP = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&apos;': "'",
+};
+
+function escapeXmlCharacters(input) {
+  const unescaped = String(input).replace(/&amp;|&lt;|&gt;|&quot;|&apos;/g, (entity) => XML_UNESCAPE_MAP[entity]);
+  return unescaped.replace(/[&'"><]/g, (char) => XML_ESCAPE_MAP[char]);
+}
 
 // Meses em português para pronúncia amigável
 const MONTH_NAMES = [

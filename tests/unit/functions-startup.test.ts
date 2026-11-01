@@ -347,13 +347,42 @@ describe('inicialização das Functions com SDK real', () => {
     `);
   });
 
-  it('chat não inicializa as entradas de enriquecimento', () => {
+  it('chat não inicializa as entradas de enriquecimento nem carrega resend no startup', () => {
     checkStartup(`
       const handler = functions.aiAgentChat;
       assert.equal(handler, require('./ai/callables').aiAgentChat);
       assert.equal(require.cache[require.resolve('./ai/enrichmentCallables')], undefined);
+      assert.equal(require.cache[require.resolve('resend')], undefined, 'resend não deve ser carregado por aiAgentChat');
       assert.ok(require.cache[require.resolve('./ai/index')]);
       assert.ok(handler.__endpoint.secretEnvironmentVariables.some(item => item.key === 'GEMINI_API_KEY'));
+      assert.equal(handler.__endpoint.cpu, 1);
+    `);
+  });
+
+  it('callables da Alexa não carregam verificador criptográfico de webhook, diálogo ou ask-sdk no startup', () => {
+    checkStartup(`
+      const handler = functions.getAlexaIntegrationStatus;
+      assert.equal(handler, require('./alexa').getAlexaIntegrationStatus);
+      for (const modulePath of [
+        './alexa/verification', './alexa/dialog', './alexa/pairing',
+        './alexa/authorization', './alexa/rateLimit', 'ask-sdk-express-adapter', 'ask-sdk-core',
+      ]) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
+      }
+      assert.equal(handler.__endpoint.availableMemoryMb, 512);
+      assert.equal(handler.__endpoint.cpu, 1);
+    `);
+  });
+
+  it('módulo de usuários adia rateLimiters e userAdminActions até a execução do handler', () => {
+    checkStartup(`
+      const handler = functions.recordUserPasswordChange;
+      assert.equal(handler, require('./users').recordUserPasswordChange);
+      for (const modulePath of ['./common/rateLimiters', './users/userAdminActions', 'resend']) {
+        assert.equal(require.cache[require.resolve(modulePath)], undefined, modulePath + ' carregado indevidamente');
+      }
+      assert.equal(handler.__endpoint.availableMemoryMb, 512);
+      assert.equal(handler.__endpoint.cpu, 1);
     `);
   });
 
@@ -370,6 +399,10 @@ describe('inicialização das Functions com SDK real', () => {
         // O SDK serializa ResetValue (padrão da plataforma) como null.
         assert.ok([null, 0].includes(JSON.parse(JSON.stringify(handler.__endpoint)).minInstances));
         assert.equal(handler.__endpoint.maxInstances, 10);
+        assert.equal(handler.__endpoint.availableMemoryMb, 512);
+        assert.equal(handler.__endpoint.cpu, 1);
+        assert.equal(require.cache[require.resolve('./common/rateLimiters')], undefined,
+          'rateLimiters só deve ser carregado sob demanda por submitPublicCatalogOrder');
         for (const domain of domains.filter(name => name !== './orders')) {
           assert.equal(require.cache[require.resolve(domain)], undefined, domain + ' carregado indevidamente');
         }

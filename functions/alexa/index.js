@@ -6,12 +6,6 @@
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
 const { onRequest, onCall } = require('../common/sentryFunctions');
 const { getAlexaConfig, ALEXA_IDENTITY_HMAC_KEY } = require('./config');
-const { verifyAlexaHttpRequest } = require('./verification');
-const { authorizeAlexaPerson } = require('./authorization');
-const { checkBindingRequestRateLimit } = require('./rateLimit');
-const { handleVoicePairingRequest } = require('./pairing');
-const { handleAlexaDialog } = require('./dialog');
-const { COLLECTIONS, computeRequestKey } = require('./repository');
 const { ORIGIN_SECRET, validateOriginSecret } = require('../originProtection');
 const {
   approveAlexaPairingHandler,
@@ -71,6 +65,12 @@ function buildAlexaResponse({ speech, reprompt, shouldEndSession = true, session
  * e também exposto para execução direta de testes de domínio com envelopes sintéticos.
  */
 async function processAlexaEnvelope(envelope, { db, config, authService = null } = {}) {
+  const { authorizeAlexaPerson } = require('./authorization');
+  const { checkBindingRequestRateLimit } = require('./rateLimit');
+  const { handleVoicePairingRequest } = require('./pairing');
+  const { handleAlexaDialog } = require('./dialog');
+  const { COLLECTIONS, computeRequestKey } = require('./repository');
+
   const reqType = envelope?.request?.type;
   const intentName = envelope?.request?.intent?.name;
   const requestId = envelope?.request?.requestId;
@@ -434,10 +434,12 @@ const alexaWebhook = onRequest(
   {
     minInstances: 0,
     maxInstances: 2,
-    memory: '256MiB',
+    memory: '512MiB',
+    cpu: 1,
     secrets: [ALEXA_IDENTITY_HMAC_KEY, ORIGIN_SECRET],
   },
   async (req, res) => {
+    const { verifyAlexaHttpRequest } = require('./verification');
     // 0. Bloqueio de acesso direto fora da Cloudflare ou fora da rede oficial da Amazon Alexa
     const hasAlexaHeaders = Boolean(
       (req?.headers?.signaturecertchainurl || req?.headers?.SignatureCertChainUrl) &&
