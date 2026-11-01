@@ -16,9 +16,10 @@ on:
         required: true
         type: choice
         options:
-          - 'groq'
+          - 'openrouter'
           - 'gemini'
-        default: 'groq'
+          - 'groq'
+        default: 'openrouter'
 
 jobs:
   transcribe-and-translate:
@@ -109,15 +110,19 @@ jobs:
 
       - name: Traduzir para PT-BR (${{ inputs.translator }}) e Gerar .ass
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || secrets.GROK_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_TRANSLATE_KEY: ${{ secrets.GEMINI_TRANSLATE_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || secrets.GROK_API_KEY }}
         run: |
-          if [ "${{ inputs.translator }}" = "groq" ]; then
-            echo "Traduzindo via Groq Cloud (Llama 3.3 70B)..."
+          if [ "${{ inputs.translator }}" = "openrouter" ]; then
+            echo "Traduzindo via OpenRouter (Llama 3.3 70B Free)..."
+            python3 traduz_openrouter.py "${{ env.STEM }}.srt" "${{ env.STEM }}.pt-BR.srt"
+          elif [ "${{ inputs.translator }}" = "groq" ]; then
+            echo "Traduzindo via Groq..."
             python3 traduz_groq.py "${{ env.STEM }}.srt" "${{ env.STEM }}.pt-BR.srt"
           else
             echo "Traduzindo via Google Gemini..."
-            python3 traduz_gemini.py "${{ env.STEM }}.srt" "${{ env.STEM }}.pt-BR.srt"
+            python3 traduz_gemini.py -b 35 "${{ env.STEM }}.srt" "${{ env.STEM }}.pt-BR.srt"
           fi
           python3 srt_para_ass.py "${{ env.STEM }}.pt-BR.srt" "${{ env.STEM }}.ass"
 
