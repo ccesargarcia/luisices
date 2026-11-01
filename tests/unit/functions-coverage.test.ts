@@ -1,20 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  DEV_ONLY_SANDBOX_FUNCTIONS,
+  DOMAIN_FUNCTIONS,
+  getFallbackChunks,
+  resolveDeployPlan,
+  resolveFunctionsScope,
+} from '../../scripts/functions-deploy-map.mjs';
 
 function getIndexExports(): string[] {
   const content = fs.readFileSync(path.resolve('functions/index.js'), 'utf8');
   return [...content.matchAll(/expose\('([^']+)'/g)].map(m => m[1]).sort();
-}
-
-function parseChunksFromContent(content: string, startMarker: string, endMarker: string): string[] {
-  const startIndex = content.indexOf(startMarker);
-  if (startIndex === -1) return [];
-  const endIndex = content.indexOf(endMarker, startIndex);
-  const section = endIndex === -1 ? content.slice(startIndex) : content.slice(startIndex, endIndex);
-
-  const chunks = [...section.matchAll(/deploy_chunk\s+"[^"]+"\s+"([^"]+)"/g)].map(m => m[1]);
-  return chunks.flatMap(c => c.split(',').map(fn => fn.trim().replace(/^functions:/, ''))).filter(Boolean);
 }
 
 describe('Cobertura e integridade das Cloud Functions nos workflows de deploy', () => {
@@ -36,13 +33,9 @@ describe('Cobertura e integridade das Cloud Functions nos workflows de deploy', 
     expect(extraInFixture, 'Funções no fixture inexistentes em index.js').toEqual([]);
   });
 
-  it('deploy-dev.yml: o deploy particionado cobre 100% das 63 funções com zero duplicatas', () => {
-    const devWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-dev.yml'), 'utf8');
-    const flattened = parseChunksFromContent(
-      devWorkflow,
-      'Executando deploy particionado resiliente por módulos (cobertura total 63 funções)...',
-      'Removendo versões de secrets sem funções vinculadas'
-    );
+  it('scripts/functions-deploy-map.mjs (Dev): fallback particionado cobre 100% das 63 funções com zero duplicatas', () => {
+    const chunks = getFallbackChunks('dev');
+    const flattened = chunks.flatMap(c => c.functions);
 
     const setFlat = new Set(flattened);
     const missing = indexExports.filter(fn => !setFlat.has(fn));
@@ -50,40 +43,19 @@ describe('Cobertura e integridade das Cloud Functions nos workflows de deploy', 
 
     expect(flattened.length, 'Não deve haver duplicatas nos chunks').toBe(setFlat.size);
     expect(missing, 'Nenhuma função exportada deve ficar de fora do fallback de dev').toEqual([]);
-    expect(unexpected, 'Nenhuma função inexistente deve constar no workflow').toEqual([]);
+    expect(unexpected, 'Nenhuma função inexistente deve constar no mapa').toEqual([]);
     expect(setFlat.size).toBe(63);
   });
 
-  it('deploy-functions-manual.yml (Dev): fallback particionado cobre 100% das 63 funções', () => {
-    const manualWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-functions-manual.yml'), 'utf8');
-    const flattened = parseChunksFromContent(
-      manualWorkflow,
-      'Particionando por domínios (cobertura total 63 funções)...',
-      'Removendo versões de secrets sem funções vinculadas no Secret Manager (Dev)...'
-    );
+  it('scripts/functions-deploy-map.mjs (Produção): cobre exatamente as 61 funções elegíveis para prod', () => {
+    const chunks = getFallbackChunks('prod');
+    const flattened = chunks.flatMap(c => c.functions);
 
     const setFlat = new Set(flattened);
-    const missing = indexExports.filter(fn => !setFlat.has(fn));
-
-    expect(flattened.length).toBe(setFlat.size);
-    expect(missing).toEqual([]);
-    expect(setFlat.size).toBe(63);
-  });
-
-  it('deploy-functions-manual.yml (Produção): cobre exatamente as 61 funções elegíveis para prod', () => {
-    const manualWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-functions-manual.yml'), 'utf8');
-    const flattened = parseChunksFromContent(
-      manualWorkflow,
-      'Particionando por domínios (cobertura total 61 funções elegíveis)...',
-      'Removendo versões de secrets sem funções vinculadas no Secret Manager (Prod)...'
-    );
-
-    const setFlat = new Set(flattened);
-    const devOnlySandbox = ['calculateSuperfreteShipping', 'createSuperfreteLabel'];
-    const expectedProdExports = indexExports.filter(fn => !devOnlySandbox.includes(fn));
+    const expectedProdExports = indexExports.filter(fn => !DEV_ONLY_SANDBOX_FUNCTIONS.includes(fn));
 
     const missing = expectedProdExports.filter(fn => !setFlat.has(fn));
-    const unexpectedInProd = flattened.filter(fn => devOnlySandbox.includes(fn));
+    const unexpectedInProd = flattened.filter(fn => DEV_ONLY_SANDBOX_FUNCTIONS.includes(fn));
 
     expect(flattened.length).toBe(setFlat.size);
     expect(missing, 'Todas as 61 funções elegíveis devem estar no fallback de produção').toEqual([]);
@@ -91,74 +63,80 @@ describe('Cobertura e integridade das Cloud Functions nos workflows de deploy', 
     expect(setFlat.size).toBe(61);
   });
 
-  it('todos os escopos seletivos do MCP contêm as 11 funções do módulo', () => {
-    const devWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-dev.yml'), 'utf8');
-    const manualWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-functions-manual.yml'), 'utf8');
-
+  it('o escopo seletivo do MCP contém as 11 funções do módulo e o escopo de IA inclui IA + MCP sem duplicatas', () => {
     const expectedMcp = [
       'getMcpSettingsStatus', 'createMcpApiKey', 'updateMcpApiKeyScopes', 'toggleMcpApiKey',
       'revokeMcpApiKey', 'toggleGlobalMcp', 'setUserMcpEligibility', 'revokeMcpSession',
       'getMcpAuditLogs', 'getMcpOpenApiSchema', 'chatGptToolsEndpoint'
     ].sort();
 
-    const checkMcpSection = (content: string) => {
-      const match = content.match(/deploy_chunk\s+"MCP"\s+"([^"]+)"/);
-      expect(match).toBeTruthy();
-      const functions = match![1].split(',').map(f => f.trim().replace(/^functions:/, '')).sort();
-      expect(functions).toEqual(expectedMcp);
-    };
+    expect([...DOMAIN_FUNCTIONS.mcp].sort()).toEqual(expectedMcp);
 
-    checkMcpSection(devWorkflow);
-    checkMcpSection(manualWorkflow);
+    const aiPlan = resolveDeployPlan('ai', 'prod');
+    expect(aiPlan.mode).toBe('Selective');
+    expect(aiPlan.chunks.map(c => c.label)).toEqual(['IA', 'MCP']);
+    expect(aiPlan.chunks[1].functions.sort()).toEqual(expectedMcp);
   });
 
-  it('reconhece o módulo ai nos filtros regex de detecção em deploy-dev e deploy-production', () => {
+  it('os workflows deploy-dev, deploy-production e deploy-functions-manual delegam para scripts/functions-deploy-map.mjs', () => {
     const devWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-dev.yml'), 'utf8');
     const prodWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-production.yml'), 'utf8');
+    const manualWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-functions-manual.yml'), 'utf8');
 
-    const expectedPattern = /\^functions\/\(email\|whatsapp\|alexa\|users\|mcp\|orders\|ai\)\//;
+    const expectedPattern = /\^functions\/\(email\|whatsapp\|alexa\|users\|mcp\|orders\|ai\|media\)\//;
 
     expect(devWorkflow).toMatch(expectedPattern);
     expect(prodWorkflow).toMatch(expectedPattern);
+    expect(devWorkflow).toContain('node scripts/functions-deploy-map.mjs --resolve-scope --env=dev');
+    expect(prodWorkflow).toContain('node scripts/functions-deploy-map.mjs --resolve-scope --env=prod');
+    expect(devWorkflow).toContain('node scripts/functions-deploy-map.mjs --print-chunks --env=dev');
+    expect(manualWorkflow).toContain('node scripts/functions-deploy-map.mjs --print-chunks --env=dev');
+    expect(manualWorkflow).toContain('node scripts/functions-deploy-map.mjs --print-chunks --env=prod');
   });
 
-  it('roteia corretamente alterações isoladas de functions/ai e conjuntas com mcp para o escopo seletivo ai', () => {
-    // Simula a lógica de shell dos workflows
-    function resolveScope(changedFiles: string[]): string {
-      const pattern = /^functions\/(email|whatsapp|alexa|users|mcp|orders|ai)\//;
-      if (changedFiles.length === 1 && changedFiles[0] === 'functions/orders/superfrete.js') {
-        return 'superfrete';
-      }
-      if (changedFiles.some(f => !pattern.test(f))) {
-        return 'all';
-      }
-      const modules = [...new Set(changedFiles.map(f => f.replace(/^functions\/([^/]+)\/.*/, '$1')))].sort();
-      if (modules.length === 1) return modules[0];
-      if (modules.join('\n') === 'ai\nmcp') return 'ai';
-      return 'all';
-    }
-
+  it('resolveFunctionsScope suporta domínios únicos, combinações de até 3 domínios e fallback para all quando >3 ou arquivo raiz', () => {
     // Mudança isolada em IA
-    expect(resolveScope(['functions/ai/callables.js', 'functions/ai/tools.js'])).toBe('ai');
-    // Mudança conjunta em IA + MCP -> escopo ai (publica IA e MCP juntos sem disparar all)
-    expect(resolveScope(['functions/ai/tools.js', 'functions/mcp/openapi.js'])).toBe('ai');
-    // Mudança isolada no WhatsApp
-    expect(resolveScope(['functions/whatsapp/send.js'])).toBe('whatsapp');
-    // Mudança no index.js -> escopo all
-    expect(resolveScope(['functions/index.js'])).toBe('all');
-    // Mudança mista não suportada (IA + E-mail) -> escopo all
-    expect(resolveScope(['functions/ai/callables.js', 'functions/email/send.js'])).toBe('all');
+    expect(resolveFunctionsScope(['functions/ai/callables.js', 'functions/ai/tools.js'])).toBe('ai');
+    // Mudança conjunta em IA + MCP -> deduplica para 'ai' (que já publica IA + MCP)
+    expect(resolveFunctionsScope(['functions/ai/tools.js', 'functions/mcp/openapi.js'])).toBe('ai');
+    // Mudança conjunta em Pedidos + Mídia -> deduplica para 'orders' (que já inclui galleryMedia)
+    expect(resolveFunctionsScope(['functions/orders/index.js', 'functions/media/gallery.js'])).toBe('orders');
+    // Mudança isolada em Mídia
+    expect(resolveFunctionsScope(['functions/media/gallery.js'])).toBe('media');
+    // Mudança isolada em SuperFrete (dev vs prod)
+    expect(resolveFunctionsScope(['functions/orders/superfrete.js'], { env: 'dev' })).toBe('superfrete');
+    expect(resolveFunctionsScope(['functions/orders/superfrete.js'], { env: 'prod' })).toBe('all');
+    // Mudança em 2 domínios distintos (ex.: IA + Usuários) -> escopo combinado seletivo sem cair em all!
+    expect(resolveFunctionsScope(['functions/ai/repositories.js', 'functions/users/index.js'])).toBe('ai,users');
+    // Mudança em 3 domínios distintos -> escopo combinado seletivo
+    expect(resolveFunctionsScope([
+      'functions/ai/tools.js',
+      'functions/mcp/openapi.js', // deduplicado com ai
+      'functions/users/index.js',
+      'functions/email/send.js',
+    ])).toBe('ai,email,users');
+    // Mudança em 4+ domínios distintos -> cai em 'all'
+    expect(resolveFunctionsScope([
+      'functions/ai/tools.js',
+      'functions/users/index.js',
+      'functions/email/send.js',
+      'functions/whatsapp/send.js',
+    ])).toBe('all');
+    // Mudança em arquivo raiz ou common -> 'all'
+    expect(resolveFunctionsScope(['functions/index.js'])).toBe('all');
+    expect(resolveFunctionsScope(['functions/common/sentry.js', 'functions/users/index.js'])).toBe('all');
   });
 
-  it('o escopo seletivo de IA publica tanto as functions de IA quanto os consumidores MCP', () => {
-    const devWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-dev.yml'), 'utf8');
-    const manualWorkflow = fs.readFileSync(path.resolve('.github/workflows/deploy-functions-manual.yml'), 'utf8');
+  it('resolveDeployPlan combina múltiplos domínios sem duplicar functions e bloqueia superfrete em produção', () => {
+    const plan = resolveDeployPlan('ai,mcp,users', 'prod');
+    expect(plan.mode).toBe('Selective');
+    expect(plan.chunks.map(c => c.label)).toEqual(['IA', 'MCP', 'Usuários']);
 
-    // Verifica que o bloco do escopo 'ai' publica tanto o chunk "IA" quanto o chunk "MCP"
-    const aiScopePattern = /Deploy seletivo das Functions de IA e seus consumidores MCP[\s\S]*?deploy_chunk "IA"[\s\S]*?deploy_chunk "MCP"/;
+    const allFns = plan.chunks.flatMap(c => c.functions);
+    expect(allFns.length).toBe(new Set(allFns).size);
 
-    expect(devWorkflow).toMatch(aiScopePattern);
-    expect(manualWorkflow).toMatch(aiScopePattern);
+    expect(() => resolveDeployPlan('superfrete', 'prod')).toThrow(/SuperFrete Sandbox/);
+    expect(() => resolveDeployPlan('calculateSuperfreteShipping', 'prod')).toThrow(/SuperFrete Sandbox/);
   });
 
   it('mcp_metadata e cloudflare_cache incluem functions/ai/ para invalidar cache quando houver mudanças em tools', () => {
