@@ -4,8 +4,16 @@ const { getCallerScope } = require('../../functions/ai/authorization');
 const { AiDataRepositories } = require('../../functions/ai/repositories');
 const { AiToolsExecutor } = require('../../functions/ai/tools');
 const { getEffectiveUserScopes } = require('../../functions/mcp/oauth');
+const { normalizePaymentMethod } = require('../../functions/ai/financialMath');
 
 describe('backend MCP authorization', () => {
+  it('rejects inherited object properties as payment-method aliases', () => {
+    expect(normalizePaymentMethod('constructor')).toBeNull();
+    expect(normalizePaymentMethod('__proto__')).toBeNull();
+    expect(normalizePaymentMethod('toString')).toBeNull();
+    expect(normalizePaymentMethod('pix')).toBe('pix');
+  });
+
   it('allows quotes:write for either create or edit, but no other action', () => {
     const profile = (permission: Record<string, boolean>) => ({
       role: 'funcionario',

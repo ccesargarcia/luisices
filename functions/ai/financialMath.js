@@ -39,7 +39,8 @@ function normalizePaymentMethod(value) {
     transferencia: 'transfer', transfer: 'transfer',
     outro: 'transfer', outros: 'transfer', other: 'transfer',
   };
-  return aliases[String(value || '').trim().toLowerCase()] || null;
+  const alias = String(value || '').trim().toLowerCase();
+  return Object.hasOwn(aliases, alias) ? aliases[alias] : null;
 }
 
 module.exports = { resolvePaymentAmounts, sumPaymentCents, normalizePaymentMethod };
