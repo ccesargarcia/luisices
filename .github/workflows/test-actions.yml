@@ -34,6 +34,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: "e2e-tests-${{ github.ref }}"
@@ -182,9 +183,7 @@ jobs:
 
   e2e-tests:
     needs: detect-changes
-    if: >-
-      needs.detect-changes.outputs.run_e2e == 'true'
-      && (needs.detect-changes.outputs.run_all_shards == 'true' || matrix.shard == 1)
+    if: needs.detect-changes.outputs.run_e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
