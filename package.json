@@ -16,6 +16,7 @@
     "fix-negative-values": "node scripts/fix-negative-values.mjs",
     "audit:orders": "node scripts/audit-order-integrity.mjs",
     "sync:ledger": "node scripts/sync-sales-ledger.mjs",
+    "migrate:user-profile-created-at": "node scripts/migrate-user-profile-created-at.mjs",
     "clean:disk": "bash scripts/clean-disk.sh",
     "cloudflare:deploy:cdn:dev": "wrangler deploy -c cloudflare/cdn-worker/wrangler.toml -e dev",
     "cloudflare:deploy:cdn:prod": "wrangler deploy -c cloudflare/cdn-worker/wrangler.toml -e production",
