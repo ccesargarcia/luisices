@@ -5,7 +5,7 @@
 const { BUSINESS_TIMEZONE, TOOL_LIMITS } = require('./config');
 const { calculateRecipePricing, calculateHourlyRate, DEFAULT_PRICING_SETTINGS } = require('./pricing/pricingCalculator');
 const { sanitizeCollaboratorInfo, filterOrdersByScope } = require('./authorization');
-const { resolvePaymentAmounts, sumPaymentCents } = require('./financialMath');
+const { resolvePaymentAmounts, sumPaymentCents, normalizePaymentMethod } = require('./financialMath');
 
 function getBusinessDate(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -387,18 +387,6 @@ function buildOrderPricingFromQuoteItems(rawItems, totalPrice) {
     unitPrice: singleItem ? orderItems[0].unitPrice : null,
     pricingMode: singleItem ? 'unit' : 'items',
   };
-}
-
-function normalizePaymentMethod(value) {
-  const aliases = {
-    pix: 'pix',
-    dinheiro: 'cash', cash: 'cash',
-    cartao_credito: 'credit', credito: 'credit', credit: 'credit', cartao: 'credit',
-    cartao_debito: 'debit', debito: 'debit', debit: 'debit',
-    transferencia: 'transfer', transfer: 'transfer',
-    outro: 'transfer', outros: 'transfer', other: 'transfer',
-  };
-  return aliases[String(value || '').trim().toLowerCase()] || null;
 }
 
 function canonicalJson(value) {

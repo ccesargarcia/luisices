@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { firebaseUserService, DeviceSession } from '../../services/firebaseUserService';
 import { firebaseAlexaService } from '../../services/firebaseAlexaService';
 import { deepClonePermission } from '../utils/userPermissions';
+import { sortUsersByDisplayedCreatedAt } from '../utils/userProfileSorting';
 import { McpProfilePermissions } from '../components/users/McpProfilePermissions';
 import { firebaseMcpService } from '../../services/firebaseMcpService';
 import { subscribeAdminPresence, AdminPresenceSnapshot } from '../../services/adminPresenceService';
@@ -1412,14 +1413,14 @@ export function Users() {
       try {
         const metadata = await firebaseUserService.getAccountMetadata(list.map((user) => user.uid));
         const metadataByUid = new Map(metadata.map((item) => [item.uid, item]));
-        setUsers(list.map((user) => ({
+        setUsers(sortUsersByDisplayedCreatedAt(list.map((user) => ({
           ...user,
           ...metadataByUid.get(user.uid),
           accountMetadataLoaded: true,
-        })));
+        }))));
       } catch (error) {
         console.warn('[Users] Não foi possível carregar os dados de acesso das contas:', error);
-        setUsers(list.map((user) => ({ ...user, accountMetadataLoaded: false })));
+        setUsers(sortUsersByDisplayedCreatedAt(list.map((user) => ({ ...user, accountMetadataLoaded: false }))));
       }
     } catch {
       toast.error('Erro ao carregar usuários');

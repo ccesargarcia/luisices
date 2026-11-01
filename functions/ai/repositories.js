@@ -5,7 +5,7 @@
 const { filterOrdersByScope, filterCustomersByScope, filterGalleryByScope } = require('./authorization');
 const { TOOL_LIMITS } = require('./config');
 const { traceMcpStep } = require('../mcp/tracing');
-const { resolvePaymentAmounts } = require('./financialMath');
+const { resolvePaymentAmounts, normalizePaymentMethod } = require('./financialMath');
 
 function normalizeTimestamp(val) {
   if (!val) return '';
@@ -791,7 +791,8 @@ class AiDataRepositories {
       deliveryFee: 0,
       totalPrice,
       depositPercentage: Number(data.depositPercentage) || 50,
-      paymentMethod: data.paymentMethod || 'pix',
+      // Schema MCP aceita aliases pt-BR (cartao/dinheiro); persiste sempre o enum canônico.
+      paymentMethod: normalizePaymentMethod(data.paymentMethod) || 'pix',
       status: initialStatus,
       validUntil: data.validUntil || '',
       notes: data.notes || '',

@@ -69,6 +69,15 @@ Security rules in `firestore.rules` must stay within Firestore's per-request exp
 npm run test:integration
 ```
 
+`npm run test:integration -- <file>` does **not** work: npm appends the path after the quoted emulator command and `firebase emulators:exec` fails with `Too many arguments`. To run a single integration file:
+
+```bash
+npx firebase emulators:exec --config firebase.test.json --project demo-luisices-review --only firestore,storage \
+  "npx vitest run --config vitest.integration.config.ts tests/integration/firebase-regressions.test.ts"
+```
+
+Unit runs with the default reporter may print nothing on success in non-TTY shells; use `npx vitest run --reporter=verbose <file>` when you need per-test evidence.
+
 Order, quote, and Firebase regression tests live in `tests/integration/` and run with `vitest.integration.config.ts` and the Firestore Emulator. Do not invoke those files with the default Vitest configuration and assume the emulator is present. Tag validation has separate creation and update paths; preserve the currently tested paths and 20-tag regression coverage. Do not describe batching as a guarantee against expression or depth limits without testing the changed rules in the emulator.
 
 ---

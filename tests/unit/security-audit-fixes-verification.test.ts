@@ -126,6 +126,19 @@ describe('Auditoria de Integridade 2026: Arredondamento e Normalização', () =>
 
     expect(hasPhoneDigitsIndex).toBe(true);
   });
+
+  it('persiste userProfiles.createdAt como Timestamp em todos os criadores de perfil (ordenação de listUsers)', async () => {
+    const fs = await import('fs');
+    const source = fs.readFileSync('functions/users/index.js', 'utf-8');
+    const createUserBlock = source.slice(source.indexOf('const createUser = onCall'), source.indexOf('const updateUser = onCall'));
+    expect(createUserBlock.length).toBeGreaterThan(0);
+
+    // A gravação no Firestore deve sobrescrever createdAt com serverTimestamp;
+    // a string ISO fica restrita ao payload de resposta da callable.
+    const setCall = createUserBlock.match(/\.doc\(`userProfiles\/\$\{userRecord\.uid\}`\)\.set\(([\s\S]*?)\);/);
+    expect(setCall).toBeTruthy();
+    expect(setCall![1]).toContain('createdAt: FieldValue.serverTimestamp()');
+  });
 });
 
 // ----------------------------------------------------------------------------

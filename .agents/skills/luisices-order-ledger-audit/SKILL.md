@@ -63,7 +63,7 @@ npm run fix-negative-values
 
 ## ⚠️ Order Calculation Invariants
 
-When editing code in `functions/orders/` or `src/app/utils/orderCalculations.ts`:
+When editing code in `functions/orders/`, `functions/ai/tools.js` (MCP `create_order`), `src/app/utils/normalizeOrderItems.ts` or `src/app/utils/reconstructOrderProducts.ts`:
 
 1. **Unit Price Recovery:**
    Never infer or write a unit price using a generic fallback such as `subtotal / quantity`. Luisices has legacy item schemas and order-level totals; first identify the canonical item fields and verify the source data (including original import or operation records). Zero may be valid, and an inferred value can silently change financial meaning. Use the audit and an explicit, reviewed repair plan before modifying historical orders.
@@ -74,3 +74,9 @@ When editing code in `functions/orders/` or `src/app/utils/orderCalculations.ts`
    ```
 3. **No Mutating Finalized Orders:**
    Orders in `status: 'completed'` or `status: 'delivered'` must not have their financial totals recalculated retroactively.
+4. **Non-divisible Totals (MCP/backend order creation):**
+   When `totalPrice` cannot be split into cent-exact unit prices (`Math.round(total * 100) % quantity !== 0`) and no explicit item pricing is provided, persist `pricingMode: 'total'`, `unitPrice: null` and `items: null`. Never persist a rounded `unitPrice` with synthetic items: `OrderDetailsDialog` would rebuild `quantity × unitPrice` and `FirebaseOrderService.validateOrderPayload` rejects the mismatch, blocking even notes-only edits.
+5. **Canonical Payment Methods:**
+   Persist only `PaymentMethod` values (`pix | cash | credit | debit | transfer`). Normalize MCP/pt-BR aliases (`cartao`, `dinheiro`, `outro`, …) with `normalizePaymentMethod` from `functions/ai/financialMath.js` before writing orders, ledger entries or quotes.
+6. **Timestamps:**
+   `createdAt`/`updatedAt` on orders, salesLedger and quotes are stored as Firestore Timestamps (`FieldValue.serverTimestamp()` or `Date`) and serialized to ISO strings only in responses, so `orderBy('createdAt')` stays chronological across dashboard and MCP records.
