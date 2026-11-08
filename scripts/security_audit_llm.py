@@ -114,28 +114,32 @@ def main():
         if db_rules.is_file():
             targets_to_scan.append(db_rules)
 
-    # 2. Cloud Functions sensíveis (Auth, Pagamentos, Webhooks, Admin)
+    # 2. Cloud Functions sensíveis (Auth, Pagamentos, Webhooks, Admin, Secrets)
     if args.target in ["todos", "cloud_functions"]:
-        fn_dir = root_dir / "functions" / "src"
+        fn_dir = root_dir / "functions"
         if fn_dir.is_dir():
-            for f in fn_dir.rglob("*.ts"):
-                # Priorizar módulos de segurança, pagamentos, auth e regras
-                if any(k in f.name.lower() for k in ["auth", "payment", "order", "admin", "webhook", "secret", "user", "role"]):
-                    targets_to_scan.append(f)
-            # Se não encontrou específicos, pegar arquivos principais
-            if not targets_to_scan:
-                index_ts = fn_dir / "index.ts"
-                if index_ts.is_file():
-                    targets_to_scan.append(index_ts)
+            sec_keywords = [
+                "auth", "secur", "secret", "pay", "order", "ratelimit",
+                "endpoint", "webhook", "admin", "token", "role", "verif",
+                "origin", "protect"
+            ]
+            for f in fn_dir.rglob("*"):
+                if "node_modules" in f.parts:
+                    continue
+                if f.is_file() and f.suffix in [".js", ".ts", ".mjs"]:
+                    name_lower = f.name.lower()
+                    if any(k in name_lower for k in sec_keywords) or f.name in ["index.js", "index.ts"]:
+                        targets_to_scan.append(f)
 
     # 3. Cloudflare Workers
     if args.target in ["todos", "cloudflare_workers"]:
         cf_dir = root_dir / "cloudflare"
         if cf_dir.is_dir():
-            for f in cf_dir.rglob("*.ts"):
-                targets_to_scan.append(f)
-            for f in cf_dir.rglob("*.js"):
-                targets_to_scan.append(f)
+            for f in cf_dir.rglob("*"):
+                if "node_modules" in f.parts:
+                    continue
+                if f.is_file() and f.suffix in [".js", ".ts", ".mjs"]:
+                    targets_to_scan.append(f)
 
     if not targets_to_scan:
         print("Nenhum arquivo encontrado para os alvos selecionados.")
