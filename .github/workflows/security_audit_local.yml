@@ -15,6 +15,9 @@ on:
           - 'cloudflare_workers'
         default: 'todos'
 
+permissions:
+  contents: read
+
 jobs:
   audit_security:
     name: "Auditoria com Qwen 2.5 Coder 7B"
