@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 """
-Auditoria de Segurança Automatizada com Modelo Local (Qwen 2.5 Coder 7B)
+Auditoria de Segurança Automatizada com LLM local ou endpoint remoto autorizado
 Analisa regras do Firestore, Storage, Cloud Functions e Cloudflare Workers.
 """
 import argparse
+import ipaddress
 import json
 import os
 import sys
 import time
 import urllib.request
 import urllib.error
+from urllib.parse import urlsplit
 from pathlib import Path
 
 API_URL = os.environ.get("LOCAL_LLM_URL", "http://127.0.0.1:8080/v1/chat/completions")
 MODEL = os.environ.get("LOCAL_LLM_MODEL", "qwen2.5-coder-local")
+SOURCE_EXTENSIONS = {".js", ".cjs", ".mjs", ".ts"}
+EXCLUDED_DIRS = {"node_modules", ".git"}
 
 SYSTEM_PROMPT = """Você é um Engenheiro Sênior Especialista em Cibersegurança e AppSec (Cloud & Web Security Auditor).
 Sua missão é auditar o código fornecido com máximo rigor e identificar vulnerabilidades reais, baseando-se no OWASP Top 10 e nas melhores práticas do Google Cloud / Firebase / Cloudflare.
@@ -42,7 +46,7 @@ Responda em Português do Brasil com formatação GitHub Markdown limpa e profis
 
 
 def query_llm(content: str, context_label: str) -> str:
-    """Envia o conteúdo para auditoria no llama-server local."""
+    """Envia o conteúdo ao endpoint LLM configurado."""
     payload = {
         "model": MODEL,
         "temperature": 0.1,
@@ -63,15 +67,53 @@ def query_llm(content: str, context_label: str) -> str:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
+    last_error = None
     for attempt in range(1, 4):
         try:
             with urllib.request.urlopen(req, timeout=300) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
-                return res_data["choices"][0]["message"]["content"].strip()
+                result = res_data["choices"][0]["message"]["content"].strip()
+                if not result:
+                    raise ValueError("o modelo retornou uma análise vazia")
+                return result
         except Exception as e:
+            last_error = e
             print(f"Tentativa {attempt}/3 falhou para {context_label}: {e}", file=sys.stderr)
-            time.sleep(3)
-    return f"⚠️ Falha ao obter análise para {context_label} após 3 tentativas."
+            if attempt < 3:
+                time.sleep(3)
+    raise RuntimeError(f"falha após 3 tentativas: {last_error}") from last_error
+
+
+def validate_llm_endpoint(url: str) -> bool:
+    """Valida o endpoint e exige autorização explícita para destinos remotos."""
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("LOCAL_LLM_URL deve ser uma URL HTTP(S) válida")
+    if parsed.username or parsed.password:
+        raise ValueError("LOCAL_LLM_URL não deve conter credenciais embutidas")
+    try:
+        local = parsed.hostname.lower() == "localhost" or ipaddress.ip_address(parsed.hostname).is_loopback
+    except ValueError:
+        local = False
+    if not local and os.environ.get("ALLOW_REMOTE_LLM", "").lower() not in {"1", "true", "yes"}:
+        raise ValueError(
+            "endpoint remoto bloqueado; defina ALLOW_REMOTE_LLM=true para autorizar explicitamente o envio do código"
+        )
+    return local
+
+
+def collect_code_files(directory: Path) -> list[Path]:
+    if not directory.is_dir():
+        return []
+    return sorted(
+        (
+            path for path in directory.rglob("*")
+            if not any(part in EXCLUDED_DIRS for part in path.relative_to(directory).parts)
+            and path.is_file()
+            and path.suffix.lower() in SOURCE_EXTENSIONS
+        ),
+        key=lambda path: path.as_posix(),
+    )
 
 
 def chunk_file_lines(filepath: Path, max_lines: int = 250) -> list[tuple[str, str]]:
@@ -99,6 +141,11 @@ def main():
     parser.add_argument("--output", default="SECURITY_AUDIT_REPORT.md", help="Arquivo de saída do relatório")
     args = parser.parse_args()
 
+    try:
+        endpoint_is_local = validate_llm_endpoint(API_URL)
+    except ValueError as e:
+        parser.error(str(e))
+
     root_dir = Path(__file__).resolve().parent.parent
     targets_to_scan = []
 
@@ -114,32 +161,16 @@ def main():
         if db_rules.is_file():
             targets_to_scan.append(db_rules)
 
-    # 2. Cloud Functions sensíveis (Auth, Pagamentos, Webhooks, Admin, Secrets)
+    # 2. Todo o código próprio das Cloud Functions: autorização pode estar em
+    # módulos com nomes que não indiquem segurança (ex.: tools.js/repositories.js).
     if args.target in ["todos", "cloud_functions"]:
-        fn_dir = root_dir / "functions"
-        if fn_dir.is_dir():
-            sec_keywords = [
-                "auth", "secur", "secret", "pay", "order", "ratelimit",
-                "endpoint", "webhook", "admin", "token", "role", "verif",
-                "origin", "protect"
-            ]
-            for f in fn_dir.rglob("*"):
-                if "node_modules" in f.parts:
-                    continue
-                if f.is_file() and f.suffix in [".js", ".ts", ".mjs"]:
-                    name_lower = f.name.lower()
-                    if any(k in name_lower for k in sec_keywords) or f.name in ["index.js", "index.ts"]:
-                        targets_to_scan.append(f)
+        targets_to_scan.extend(collect_code_files(root_dir / "functions"))
 
     # 3. Cloudflare Workers
     if args.target in ["todos", "cloudflare_workers"]:
-        cf_dir = root_dir / "cloudflare"
-        if cf_dir.is_dir():
-            for f in cf_dir.rglob("*"):
-                if "node_modules" in f.parts:
-                    continue
-                if f.is_file() and f.suffix in [".js", ".ts", ".mjs"]:
-                    targets_to_scan.append(f)
+        targets_to_scan.extend(collect_code_files(root_dir / "cloudflare"))
+
+    targets_to_scan = sorted(set(targets_to_scan), key=lambda path: path.as_posix())
 
     if not targets_to_scan:
         print("Nenhum arquivo encontrado para os alvos selecionados.")
@@ -150,7 +181,8 @@ def main():
     report_lines = [
         "# Relatório de Auditoria de Segurança de Aplicação (SAST)",
         f"**Data da Execução:** {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}  ",
-        f"**Motor de IA:** `{MODEL}` (Execução 100% Local / Zero Vazamento)  ",
+        f"**Motor de IA:** `{MODEL}`  ",
+        f"**Destino do código-fonte:** `{'local' if endpoint_is_local else 'remoto (autorizado por ALLOW_REMOTE_LLM)'}`  ",
         f"**Alvo Selecionado:** `{args.target}`  ",
         "",
         "---",
@@ -162,6 +194,7 @@ def main():
         report_lines.append(f"- `{t.relative_to(root_dir)}` ({t.stat().st_size:,} bytes)")
     report_lines.extend(["", "---", "", "## Detalhamento das Análises de Segurança", ""])
 
+    analysis_failures = []
     for idx, target_file in enumerate(targets_to_scan, 1):
         rel_path = target_file.relative_to(root_dir)
         print(f"\n[{idx}/{len(targets_to_scan)}] Auditando: {rel_path}...")
@@ -169,7 +202,11 @@ def main():
 
         for chunk_text, chunk_label in chunks:
             print(f"  -> Processando seção: {chunk_label}...")
-            analysis = query_llm(chunk_text, f"{rel_path} - {chunk_label}")
+            try:
+                analysis = query_llm(chunk_text, f"{rel_path} - {chunk_label}")
+            except Exception as e:
+                analysis_failures.append(f"{rel_path} ({chunk_label}): {e}")
+                analysis = f"**FALHA NA ANÁLISE:** {e}"
             report_lines.append(f"### Arquivo: `{rel_path}` ({chunk_label})\n")
             report_lines.append(analysis)
             report_lines.append("\n---\n")
@@ -188,6 +225,14 @@ def main():
             print("✅ Relatório anexado ao GitHub Actions Step Summary!")
         except Exception as e:
             print(f"Aviso ao gravar no Step Summary: {e}", file=sys.stderr)
+
+    if analysis_failures:
+        print(
+            f"Auditoria incompleta: {len(analysis_failures)} seção(ões) não foram analisadas. "
+            f"Consulte {out_path.resolve()}.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":
