@@ -7,10 +7,6 @@ on:
         description: 'IP do WireGuard / Tailscale Galaxy A70 (padrão: 100.97.222.39)'
         required: false
         default: '100.97.222.39'
-      vpn_ip:
-        description: 'IP público do Servidor WireGuard VPN GCP (padrão: 35.209.209.91)'
-        required: false
-        default: '35.209.209.91'
 
 permissions:
   contents: read
@@ -38,7 +34,6 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           WIREGUARD_IP: ${{ inputs.wireguard_ip || '100.97.222.39' }}
-          VPN_SERVER_IP: ${{ inputs.vpn_ip || '35.209.209.91' }}
         run: npm run cloudflare:fix
 
       - name: Auditar Novo Status

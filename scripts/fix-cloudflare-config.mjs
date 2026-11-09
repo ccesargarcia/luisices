@@ -111,8 +111,17 @@ async function run() {
   const WIREGUARD_IP = process.env.WIREGUARD_IP || '100.97.222.39';
   await ensureDnsRecord('wireguard', WIREGUARD_IP, 'WireGuard / Tailscale Bridge Galaxy A70');
 
-  const VPN_IP = process.env.VPN_SERVER_IP || '35.209.209.91';
-  await ensureDnsRecord('vpn', VPN_IP, 'WireGuard VPN Server GCP Always Free');
+  // Remover registro legado vpn.luisices.com.br (antigo servidor GCP descontinuado)
+  const legacyVpnRecord = records.find(
+    (r) => r.name === `vpn.${zone.name}` && (r.type === 'A' || r.type === 'CNAME')
+  );
+  if (legacyVpnRecord) {
+    process.stdout.write(`• Removendo registro legado ${legacyVpnRecord.name} (${legacyVpnRecord.content})... `);
+    await cfRequest(`/zones/${zone.id}/dns_records/${legacyVpnRecord.id}`, {
+      method: 'DELETE',
+    });
+    console.log('🗑️ Excluído com sucesso!');
+  }
 
   // 4. Ajustar DKIM do Firebase (Remover Proxy / Nuvem Cinza)
   console.log('\n--- 2. Ajustando Registros DKIM (Email Deliverability) ---');
