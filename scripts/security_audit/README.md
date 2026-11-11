@@ -94,3 +94,28 @@ actionlint -shellcheck= -pyflakes= .github/workflows/security_audit_local.yml
 
 Nenhum teste local exige carregar um modelo. O modo benchmark é a validação real
 no hardware do GitHub; não substituir os resultados dele por respostas simuladas.
+
+## Validação real em 11/11/2026
+
+A [execução com vinte lotes](https://github.com/ccesargarcia/luisices/actions/runs/43110105271)
+carregou ambos os modelos e preservou os relatórios. Nenhum candidato foi aprovado:
+
+| Modelo | Acertos em cada rodada (categoria e severidade esperadas) | Falsos positivos altos/críticos em cada rodada | Execução das respostas |
+| --- | --- | --- | --- |
+| Qwen3 4B | 3/12 | 5/12 controles seguros | Houve evidências incompatíveis com as linhas citadas |
+| Qwen2.5-Coder 7B | 7/12 | 2/12 controles seguros | Todas as 48 respostas passaram na validação estrutural |
+
+As rodadas foram determinísticas, com temperatura zero e seed fixo. Estes números
+medem somente esta amostra e seu verificador; não são uma estimativa de precisão
+em qualquer repositório. Ambos também falharam no requisito independente de zero
+falsos positivos graves, suficiente para impedir a promoção.
+
+`selected_model` e `selection_evidence` permanecem nulos. O piloto com Workers e
+a varredura completa dependem de um candidato aprovado; não foram executados.
+Não relaxar os critérios ou adicionar exceções para promover um modelo reprovado.
+Uma próxima calibração de instruções ou troca de candidato exige repetir o benchmark.
+
+A primeira tentativa encontrou um problema de carregamento das bibliotecas do
+executável copiado. A inicialização foi corrigida para definir `LD_LIBRARY_PATH`,
+e um teste de regressão cobre a distribuição dos binários. Respostas inválidas
+passam a ser preservadas em `invalid_response`, sem publicá-las no console.

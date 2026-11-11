@@ -76,6 +76,12 @@ def validate_llm_endpoint(url):
     return parsed
 
 
+class InvalidAnalysis(ValueError):
+    def __init__(self, message, response):
+        super().__init__(message)
+        self.response = response
+
+
 class Client:
     def __init__(self, base, model, timeout=240):
         validate_llm_endpoint(base)
@@ -112,11 +118,14 @@ class Client:
             'messages': messages(unit), 'cache_prompt': True,
             'response_format': {'type': 'json_schema', 'json_schema': {'name': 'audit', 'schema': SCHEMA}}
         }, timeout=timeout, retry=True)
-        choice = response['choices'][0]
-        if choice.get('finish_reason') != 'stop':
-            raise ValueError('Resposta truncada ou sem término normal')
-        result = json.loads(choice['message']['content'])
-        validate_analysis(result, unit)
+        try:
+            choice = response['choices'][0]
+            if choice.get('finish_reason') != 'stop':
+                raise ValueError('Resposta truncada ou sem término normal')
+            result = json.loads(choice['message']['content'])
+            validate_analysis(result, unit)
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            raise InvalidAnalysis(str(exc), response) from exc
         return result, response.get('usage', {})
 
 
@@ -335,6 +344,8 @@ def run_shard(manifest, index, client, output, budget=3000, root=ROOT):
             failures = 0
         except Exception as exc:
             row.update(status='failed', error=f'{type(exc).__name__}: {exc}')
+            if isinstance(exc, InvalidAnalysis):
+                row['invalid_response'] = exc.response
             failures += 1
         row['duration_seconds'] = time.monotonic() - tick
         print(f'  {row["status"]} ({row["duration_seconds"]:.1f}s)', flush=True)
@@ -382,8 +393,12 @@ def aggregate(manifest, paths, exceptions_path=EXCEPTIONS):
         if key not in rows:
             rows[key] = {k: unit[k] for k in ('id', 'file', 'start', 'end')}
             rows[key]['status'] = 'pending'
-    if len(shards) != len(manifest['shards']) or any(r['status'] != 'completed' for r in rows.values()):
-        errors.append('Cobertura incompleta ou artefatos ausentes')
+    if len(shards) != len(manifest['shards']):
+        errors.append('Artefatos de lotes ausentes ou inválidos')
+    failed = sum(r['status'] == 'failed' for r in rows.values())
+    pending = sum(r['status'] == 'pending' for r in rows.values())
+    if failed or pending:
+        errors.append(f'Cobertura incompleta: {failed} trecho(s) falho(s), {pending} pendente(s)')
     findings = sorted(found.values(), key=lambda f: (SEVERITIES.index(f['severity']), f['file'], f['start_line']))
     severe = any(f['severity'] in ('critical', 'high') and not f['suppressed'] for f in findings)
     return {'manifest_id': manifest['id'], 'model': manifest['model'], 'revision': manifest['revision'],

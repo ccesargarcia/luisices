@@ -107,6 +107,14 @@ class AuditTests(unittest.TestCase):
             with patch.object(c,'post',return_value={'choices':[{'finish_reason':stop,'message':{'content':content}}]}):
                 with self.assertRaises((ValueError,json.JSONDecodeError)):c.analyze(unit())
 
+    def test_invalid_response_is_preserved_for_diagnosis(self):
+        c = a.Client('http://127.0.0.1:8080', 'test')
+        response = {'choices':[{'finish_reason':'length','message':{'content':'partial'}}]}
+        with patch.object(c,'post',return_value=response):
+            with self.assertRaises(a.InvalidAnalysis) as caught:
+                c.analyze(unit())
+            self.assertEqual(caught.exception.response, response)
+
     def test_no_retry_for_timeout_or_http400(self):
         c=a.Client('http://127.0.0.1:8080','test')
         for error in [socket.timeout(),urllib.error.URLError(socket.timeout()),
