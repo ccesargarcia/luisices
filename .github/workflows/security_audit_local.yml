@@ -61,6 +61,13 @@ jobs:
           path: .cache/security-audit/server
           key: ${{ needs.setup.outputs.server_key }}
       - run: python3 scripts/security_audit/runtime.py build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audit-runtime
+          path: .cache/security-audit/server/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
 
   prepare:
     needs: [setup, build]
@@ -75,11 +82,12 @@ jobs:
         env:
           MODEL: ${{ matrix.model }}
         run: python3 scripts/security_audit/runtime.py keys --model "$MODEL"
-      - uses: actions/cache/restore@v4
+      - uses: actions/download-artifact@v4
         with:
+          name: audit-runtime
           path: .cache/security-audit/server
-          key: ${{ steps.keys.outputs.server_key }}
-          fail-on-cache-miss: true
+      - name: Restaurar permissão do executável
+        run: chmod +x .cache/security-audit/server/bin/llama-server
       - uses: actions/cache@v4
         with:
           path: ${{ steps.keys.outputs.model_path }}
@@ -137,16 +145,16 @@ jobs:
         env:
           MODEL: ${{ matrix.model }}
         run: python3 scripts/security_audit/runtime.py keys --model "$MODEL"
-      - uses: actions/cache/restore@v4
+      - uses: actions/download-artifact@v4
         with:
+          name: audit-runtime
           path: .cache/security-audit/server
-          key: ${{ steps.keys.outputs.server_key }}
-          fail-on-cache-miss: true
+      - name: Restaurar permissão do executável
+        run: chmod +x .cache/security-audit/server/bin/llama-server
       - uses: actions/cache/restore@v4
         with:
           path: ${{ steps.keys.outputs.model_path }}
           key: ${{ steps.keys.outputs.model_key }}
-          fail-on-cache-miss: true
       - uses: actions/download-artifact@v4
         with:
           name: manifest-${{ matrix.model }}
@@ -156,6 +164,7 @@ jobs:
           MODEL: ${{ matrix.model }}
           SHARD: ${{ matrix.shard }}
         run: |
+          python3 scripts/security_audit/runtime.py model --model "$MODEL"
           python3 scripts/security_audit/runtime.py start --model "$MODEL"
           python3 scripts/security_audit_llm.py --mode run --shard-index "$SHARD" --budget-seconds 3000
       - uses: actions/upload-artifact@v4

@@ -5,6 +5,8 @@ from pathlib import Path
 import socket
 import sys
 import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import unittest
 from unittest.mock import patch
 import urllib.error
@@ -222,6 +224,79 @@ class AuditTests(unittest.TestCase):
     def test_malformed_exception_rejected(self):
         a.atomic_json(self.exceptions,{'version':1,'exceptions':[{'justification':''}]})
         with self.assertRaises(ValueError):a.load_exceptions(self.exceptions)
+
+
+class RuntimeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location('audit_runtime', ROOT/'scripts/security_audit/runtime.py')
+        cls.runtime = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.runtime)
+
+    def test_runner_validation_and_no_unapproved_model(self):
+        runtime = self.runtime
+        config = {'selected_model':None, 'models':{'qwen3-4b':{}}, 'llama_revision':'fixed'}
+        for args in [['describe','--max-runners','21'], ['describe','--mode','auditoria']]:
+            with patch.object(sys,'argv',['runtime.py']+args), patch.object(a,'read_json',return_value=config):
+                with self.assertRaises(ValueError):runtime.main()
+
+    def test_download_checks_checksum_before_publication(self):
+        import io
+        runtime = self.runtime
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = {'models':{'test':{'repo':'owner/model','revision':'fixed','file':'model.gguf',
+                                      'sha256':a.digest('expected')}}}
+            with patch.object(runtime,'CACHE',root), patch.object(runtime.urllib.request,'urlopen',return_value=io.BytesIO(b'bad')), patch.object(runtime.time,'sleep'):
+                with self.assertRaises(Exception):runtime.provision_model(config,'test')
+                self.assertFalse((root/'models/model.gguf').exists())
+                self.assertFalse((root/'models/model.download').exists())
+
+    def test_checksum_valid_cache_avoids_network(self):
+        runtime = self.runtime
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp);(root/'models').mkdir();(root/'models/model.gguf').write_text('expected')
+            config = {'models':{'test':{'file':'model.gguf','sha256':a.digest('expected')}}}
+            with patch.object(runtime,'CACHE',root), patch.object(runtime.urllib.request,'urlopen') as network:
+                runtime.provision_model(config,'test')
+                network.assert_not_called()
+
+
+class HttpIntegrationTests(unittest.TestCase):
+    def test_template_tokenization_and_structured_completion(self):
+        requests = []
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def do_POST(self):
+                data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                requests.append((self.path, data))
+                if self.path == '/apply-template':
+                    result = {'prompt': 'chat-template'}
+                elif self.path == '/tokenize':
+                    result = {'tokens': [1, 2, 3]}
+                else:
+                    result = {'choices': [{'finish_reason': 'stop', 'message': {
+                        'content': json.dumps(analysis())}}], 'usage': {'total_tokens': 10}}
+                body = json.dumps(result).encode()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(body)
+        with ThreadingHTTPServer(('127.0.0.1', 0), Handler) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                client = a.Client(f'http://127.0.0.1:{server.server_port}', 'qwen3-4b')
+                self.assertEqual(client.count(a.messages(unit())), 3)
+                result, usage = client.analyze(unit())
+                self.assertEqual(result['findings'], [])
+                self.assertEqual(usage['total_tokens'], 10)
+                self.assertEqual(requests[1][1]['content'], 'chat-template')
+                self.assertEqual(requests[2][1]['max_tokens'], 1200)
+                self.assertIn('json_schema', requests[2][1]['response_format'])
+            finally:
+                server.shutdown()
+                thread.join()
 
 
 if __name__ == '__main__':

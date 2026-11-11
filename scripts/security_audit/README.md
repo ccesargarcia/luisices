@@ -15,7 +15,7 @@ relatórios usam Python 3.11+ sem dependências adicionais.
    do mais rápido, vence o maior número de acertos. O benchmark é uma amostra
    pequena, não uma certificação de segurança nem uma comparação geral de modelos.
 3. Revise a evidência, versione `selected_model` em `config.json` com uma das chaves
-   aprovadas e registre o ID da execução no campo `selection_evidence`. Essa mudança
+   aprovadas e copie o JSON de recomendação completo para `selection_evidence`. Essa mudança
    não é feita pelo workflow. Sem seleção, o modo auditoria falha antes de baixar pesos.
 4. Execute `mode=auditoria`, primeiro com `target=cloudflare_workers`, depois `todos`.
 
@@ -75,7 +75,9 @@ Não se deve criar exceções para fazer o benchmark passar.
 Modelos e servidor têm revisão e checksum fixos em `config.json`. O job de
 preparação baixa os pesos com verificação e prepara o cache antes da matriz.
 Cada runner recebe uma cópia: memória e downloads não são compartilhados. O
-servidor tem cache separado, somente com binários/bibliotecas e marcador de versão.
+servidor tem cache separado e é distribuído como artefato da execução, somente com
+binários/bibliotecas e marcador de versão. Cache de pesos ausente ou inválido pode
+ser reconstruído pelo download fixado, sem depender da permanência do cache.
 A soma aproximada dos pesos de ambos os modelos é 7,2 GB, além do servidor.
 
 Não há retomada automática entre execuções. Os resultados parciais servem para

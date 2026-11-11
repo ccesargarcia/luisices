@@ -90,6 +90,7 @@ class Client:
                 with urllib.request.urlopen(req, timeout=timeout or self.timeout) as response:
                     return json.load(response)
             except urllib.error.HTTPError as exc:
+                exc.close()
                 if not retry or attempt or exc.code not in (429, 503):
                     raise
             except (TimeoutError, socket.timeout):

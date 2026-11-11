@@ -15,5 +15,6 @@
       "file": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
       "sha256": "1664fccab734674a50763490a8c6931b70e3f2f8ec10031b54806d30e5f956b6"
     }
-  }
+  },
+  "selection_evidence": null
 }

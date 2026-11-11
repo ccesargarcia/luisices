@@ -135,6 +135,12 @@ def main():
         selected = config['selected_model']
         if args.mode == 'auditoria' and selected not in config['models']:
             raise ValueError('Execute o benchmark e versione o modelo aprovado antes da auditoria')
+        if args.mode == 'auditoria':
+            evidence = config.get('selection_evidence')
+            if (not isinstance(evidence, dict) or not evidence.get('run_id')
+                    or not evidence.get('revision') or evidence.get('selected_model') != selected
+                    or audit.choose_model(evidence.get('scores', [])) != selected):
+                raise ValueError('Seleção sem evidência válida do benchmark')
         models = list(config['models']) if args.mode == 'benchmark' else [selected]
         emit('models', json.dumps({'model': models}))
         emit('server_key', keys(config, models[0])[0])
