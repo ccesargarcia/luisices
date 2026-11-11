@@ -98,3 +98,7 @@ BRIEF_*
 HANDOFF_*
 PLANO_*
 
+
+# Python audit tooling
+__pycache__/
+*.py[cod]

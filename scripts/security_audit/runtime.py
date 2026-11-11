@@ -96,11 +96,13 @@ def start(config, model, output):
     exe = CACHE / 'server/bin/llama-server'
     if (CACHE / 'server/revision').read_text().strip() != config['llama_revision']:
         raise ValueError('Revisão do servidor incorreta')
+    env = dict(os.environ)
+    env['LD_LIBRARY_PATH'] = str(exe.parent) + (':' + env['LD_LIBRARY_PATH'] if env.get('LD_LIBRARY_PATH') else '')
     with (output / 'llama-server.log').open('wb') as log:
         process = subprocess.Popen([str(exe), '-m', str(path), '--alias', model,
             '--host', '127.0.0.1', '--port', '8080', '--ctx-size', '8192',
             '--threads', str(os.cpu_count() or 2), '--threads-batch', str(os.cpu_count() or 2),
-            '--parallel', '1', '--jinja'], stdout=log, stderr=log, start_new_session=True)
+            '--parallel', '1', '--jinja'], stdout=log, stderr=log, start_new_session=True, env=env)
     (output / 'server.pid').write_text(str(process.pid))
     try:
         for _ in range(90):

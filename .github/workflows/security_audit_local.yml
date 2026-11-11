@@ -218,16 +218,7 @@ jobs:
           pattern: summary-*
           path: output/security-audit/results
       - name: Selecionar candidato aprovado
-        run: |
-          python3 scripts/security_audit_llm.py --mode benchmark-select
-          python3 - <<'PY'
-          import json, os
-          from pathlib import Path
-          data = json.loads(Path('output/security-audit/result.json').read_text())
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
-              out.write('## Modelo recomendado\n\n`' + data['selected_model'] + '`\n\n')
-              out.write('Versione a seleção e a evidência do benchmark antes da auditoria completa.\n')
-          PY
+        run: python3 scripts/security_audit_llm.py --mode benchmark-select
       - uses: actions/upload-artifact@v4
         if: always()
         with:

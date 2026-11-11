@@ -8,7 +8,7 @@ import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import urllib.error
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -251,6 +251,22 @@ class RuntimeTests(unittest.TestCase):
                 with self.assertRaises(Exception):runtime.provision_model(config,'test')
                 self.assertFalse((root/'models/model.gguf').exists())
                 self.assertFalse((root/'models/model.download').exists())
+
+    def test_packaged_server_uses_local_shared_libraries(self):
+        runtime = self.runtime
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'server/bin').mkdir(parents=True)
+            (root/'server/revision').write_text('fixed')
+            (root/'models').mkdir()
+            (root/'models/model.gguf').write_text('weights')
+            config = {'llama_revision':'fixed','models':{'test':{
+                'file':'model.gguf','sha256':a.digest('weights')}}}
+            process = MagicMock();process.poll.return_value = None
+            response = MagicMock();response.__enter__.return_value.status = 200
+            with patch.object(runtime,'CACHE',root), patch.object(runtime.subprocess,'Popen',return_value=process) as spawn, patch.object(runtime.urllib.request,'urlopen',return_value=response):
+                runtime.start(config,'test',root/'output')
+                self.assertTrue(spawn.call_args.kwargs['env']['LD_LIBRARY_PATH'].startswith(str(root/'server/bin')))
 
     def test_checksum_valid_cache_avoids_network(self):
         runtime = self.runtime

@@ -454,11 +454,24 @@ def main():
             scores = [read_json(p) for p in sorted(args.results.rglob('score.json'))]
             if {s['model'] for s in scores} != {'qwen3-4b', 'qwen25-7b'} or len(scores) != 2:
                 raise ValueError('São necessários resultados dos dois modelos')
-            recommendation = {'selected_model': choose_model(scores), 'scores': scores,
+            try:
+                selected = choose_model(scores)
+            except ValueError:
+                selected = None
+            recommendation = {'selected_model': selected, 'scores': scores,
                 'run_id': os.environ.get('GITHUB_RUN_ID'), 'revision': os.environ.get('GITHUB_SHA')}
             atomic_json(args.output, recommendation)
+            summary = os.environ.get('GITHUB_STEP_SUMMARY')
+            if summary:
+                with open(summary, 'a', encoding='utf-8') as out:
+                    out.write('## Comparação dos modelos\n\n')
+                    for score in scores:
+                        out.write(f'- `{score["model"]}`: aprovado={score["passed"]}; '
+                                  f'rodadas={score["rounds"]}; duração={score["duration_seconds"]:.1f}s.\n')
+                    out.write(f'\nModelo recomendado: `{selected or "nenhum"}`. '
+                              'Versione a seleção e a evidência antes da auditoria completa.\n')
             print(json.dumps(recommendation, ensure_ascii=False))
-            return 0
+            return 0 if selected else 2
         if args.mode in ('plan', 'benchmark-plan'):
             model = args.model or read_json(CONFIG)['selected_model']
             if model is None:
