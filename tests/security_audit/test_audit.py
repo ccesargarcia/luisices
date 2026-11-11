@@ -195,6 +195,11 @@ class AuditTests(unittest.TestCase):
         data,code=a.aggregate(m,[p],self.exceptions)
         self.assertEqual(code,3);self.assertEqual(len(data['findings']),1)
 
+    def test_fingerprint_preserves_string_literal_whitespace(self):
+        first = dict(finding(), evidence="allow('a b');")
+        second = dict(finding(), evidence="allow('a  b');")
+        self.assertNotEqual(a.fingerprint(first), a.fingerprint(second))
+
     def test_manifest_tampering_detected(self):
         m=manifest();m['shards'][0][0]['content']='other'
         with self.assertRaises(ValueError):a.verify_manifest(m)

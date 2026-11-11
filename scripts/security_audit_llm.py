@@ -242,7 +242,8 @@ def validate_analysis(result, unit):
 
 
 def fingerprint(f):
-    return digest(f['file'] + '\n' + f['category'] + '\n' + ' '.join(f['evidence'].split()))
+    normalized = '\n'.join(line.rstrip() for line in f['evidence'].strip().splitlines())
+    return digest(f['file'] + '\n' + f['category'] + '\n' + normalized)
 
 
 def load_exceptions(path, today=None):
@@ -316,7 +317,8 @@ def run_shard(manifest, index, client, output, budget=3000, root=ROOT):
             'resources': {'cpus': os.cpu_count(), 'memory': Path('/proc/meminfo').read_text() if Path('/proc/meminfo').exists() else 'unavailable'}}
     save_result(output, data)
     failures = 0
-    for unit, row in zip(units, rows):
+    for number, (unit, row) in enumerate(zip(units, rows), 1):
+        print(f'[{number}/{len(units)}] {unit["file"]}:{unit["start"]}-{unit["end"]}', flush=True)
         remaining = budget - (time.monotonic() - started)
         if STOP or remaining < 245 or failures >= 3:
             data['errors'].append('Interrupção, orçamento esgotado ou três falhas consecutivas')
@@ -335,6 +337,7 @@ def run_shard(manifest, index, client, output, budget=3000, root=ROOT):
             row.update(status='failed', error=f'{type(exc).__name__}: {exc}')
             failures += 1
         row['duration_seconds'] = time.monotonic() - tick
+        print(f'  {row["status"]} ({row["duration_seconds"]:.1f}s)', flush=True)
         data['duration_seconds'] = time.monotonic() - started
         save_result(output, data)
     data['status'] = 'concluída' if all(r['status'] == 'completed' for r in rows) else 'incompleta'

@@ -75,6 +75,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_runners) }}
       matrix: ${{ fromJSON(needs.setup.outputs.models) }}
     steps:
       - uses: actions/checkout@v4
@@ -182,6 +183,7 @@ jobs:
     timeout-minutes: 10
     strategy:
       fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_runners) }}
       matrix: ${{ fromJSON(needs.setup.outputs.models) }}
     steps:
       - uses: actions/checkout@v4
