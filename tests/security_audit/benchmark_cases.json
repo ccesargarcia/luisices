@@ -1,0 +1,146 @@
+[
+  {
+    "id": "owner-read-vulnerable",
+    "vulnerable": true,
+    "category": "authorization",
+    "source": "async function getOrder(req, res) {\n  if (!req.user) return res.sendStatus(401);\n  const order = await db.collection('orders').doc(req.params.id).get();\n  return res.json(order.data());\n}"
+  },
+  {
+    "id": "owner-read-safe",
+    "vulnerable": false,
+    "category": "authorization",
+    "source": "async function getOrder(req, res) {\n  if (!req.user) return res.sendStatus(401);\n  const order = await db.collection('orders').doc(req.params.id).get();\n  if (order.data().ownerId !== req.user.uid) return res.sendStatus(403);\n  return res.json({status: order.data().status});\n}"
+  },
+  {
+    "id": "owner-delete-vulnerable",
+    "vulnerable": true,
+    "category": "authorization",
+    "source": "async function deleteArtwork(req, res) {\n  if (!req.user) return res.sendStatus(401);\n  await db.collection('artworks').doc(req.params.id).delete();\n  return res.sendStatus(204);\n}"
+  },
+  {
+    "id": "owner-delete-safe",
+    "vulnerable": false,
+    "category": "authorization",
+    "source": "async function deleteArtwork(req, res) {\n  if (!req.user) return res.sendStatus(401);\n  const ref = db.collection('artworks').doc(req.params.id);\n  const doc = await ref.get();\n  if (doc.data().ownerId !== req.user.uid) return res.sendStatus(403);\n  await ref.delete();\n  return res.sendStatus(204);\n}"
+  },
+  {
+    "id": "unauth-export-vulnerable",
+    "vulnerable": true,
+    "category": "authorization",
+    "source": "app.get('/admin/orders', async (req, res) => {\n  const orders = await db.collection('orders').get();\n  return res.json(orders.docs.map(d => d.data()));\n});"
+  },
+  {
+    "id": "unauth-export-safe",
+    "vulnerable": false,
+    "category": "authorization",
+    "source": "app.get('/admin/orders', async (req, res) => {\n  if (!req.user || req.user.admin !== true) return res.sendStatus(403);\n  const orders = await db.collection('orders').get();\n  return res.json(orders.docs.map(d => ({id: d.id, status: d.data().status})));\n});"
+  },
+  {
+    "id": "role-update-vulnerable",
+    "vulnerable": true,
+    "category": "privilege_escalation",
+    "source": "async function updateProfile(req, res) {\n  if (!req.user) return res.sendStatus(401);\n  await db.collection('users').doc(req.user.uid).update(req.body);\n  return res.sendStatus(204);\n}\nasync function isAdmin(uid) {\n  return (await db.collection('users').doc(uid).get()).data().role === 'admin';\n}"
+  },
+  {
+    "id": "role-update-safe",
+    "vulnerable": false,
+    "category": "privilege_escalation",
+    "source": "async function updateProfile(req, res) {\n  if (!req.user) return res.sendStatus(401);\n  if (typeof req.body.displayName !== 'string' || req.body.displayName.length > 100) return res.sendStatus(400);\n  await db.collection('users').doc(req.user.uid).update({displayName: req.body.displayName});\n  return res.sendStatus(204);\n}"
+  },
+  {
+    "id": "claims-signup-vulnerable",
+    "vulnerable": true,
+    "category": "privilege_escalation",
+    "source": "async function signup(req, res) {\n  const user = await auth.createUser({email: req.body.email, password: req.body.password});\n  await auth.setCustomUserClaims(user.uid, {admin: req.body.admin === true});\n  return res.json({uid: user.uid});\n}"
+  },
+  {
+    "id": "claims-signup-safe",
+    "vulnerable": false,
+    "category": "privilege_escalation",
+    "source": "async function signup(req, res) {\n  const user = await auth.createUser({email: req.body.email, password: req.body.password});\n  await auth.setCustomUserClaims(user.uid, {admin: false});\n  return res.json({uid: user.uid});\n}"
+  },
+  {
+    "id": "promote-user-vulnerable",
+    "vulnerable": true,
+    "category": "privilege_escalation",
+    "source": "async function promote(req, res) {\n  if (!req.user) return res.sendStatus(401);\n  await auth.setCustomUserClaims(req.body.uid, {admin: true});\n  return res.sendStatus(204);\n}"
+  },
+  {
+    "id": "promote-user-safe",
+    "vulnerable": false,
+    "category": "privilege_escalation",
+    "source": "async function promote(req, res) {\n  if (!req.user || req.user.admin !== true) return res.sendStatus(403);\n  if (typeof req.body.uid !== 'string' || !req.body.uid) return res.sendStatus(400);\n  await auth.setCustomUserClaims(req.body.uid, {admin: true});\n  return res.sendStatus(204);\n}"
+  },
+  {
+    "id": "negative-quantity-vulnerable",
+    "vulnerable": true,
+    "category": "input_validation",
+    "source": "async function purchase(req, res) {\n  if (!req.user) return res.sendStatus(401);\n  const product = await products.get(req.body.productId);\n  const total = product.unitPrice * Number(req.body.quantity);\n  await wallet.debit(req.user.uid, total);\n  await orders.create({uid: req.user.uid, total, quantity: req.body.quantity});\n  return res.sendStatus(201);\n}"
+  },
+  {
+    "id": "negative-quantity-safe",
+    "vulnerable": false,
+    "category": "input_validation",
+    "source": "async function purchase(req, res) {\n  if (!req.user) return res.sendStatus(401);\n  const quantity = req.body.quantity;\n  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 100) return res.sendStatus(400);\n  const product = await products.get(req.body.productId);\n  const total = product.unitPrice * quantity;\n  await wallet.debit(req.user.uid, total);\n  await orders.create({uid: req.user.uid, total, quantity});\n  return res.sendStatus(201);\n}"
+  },
+  {
+    "id": "client-price-vulnerable",
+    "vulnerable": true,
+    "category": "input_validation",
+    "source": "async function checkout(req, res) {\n  if (!req.user) return res.sendStatus(401);\n  await payment.charge(req.user.uid, req.body.total);\n  await orders.markPaid(req.body.productId, req.user.uid);\n  return res.sendStatus(201);\n}"
+  },
+  {
+    "id": "client-price-safe",
+    "vulnerable": false,
+    "category": "input_validation",
+    "source": "async function checkout(req, res) {\n  if (!req.user) return res.sendStatus(401);\n  const product = await products.get(req.body.productId);\n  if (!product || !Number.isSafeInteger(product.priceCents) || product.priceCents < 1) return res.sendStatus(400);\n  await payment.charge(req.user.uid, product.priceCents);\n  await orders.markPaid(req.body.productId, req.user.uid);\n  return res.sendStatus(201);\n}"
+  },
+  {
+    "id": "discount-vulnerable",
+    "vulnerable": true,
+    "category": "input_validation",
+    "source": "async function applyDiscount(req, res) {\n  if (!req.user) return res.sendStatus(401);\n  const product = await products.get(req.body.productId);\n  const amount = product.priceCents * (1 - req.body.discountPercent / 100);\n  await wallet.debit(req.user.uid, amount);\n  return res.sendStatus(201);\n}"
+  },
+  {
+    "id": "discount-safe",
+    "vulnerable": false,
+    "category": "input_validation",
+    "source": "async function applyDiscount(req, res) {\n  if (!req.user) return res.sendStatus(401);\n  const product = await products.get(req.body.productId);\n  const coupon = await coupons.findActive(req.body.couponCode, req.user.uid);\n  if (!coupon || coupon.percent < 0 || coupon.percent > 50) return res.sendStatus(400);\n  const amount = Math.round(product.priceCents * (1 - coupon.percent / 100));\n  await wallet.debit(req.user.uid, amount);\n  return res.sendStatus(201);\n}"
+  },
+  {
+    "id": "token-log-vulnerable",
+    "vulnerable": true,
+    "category": "data_exposure",
+    "source": "async function callback(req, res) {\n  const session = await oauth.exchangeCode(req.query.code);\n  console.log('OAuth session:', session.access_token, session.refresh_token);\n  return res.sendStatus(204);\n}"
+  },
+  {
+    "id": "token-log-safe",
+    "vulnerable": false,
+    "category": "data_exposure",
+    "source": "async function callback(req, res) {\n  const session = await oauth.exchangeCode(req.query.code);\n  console.log('OAuth exchange completed');\n  await sessions.storeEncrypted(session);\n  return res.sendStatus(204);\n}"
+  },
+  {
+    "id": "public-users-vulnerable",
+    "vulnerable": true,
+    "category": "data_exposure",
+    "source": "app.get('/public/customers', async (req, res) => {\n  const docs = await db.collection('customers').get();\n  return res.json(docs.docs.map(d => ({email: d.data().email, address: d.data().address, taxId: d.data().taxId})));\n});"
+  },
+  {
+    "id": "public-users-safe",
+    "vulnerable": false,
+    "category": "data_exposure",
+    "source": "app.get('/public/products', async (req, res) => {\n  const docs = await db.collection('products').where('published', '==', true).get();\n  return res.json(docs.docs.map(d => ({name: d.data().name, priceCents: d.data().priceCents})));\n});"
+  },
+  {
+    "id": "public-config-vulnerable",
+    "vulnerable": true,
+    "category": "data_exposure",
+    "source": "app.get('/config', (req, res) => {\n  res.json({paymentSecret: process.env.PAYMENT_PRIVATE_KEY, smtpPassword: process.env.SMTP_PASSWORD});\n});"
+  },
+  {
+    "id": "public-config-safe",
+    "vulnerable": false,
+    "category": "data_exposure",
+    "source": "app.get('/config', (req, res) => {\n  res.json({currency: 'BRL', locale: 'pt-BR'});\n});"
+  }
+]
