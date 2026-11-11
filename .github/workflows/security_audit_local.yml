@@ -1,117 +1,230 @@
 name: Auditoria de Segurança Local (IA)
-run-name: "🛡️ Auditoria de Segurança Local [${{ inputs.target }}]"
+run-name: 'Auditoria local — ${{ inputs.mode }} / ${{ inputs.target }}'
 
 on:
   workflow_dispatch:
     inputs:
-      target:
-        description: 'Componente a ser auditado'
-        required: true
+      mode:
+        description: Operação (benchmark antes da primeira auditoria)
         type: choice
-        options:
-          - 'todos'
-          - 'firestore_rules'
-          - 'cloud_functions'
-          - 'cloudflare_workers'
-        default: 'todos'
+        options: [benchmark, auditoria]
+        default: benchmark
+        required: true
+      target:
+        description: Componente a auditar
+        type: choice
+        options: [todos, firestore_rules, cloud_functions, cloudflare_workers]
+        default: todos
+        required: true
+      max_runners:
+        description: Máximo de runners simultâneos (1–20)
+        type: number
+        default: 20
+        required: true
 
 permissions:
   contents: read
 
+concurrency:
+  group: security-audit-local
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: '1'
+
 jobs:
-  audit_security:
-    name: "Auditoria com Qwen 2.5 Coder 7B"
-    runs-on: ubuntu-latest
+  setup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      models: ${{ steps.describe.outputs.models }}
+      shards: ${{ steps.describe.outputs.shards }}
+      server_key: ${{ steps.describe.outputs.server_key }}
     steps:
-      - name: Checkout do repositório
-        uses: actions/checkout@v4
-
-      - name: Configurar Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Cache do modelo local Qwen2.5-Coder-7B Q4
-        uses: actions/cache@v4
-        with:
-          path: models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf
-          key: qwen25-coder-7b-q4-k-m-v1
-
-      - name: Cache do servidor llama.cpp
-        uses: actions/cache@v4
-        with:
-          path: llama.cpp/build
-          key: llama-build-ubuntu-cpu-stable-v3
-
-      - name: Otimizar Sistema e Memória do Runner
-        run: |
-          echo "Otimizando memória do runner para o modelo de segurança..."
-          sudo systemctl stop docker mysql containerd 2>/dev/null || true
-          if [ ! -f /swapfile_tune ]; then
-            sudo fallocate -l 8G /swapfile_tune || sudo dd if=/dev/zero of=/swapfile_tune bs=1M count=8192
-            sudo chmod 600 /swapfile_tune
-            sudo mkswap /swapfile_tune
-            sudo swapon /swapfile_tune
-          fi
-          sudo sysctl -w vm.swappiness=10
-          free -h
-
-      - name: Preparar modelo e servidor llama.cpp
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake build-essential
-          mkdir -p models
-          if [ ! -s models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf ]; then
-            echo "Baixando Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf de bartowski/Qwen2.5-Coder-7B-Instruct-GGUF..."
-            curl --fail --location --retry 4 --retry-delay 3 \
-              "https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf" \
-              -o models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf
-          fi
-          if [ ! -x llama.cpp/build/bin/llama-server ]; then
-            echo "Compilando llama-server..."
-            git clone --depth 1 https://github.com/ggml-org/llama.cpp.git
-            cmake -S llama.cpp -B llama.cpp/build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DLLAMA_CURL=OFF
-            cmake --build llama.cpp/build --config Release --target llama-server --parallel 2
-          fi
-
-      - name: Iniciar servidor do modelo local (Modo Turbo)
-        run: |
-          echo "Subindo llama-server com Qwen 2.5 Coder 7B..."
-          taskset -c 0,1 nohup llama.cpp/build/bin/llama-server \
-            -m models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf \
-            --alias qwen2.5-coder-local --host 127.0.0.1 --port 8080 \
-            --ctx-size 8192 \
-            --threads 2 --threads-batch 2 --parallel 1 --reasoning off --jinja \
-            > llama-server.log 2>&1 &
-          SERVER_PID=$!
-          for attempt in $(seq 1 60); do
-            if curl --fail --silent http://127.0.0.1:8080/health >/dev/null; then
-              echo "llama-server pronto para auditoria (PID $SERVER_PID)."
-              exit 0
-            fi
-            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-              echo "llama-server encerrou durante o boot. Log:" >&2
-              cat llama-server.log >&2
-              exit 1
-            fi
-            sleep 2
-          done
-          echo "Timeout aguardando llama-server. Log:" >&2
-          cat llama-server.log >&2
-          exit 1
-
-      - name: Executar Auditoria de Segurança
+      - uses: actions/checkout@v4
+      - name: Validar controles da auditoria
+        run: python3 -m unittest discover -s tests/security_audit -v
+      - id: describe
         env:
-          PYTHONUNBUFFERED: "1"
-          LOCAL_LLM_URL: "http://127.0.0.1:8080/v1/chat/completions"
-          LOCAL_LLM_MODEL: "qwen2.5-coder-local"
-        run: |
-          python3 scripts/security_audit_llm.py --target "${{ inputs.target }}" --output SECURITY_AUDIT_REPORT.md
+          MODE: ${{ inputs.mode }}
+          MAX_RUNNERS: ${{ inputs.max_runners }}
+        run: python3 scripts/security_audit/runtime.py describe --mode "$MODE" --max-runners "$MAX_RUNNERS"
 
-      - name: Salvar Relatório de Auditoria como Artefato
-        if: always()
-        uses: actions/upload-artifact@v4
+  build:
+    needs: setup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
         with:
-          name: relatorio-seguranca-${{ inputs.target }}
-          path: SECURITY_AUDIT_REPORT.md
-          retention-days: 30
+          path: .cache/security-audit/server
+          key: ${{ needs.setup.outputs.server_key }}
+      - run: python3 scripts/security_audit/runtime.py build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audit-runtime
+          path: .cache/security-audit/server/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  prepare:
+    needs: [setup, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_runners) }}
+      matrix: ${{ fromJSON(needs.setup.outputs.models) }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: keys
+        env:
+          MODEL: ${{ matrix.model }}
+        run: python3 scripts/security_audit/runtime.py keys --model "$MODEL"
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit-runtime
+          path: .cache/security-audit/server
+      - name: Restaurar permissão do executável
+        run: chmod +x .cache/security-audit/server/bin/llama-server
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.keys.outputs.model_path }}
+          key: ${{ steps.keys.outputs.model_key }}
+      - name: Preparar modelo e manifesto
+        env:
+          MODEL: ${{ matrix.model }}
+          MODE: ${{ inputs.mode }}
+          TARGET: ${{ inputs.target }}
+          SHARDS: ${{ needs.setup.outputs.shards }}
+        run: |
+          mkdir -p output/security-audit
+          nproc > output/security-audit/cpu.txt
+          free -h > output/security-audit/memory.txt
+          df -h > output/security-audit/disk.txt
+          python3 scripts/security_audit/runtime.py model --model "$MODEL"
+          python3 scripts/security_audit/runtime.py start --model "$MODEL"
+          PLAN_MODE=plan
+          if [ "$MODE" = benchmark ]; then PLAN_MODE=benchmark-plan; fi
+          python3 scripts/security_audit_llm.py --mode "$PLAN_MODE" --target "$TARGET" --model "$MODEL" --max-runners "$SHARDS"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: manifest-${{ matrix.model }}
+          path: output/security-audit/
+          if-no-files-found: error
+          retention-days: 14
+
+  expand:
+    needs: [setup, prepare]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.expand.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: manifest-*
+          path: output/manifests
+      - id: expand
+        run: python3 scripts/security_audit/runtime.py expand --manifests output/manifests
+
+  analyze:
+    needs: [expand, setup]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_runners) }}
+      matrix: ${{ fromJSON(needs.expand.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: keys
+        env:
+          MODEL: ${{ matrix.model }}
+        run: python3 scripts/security_audit/runtime.py keys --model "$MODEL"
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit-runtime
+          path: .cache/security-audit/server
+      - name: Restaurar permissão do executável
+        run: chmod +x .cache/security-audit/server/bin/llama-server
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.keys.outputs.model_path }}
+          key: ${{ steps.keys.outputs.model_key }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: manifest-${{ matrix.model }}
+          path: output/security-audit
+      - name: Analisar lote
+        env:
+          MODEL: ${{ matrix.model }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python3 scripts/security_audit/runtime.py model --model "$MODEL"
+          python3 scripts/security_audit/runtime.py start --model "$MODEL"
+          python3 scripts/security_audit_llm.py --mode run --shard-index "$SHARD" --budget-seconds 3000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit-${{ matrix.model }}-${{ matrix.shard }}
+          path: output/security-audit/
+          if-no-files-found: error
+          retention-days: 14
+
+  aggregate:
+    needs: [setup, expand, analyze]
+    if: always() && needs.expand.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_runners) }}
+      matrix: ${{ fromJSON(needs.setup.outputs.models) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: manifest-${{ matrix.model }}
+          path: output/security-audit
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: audit-${{ matrix.model }}-*
+          path: output/security-audit/results
+      - name: Consolidar cobertura e achados
+        run: python3 scripts/security_audit_llm.py --mode aggregate
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: summary-${{ matrix.model }}
+          path: |
+            output/security-audit/result.json
+            output/security-audit/result.md
+            output/security-audit/score.json
+          if-no-files-found: error
+          retention-days: 14
+
+  benchmark_result:
+    needs: [setup, aggregate]
+    if: always() && inputs.mode == 'benchmark' && needs.setup.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: summary-*
+          path: output/security-audit/results
+      - name: Selecionar candidato aprovado
+        run: python3 scripts/security_audit_llm.py --mode benchmark-select
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-recommendation
+          path: output/security-audit/result.json
+          if-no-files-found: error
+          retention-days: 14
