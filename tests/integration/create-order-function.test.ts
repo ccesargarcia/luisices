@@ -265,17 +265,30 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
       adminDb.doc(`quotes/${quoteId}`).set({
         userId: uid,
         status: 'sent',
+        quoteNumber: `ORC-${quoteId}`,
+        customerName: 'Cliente Orçamento',
+        customerPhone: '',
+        items: [{ name: 'Convite Especial', quantity: 1, unitPrice: 120 }],
         totalPrice: 120,
+        deliveryDate: '2026-12-10',
+        notes: '',
         validUntil: '2026-12-31',
       }),
     ]);
 
     const orderData = {
       customerName: 'Cliente Orçamento',
+      customerPhone: '',
       productName: 'Convite Especial',
       quantity: 1,
       price: 120,
+      items: [{ name: 'Convite Especial', quantity: 1, unitPrice: 120, price: 120 }],
+      pricingMode: 'unit',
+      unitPrice: 120,
+      status: 'pending',
       deliveryDate: '2026-12-10',
+      notes: `Gerado do orçamento ORC-${quoteId}`,
+      isExchange: false,
     };
 
     const result = await handleCreateOrder({
@@ -290,6 +303,10 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
     expect(quote?.status).toBe('approved');
     expect(quote?.convertedOrderId).toBe(result.orderId);
     expect(quote?.orderNumber).toBe(result.orderNumber);
+    const createdOrder = (await adminDb.doc(`orders/${result.orderId}`).get()).data();
+    expect(createdOrder?.userId).toBe(uid);
+    expect(createdOrder?.createdByUid).toBe(uid);
+    expect((await adminDb.doc(`salesLedger/${result.orderId}`).get()).data()?.userId).toBe(uid);
 
     // Tentativa repetida retorna o ID existente
     const repeatResult = await handleCreateOrder({
@@ -300,6 +317,155 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
     expect(repeatResult.success).toBe(true);
     expect(repeatResult.orderId).toBe(result.orderId);
     expect(repeatResult.alreadyExisted).toBe(true);
+  });
+
+  it('aceita os itens normalizados pelo serviço e persiste os centavos alocados pelo orçamento', async () => {
+    const uid = `quote-cent-owner-${Date.now()}`;
+    const quoteId = `quote-cent-${Date.now()}`;
+    const quoteNumber = `ORC-${quoteId}`;
+    await Promise.all([
+      adminDb.doc(`userProfiles/${uid}`).set({
+        role: 'user', active: true,
+        permissions: { orders: { create: true }, quotes: { edit: true } },
+      }),
+      adminDb.doc(`quotes/${quoteId}`).set({
+        userId: uid, status: 'sent', quoteNumber,
+        customerName: 'Cliente Centavos', customerPhone: '',
+        items: [
+          { name: 'Produto A', quantity: 3, unitPrice: 10 },
+          { name: 'Produto B', quantity: 1, unitPrice: 10 },
+        ],
+        discount: 0.01, discountType: 'fixed', totalPrice: 39.99,
+        deliveryDate: '2026-12-10', notes: '', isExchange: false,
+        validUntil: '2026-12-31',
+      }),
+    ]);
+
+    // This is the payload after FirebaseOrderService.sanitizeOrderItems rounds
+    // each unit price to cents and recomputes the displayed line subtotal.
+    const result = await handleCreateOrder({
+      auth: { uid, token: { auth_time: 1 } },
+      data: {
+        quoteId,
+        orderData: {
+          customerName: 'Cliente Centavos', customerPhone: '',
+          productName: 'Produto A (3x), Produto B', quantity: 4, price: 39.99,
+          items: [
+            { name: 'Produto A', quantity: 3, unitPrice: 10, price: 30 },
+            { name: 'Produto B', quantity: 1, unitPrice: 10, price: 10 },
+          ],
+          pricingMode: 'items', unitPrice: null, status: 'pending',
+          deliveryDate: '2026-12-10', notes: `Gerado do orçamento ${quoteNumber}`,
+          isExchange: false,
+        },
+      },
+    }, adminDb);
+
+    const order = (await adminDb.doc(`orders/${result.orderId}`).get()).data();
+    expect(result.success).toBe(true);
+    expect(order?.price).toBe(39.99);
+    expect(order?.items).toEqual([
+      { name: 'Produto A', quantity: 3, unitPrice: 10, price: 29.99 },
+      { name: 'Produto B', quantity: 1, unitPrice: 10, price: 10 },
+    ]);
+    expect(order?.items.reduce((sum, item) => sum + Math.round(item.price * 100), 0)).toBe(3999);
+  });
+
+  it('preserva o unitPrice superior enviado sem arredondamento em orçamento de item único', async () => {
+    const uid = `quote-single-cent-owner-${Date.now()}`;
+    const quoteId = `quote-single-cent-${Date.now()}`;
+    const quoteNumber = `ORC-${quoteId}`;
+    const transportUnitPrice = 29.99 / 3;
+    await Promise.all([
+      adminDb.doc(`userProfiles/${uid}`).set({
+        role: 'user', active: true,
+        permissions: { orders: { create: true }, quotes: { edit: true } },
+      }),
+      adminDb.doc(`quotes/${quoteId}`).set({
+        userId: uid, status: 'sent', quoteNumber,
+        customerName: 'Cliente Item Único', customerPhone: '',
+        items: [{ name: 'Produto Único', quantity: 3, unitPrice: 10 }],
+        discount: 0.01, discountType: 'fixed', totalPrice: 29.99,
+        deliveryDate: '2026-12-10', notes: '', isExchange: false,
+        validUntil: '2026-12-31',
+      }),
+    ]);
+
+    const result = await handleCreateOrder({
+      auth: { uid, token: { auth_time: 1 } },
+      data: {
+        quoteId,
+        orderData: {
+          customerName: 'Cliente Item Único', customerPhone: '',
+          productName: 'Produto Único (3x)', quantity: 3, price: 29.99,
+          // The service rounds items, but passes the top-level unitPrice through.
+          items: [{ name: 'Produto Único', quantity: 3, unitPrice: 10, price: 30 }],
+          pricingMode: 'unit', unitPrice: transportUnitPrice, status: 'pending',
+          deliveryDate: '2026-12-10', notes: `Gerado do orçamento ${quoteNumber}`,
+          isExchange: false,
+        },
+      },
+    }, adminDb);
+
+    const order = (await adminDb.doc(`orders/${result.orderId}`).get()).data();
+    expect(result.success).toBe(true);
+    expect(order?.price).toBe(29.99);
+    expect(order?.unitPrice).toBe(10);
+    expect(order?.items).toEqual([
+      { name: 'Produto Único', quantity: 3, unitPrice: 10, price: 29.99 },
+    ]);
+  });
+
+  it('preserva o tenant do orçamento e registra o funcionário executor', async () => {
+    const actorUid = `quote-actor-${Date.now()}`;
+    const ownerUid = `quote-tenant-${Date.now()}`;
+    const quoteId = `quote-tenant-${Date.now()}`;
+    const quoteNumber = `ORC-${quoteId}`;
+    const orderData = {
+      customerName: 'Cliente do Tenant', customerPhone: '', customerId: undefined,
+      productName: 'Produto (2x)', quantity: 2, price: 100,
+      items: [{ name: 'Produto', quantity: 2, unitPrice: 50, price: 100 }],
+      pricingMode: 'unit', unitPrice: 50, status: 'pending', deliveryDate: '2026-12-10',
+      notes: `Gerado do orçamento ${quoteNumber}`, tags: undefined, cardColor: undefined,
+      isExchange: false, exchangeNotes: undefined,
+    };
+    await Promise.all([
+      adminDb.doc(`userProfiles/${actorUid}`).set({ role: 'funcionario', active: true,
+        permissions: { orders: { create: true }, quotes: { edit: true } } }),
+      adminDb.doc(`quotes/${quoteId}`).set({ userId: ownerUid, quoteNumber, status: 'sent',
+        customerName: 'Cliente do Tenant', customerPhone: '', items: [{ name: 'Produto', quantity: 2, unitPrice: 50 }],
+        totalPrice: 100, deliveryDate: '2026-12-10', notes: '', isExchange: false, validUntil: '2026-12-31' }),
+    ]);
+
+    const result = await handleCreateOrder({ auth: { uid: actorUid, token: { auth_time: 1 } },
+      data: { orderData, quoteId } }, adminDb);
+    const order = (await adminDb.doc(`orders/${result.orderId}`).get()).data();
+    const ledger = (await adminDb.doc(`salesLedger/${result.orderId}`).get()).data();
+    expect(order?.userId).toBe(ownerUid);
+    expect(order?.createdByUid).toBe(actorUid);
+    expect(ledger?.userId).toBe(ownerUid);
+    expect((await adminDb.doc(`users/${ownerUid}/metadata/counters`).get()).data()?.orderCounter).toBe(1);
+  });
+
+  it('recusa snapshot desatualizado sem criar pedido, ledger ou aprovar o orçamento', async () => {
+    const uid = `quote-stale-${Date.now()}`;
+    const quoteId = `quote-stale-${Date.now()}`;
+    await Promise.all([
+      adminDb.doc(`userProfiles/${uid}`).set({ role: 'user', active: true,
+        permissions: { orders: { create: true }, quotes: { edit: true } } }),
+      adminDb.doc(`quotes/${quoteId}`).set({ userId: uid, quoteNumber: 'ORC-STALE', status: 'sent',
+        customerName: 'Cliente', customerPhone: '', items: [{ name: 'Produto', quantity: 1, unitPrice: 100 }],
+        totalPrice: 100, deliveryDate: '2026-12-10', notes: '', isExchange: false, validUntil: '2026-12-31' }),
+    ]);
+    await expect(handleCreateOrder({ auth: { uid, token: { auth_time: 1 } }, data: { quoteId,
+      orderData: { customerName: 'Cliente', customerPhone: '', productName: 'Produto', quantity: 1,
+        price: 99, items: [{ name: 'Produto', quantity: 1, unitPrice: 99, price: 99 }],
+        pricingMode: 'unit', unitPrice: 99, status: 'pending', deliveryDate: '2026-12-10',
+        notes: 'Gerado do orçamento ORC-STALE', isExchange: false } } }, adminDb))
+      .rejects.toMatchObject({ code: 'failed-precondition', details: { reason: 'quote-changed', operationState: 'not-applied' } });
+    expect((await adminDb.doc(`quotes/${quoteId}`).get()).data()?.status).toBe('sent');
+    expect((await adminDb.collection('orders').where('userId', '==', uid).get()).size).toBe(0);
+    expect((await adminDb.collection('salesLedger').where('userId', '==', uid).get()).size).toBe(0);
   });
 
   it('não permite aprovar orçamento próprio sem permissão quotes.edit', async () => {

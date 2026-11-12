@@ -271,8 +271,96 @@ function canConvertCatalogOrder(profile) {
 
 function canConvertQuote(profile, quote, uid) {
   return profile.role === 'admin'
-    || ((quote.userId === uid || profile.role === 'funcionario')
+    || (typeof quote.userId === 'string'
+      && (quote.userId === uid || profile.role === 'funcionario')
       && hasModulePermission(profile, 'quotes', 'edit'));
+}
+
+function buildQuoteConversionProjection(quote, suggestedCustomerId) {
+  const quoteItems = Array.isArray(quote.items) ? quote.items : [];
+  if (quoteItems.length < 1 || quoteItems.length > 10) {
+    throw new HttpsError('failed-precondition', 'O orçamento não possui uma lista de itens válida. Atualize-o antes de converter.');
+  }
+  const lineCents = quoteItems.map((item) => Math.round(Number(item.unitPrice) * Number(item.quantity) * 100));
+  const subtotalCents = lineCents.reduce((sum, value) => sum + value, 0);
+  const totalCents = Math.round(Number(quote.totalPrice) * 100);
+  if (!Number.isSafeInteger(totalCents) || totalCents < 0 || totalCents > subtotalCents) {
+    throw new HttpsError('failed-precondition', 'Os valores do orçamento estão inconsistentes e não podem ser convertidos.');
+  }
+  const allocated = [...lineCents];
+  if (subtotalCents > 0 && totalCents !== subtotalCents) {
+    const shares = lineCents.map((cents, index) => ({
+      index,
+      cents: Number((BigInt(cents) * BigInt(totalCents)) / BigInt(subtotalCents)),
+      remainder: (BigInt(cents) * BigInt(totalCents)) % BigInt(subtotalCents),
+    }));
+    shares.forEach((share) => { allocated[share.index] = share.cents; });
+    let remaining = totalCents - allocated.reduce((sum, value) => sum + value, 0);
+    shares.sort((a, b) => a.remainder === b.remainder ? a.index - b.index : (a.remainder > b.remainder ? -1 : 1));
+    for (let i = 0; i < remaining; i += 1) allocated[shares[i].index] += 1;
+  }
+  const items = quoteItems.map((item, index) => ({
+    name: String(item.name).trim(),
+    quantity: item.quantity,
+    unitPrice: allocated[index] / 100 / item.quantity,
+    price: allocated[index] / 100,
+  }));
+  const quantity = quoteItems.reduce((sum, item) => sum + item.quantity, 0);
+  const projection = {
+    customerName: String(quote.customerName || '').trim(),
+    customerPhone: String(quote.customerPhone || '').trim(),
+    customerId: quote.customerId || quote.convertedCustomerId || suggestedCustomerId || null,
+    productName: quoteItems.map((item) => item.quantity > 1 ? `${item.name} (${item.quantity}x)` : item.name).join(', '),
+    quantity,
+    price: totalCents / 100,
+    items,
+    pricingMode: items.length === 1 ? 'unit' : 'items',
+    unitPrice: items.length === 1 ? items[0].unitPrice : null,
+    status: 'pending',
+    deliveryDate: quote.deliveryDate,
+    notes: [`Gerado do orçamento ${quote.quoteNumber}`, ...(quote.notes ? [quote.notes] : [])].join('\n'),
+    tags: quote.tags ?? null,
+    cardColor: quote.cardColor ?? null,
+    isExchange: quote.isExchange === true,
+    exchangeNotes: quote.exchangeNotes ?? null,
+  };
+  return projection;
+}
+
+function normalizeQuoteProjectionForCallable(projection) {
+  const items = projection.items.map((item) => {
+    const unitPrice = Math.round(item.unitPrice * 100) / 100;
+    return {
+      ...item,
+      unitPrice,
+      // FirebaseOrderService.sanitizeOrderItems treats the rounded unit price as
+      // canonical for the request payload. The transaction still persists the
+      // server allocated `price` from the original projection below.
+      price: Math.round(item.quantity * unitPrice * 100) / 100,
+    };
+  });
+  return {
+    ...projection,
+    items,
+    // Unlike item.unitPrice, this top-level field is passed through by
+    // FirebaseOrderService.createOrder without sanitizeOrderItems rounding it.
+    unitPrice: projection.unitPrice,
+  };
+}
+
+function assertQuoteProjectionMatches(submitted, projection) {
+  const callableProjection = normalizeQuoteProjectionForCallable(projection);
+  const fields = ['customerName', 'customerPhone', 'productName', 'quantity', 'price', 'items', 'pricingMode',
+    'unitPrice', 'status', 'deliveryDate', 'notes', 'tags', 'cardColor', 'isExchange', 'exchangeNotes'];
+  const mismatch = fields.some((field) => {
+    const incoming = field === 'isExchange' ? submitted[field] === true : (submitted[field] ?? null);
+    return canonicalStringify(incoming) !== canonicalStringify(callableProjection[field] ?? null);
+  });
+  if (mismatch) {
+    throw new HttpsError('failed-precondition', 'O orçamento mudou desde que foi aberto. Atualize e revise os dados antes de aprovar.', {
+      operationState: 'not-applied', reason: 'quote-changed',
+    });
+  }
 }
 
 function assertComplexOrderData(next, isExchange) {
@@ -688,6 +776,10 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
       throw new HttpsError('invalid-argument', 'Chave de idempotência inválida.');
     }
   }
+  if (quoteId !== undefined && quoteId !== null
+    && (typeof quoteId !== 'string' || quoteId.length > 200)) {
+    throw new HttpsError('invalid-argument', 'Identificador de orçamento inválido.');
+  }
 
   const db = firestore;
   const profileSnap = await db.doc(`userProfiles/${uid}`).get();
@@ -715,7 +807,7 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
   }
   const isExchange = orderData.isExchange === true;
 
-  const quantity = orderData.quantity;
+  let quantity = orderData.quantity;
   if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000) {
     throw new HttpsError('invalid-argument', 'A quantidade deve ser um número inteiro entre 1 e 10.000.');
   }
@@ -727,7 +819,7 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
   if (Math.abs(orderData.price * 100 - priceCents) > 0.001) {
     throw new HttpsError('invalid-argument', 'O preço deve usar centavos inteiros.');
   }
-  const price = priceCents / 100;
+  let price = priceCents / 100;
 
   if (!orderData.customerName || typeof orderData.customerName !== 'string' || !orderData.customerName.trim()) {
     throw new HttpsError('invalid-argument', 'O nome do cliente é obrigatório.');
@@ -742,11 +834,11 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
   if (orderData.items !== undefined && orderData.items !== null && !Array.isArray(orderData.items)) {
     throw new HttpsError('invalid-argument', 'A lista de itens deve ser um array válido.');
   }
-  const items = Array.isArray(orderData.items)
+  let items = quoteId ? null : (Array.isArray(orderData.items)
     ? assertComplexOrderItems(orderData.items, quantity, price)
-    : null;
+    : null);
 
-  if (orderData.pricingMode !== undefined && orderData.pricingMode !== null) {
+  if (!quoteId && orderData.pricingMode !== undefined && orderData.pricingMode !== null) {
     if (typeof orderData.pricingMode !== 'string' || !['unit', 'total', 'items'].includes(orderData.pricingMode)) {
       throw new HttpsError('invalid-argument', 'Tipo de preço inválido.');
     }
@@ -758,7 +850,7 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
       throw new HttpsError('invalid-argument', 'Preço unitário inválido.');
     }
     const unitPriceCents = Math.round(orderData.unitPrice * 100);
-    if (Math.abs(orderData.unitPrice * 100 - unitPriceCents) > 0.001) {
+    if (!quoteId && Math.abs(orderData.unitPrice * 100 - unitPriceCents) > 0.001) {
       throw new HttpsError('invalid-argument', 'O preço unitário deve usar centavos inteiros.');
     }
   }
@@ -766,7 +858,7 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
   let resolvedUnitPrice = null;
   let resolvedPricingMode = null;
 
-  if (items && items.length > 1) {
+  if (!quoteId && items && items.length > 1) {
     if (orderData.pricingMode !== undefined && orderData.pricingMode !== null && orderData.pricingMode !== 'items') {
       throw new HttpsError('invalid-argument', 'Pedidos com múltiplos itens devem usar o tipo de preço "items".');
     }
@@ -775,7 +867,7 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
     }
     resolvedPricingMode = 'items';
     resolvedUnitPrice = null;
-  } else if (items && items.length === 1) {
+  } else if (!quoteId && items && items.length === 1) {
     const itemUnitPrice = items[0].unitPrice;
     if (orderData.unitPrice !== undefined && orderData.unitPrice !== null) {
       if (Math.abs(orderData.unitPrice - itemUnitPrice) > 0.001) {
@@ -796,7 +888,7 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
       resolvedPricingMode = 'unit';
       resolvedUnitPrice = itemUnitPrice;
     }
-  } else {
+  } else if (!quoteId) {
     // Pedido simples sem lista de itens (items == null)
     if (orderData.pricingMode === 'items') {
       throw new HttpsError('invalid-argument', 'O tipo de preço "items" exige uma lista de itens estruturados.');
@@ -889,7 +981,7 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
     items,
     payment: normalizedPayment,
   };
-  assertComplexOrderData(orderToValidate, isExchange);
+  if (!quoteId) assertComplexOrderData(orderToValidate, isExchange);
 
   // Include the entire submitted command (tags, assignment and card color included).
   // Exclude transport identity and never hash a payment date defaulted to `now`.
@@ -902,7 +994,74 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
 
   // Execução atômica no Firestore
   return db.runTransaction(async (transaction) => {
-    // 1. Idempotência por identificador
+    // Orçamento e autorização são lidos antes de qualquer caminho de replay.
+    let quoteRef = null;
+    let quote = null;
+    let conversionData = orderData;
+    let conversionHash = payloadHash;
+    let ownerUid = uid;
+    if (quoteId && typeof quoteId === 'string') {
+      quoteRef = db.doc(`quotes/${quoteId}`);
+      const quoteSnap = await transaction.get(quoteRef);
+      if (!quoteSnap.exists) throw new HttpsError('not-found', 'Orçamento não encontrado.');
+      quote = quoteSnap.data() || {};
+      if (!canConvertQuote(profile, quote, uid)) {
+        throw new HttpsError('permission-denied', 'Você não tem permissão para aprovar este orçamento.');
+      }
+      if (typeof quote.userId !== 'string' || !quote.userId) {
+        throw new HttpsError('failed-precondition', 'O orçamento não possui um titular válido.');
+      }
+      if (!admin && (!hasOrderPermission(profile, 'create') || !hasModulePermission(profile, 'quotes', 'edit'))) {
+        throw new HttpsError('permission-denied', 'Você não tem permissão para converter este orçamento.');
+      }
+      ownerUid = quote.userId;
+      const projection = buildQuoteConversionProjection(quote, orderData.customerId);
+      assertQuoteProjectionMatches(orderData, projection);
+      if (orderData.payment && Number(orderData.payment.paidAmount || 0) !== 0) {
+        throw new HttpsError('failed-precondition', 'A aprovação do orçamento não pode registrar pagamento recebido.');
+      }
+      conversionData = projection;
+      conversionHash = computePayloadHash({ orderData: projection, quoteId, catalogOrderId: catalogOrderId ?? null });
+      quantity = projection.quantity;
+      price = projection.price;
+      // Preserve each exact line total; unit prices are display values and must stay cent-safe.
+      items = projection.items.map((item) => ({ ...item, unitPrice: Math.round(item.unitPrice * 100) / 100 }));
+      resolvedPricingMode = projection.pricingMode;
+      resolvedUnitPrice = projection.unitPrice == null ? null : Math.round(projection.unitPrice * 100) / 100;
+      initialPaymentEvent = null;
+      initialHistory = null;
+      normalizedPayment = {
+        status: 'pending', method: null, totalAmount: projection.isExchange ? 0 : projection.price,
+        paidAmount: 0, remainingAmount: projection.isExchange ? 0 : projection.price,
+        paymentDate: null, notes: null, history: null,
+      };
+      const linkedId = quote.convertedOrderId || quote.orderId;
+      if (linkedId) {
+        if (idempotencyKey && idempotencyKey !== String(linkedId)) {
+          throw new HttpsError('failed-precondition', 'A chave informada não corresponde ao pedido já vinculado ao orçamento.');
+        }
+        const linkedRef = db.doc(`orders/${String(linkedId)}`);
+        const linkedSnap = await transaction.get(linkedRef);
+        const linkedOrder = linkedSnap.data() || {};
+        if (!linkedSnap.exists || linkedOrder.userId !== ownerUid || linkedOrder.quoteId !== quoteId
+          || linkedOrder.creationHashVersion !== 2 || linkedOrder.payloadHash !== conversionHash
+          || quote.conversionPayloadHash !== linkedOrder.payloadHash) {
+          throw new HttpsError('failed-precondition', 'O vínculo deste orçamento não corresponde a um pedido válido.');
+        }
+        return { success: true, orderId: String(linkedId), orderNumber: linkedOrder.orderNumber, alreadyExisted: true };
+      }
+      if (quote.status === 'approved') throw new HttpsError('failed-precondition', 'Este orçamento já foi aprovado anteriormente.');
+      if (quote.status !== 'draft' && quote.status !== 'sent') {
+        throw new HttpsError('failed-precondition', 'Apenas orçamentos em rascunho ou enviados podem ser aprovados.');
+      }
+      if (quote.validUntil) {
+        const expiration = new Date(quote.validUntil);
+        expiration.setHours(23, 59, 59, 999);
+        if (expiration < new Date()) throw new HttpsError('failed-precondition', 'Este orçamento expirou e não pode ser aprovado.');
+      }
+    }
+
+    // 1. Idempotência por identificador, depois da autorização do orçamento.
     const candidateOrderId = (idempotencyKey && typeof idempotencyKey === 'string')
       ? idempotencyKey
       : null;
@@ -913,10 +1072,14 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
       const existingSnap = await transaction.get(orderRef);
       if (existingSnap.exists) {
         const existingData = existingSnap.data() || {};
-        if (existingData.userId !== uid) {
+        if (existingData.userId !== ownerUid) {
           throw new HttpsError('permission-denied', 'Identificador de pedido já utilizado por outro usuário.');
         }
-        if (existingData.creationHashVersion !== 2 || existingData.payloadHash !== payloadHash) {
+        if (quoteId && (quote.convertedOrderId !== orderId && quote.orderId !== orderId
+          || existingData.quoteId !== quoteId)) {
+          throw new HttpsError('failed-precondition', 'Esta chave não está vinculada à conversão deste orçamento.');
+        }
+        if (existingData.creationHashVersion !== 2 || existingData.payloadHash !== (quoteId ? conversionHash : payloadHash)) {
           throw new HttpsError('failed-precondition', 'Esta chave de idempotência já foi utilizada com dados diferentes.');
         }
         return {
@@ -946,49 +1109,21 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
       }
     }
 
-    // 3. Validação e Idempotência de orçamento
-    let quoteRef = null;
-    if (quoteId && typeof quoteId === 'string') {
-      quoteRef = db.doc(`quotes/${quoteId}`);
-      const quoteSnap = await transaction.get(quoteRef);
-      if (!quoteSnap.exists) throw new HttpsError('not-found', 'Orçamento não encontrado.');
-      const quote = quoteSnap.data() || {};
-      if (!canConvertQuote(profile, quote, uid)) {
-        throw new HttpsError('permission-denied', 'Você não tem permissão para aprovar este orçamento.');
-      }
-      const existingOrderId = quote.convertedOrderId || quote.orderId;
-      if (existingOrderId) {
-        return { success: true, orderId: String(existingOrderId), alreadyExisted: true };
-      }
-      if (quote.status === 'approved') {
-        throw new HttpsError('failed-precondition', 'Este orçamento já foi aprovado anteriormente.');
-      }
-      if (quote.status !== 'draft' && quote.status !== 'sent') {
-        throw new HttpsError('failed-precondition', 'Apenas orçamentos em rascunho ou enviados podem ser aprovados.');
-      }
-      if (quote.validUntil) {
-        const expiration = new Date(quote.validUntil);
-        expiration.setHours(23, 59, 59, 999);
-        if (expiration < new Date()) {
-          throw new HttpsError('failed-precondition', 'Este orçamento expirou e não pode ser aprovado.');
-        }
-      }
-    }
-
     // 4. Validação de cliente vinculado
+    const effectiveOrderData = conversionData;
     let customerRef = null;
     let customerData = null;
-    if (orderData.customerId && typeof orderData.customerId === 'string') {
-      customerRef = db.doc(`customers/${orderData.customerId}`);
+    if (effectiveOrderData.customerId && typeof effectiveOrderData.customerId === 'string') {
+      customerRef = db.doc(`customers/${effectiveOrderData.customerId}`);
       const customerSnap = await transaction.get(customerRef);
-      if (!customerSnap.exists || customerSnap.data()?.userId !== uid) {
+      if (!customerSnap.exists || customerSnap.data()?.userId !== ownerUid) {
         throw new HttpsError('permission-denied', 'O cliente vinculado não pertence a esta conta.');
       }
       customerData = customerSnap.data() || {};
     }
 
     // 5. Contador de pedidos
-    const counterRef = db.doc(`users/${uid}/metadata/counters`);
+    const counterRef = db.doc(`users/${ownerUid}/metadata/counters`);
     const counterSnap = await transaction.get(counterRef);
     const nextCount = ((counterSnap.data()?.orderCounter) || 0) + 1;
     const year = new Date().getFullYear();
@@ -996,31 +1131,32 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
 
     // 6. Montagem dos payloads
     const createdOrderData = {
-      userId: uid,
+      userId: ownerUid,
+      ...(quoteId ? { quoteId, createdByUid: uid } : {}),
       createdByName: profile.displayName || profile.email || uid,
       orderNumber,
-      customerName: orderData.customerName.trim(),
-      customerPhone: orderData.customerPhone ?? null,
-      productName: orderData.productName.trim(),
+      customerName: effectiveOrderData.customerName.trim(),
+      customerPhone: effectiveOrderData.customerPhone ?? null,
+      productName: effectiveOrderData.productName.trim(),
       quantity,
       price,
       pricingMode: resolvedPricingMode,
       unitPrice: resolvedUnitPrice,
       items,
-      status: orderData.status || 'pending',
-      deliveryDate: orderData.deliveryDate,
-      notes: orderData.notes ?? null,
-      tags: orderData.tags ?? null,
-      customerId: orderData.customerId ?? null,
-      assignedTo: orderData.assignedTo ?? null,
-      assignedToName: orderData.assignedToName ?? null,
-      assignedAt: orderData.assignedAt ?? null,
-      assignedBy: orderData.assignedBy ?? null,
+      status: effectiveOrderData.status || 'pending',
+      deliveryDate: effectiveOrderData.deliveryDate,
+      notes: effectiveOrderData.notes ?? null,
+      tags: effectiveOrderData.tags ?? null,
+      customerId: effectiveOrderData.customerId ?? null,
+      assignedTo: effectiveOrderData.assignedTo ?? null,
+      assignedToName: effectiveOrderData.assignedToName ?? null,
+      assignedAt: effectiveOrderData.assignedAt ?? null,
+      assignedBy: effectiveOrderData.assignedBy ?? null,
       payment: normalizedPayment,
       isExchange,
-      exchangeNotes: orderData.exchangeNotes ?? null,
-      exchangeItems: orderData.exchangeItems ?? null,
-      cardColor: orderData.cardColor ?? null,
+      exchangeNotes: effectiveOrderData.exchangeNotes ?? null,
+      exchangeItems: effectiveOrderData.exchangeItems ?? null,
+      cardColor: effectiveOrderData.cardColor ?? null,
       productionWorkflow: {
         currentStep: 'design',
         steps: {
@@ -1035,22 +1171,22 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
         startedAt: now,
       },
       version: 1,
-      payloadHash,
+      payloadHash: quoteId ? conversionHash : payloadHash,
       creationHashVersion: 2,
       idempotencyKey: candidateOrderId ?? null,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
-      isArchived: Boolean(orderData.isArchived),
-      archivedAt: orderData.archivedAt ?? null,
-      archivedBy: orderData.archivedBy ?? null,
+      isArchived: Boolean(effectiveOrderData.isArchived),
+      archivedAt: effectiveOrderData.archivedAt ?? null,
+      archivedBy: effectiveOrderData.archivedBy ?? null,
     };
 
     const salePayload = {
       id: orderId,
       orderId,
       orderNumber,
-      userId: uid,
+      userId: ownerUid,
       assignedTo: createdOrderData.assignedTo,
       assignedToName: createdOrderData.assignedToName,
       customerId: createdOrderData.customerId,
@@ -1107,6 +1243,8 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
         orderNumber,
         convertedOrderId: orderId,
         convertedOrderNumber: orderNumber,
+        conversionPayloadHash: conversionHash,
+        convertedCustomerId: createdOrderData.customerId,
         approvedAt: now,
         updatedAt: now,
       });
