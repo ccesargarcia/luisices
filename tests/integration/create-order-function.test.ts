@@ -319,6 +319,58 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
     expect(repeatResult.alreadyExisted).toBe(true);
   });
 
+  it('aceita os itens normalizados pelo serviço e persiste os centavos alocados pelo orçamento', async () => {
+    const uid = `quote-cent-owner-${Date.now()}`;
+    const quoteId = `quote-cent-${Date.now()}`;
+    const quoteNumber = `ORC-${quoteId}`;
+    await Promise.all([
+      adminDb.doc(`userProfiles/${uid}`).set({
+        role: 'user', active: true,
+        permissions: { orders: { create: true }, quotes: { edit: true } },
+      }),
+      adminDb.doc(`quotes/${quoteId}`).set({
+        userId: uid, status: 'sent', quoteNumber,
+        customerName: 'Cliente Centavos', customerPhone: '',
+        items: [
+          { name: 'Produto A', quantity: 3, unitPrice: 10 },
+          { name: 'Produto B', quantity: 1, unitPrice: 10 },
+        ],
+        discount: 0.01, discountType: 'fixed', totalPrice: 39.99,
+        deliveryDate: '2026-12-10', notes: '', isExchange: false,
+        validUntil: '2026-12-31',
+      }),
+    ]);
+
+    // This is the payload after FirebaseOrderService.sanitizeOrderItems rounds
+    // each unit price to cents and recomputes the displayed line subtotal.
+    const result = await handleCreateOrder({
+      auth: { uid, token: { auth_time: 1 } },
+      data: {
+        quoteId,
+        orderData: {
+          customerName: 'Cliente Centavos', customerPhone: '',
+          productName: 'Produto A (3x), Produto B', quantity: 4, price: 39.99,
+          items: [
+            { name: 'Produto A', quantity: 3, unitPrice: 10, price: 30 },
+            { name: 'Produto B', quantity: 1, unitPrice: 10, price: 10 },
+          ],
+          pricingMode: 'items', unitPrice: null, status: 'pending',
+          deliveryDate: '2026-12-10', notes: `Gerado do orçamento ${quoteNumber}`,
+          isExchange: false,
+        },
+      },
+    }, adminDb);
+
+    const order = (await adminDb.doc(`orders/${result.orderId}`).get()).data();
+    expect(result.success).toBe(true);
+    expect(order?.price).toBe(39.99);
+    expect(order?.items).toEqual([
+      { name: 'Produto A', quantity: 3, unitPrice: 10, price: 29.99 },
+      { name: 'Produto B', quantity: 1, unitPrice: 10, price: 10 },
+    ]);
+    expect(order?.items.reduce((sum, item) => sum + Math.round(item.price * 100), 0)).toBe(3999);
+  });
+
   it('preserva o tenant do orçamento e registra o funcionário executor', async () => {
     const actorUid = `quote-actor-${Date.now()}`;
     const ownerUid = `quote-tenant-${Date.now()}`;

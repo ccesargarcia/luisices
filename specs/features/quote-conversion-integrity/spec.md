@@ -34,7 +34,7 @@ Esta spec define uma correção para o caminho nativo, preservando o contrato da
 
 1. Manter os argumentos públicos atuais de `createOrder`: `orderData`, `quoteId` e `idempotencyKey`.
 2. Criar no backend uma projeção canônica do pedido a partir do snapshot de `quotes/{quoteId}` lido dentro da mesma transação. Derivar cliente, itens, quantidade, preço total, distribuição do desconto, entrega, notas/tags e permuta a partir do documento atual.
-3. Comparar os campos materiais da projeção com `orderData` submetido. Se o payload não corresponder, recusar com `failed-precondition`/estado não aplicado, sem gravação; a interface deve pedir recarga e revisão antes de nova confirmação. Após correspondência, persistir a projeção criada no backend, não o objeto cliente.
+3. Comparar os campos materiais da projeção com `orderData` submetido. Para itens, comparar contra a normalização de transporte feita por `FirebaseOrderService.sanitizeOrderItems` (unitário arredondado a centavos e subtotal visual recalculado); isso não altera a projeção financeira que o backend persiste. Se o payload normalizado não corresponder, recusar com `failed-precondition`/estado não aplicado, sem gravação; a interface deve pedir recarga e revisão antes de nova confirmação. Após correspondência, persistir a projeção criada no backend, não o objeto cliente.
 4. Definir `quote.userId` como titular/tenant do orçamento e do pedido convertido. O novo pedido e o `salesLedger` mantêm esse `userId`; `createdByUid` e `createdByName` registram o usuário que executou a conversão. O `customerId` existente deve pertencer a `quote.userId`; se estiver ausente, aceitar como enriquecimento opcional apenas cliente desse mesmo titular.
 5. Para conversão não administrativa, exigir permissões previamente concedidas `quotes.edit` e `orders.create` no perfil ativo do agente que executa a ação. Administrador segue a política administrativa vigente. Ler e autorizar o orçamento antes de conferir `orders/{idempotencyKey}` e antes de retornar qualquer replay por `quoteId`; recibo/vínculo existente não substitui autorização atual.
 6. Em replay com `quoteId` e `idempotencyKey`, aceitar pedido já existente somente se o orçamento autorizado estiver vinculado ao mesmo ID, o `userId` do pedido corresponder a `quote.userId` e o hash do comando for compatível. Sem `quoteId`, manter a checagem de titularidade atual (`existingData.userId === uid`).
@@ -54,6 +54,7 @@ Esta spec define uma correção para o caminho nativo, preservando o contrato da
 - **RF-9 — Percentual:** desconto percentual segue a fórmula existente do frontend, com desconto em centavos arredondado uma vez ao final da aplicação da porcentagem ao subtotal em centavos.
 - **RF-10 — Compatibilidade MCP:** orçamentos criados pelo MCP que usam `Math.ceil(total/quantity)` e desconto fixo de ajuste continuam válidos e editáveis sob a Rule estrita.
 - **RF-11 — Limites CEL:** reestruturação de `isValidQuoteMath` mantém validação de no máximo 10 itens e dentro dos limites CEL/AST, com avaliação curta e caminhos de atualização inalterada preservados quando aplicável.
+- **RF-12 — Normalização do transporte:** validar itens após a normalização monetária aplicada pelo serviço frontend, mas persistir preços de linha e total alocados em centavos pela projeção do backend; arredondamento visual do preço unitário não pode alterar o valor do orçamento.
 
 ## Critérios de aceitação
 
@@ -68,6 +69,7 @@ Esta spec define uma correção para o caminho nativo, preservando o contrato da
 - **CA-9 (RF-10):** orçamento MCP de R$ 100,00 em 3 unidades continua válido com ajuste fixo de arredondamento e permite edição posterior.
 - **CA-10 (RF-11):** testes de Rules no emulador cobrem 1–10 itens, valores válidos e inválidos, sem estourar expressões CEL ou profundidade AST.
 - **CA-11:** status aprovado, pedido, ledger, dados do cliente e pagamento continuam obedecendo ao baseline `quote-to-order`.
+- **CA-12 (RF-12):** em orçamento com linhas 3 × R$ 10,00 e 1 × R$ 10,00, desconto fixo R$ 0,01, o payload normalizado da interface (subtotais visuais R$ 30,00 e R$ 10,00) é aceito; o pedido persiste total R$ 39,99 e linhas totalizando exatamente 3.999 centavos conforme a alocação backend.
 
 ## Autorização e integridade
 
@@ -89,7 +91,7 @@ Esta spec define uma correção para o caminho nativo, preservando o contrato da
 ## Validação
 
 - Unitários backend: projeção canônica, igualdade com payload, edição concorrente, campos opcionais e normalização de centavos.
-- Integração Functions: conversão válida, snapshot desatualizado, alteração maliciosa, chave repetida, permissão revogada e transação sem efeitos parciais.
+- Integração Functions: conversão válida, normalização frontend de preços unitários fracionários, snapshot desatualizado, alteração maliciosa, chave repetida, permissão revogada e transação sem efeitos parciais.
 - Integração Rules/Emulator: total/unitário/desconto com centavo fracionário rejeitados; percentuais e exemplos válidos aceitos; 1–10 itens e orçamento MCP 3 × R$ 100,00.
 - E2E: aprovar orçamento atual funciona; orçamento alterado em outra sessão exige recarga e nova confirmação.
 - Sempre executar `npm run typecheck`; lint de Functions e suítes específicas conforme skills `luisices-functions-deploy`, `luisices-firestore-rules`, `luisices-order-ledger-audit` e `luisices-test-suite`.
@@ -99,11 +101,13 @@ Esta spec define uma correção para o caminho nativo, preservando o contrato da
 - O pedido convertido pertence ao mesmo titular registrado em `quote.userId`; o executor aparece em campos de autoria.
 - Funcionário só converte quando o perfil ativo já tem `quotes.edit` e `orders.create`; a autorização deve ser revalidada em conversões novas e replays.
 - Payload desatualizado deve ser recusado e exigir recarga/revisão antes de nova confirmação.
+- A normalização visual do serviço cliente serve apenas à comparação do comando; valores financeiros persistidos vêm da alocação backend em centavos.
 
 ## Evidências de conclusão
 
 - Implementado em `functions/orders/index.js`: projeção do orçamento dentro da transação; comparação de campos materiais; rejeição `failed-precondition` sem efeitos; validação de permissão do ator antes do replay; pedido/ledger/contador/cliente associados ao tenant do orçamento; autoria registrada separadamente; validação de titularidade e hash nos replays.
 - Implementado em `firestore.rules`: total exato em centavos e arredondamento único do desconto percentual; teste de compatibilidade MCP 3 × R$ 100,00.
+- Implementado em `functions/orders/index.js`: comparação contra a normalização monetária efetiva da callable, mantendo os subtotais exatos do backend. Integração cobre 3 × R$ 10,00 + 1 × R$ 10,00 com R$ 0,01 de desconto e confirma a persistência de 3.999 centavos.
 - Interface atualizada em `src/app/components/quotes/QuoteDetailsDialog.tsx` para avisar e atualizar quando a Function detectar snapshot desatualizado.
 - Validação observada: `npm run typecheck`, lint das Functions, integração Functions/Rules (56 testes), suites focadas de segurança/MCP/startup (57 testes) e suíte unitária completa (1.516 passaram, 1 ignorado) passaram. `git diff --check` passou.
 - Pendente: executar o novo cenário Playwright em Linux. O teste cria duas sessões autenticadas, altera o orçamento na segunda e tenta aprovar o snapshot antigo na primeira; o workflow `test:critical` já inclui `critical-flows.spec.ts`. A tentativa local falhou antes de iniciar os testes porque o Playwright instalado não oferece suporte à plataforma Android do Termux (`Unsupported platform: android`); não foi reportada como falha de assertions. O CI remoto ainda precisa receber estas alterações.

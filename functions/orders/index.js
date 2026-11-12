@@ -327,12 +327,32 @@ function buildQuoteConversionProjection(quote, suggestedCustomerId) {
   return projection;
 }
 
+function normalizeQuoteProjectionForCallable(projection) {
+  const items = projection.items.map((item) => {
+    const unitPrice = Math.round(item.unitPrice * 100) / 100;
+    return {
+      ...item,
+      unitPrice,
+      // FirebaseOrderService.sanitizeOrderItems treats the rounded unit price as
+      // canonical for the request payload. The transaction still persists the
+      // server allocated `price` from the original projection below.
+      price: Math.round(item.quantity * unitPrice * 100) / 100,
+    };
+  });
+  return {
+    ...projection,
+    items,
+    unitPrice: projection.unitPrice == null ? null : Math.round(projection.unitPrice * 100) / 100,
+  };
+}
+
 function assertQuoteProjectionMatches(submitted, projection) {
+  const callableProjection = normalizeQuoteProjectionForCallable(projection);
   const fields = ['customerName', 'customerPhone', 'productName', 'quantity', 'price', 'items', 'pricingMode',
     'unitPrice', 'status', 'deliveryDate', 'notes', 'tags', 'cardColor', 'isExchange', 'exchangeNotes'];
   const mismatch = fields.some((field) => {
     const incoming = field === 'isExchange' ? submitted[field] === true : (submitted[field] ?? null);
-    return canonicalStringify(incoming) !== canonicalStringify(projection[field] ?? null);
+    return canonicalStringify(incoming) !== canonicalStringify(callableProjection[field] ?? null);
   });
   if (mismatch) {
     throw new HttpsError('failed-precondition', 'O orçamento mudou desde que foi aberto. Atualize e revise os dados antes de aprovar.', {

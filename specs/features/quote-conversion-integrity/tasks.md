@@ -25,3 +25,5 @@
 - [ ] **I4 — Cobertura E2E de conflito desatualizado:** cenário Playwright edita o orçamento por uma segunda sessão autenticada enquanto a primeira mantém o snapshot antigo. `test:critical` já inclui `critical-flows.spec.ts`; falta executar no runner Linux após publicar as alterações. O Playwright não inicia neste Termux Android (`Unsupported platform: android`).
 - [x] **I5 — Validação executada:** `npm run typecheck`; lint das Functions; 56 testes de integração Functions/Rules; 57 testes focados de segurança, MCP e startup; suíte unitária completa (1.516 passaram, 1 ignorado); `git diff --check`.
 - [x] **I6 — Documentação:** baseline e catálogo atualizados com o comportamento entregue e a validação observada.
+- [x] **I7 — Normalização monetária do transporte:** alinhar a comparação backend ao arredondamento de `sanitizeOrderItems` sem substituir a alocação autoritativa em centavos; cobrir desconto fixo de R$ 0,01 entre linhas.
+  - Evidência: `tests/integration/create-order-function.test.ts`, cenário “aceita os itens normalizados pelo serviço e persiste os centavos alocados pelo orçamento”; integração Functions 46/46 aprovada.
