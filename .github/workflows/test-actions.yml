@@ -185,7 +185,8 @@ jobs:
 
   e2e-tests:
     needs: detect-changes
-    runs-on: ubuntu-latest
+    # Playwright 1.58.2 does not yet install Chromium on Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
