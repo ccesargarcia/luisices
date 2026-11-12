@@ -262,7 +262,10 @@ test.describe('Fluxos Críticos de Negócio', () => {
       await editForm.getByRole('button', { name: /Salvar Orçamento/i }).click();
       await expect(editForm).not.toBeVisible({ timeout: 15000 });
 
-      await expect(details.getByText('R$ 100,00')).toBeVisible();
+      const displayedTotal = details.getByText('Total', { exact: true })
+        .locator('..')
+        .getByText('R$ 100,00', { exact: true });
+      await expect(displayedTotal).toBeVisible();
       await details.getByRole('button', { name: /Aprovar e Gerar Pedido/i }).click();
       await expect(page.getByText(/O orçamento foi alterado\. Atualize os dados e revise a proposta/i))
         .toBeVisible({ timeout: 10000 });
