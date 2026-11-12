@@ -342,7 +342,9 @@ function normalizeQuoteProjectionForCallable(projection) {
   return {
     ...projection,
     items,
-    unitPrice: projection.unitPrice == null ? null : Math.round(projection.unitPrice * 100) / 100,
+    // Unlike item.unitPrice, this top-level field is passed through by
+    // FirebaseOrderService.createOrder without sanitizeOrderItems rounding it.
+    unitPrice: projection.unitPrice,
   };
 }
 
@@ -848,7 +850,7 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
       throw new HttpsError('invalid-argument', 'Preço unitário inválido.');
     }
     const unitPriceCents = Math.round(orderData.unitPrice * 100);
-    if (Math.abs(orderData.unitPrice * 100 - unitPriceCents) > 0.001) {
+    if (!quoteId && Math.abs(orderData.unitPrice * 100 - unitPriceCents) > 0.001) {
       throw new HttpsError('invalid-argument', 'O preço unitário deve usar centavos inteiros.');
     }
   }

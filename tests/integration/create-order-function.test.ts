@@ -371,6 +371,51 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
     expect(order?.items.reduce((sum, item) => sum + Math.round(item.price * 100), 0)).toBe(3999);
   });
 
+  it('preserva o unitPrice superior enviado sem arredondamento em orçamento de item único', async () => {
+    const uid = `quote-single-cent-owner-${Date.now()}`;
+    const quoteId = `quote-single-cent-${Date.now()}`;
+    const quoteNumber = `ORC-${quoteId}`;
+    const transportUnitPrice = 29.99 / 3;
+    await Promise.all([
+      adminDb.doc(`userProfiles/${uid}`).set({
+        role: 'user', active: true,
+        permissions: { orders: { create: true }, quotes: { edit: true } },
+      }),
+      adminDb.doc(`quotes/${quoteId}`).set({
+        userId: uid, status: 'sent', quoteNumber,
+        customerName: 'Cliente Item Único', customerPhone: '',
+        items: [{ name: 'Produto Único', quantity: 3, unitPrice: 10 }],
+        discount: 0.01, discountType: 'fixed', totalPrice: 29.99,
+        deliveryDate: '2026-12-10', notes: '', isExchange: false,
+        validUntil: '2026-12-31',
+      }),
+    ]);
+
+    const result = await handleCreateOrder({
+      auth: { uid, token: { auth_time: 1 } },
+      data: {
+        quoteId,
+        orderData: {
+          customerName: 'Cliente Item Único', customerPhone: '',
+          productName: 'Produto Único (3x)', quantity: 3, price: 29.99,
+          // The service rounds items, but passes the top-level unitPrice through.
+          items: [{ name: 'Produto Único', quantity: 3, unitPrice: 10, price: 30 }],
+          pricingMode: 'unit', unitPrice: transportUnitPrice, status: 'pending',
+          deliveryDate: '2026-12-10', notes: `Gerado do orçamento ${quoteNumber}`,
+          isExchange: false,
+        },
+      },
+    }, adminDb);
+
+    const order = (await adminDb.doc(`orders/${result.orderId}`).get()).data();
+    expect(result.success).toBe(true);
+    expect(order?.price).toBe(29.99);
+    expect(order?.unitPrice).toBe(10);
+    expect(order?.items).toEqual([
+      { name: 'Produto Único', quantity: 3, unitPrice: 10, price: 29.99 },
+    ]);
+  });
+
   it('preserva o tenant do orçamento e registra o funcionário executor', async () => {
     const actorUid = `quote-actor-${Date.now()}`;
     const ownerUid = `quote-tenant-${Date.now()}`;
