@@ -72,6 +72,17 @@ describe('Validação matemática de orçamentos nas regras do Firestore', () =>
     }));
   });
 
+  it('rejeita total com fração de centavo e aceita o cálculo percentual arredondado ao centavo', async () => {
+    await assertFails(setDoc(doc(dbFor(), 'quotes/fractional-total'), {
+      ...baseQuote, items: [{ name: 'Produto', quantity: 1, unitPrice: 1 }],
+      discount: 0, discountType: 'fixed', totalPrice: 0.999,
+    }));
+    await assertSucceeds(setDoc(doc(dbFor(), 'quotes/percent-half-cent'), {
+      ...baseQuote, items: [{ name: 'Produto', quantity: 1, unitPrice: 0.05 }],
+      discount: 10, discountType: 'percent', totalPrice: 0.04,
+    }));
+  });
+
   it('rejeita quantidade fracionária, preço com fração de centavo e mais de 10 itens', async () => {
     await assertFails(setDoc(doc(dbFor(), 'quotes/fractional-quantity'), {
       ...baseQuote, items: [{ name: 'Produto A', quantity: 1.5, unitPrice: 100 }], discount: null, discountType: null, totalPrice: 150,

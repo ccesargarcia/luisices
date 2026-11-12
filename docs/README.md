@@ -6,6 +6,12 @@ Este diretório consolida a documentação técnica oficial, arquitetura viva e 
 
 ## 🏛️ Guias Oficiais & Arquitetura Viva
 
+| Processo | Foco & Quando Consultar |
+| :--- | :--- |
+| **[Spec-Driven Development](../specs/README.md)** | Processo de especificação, constituição, modelos e workflows compatíveis com Antigravity. |
+
+### Guias do sistema
+
 | Documento | Foco & Quando Consultar |
 | :--- | :--- |
 | **[Changelog](../CHANGELOG.md)** | Histórico de entregas, correções e mudanças de segurança. |

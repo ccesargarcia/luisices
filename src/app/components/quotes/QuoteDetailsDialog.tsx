@@ -205,7 +205,13 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       toast.success(`Pedido ${order.orderNumber} criado com sucesso!`);
       onRefresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro ao aprovar orçamento');
+      const error = e as { code?: string; details?: { reason?: string }; message?: string };
+      if (error.details?.reason === 'quote-changed' || error.message?.includes('O orçamento mudou desde que foi aberto')) {
+        toast.error('O orçamento foi alterado. Atualize os dados e revise a proposta antes de aprovar novamente.');
+        onRefresh();
+      } else {
+        toast.error(e instanceof Error ? e.message : 'Erro ao aprovar orçamento');
+      }
     } finally {
       setApproving(false);
     }
