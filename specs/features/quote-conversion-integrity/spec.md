@@ -1,7 +1,7 @@
 # Integridade na conversão de orçamento
 
 - **ID:** `quote-conversion-integrity`
-- **Status:** Em andamento — implementação backend/Rules concluída; E2E de conflito pendente
+- **Status:** Concluída — backend, Rules e cobertura E2E validados em Ubuntu 26.04
 - **Responsável:** Luisices
 - **Atualizado em:** 2026-11-12
 - **Baseline:** [Conversão de orçamento em pedido](../quote-to-order/spec.md)
@@ -95,6 +95,7 @@ Esta spec define uma correção para o caminho nativo, preservando o contrato da
 - Integração Functions: conversão válida, normalização frontend de preços unitários fracionários em orçamento com várias linhas e com item único, snapshot desatualizado, alteração maliciosa, chave repetida, permissão revogada e transação sem efeitos parciais.
 - Integração Rules/Emulator: total/unitário/desconto com centavo fracionário rejeitados; percentuais e exemplos válidos aceitos; 1–10 itens e orçamento MCP 3 × R$ 100,00.
 - E2E: aprovar orçamento atual funciona; orçamento alterado em outra sessão exige recarga e nova confirmação.
+- Evidência E2E: [run #43333147292](https://github.com/ccesargarcia/luisices/actions/runs/43333147292) concluiu com sucesso os quatro shards Playwright em `ubuntu-latest` (Ubuntu 26.04), incluindo o cenário de orçamento alterado em outra sessão.
 - Sempre executar `npm run typecheck`; lint de Functions e suítes específicas conforme skills `luisices-functions-deploy`, `luisices-firestore-rules`, `luisices-order-ledger-audit` e `luisices-test-suite`.
 
 ## Decisões registradas

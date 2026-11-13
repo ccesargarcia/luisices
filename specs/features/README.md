@@ -7,7 +7,7 @@ Cada subpasta representa uma mudança coesa em andamento ou concluída. Este cat
 | [order-lifecycle](order-lifecycle/spec.md) | Ciclo interno do pedido | Pronta (baseline) | Contrato atual de pedidos para orientar specs de mudanças futuras. |
 | [public-store-checkout](public-store-checkout/spec.md) | Checkout público da loja | Pronta (baseline) | Vitrine, validação server-side, gestão e conversão para pedido interno. |
 | [quote-to-order](quote-to-order/spec.md) | Conversão de orçamento | Pronta (baseline) | Conversão nativa, matemática financeira, vínculo transacional e divergências com MCP. |
-| [quote-conversion-integrity](quote-conversion-integrity/spec.md) | Integridade na conversão de orçamento | Em andamento | Backend e Rules implementados; E2E de duas sessões adicionado, execução pendente em Linux. |
+| [quote-conversion-integrity](quote-conversion-integrity/spec.md) | Integridade na conversão de orçamento | Concluída | Backend, Rules e E2E de conflito validados; quatro shards passaram em Ubuntu 26.04. |
 | `<id-curto>` | Nova mudança | Rascunho | Crie uma pasta usando os modelos em `../templates/`. |
 
 ## Baseline do sistema existente
