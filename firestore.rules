@@ -41,8 +41,9 @@ service cloud.firestore {
     }
 
     function hasPerm(permField, action) {
-      return (permField is bool && permField)
-        || (permField is map && permField.get(action, false));
+      return permField is bool
+        ? permField
+        : (permField is map ? permField.get(action, false) == true : false);
     }
 
     function userHasPerm(module, action) {
@@ -67,11 +68,6 @@ service cloud.firestore {
     function isAssignedEmployeeEditor(assignedTo) {
       return isAssignedEmployee(assignedTo)
         && userHasPerm('orders', 'edit');
-    }
-
-    function isAssignedEmployeeDeleter(assignedTo) {
-      return isAssignedEmployee(assignedTo)
-        && userHasPerm('orders', 'delete');
     }
 
     function employeeHasPricingView() {
@@ -392,19 +388,23 @@ service cloud.firestore {
       let discount = float(disc == null ? 0 : disc);
       let dt = data.get('discountType', 'percent');
       let discountType = dt == null ? 'percent' : dt;
-      let subtotal = float((items is list && count >= 1 && count <= 10) ? quoteSubtotal(items) : -1);
-      let discountAmount = discountType == 'percent' ? (subtotal * discount / 100.0) : discount;
+      let subtotalCents = math.round(float((items is list && count >= 1 && count <= 10) ? quoteSubtotal(items) : -1) * 100.0);
+      let discountCents = discountType == 'percent'
+        ? math.floor(subtotalCents / 10000.0) * math.round(discount * 100.0)
+          + math.round((subtotalCents - math.floor(subtotalCents / 10000.0) * 10000.0)
+            * math.round(discount * 100.0) / 10000.0)
+        : math.round(discount * 100.0);
       let dCents = discount * 100.0;
-      let totalPrice = float(data.get('totalPrice', -1));
-      let diff = totalPrice - (subtotal - discountAmount);
-      return subtotal >= 0.0
+      let totalCents = float(data.get('totalPrice', -1)) * 100.0;
+      return subtotalCents >= 0.0
         && discount >= 0.0
         && math.abs(math.round(dCents) - dCents) < 0.001
+        && math.abs(math.round(totalCents) - totalCents) < 0.001
         && (discountType in ['percent', 'fixed'])
         && (discountType != 'percent' || discount <= 100.0)
-        && discountAmount <= subtotal
-        && totalPrice >= 0.0
-        && math.abs(diff) < 0.0051;
+        && discountCents <= subtotalCents
+        && totalCents >= 0.0
+        && math.round(totalCents) == subtotalCents - discountCents;
     }
 
     function isValidQuote(data) {

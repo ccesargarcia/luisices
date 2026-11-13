@@ -199,4 +199,79 @@ test.describe('Fluxos Críticos de Negócio', () => {
       }
     }
   });
+
+  test('deve recusar orçamento atualizado em outra sessão e orientar revisão', async ({ page }) => {
+    test.setTimeout(90000);
+    const timestamp = Date.now();
+    const clientName = `Cliente Snapshot ${timestamp}`;
+    const clientPhone = `11966${String(Math.floor(100000 + Math.random() * 900000))}`;
+
+    await page.goto('/orcamentos');
+    await page.getByRole('button', { name: /Novo Orçamento/i }).click();
+    const form = page.locator('[role="dialog"]').first();
+    await expect(form).toBeVisible();
+    await form.locator('button[role="combobox"]').first().click();
+    await page.getByRole('option', { name: /Novo cliente/i }).click();
+    await form.locator('#q-cname').fill(clientName);
+    await form.locator('#q-cphone').fill(clientPhone);
+    await form.getByPlaceholder(/Ex: Camiseta personalizada/i).first().fill(`Produto ${timestamp}`);
+    await form.getByPlaceholder('0,00').first().fill('100');
+    const deliveryInput = form.locator('#q-delivery');
+    if (!(await deliveryInput.inputValue())) {
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + 10);
+      await deliveryInput.fill(futureDate.toISOString().split('T')[0]);
+    }
+    await form.getByRole('button', { name: /Salvar Orçamento/i }).click();
+    await expect(form).not.toBeVisible({ timeout: 15000 });
+
+    const search = page.getByPlaceholder(/Buscar por cliente/i);
+    await search.fill(clientName);
+    await page.locator('.cursor-pointer').filter({ hasText: clientName }).first().click();
+    const details = page.locator('[role="dialog"]').first();
+    await expect(details).toBeVisible();
+
+    // Freeze the first session's quote listener while keeping callable requests online.
+    let blockedQuoteListeners = 0;
+    await page.context().route(/google\.firestore\.v1\.Firestore\/Listen\/channel/, async (route) => {
+      blockedQuoteListeners += 1;
+      await route.abort();
+    });
+    await page.context().setOffline(true);
+    await page.context().setOffline(false);
+    await expect.poll(() => blockedQuoteListeners, { timeout: 10000 }).toBeGreaterThan(0);
+
+    // Edit the same quote in a second authenticated browser session. The first tab retains
+    // its loaded snapshot, so its next approval must be rejected by the live backend.
+    const browser = page.context().browser();
+    if (!browser) throw new Error('Browser indisponível para abrir a segunda sessão autenticada.');
+    const editorContext = await browser.newContext({ storageState: 'playwright/.auth/user.json' });
+    try {
+      const editorPage = await editorContext.newPage();
+      await ensureAuthenticated(editorPage);
+      await editorPage.goto('/orcamentos');
+      const editorSearch = editorPage.getByPlaceholder(/Buscar por cliente/i);
+      await editorSearch.fill(clientName);
+      await editorPage.locator('.cursor-pointer').filter({ hasText: clientName }).first().click();
+      const editorDetails = editorPage.locator('[role="dialog"]').first();
+      await expect(editorDetails).toBeVisible();
+      await editorDetails.getByRole('button', { name: /^Editar$/i }).click();
+      const editForm = editorPage.getByRole('dialog').filter({ hasText: 'Editar Orçamento' });
+      await expect(editForm).toBeVisible();
+      await editForm.getByPlaceholder('0,00').first().fill('125');
+      await editForm.getByRole('button', { name: /Salvar Orçamento/i }).click();
+      await expect(editForm).not.toBeVisible({ timeout: 15000 });
+
+      const displayedTotal = details.getByText('Total', { exact: true })
+        .locator('..')
+        .getByText('R$ 100,00', { exact: true });
+      await expect(displayedTotal).toBeVisible();
+      await details.getByRole('button', { name: /Aprovar e Gerar Pedido/i }).click();
+      await expect(page.getByText(/O orçamento foi alterado\. Atualize os dados e revise a proposta/i))
+        .toBeVisible({ timeout: 10000 });
+      await expect(details.getByRole('button', { name: /Aprovar e Gerar Pedido/i })).toBeEnabled();
+    } finally {
+      await editorContext.close();
+    }
+  });
 });

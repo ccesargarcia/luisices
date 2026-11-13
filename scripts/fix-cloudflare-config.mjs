@@ -67,44 +67,60 @@ async function run() {
   const records = await cfRequest(`/zones/${zone.id}/dns_records?per_page=100`);
   console.log(`Total de registros: ${records.length}\n`);
 
-  // 3. Configurar Apontamento DNS para WireGuard VPN (vpn.luisices.com.br)
-  console.log('--- 1. Configurando Registro DNS da VPN WireGuard (vpn.luisices.com.br) ---');
-  const VPN_IP = process.env.VPN_SERVER_IP || '35.209.209.91';
-  const vpnRecordName = 'vpn.luisices.com.br';
-  const vpnRecord = records.find(
-    (r) => r.name === vpnRecordName && (r.type === 'A' || r.type === 'CNAME')
-  );
+  // 3. Configurar Apontamentos DNS para WireGuard / Tailscale VPN
+  console.log('--- 1. Configurando Registros DNS da VPN WireGuard / Tailscale ---');
+  async function ensureDnsRecord(subdomain, ip, comment) {
+    const fullName = `${subdomain}.${zone.name}`;
+    const record = records.find(
+      (r) => r.name === fullName && (r.type === 'A' || r.type === 'CNAME')
+    );
 
-  if (!vpnRecord) {
-    process.stdout.write(`• Criando registro A: ${vpnRecordName} -> ${VPN_IP} (⚪ DNS Only)... `);
-    await cfRequest(`/zones/${zone.id}/dns_records`, {
-      method: 'POST',
-      body: JSON.stringify({
-        type: 'A',
-        name: 'vpn',
-        content: VPN_IP,
-        ttl: 1, // Auto
-        proxied: false, // DNS Only obrigatorio para trafego WireGuard UDP 51820
-        comment: 'WireGuard VPN Server GCP Always Free',
-      }),
+    if (!record) {
+      process.stdout.write(`• Criando registro A: ${fullName} -> ${ip} (⚪ DNS Only)... `);
+      await cfRequest(`/zones/${zone.id}/dns_records`, {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'A',
+          name: subdomain,
+          content: ip,
+          ttl: 1, // Auto
+          proxied: false, // DNS Only obrigatorio
+          comment: comment,
+        }),
+      });
+      console.log('✅ Criado com sucesso!');
+    } else if (record.content !== ip || record.proxied !== false) {
+      process.stdout.write(`• Atualizando ${fullName} para ${ip} (⚪ DNS Only)... `);
+      await cfRequest(`/zones/${zone.id}/dns_records/${record.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          type: 'A',
+          name: subdomain,
+          content: ip,
+          ttl: 1,
+          proxied: false,
+          comment: comment,
+        }),
+      });
+      console.log('✅ Atualizado com sucesso!');
+    } else {
+      console.log(`• ${fullName} já está configurado para ${ip} (⚪ DNS Only).`);
+    }
+  }
+
+  const WIREGUARD_IP = process.env.WIREGUARD_IP || '100.97.222.39';
+  await ensureDnsRecord('wireguard', WIREGUARD_IP, 'WireGuard / Tailscale Bridge Galaxy A70');
+
+  // Remover registro legado vpn.luisices.com.br (antigo servidor GCP descontinuado)
+  const legacyVpnRecord = records.find(
+    (r) => r.name === `vpn.${zone.name}` && (r.type === 'A' || r.type === 'CNAME')
+  );
+  if (legacyVpnRecord) {
+    process.stdout.write(`• Removendo registro legado ${legacyVpnRecord.name} (${legacyVpnRecord.content})... `);
+    await cfRequest(`/zones/${zone.id}/dns_records/${legacyVpnRecord.id}`, {
+      method: 'DELETE',
     });
-    console.log('✅ Criado com sucesso!');
-  } else if (vpnRecord.content !== VPN_IP || vpnRecord.proxied !== false) {
-    process.stdout.write(`• Atualizando ${vpnRecordName} para ${VPN_IP} (⚪ DNS Only)... `);
-    await cfRequest(`/zones/${zone.id}/dns_records/${vpnRecord.id}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        type: 'A',
-        name: 'vpn',
-        content: VPN_IP,
-        ttl: 1,
-        proxied: false,
-        comment: 'WireGuard VPN Server GCP Always Free',
-      }),
-    });
-    console.log('✅ Atualizado com sucesso!');
-  } else {
-    console.log(`• ${vpnRecordName} já está configurado para ${VPN_IP} (⚪ DNS Only).`);
+    console.log('🗑️ Excluído com sucesso!');
   }
 
   // 4. Ajustar DKIM do Firebase (Remover Proxy / Nuvem Cinza)

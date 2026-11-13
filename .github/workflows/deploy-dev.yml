@@ -420,6 +420,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      pull-requests: read
     uses: ./.github/workflows/test-actions.yml
     secrets: inherit
 

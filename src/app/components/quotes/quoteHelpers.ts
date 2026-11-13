@@ -63,8 +63,15 @@ export function calculateQuoteTotals(
   items: QuoteItem[], discount = 0, discountType: 'percent' | 'fixed' = 'percent'
 ): { subtotal: number; discountAmount: number; total: number } {
   const subtotal = calcTotal(items);
-  const discountAmount = roundCurrency(discountType === 'percent' ? subtotal * discount / 100 : discount);
-  return { subtotal, discountAmount, total: roundCurrency(subtotal - discountAmount) };
+  const subtotalCents = Math.round(subtotal * 100);
+  const discountCents = discountType === 'percent'
+    ? Math.round(subtotalCents * Math.round(discount * 100) / 10000)
+    : Math.round(discount * 100);
+  return {
+    subtotal: subtotalCents / 100,
+    discountAmount: discountCents / 100,
+    total: (subtotalCents - discountCents) / 100,
+  };
 }
 
 export function buildQuoteOrderPricing(

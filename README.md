@@ -6,6 +6,7 @@ Documentação de pedidos e publicação revisada em **25/10/2026**, mantendo a 
 
 ## Documentação
 
+- [Spec-Driven Development e workflows Antigravity](specs/README.md)
 - [Changelog das entregas](CHANGELOG.md)
 - [Guia de changelog e releases](docs/CHANGELOG_E_RELEASES.md)
 - [Índice dos guias](docs/README.md)
