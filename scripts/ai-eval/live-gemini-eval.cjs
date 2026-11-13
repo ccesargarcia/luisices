@@ -176,11 +176,42 @@ function makeMetrics(testCase, result, toolCalls, callMetrics = []) {
 function classifyProviderError(error) {
   const attemptStatuses = Array.isArray(error?.attempts) ? error.attempts.map(({ status }) => status) : [];
   if (attemptStatuses.includes('timeout') || error?.code === 'deadline-exceeded') return 'provider_timeout';
+  if (attemptStatuses.includes('network_or_parse_error')) return 'provider_transport_error';
   if ([401, 403].includes(error?.status)) return 'provider_auth_rejected';
   if (error?.status === 404) return 'provider_model_unavailable';
   if (error?.status === 429) return 'provider_rate_limited';
   if ([400, 402, 422].includes(error?.status)) return 'provider_request_rejected';
+  if (Number.isInteger(error?.status) && error.status >= 500 && error.status <= 599) return 'provider_server_error';
+  const httpAttempt = attemptStatuses.find((status) => /^http_\d{3}$/.test(status));
+  if (httpAttempt) {
+    const httpStatus = Number(httpAttempt.slice(5));
+    if ([401, 403].includes(httpStatus)) return 'provider_auth_rejected';
+    if (httpStatus === 404) return 'provider_model_unavailable';
+    if (httpStatus === 429) return 'provider_rate_limited';
+    if ([400, 402, 422].includes(httpStatus)) return 'provider_request_rejected';
+    if (httpStatus >= 500) return 'provider_server_error';
+  }
   return 'provider_or_handler_error';
+}
+
+function makeSafeFailureLog(error, caseId) {
+  const attemptStatuses = Array.isArray(error?.attempts)
+    ? error.attempts.map(({ status }) => status).filter((status) => (
+      ['started', 'timeout', 'network_or_parse_error', 'truncated', 'success', 'empty_response'].includes(status)
+      || /^http_[1-5]\d{2}$/.test(status)
+    ))
+    : [];
+  const safeErrorNames = new Set(['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'AbortError', 'HttpsError']);
+  const safeErrorCodes = new Set(['failed-precondition', 'deadline-exceeded', 'unauthenticated', 'permission-denied', 'invalid-argument', 'resource-exhausted', 'unavailable', 'internal', 'not-found', 'aborted', 'cancelled', 'unknown']);
+  return {
+    event: 'gemini_synthetic_eval_case_error',
+    caseId,
+    category: classifyProviderError(error),
+    errorType: safeErrorNames.has(error?.name) ? error.name : 'OtherError',
+    ...(safeErrorCodes.has(error?.code) ? { errorCode: error.code } : {}),
+    ...(Number.isInteger(error?.status) && error.status >= 100 && error.status <= 599 ? { httpStatus: error.status } : {}),
+    attemptStatuses,
+  };
 }
 
 function makeSafeReport({ model, suite, gitSha, promptHash, cases, errorCategory }) {
@@ -265,7 +296,9 @@ async function runEvaluation({ apiKey, model, suite, gitSha = 'local' }) {
         data: { message: testCase.message },
       });
     } catch (error) {
-      throw new Error(classifyProviderError(error));
+      const safeFailure = makeSafeFailureLog(error, testCase.id);
+      console.error(JSON.stringify(safeFailure));
+      throw new Error(safeFailure.category);
     }
 
     const metrics = makeMetrics(testCase, result, toolCalls, callMetrics);
@@ -310,8 +343,9 @@ async function main() {
       gitSha: process.env.GITHUB_SHA || 'local',
     });
   } catch (error) {
-    const safeCategories = new Set(['missing_eval_key', 'unsupported_model', 'invalid_suite', 'invalid_fixture_set', 'tool_inventory_requires_review', 'provider_timeout', 'provider_auth_rejected', 'provider_model_unavailable', 'provider_rate_limited', 'provider_request_rejected', 'provider_or_handler_error']);
+    const safeCategories = new Set(['missing_eval_key', 'unsupported_model', 'invalid_suite', 'invalid_fixture_set', 'tool_inventory_requires_review', 'provider_timeout', 'provider_transport_error', 'provider_auth_rejected', 'provider_model_unavailable', 'provider_rate_limited', 'provider_request_rejected', 'provider_server_error', 'provider_or_handler_error']);
     const category = safeCategories.has(error.message) ? error.message : 'evaluation_error';
+    console.error(JSON.stringify({ event: 'gemini_synthetic_eval_error', category }));
     report = makeSafeReport({
       model: /^gemini-3(?:[.-])[A-Za-z0-9.-]+$/.test(model) ? model : 'invalid_or_missing',
       suite: ['smoke', 'full'].includes(suite) ? suite : 'invalid_or_missing',
@@ -359,6 +393,7 @@ module.exports = {
   classifyProviderError,
   createSyntheticRepositories,
   makeMetrics,
+  makeSafeFailureLog,
   makeSafeReport,
   readFixtures,
   runEvaluation,
