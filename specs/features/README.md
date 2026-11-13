@@ -8,6 +8,7 @@ Cada subpasta representa uma mudança coesa em andamento ou concluída. Este cat
 | [public-store-checkout](public-store-checkout/spec.md) | Checkout público da loja | Pronta (baseline) | Vitrine, validação server-side, gestão e conversão para pedido interno. |
 | [quote-to-order](quote-to-order/spec.md) | Conversão de orçamento | Pronta (baseline) | Conversão nativa, matemática financeira, vínculo transacional e divergências com MCP. |
 | [quote-conversion-integrity](quote-conversion-integrity/spec.md) | Integridade na conversão de orçamento | Concluída | Backend, Rules e E2E de conflito validados; quatro shards passaram em Ubuntu 26.04. |
+| [copilot-mcp-quality](copilot-mcp-quality/spec.md) | Consistência e avaliação de IA | Em andamento | T1–T3 cobrem paridade MCP, catálogo e regressões offline; avaliação Gemini live continua pendente. |
 | `<id-curto>` | Nova mudança | Rascunho | Crie uma pasta usando os modelos em `../templates/`. |
 
 ## Baseline do sistema existente

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterAll, beforeAll, describe, it, expect, vi } from 'vitest';
 const { AiToolsExecutor } = require('../../../functions/ai/tools');
 const { getCallerScope, validateAiAccess, validateGalleryAccess } = require('../../../functions/ai/authorization');
 const { calculateRecipePricing, DEFAULT_PRICING_SETTINGS } = require('../../../functions/ai/pricing/pricingCalculator');
@@ -8,8 +8,7 @@ const { GeminiClient } = require('../../../functions/ai/geminiClient');
 const { cleanAiOutput } = require('../../../functions/ai/handlers');
 
 describe('IA-QA: Suíte Sintética de Avaliação e Regressão (40 Casos Obrigatórios)', () => {
-  const now = new Date();
-  const currentIso = new Date(now.getTime() - 60000).toISOString();
+  const currentIso = '2025-01-15T14:59:00.000Z';
   const syntheticOrders = [
     { orderId: 'ord-1', orderNumber: '#101', customerName: 'Alice Mendes', customerPhone: '11999991111', productSummary: 'Topo 3D', totalPrice: 80, paidAmount: 80, remainingAmount: 0, status: 'completed', paymentStatus: 'paid', deliveryDate: currentIso.split('T')[0], createdAt: currentIso, userId: 'u-admin', isDeleted: false },
     { orderId: 'ord-2', orderNumber: '#102', customerName: 'Bruno Costa', customerPhone: '11999992222', productSummary: 'Caixa Milk 20un', totalPrice: 160, paidAmount: 60, remainingAmount: 100, status: 'in-progress', paymentStatus: 'partial', deliveryDate: currentIso.split('T')[0], createdAt: currentIso, userId: 'u-admin', isDeleted: false },
@@ -36,6 +35,13 @@ describe('IA-QA: Suíte Sintética de Avaliação e Regressão (40 Casos Obrigat
 
   const toolsExec = new AiToolsExecutor(mockRepos);
   const adminScope = getCallerScope('u-admin', { role: 'admin', active: true });
+
+  beforeAll(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-01-15T15:00:00.000Z'));
+  });
+
+  afterAll(() => vi.useRealTimers());
 
   // -------------------------------------------------------------
   // GRUPO 1: Financeiro & Busca (Casos 1 a 8)
