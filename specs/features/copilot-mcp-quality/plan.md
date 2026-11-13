@@ -22,6 +22,7 @@ Entregar em etapas. Primeiro tornar contratos e documentação MCP verificáveis
 - Contratos/API/schema: sem mudança pública pretendida; se a auditoria detectar discrepância, abrir decisão específica antes de alterar o contrato.
 - Dados/migração: não se aplica; datasets de avaliação serão fictícios e versionados.
 - Integrações/ambientes: teste offline em PR; avaliação live manual com segredo exclusivo, modelo configurado explicitamente e saída sintética.
+- O harness de avaliação live usa timeout isolado (60 segundos por tentativa e 90 segundos por chamada), sem alterar os limites do chat em produção. Erros do provedor são registrados por categorias seguras.
 
 ## Segurança e integridade
 

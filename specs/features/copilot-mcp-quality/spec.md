@@ -75,7 +75,7 @@ O objetivo desta spec é tornar verificável a compatibilidade dos contratos e i
 
 ## Erros e casos-limite
 
-- Gemini indisponível, chave ausente, limite de taxa excedido ou resposta sem metadados: falhar o run como erro de avaliação, distinguindo-o de reprovação de qualidade.
+- Gemini indisponível, timeout, chave ausente, limite de taxa excedido ou resposta sem metadados: falhar o run como erro de avaliação, distinguindo-o de reprovação de qualidade e registrando apenas uma categoria segura, sem mensagem bruta do provedor.
 - Modelo ou revisão do prompt não declarados: não iniciar a avaliação live.
 - Resposta truncada, JSON inválido, ferramenta inexistente ou argumentos inválidos: registrar reprovação da categoria apropriada sem executar efeitos externos.
 - Resposta plausível, mas não sustentada pelos resultados sintéticos: marcar como falha de fundamentação.
