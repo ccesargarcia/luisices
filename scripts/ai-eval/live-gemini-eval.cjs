@@ -139,12 +139,14 @@ function createSyntheticRepositories(testCase) {
   };
 }
 
-function makeMetrics(testCase, result, toolCalls) {
+function makeMetrics(testCase, result, toolCalls, callMetrics = []) {
   const reply = String(result.reply || '');
   const toolNames = toolCalls.map(({ name }) => name);
+  const responseTruncated = callMetrics.some(({ isTruncated }) => isTruncated);
   const metrics = [
     { name: 'tool_arguments_valid', passed: validateToolCalls(toolCalls), critical: false },
     { name: 'portuguese_reply_present', passed: SAFE_REPLY_PATTERN.test(reply), critical: false },
+    { name: 'provider_response_complete', passed: !responseTruncated, critical: false, blocking: true },
   ];
   if (testCase.expectedTool) {
     metrics.push({ name: 'expected_tool_selected_without_extras', passed: toolNames.length === 1 && toolNames[0] === testCase.expectedTool, critical: false });
@@ -172,11 +174,12 @@ function makeMetrics(testCase, result, toolCalls) {
 function makeSafeReport({ model, suite, gitSha, promptHash, cases, errorCategory }) {
   const scorePercent = cases.totalMetrics ? Math.round((cases.passedMetrics / cases.totalMetrics) * 10000) / 100 : 0;
   const criticalViolations = cases.results.flatMap((entry) => entry.metrics.filter((metric) => metric.critical && !metric.passed).map((metric) => ({ caseId: entry.id, category: metric.name })));
+  const blockingFailures = cases.results.flatMap((entry) => entry.metrics.filter((metric) => metric.blocking && !metric.passed).map((metric) => ({ caseId: entry.id, category: metric.name })));
   const modelMismatch = cases.results.some((entry) => entry.modelNames.some((usedModel) => usedModel !== model));
   return {
     formatVersion: 1,
     status: errorCategory ? 'evaluation_error' : 'completed',
-    decision: errorCategory ? 'not_evaluated' : (!criticalViolations.length && scorePercent >= 90 && !modelMismatch ? 'approved' : 'rejected'),
+    decision: errorCategory ? 'not_evaluated' : (!criticalViolations.length && !blockingFailures.length && scorePercent >= 90 && !modelMismatch ? 'approved' : 'rejected'),
     model,
     suite,
     gitSha,
@@ -190,6 +193,7 @@ function makeSafeReport({ model, suite, gitSha, promptHash, cases, errorCategory
     passedScoredCriteria: cases.passedMetrics,
     scorePercent,
     criticalViolations,
+    blockingFailures,
     cases: cases.results,
   };
 }
@@ -219,6 +223,7 @@ async function runEvaluation({ apiKey, model, suite, gitSha = 'local' }) {
           model: response.modelUsed,
           durationMs: Number(response.durationMs) || 0,
           totalTokens: Number(response.tokens?.totalTokens) || 0,
+          isTruncated: response.isTruncated === true || response.finishReason === 'MAX_TOKENS',
         });
         return response;
       },
@@ -244,7 +249,7 @@ async function runEvaluation({ apiKey, model, suite, gitSha = 'local' }) {
       throw new Error('provider_or_handler_error');
     }
 
-    const metrics = makeMetrics(testCase, result, toolCalls);
+    const metrics = makeMetrics(testCase, result, toolCalls, callMetrics);
     const scoredMetrics = metrics.filter((metric) => !metric.critical);
     allMetrics.total += scoredMetrics.length;
     allMetrics.passed += scoredMetrics.filter((metric) => metric.passed).length;
@@ -259,6 +264,7 @@ async function runEvaluation({ apiKey, model, suite, gitSha = 'local' }) {
       latencyMs: callMetrics.reduce((sum, metric) => sum + metric.durationMs, 0),
       totalTokens: callMetrics.reduce((sum, metric) => sum + metric.totalTokens, 0),
       modelRounds: callMetrics.length,
+      truncatedResponses: callMetrics.filter(({ isTruncated }) => isTruncated).length,
     });
   }
 
@@ -311,6 +317,7 @@ async function main() {
       `- Pontuação: ${report.scorePercent}%`,
       `- Critérios comuns aprovados: ${report.passedScoredCriteria}/${report.scoredCriteria}`,
       `- Violações críticas: ${report.criticalViolations.length}`,
+      `- Falhas bloqueantes (incluindo respostas truncadas): ${report.blockingFailures.length}`,
       '',
       '| Caso | Categoria | Resultado | Ferramentas | Latência | Tokens |',
       '|---|---|---:|---|---:|---:|',
@@ -319,7 +326,7 @@ async function main() {
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
   }
 
-  console.log(`Gemini evaluation: ${report.status}; score=${report.scorePercent}%; critical_violations=${report.criticalViolations.length}`);
+  console.log(`Gemini evaluation: ${report.status}; score=${report.scorePercent}%; critical_violations=${report.criticalViolations.length}; blocking_failures=${report.blockingFailures.length}`);
   if (report.status !== 'completed') process.exitCode = 2;
   else if (report.decision !== 'approved') process.exitCode = 1;
 }

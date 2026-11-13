@@ -47,7 +47,7 @@ Entregar em etapas. Primeiro tornar contratos e documentação MCP verificáveis
 - Contrato: teste Vitest comparando os conjuntos metadata/scope/dispatcher e validando o catálogo gerado ou verificável.
 - Segurança: suítes unitárias MCP/OAuth/AI, testes de Rules/integração aplicáveis a qualquer mudança real de autorização.
 - Avaliação live: workflow manual com fixtures sintéticas; revisar artefato e score; confirmar que ausência/falha de chave não expõe secrets nem altera recursos.
-- Risco e mitigação: flutuação do modelo mitigada por workflow live não bloqueante, identificação de modelo/prompt, critérios críticos separados e revisão humana; custo mitigado por execução manual e dataset pequeno.
+- Risco e mitigação: flutuação do modelo mitigada por workflow live não bloqueante, identificação de modelo/prompt, barreiras críticas e bloqueio de qualquer resposta truncada, além de revisão humana; custo mitigado por execução manual e dataset pequeno.
 
 ## Reversão
 
