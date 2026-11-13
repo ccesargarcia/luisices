@@ -10,6 +10,8 @@ const { COPILOT_SYSTEM_INSTRUCTION, TOOLS_DECLARATIONS } = require('../../functi
 const { GeminiClient } = require('../../functions/ai/geminiClient');
 
 const FIXTURE_PATH = path.resolve('tests/fixtures/ai/copilot-live-eval.json');
+const EVAL_REQUEST_TIMEOUT_MS = 60_000;
+const EVAL_TOTAL_TIMEOUT_MS = 90_000;
 const EXPECTED_SAFE_TOOL_NAMES = [
   'calculate_pricing_estimate',
   'daily_briefing',
@@ -171,6 +173,16 @@ function makeMetrics(testCase, result, toolCalls, callMetrics = []) {
   return metrics;
 }
 
+function classifyProviderError(error) {
+  const attemptStatuses = Array.isArray(error?.attempts) ? error.attempts.map(({ status }) => status) : [];
+  if (attemptStatuses.includes('timeout') || error?.code === 'deadline-exceeded') return 'provider_timeout';
+  if ([401, 403].includes(error?.status)) return 'provider_auth_rejected';
+  if (error?.status === 404) return 'provider_model_unavailable';
+  if (error?.status === 429) return 'provider_rate_limited';
+  if ([400, 402, 422].includes(error?.status)) return 'provider_request_rejected';
+  return 'provider_or_handler_error';
+}
+
 function makeSafeReport({ model, suite, gitSha, promptHash, cases, errorCategory }) {
   const scorePercent = cases.totalMetrics ? Math.round((cases.passedMetrics / cases.totalMetrics) * 10000) / 100 : 0;
   const criticalViolations = cases.results.flatMap((entry) => entry.metrics.filter((metric) => metric.critical && !metric.passed).map((metric) => ({ caseId: entry.id, category: metric.name })));
@@ -214,7 +226,14 @@ async function runEvaluation({ apiKey, model, suite, gitSha = 'local' }) {
     const client = new GeminiClient({ apiKey, primaryModel: model, fallbackModels: [] });
     const geminiClient = {
       generateContent: async (payload, options) => {
-        const response = await client.generateContent(payload, { ...options, primaryModel: model, fallbackModels: [] });
+        const response = await client.generateContent(payload, {
+          ...options,
+          totalTimeoutMs: EVAL_TOTAL_TIMEOUT_MS,
+          primaryAttemptTimeoutMs: EVAL_REQUEST_TIMEOUT_MS,
+          fallbackAttemptTimeoutMs: EVAL_REQUEST_TIMEOUT_MS,
+          primaryModel: model,
+          fallbackModels: [],
+        });
         const returnedCalls = (response.data?.candidates?.[0]?.content?.parts || [])
           .filter((part) => part.functionCall)
           .map((part) => ({ name: part.functionCall.name, args: part.functionCall.args || {} }));
@@ -245,8 +264,8 @@ async function runEvaluation({ apiKey, model, suite, gitSha = 'local' }) {
         authProfile,
         data: { message: testCase.message },
       });
-    } catch {
-      throw new Error('provider_or_handler_error');
+    } catch (error) {
+      throw new Error(classifyProviderError(error));
     }
 
     const metrics = makeMetrics(testCase, result, toolCalls, callMetrics);
@@ -291,7 +310,7 @@ async function main() {
       gitSha: process.env.GITHUB_SHA || 'local',
     });
   } catch (error) {
-    const safeCategories = new Set(['missing_eval_key', 'unsupported_model', 'invalid_suite', 'invalid_fixture_set', 'tool_inventory_requires_review', 'provider_or_handler_error']);
+    const safeCategories = new Set(['missing_eval_key', 'unsupported_model', 'invalid_suite', 'invalid_fixture_set', 'tool_inventory_requires_review', 'provider_timeout', 'provider_auth_rejected', 'provider_model_unavailable', 'provider_rate_limited', 'provider_request_rejected', 'provider_or_handler_error']);
     const category = safeCategories.has(error.message) ? error.message : 'evaluation_error';
     report = makeSafeReport({
       model: /^gemini-3(?:[.-])[A-Za-z0-9.-]+$/.test(model) ? model : 'invalid_or_missing',
@@ -337,6 +356,7 @@ module.exports = {
   EXPECTED_SAFE_TOOL_NAMES,
   assertInputs,
   assertSafeToolInventory,
+  classifyProviderError,
   createSyntheticRepositories,
   makeMetrics,
   makeSafeReport,
