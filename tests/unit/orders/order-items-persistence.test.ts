@@ -144,6 +144,38 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
       ]);
     });
 
+    it('preserva subtotal autoritativo de item com preço unitário exibido arredondado', async () => {
+      await firebaseOrderService.createOrder({
+        customerName: 'Cliente de Teste',
+        productName: 'Convites (3x)',
+        quantity: 3,
+        price: 29.99,
+        deliveryDate: '2026-11-30',
+        items: [{ name: 'Convites', quantity: 3, unitPrice: 10, price: 29.99 }],
+      });
+
+      const savedDoc = mockTransactionSet.mock.calls.find(call => call[1]?.orderNumber)?.[1];
+      expect(savedDoc.items).toEqual([
+        { name: 'Convites', quantity: 3, unitPrice: 10, price: 29.99 },
+      ]);
+    });
+
+    it('retorna confirmação mínima de conversão de orçamento sem ler o pedido do titular', async () => {
+      mockCallable.mockResolvedValue({ data: { success: true, orderId: 'quote-order-1', orderNumber: 'PED-1' } });
+
+      await expect(firebaseOrderService.createOrder({
+        customerName: 'Cliente de Teste',
+        productName: 'Convites (3x)',
+        quantity: 3,
+        price: 29.99,
+        deliveryDate: '2026-11-30',
+        items: [{ name: 'Convites', quantity: 3, unitPrice: 10, price: 29.99 }],
+      }, undefined, 'quote-1')).resolves.toEqual({ id: 'quote-order-1', orderNumber: 'PED-1' });
+
+      expect(mockOrderGet).not.toHaveBeenCalled();
+      expect(mockTransactionSet).not.toHaveBeenCalled();
+    });
+
     it('preserva preços unitários diferentes em um pedido com 120 unidades e total em reais', async () => {
       await firebaseOrderService.createOrder({
         customerName: 'Cliente de Teste',

@@ -390,7 +390,9 @@ service cloud.firestore {
       let discountType = dt == null ? 'percent' : dt;
       let subtotalCents = math.round(float((items is list && count >= 1 && count <= 10) ? quoteSubtotal(items) : -1) * 100.0);
       let discountCents = discountType == 'percent'
-        ? math.round(subtotalCents * discount / 100.0)
+        ? math.floor(subtotalCents / 10000.0) * math.round(discount * 100.0)
+          + math.round((subtotalCents - math.floor(subtotalCents / 10000.0) * 10000.0)
+            * math.round(discount * 100.0) / 10000.0)
         : math.round(discount * 100.0);
       let dCents = discount * 100.0;
       let totalCents = float(data.get('totalPrice', -1)) * 100.0;

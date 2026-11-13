@@ -500,7 +500,17 @@ Equipe ${settings?.businessName || 'Luisices'}`;
       let singleUnitPrice: number | null = null;
       let pricingMode = order.pricingMode || 'total';
 
-      if (allHaveExplicitUnitPrice) {
+      if (!editPricingChanged && order.items && order.items.length > 0
+        && validProducts.length === order.items.length) {
+        // Keep authoritative line subtotals (including quote discounts) when only
+        // descriptive fields such as product names are edited.
+        updatedItems = order.items.map((item, index) => ({
+          ...item,
+          name: validProducts[index].name.trim(),
+        }));
+        singleUnitPrice = typeof order.unitPrice === 'number' ? order.unitPrice : null;
+        pricingMode = order.pricingMode || (order.items.length === 1 ? 'unit' : 'items');
+      } else if (allHaveExplicitUnitPrice) {
         updatedItems = validProducts.map(p => {
           const qty = Math.max(1, parseInt(p.quantity, 10) || 1);
           const unitPrice = parseDecimalMoneyInput(p.unitPrice)!;
@@ -513,11 +523,6 @@ Equipe ${settings?.businessName || 'Luisices'}`;
         });
         singleUnitPrice = updatedItems.length === 1 ? updatedItems[0].unitPrice : null;
         pricingMode = updatedItems.length === 1 ? 'unit' : 'items';
-      } else if (!editPricingChanged && order.items && order.items.length > 0) {
-        // Se a precificação não foi alterada e o pedido já possui itens estruturados, preserve-os intactos
-        updatedItems = order.items;
-        singleUnitPrice = typeof order.unitPrice === 'number' ? order.unitPrice : null;
-        pricingMode = order.pricingMode || (order.items.length === 1 ? 'unit' : 'items');
       } else if (validProducts.length === 1) {
         const singleQty = totalQuantity || 1;
         const average = price / singleQty;

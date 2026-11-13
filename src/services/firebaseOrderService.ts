@@ -29,6 +29,8 @@ import { loadPendingOrderOperation, savePendingOrderOperation, clearPendingOrder
 
 const ORDERS_COLLECTION = 'orders';
 
+export type OrderCreationConfirmation = Pick<Order, 'id' | 'orderNumber'>;
+
 export function callableErrorCode(error: any): string {
   return String(error?.code || '').replace(/^functions\//, '');
 }
@@ -280,8 +282,17 @@ export class FirebaseOrderService {
         } else if (typeof item?.unitPrice === 'string') {
           unitPrice = parseDecimalMoneyInput(item.unitPrice) ?? 0;
         }
-        // unitPrice e quantity são a fonte canônica; nunca preserve um subtotal divergente.
-        const price = this.ensurePositive(quantity * unitPrice);
+        const computedPriceCents = Math.round(quantity * Math.round(unitPrice * 100));
+        const explicitPriceCents = typeof item?.price === 'number' && Number.isFinite(item.price)
+          && item.price >= 0 && Math.abs(item.price * 100 - Math.round(item.price * 100)) < 0.001
+          ? Math.round(item.price * 100)
+          : null;
+        const roundedUnitPriceCents = explicitPriceCents == null ? null : Math.round(explicitPriceCents / quantity);
+        const priceCents = explicitPriceCents != null
+          && roundedUnitPriceCents === Math.round(unitPrice * 100)
+          ? explicitPriceCents
+          : computedPriceCents;
+        const price = priceCents / 100;
         return { name, quantity, unitPrice, price };
       })
       .filter(item => item.name.length > 0);
@@ -503,7 +514,9 @@ export class FirebaseOrderService {
   }
 
   /** Grava contador, pedido, venda e vínculo de catálogo/orçamento em uma única transação atômica. */
-  async createOrder(orderData: Partial<Order>, catalogOrderId?: string, quoteId?: string, idempotencyKey?: string): Promise<Order> {
+  async createOrder(orderData: Partial<Order>, catalogOrderId: undefined, quoteId: string, idempotencyKey?: string): Promise<OrderCreationConfirmation>;
+  async createOrder(orderData: Partial<Order>, catalogOrderId?: string, quoteId?: undefined, idempotencyKey?: string): Promise<Order>;
+  async createOrder(orderData: Partial<Order>, catalogOrderId?: string, quoteId?: string, idempotencyKey?: string): Promise<Order | OrderCreationConfirmation> {
     try {
       this.validateOrderPayload(orderData);
     } catch (error) {
@@ -560,6 +573,9 @@ export class FirebaseOrderService {
         idempotencyKey: effectiveOrderId,
       });
       if (response?.data?.orderId) {
+        if (quoteId) {
+          return { id: response.data.orderId, orderNumber: response.data.orderNumber };
+        }
         try {
           const saved = await this.readDocFromServer(doc(db, ORDERS_COLLECTION, response.data.orderId));
           if (!saved?.exists()) throw new Error('Pedido ainda não disponível para leitura.');
