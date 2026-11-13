@@ -113,6 +113,30 @@ Priorize: prompt compacto; contexto sob demanda; eliminação de consultas repet
 
 ## Validação local e próxima validação em DEV
 
+### Avaliação determinística offline
+
+Os testes locais verificam contratos e regras do backend com fixtures fictícias e dependências mockadas; não medem se uma chamada real do Gemini escolhe a ferramenta ou redige a melhor resposta. A suíte `tests/unit/ai/synthetic-quality-eval.test.ts` reúne 40 casos determinísticos de cálculo, busca, rascunhos, autorização e falhas; sua data está fixada em janeiro de 2025 para que os casos relativos ao dia não dependam da data do runner. `tests/unit/ai/response-contracts.test.ts` cobre ambiguidade, prompt injection no contexto, argumentos de precificação e respostas do handler com Gemini simulado. `tests/unit/ai/offline-regression-guardrails.test.ts` protege o bloqueio antes de contexto/provedor, o não despacho de ferramentas desconhecidas e a separação entre instrução confiável e resultado cadastrado não confiável.
+
+Isolamento entre tenants e metadados é coberto em `tests/unit/ai/profile-metadata-isolation.test.ts`; os testes de redação financeira de MCP/ChatGPT estão em `tests/unit/security-attack-simulations.test.ts`, complementados por validação de argumentos e autorização MCP. Esses testes protegem contratos próprios de cada integração e não significam paridade entre Copiloto e MCP.
+
+Execute a cobertura focada com `npx vitest run --reporter=verbose tests/unit/ai/offline-regression-guardrails.test.ts tests/unit/ai/synthetic-quality-eval.test.ts tests/unit/ai/response-contracts.test.ts tests/unit/ai/profile-metadata-isolation.test.ts tests/unit/security-attack-simulations.test.ts tests/unit/backend-mcp-authorization.test.ts tests/unit/mcp-validation.test.ts`. O resultado não substitui a futura avaliação live do Gemini; nenhum teste desta suíte envia dados ao provedor.
+
+### Avaliação live manual no GitHub Actions
+
+O workflow `.github/workflows/gemini-synthetic-evaluation.yml` executa o handler real do Copiloto com uma chave exclusiva e repositórios em memória preenchidos por fixtures versionadas em `tests/fixtures/ai/copilot-live-eval.json`. Não inicializa Firebase, não usa banco, rede de clientes, orçamento de produção nem ferramentas mutáveis. A lista de nove ferramentas é conferida contra uma allowlist revisada; uma mudança no catálogo interrompe a avaliação até revisão explícita.
+
+O workflow só aceita execução manual em `develop` ou `main`, requer confirmação explícita de uso exclusivo de dados sintéticos e custo potencial, limita a seleção a `smoke` (3 casos) ou `full` (5 casos), permite escolher um modelo Gemini 3.x e usa somente esse modelo, sem fallback. A rubrica reprova violações críticas, respostas truncadas pelo limite de saída do provedor e exige ao menos 90% dos critérios não críticos. Truncamento é uma falha bloqueante independente da pontuação agregada. O artefato e o resumo do Actions omitem prompts, argumentos, respostas textuais e conteúdo de erro bruto; registram identificadores de casos, ferramentas chamadas, critérios, modelo, SHA, hash do prompt, latência, tokens e quantidade de respostas truncadas. O artefato expira após 14 dias.
+
+#### Criar e cadastrar a chave dedicada
+
+1. No [Google AI Studio](https://aistudio.google.com/apikey), selecione um projeto de avaliação separado da produção. Se usar um projeto existente, importe-o no AI Studio antes de criar a chave.
+2. Crie uma chave Gemini para esse projeto. As chaves novas são do tipo de autorização; restrinja a chave à Gemini API quando a tela oferecer essa opção. Acompanhe uso e cotas no painel do projeto.
+3. No GitHub, abra `ccesargarcia/luisices` → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**. Use exatamente o nome `GEMINI_EVAL_API_KEY` e cole o valor da chave no campo do segredo. Não a coloque no repositório, em issue, PR, log ou conversa.
+4. Quando este workflow estiver disponível em `develop` ou `main`, abra **Actions** → **Gemini Synthetic Evaluation** → **Run workflow**. Comece com `smoke`, mantenha `gemini-3.8-flash` na primeira execução e marque a confirmação de dados sintéticos/custo. O workflow faz chamadas reais ao Gemini e pode consumir a cota do projeto.
+5. Consulte o resumo da execução e o artefato `gemini-synthetic-evaluation-<run_id>`; valide a decisão e as violações críticas antes de usar o resultado como baseline. O relatório não é aprovação automática de release.
+
+As instruções oficiais de [criação e restrição de chaves Gemini](https://ai.google.dev/gemini-api/docs/api-key) e de [segredos de repositório no GitHub Actions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets) podem mudar; consulte-as durante a configuração.
+
 | Cenário | Resultado esperado |
 |---|---|
 | Encomenda sem preço/data | Pergunta ou rascunho incompleto identificado; sem inventar dados |

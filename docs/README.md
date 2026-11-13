@@ -24,7 +24,7 @@ Este diretório consolida a documentação técnica oficial, arquitetura viva e 
 | **[Modelagem de ameaças](MODELAGEM_AMEACAS_SEGURANCA.md)** | Ativos, atores, limites de confiança, controles observados, ameaças STRIDE, riscos residuais e prioridades de mitigação. |
 | **[Idempotência e recuperação de pedidos](IDEMPOTENCIA_PEDIDOS.md)** | Chaves de operação, recibos transacionais, retomada após timeout e limites da recuperação no navegador. |
 | **[Copiloto de IA](COPILOTO_IA.md)** | Especificação do subsistema de inteligência artificial (Google Gemini), ferramentas (Function Calling), orçamentos de token e system prompt. |
-| **[Integração ChatGPT & MCP](INTEGRACAO_CHATGPT_MCP.md)** | Manual da API do Plugin ChatGPT e servidor MCP (OpenAPI 3.0.3, OAuth 2.1, 30 ferramentas, escopos e idempotência). |
+| **[Integração ChatGPT & MCP](INTEGRACAO_CHATGPT_MCP.md)** | Manual da API do Plugin ChatGPT e servidor MCP (OpenAPI 3.0.3, OAuth 2.1, 31 ferramentas, escopos e idempotência); contratos distintos das nove ferramentas do Copiloto Gemini. |
 | **[Especificação Alexa](ESPECIFICACAO_ALEXA_ANTIGRAVITY.md)** | Especificação técnica e arquitetura de integração da Skill da Alexa. |
 | **[Backend Cloud Functions](../functions/README.md)** | Organização de micro-serviços, triggers, webhooks e tarefas agendadas no Firebase Gen2 / Cloud Run. |
 | **[Desempenho das Functions](DESEMPENHO_FUNCTIONS.md)** | Carregamento por domínio, preferência REST, escala para zero, medição e validação de cold start. |
