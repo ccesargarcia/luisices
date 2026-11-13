@@ -15,7 +15,8 @@
 2. [Desenhos de Arquitetura e Fluxos (Diagramas)](#2-desenhos-de-arquitetura-e-fluxos-diagramas)
 3. [Segurança, Autenticação e Autorização](#3-segurança-autenticação-e-autorização)
 4. [Endpoints de Descoberta e Infraestrutura](#4-endpoints-de-descoberta-e-infraestrutura)
-5. [Catálogo Detalhado de Ferramentas (Tools)](#5-catálogo-detalhado-de-ferramentas-tools)
+5. [Catálogo MCP e exemplos de ferramentas](#5-catalogo-mcp-e-exemplos-de-ferramentas)
+   * Exemplos detalhados (11 ferramentas; não é o catálogo completo)
    * [1. query_orders_view (Consultar Fila de Pedidos)](#1-query_orders_view)
    * [2. daily_briefing (Raio-X Operacional do Dia)](#2-daily_briefing)
    * [3. query_customers (Consultar Clientes)](#3-query_customers)
@@ -27,6 +28,7 @@
    * [9. create_order (Criar e Registrar Pedido Oficial)](#9-create_order)
    * [10. search_gallery_portfolio (Consultar Portfólio/Acervo)](#10-search_gallery_portfolio)
    * [11. get_user_summary (Desempenho de Colaboradores)](#11-get_user_summary)
+   * [Catálogo completo: 31 ferramentas e escopos](#51-catálogo-de-ferramentas-e-escopos)
 6. [Suporte Nativo ao Protocolo MCP (JSON-RPC 2.0)](#6-suporte-nativo-ao-protocolo-mcp-json-rpc-20)
 7. [Tabela de Erros HTTP e Tratamento](#7-tabela-de-erros-http-e-tratamento)
 8. [Massa de Dados Fictícios e Guia de Testes](#8-massa-de-dados-fictícios-e-guia-de-testes)
@@ -36,6 +38,8 @@
 ## 1. Visão Geral e Arquitetura
 
 O módulo de integração **ChatGPT Actions & MCP** do Luisices transforma a inteligência artificial da OpenAI e de clientes MCP (Cursor, Claude Desktop, assistentes autônomos) em um **copiloto operacional em tempo real** para o ateliê.
+
+Este contrato é distinto do Copiloto interno baseado em Gemini. O Copiloto declara nove ferramentas de chat; o MCP publica 31 ferramentas. Existem capacidades relacionadas, mas os catálogos, argumentos e autorizações não são equivalentes por padrão. Para a lista atual do MCP, consulte a tabela completa da seção 5.1; o endpoint OpenAPI publicado continua sendo a fonte normativa dos schemas de argumentos.
 
 A API permite realizar consultas de estoque, fila de produção, relatórios financeiros, cálculo de precificação com margem de lucro, geração de mensagens personalizadas e criação de pedidos oficiais diretamente a partir de comandos em linguagem natural.
 
@@ -262,9 +266,9 @@ Accept: application/json
 
 ---
 
-## 5. Catálogo Detalhado de Ferramentas (Tools)
+## 5. Catálogo MCP e exemplos de ferramentas
 
-Todas as ferramentas executadas via REST são chamadas via método **`POST`** para a URL `/tools/{nome_da_ferramenta}`.
+As 11 subseções abaixo preservam exemplos detalhados de chamada e não representam o catálogo completo. O servidor publica 31 ferramentas. A seção 5.1 lista todas elas com seus escopos; para os argumentos, tipos e limites vigentes, consulte o OpenAPI dinâmico publicado pelo endpoint. Todas as ferramentas executadas via REST são chamadas via método **`POST`** para a URL `/tools/{nome_da_ferramenta}`.
 
 ---
 
@@ -862,7 +866,7 @@ Content-Type: application/json
 
 ### 5.1 Catálogo de ferramentas e escopos
 
-O servidor publica 30 ferramentas. A lista abaixo reflete o registro atual em `functions/mcp/openapi.js`; a autorização efetiva também exige que o perfil e a chave permitam o escopo indicado.
+O servidor publica 31 ferramentas. A lista abaixo acompanha `TOOLS_METADATA` em `functions/mcp/openapi.js` e `TOOL_SCOPE_MAP` em `functions/mcp/constants.js`; a autorização efetiva também exige que o perfil e a chave permitam o escopo indicado. O teste `tests/unit/mcp-tool-contract.test.ts` verifica nomes e escopos desta tabela contra esses registros e o dispatcher.
 
 | Ferramenta | Escopo requerido | Descrição / Módulo |
 | :--- | :--- | :--- |
@@ -874,6 +878,7 @@ O servidor publica 30 ferramentas. A lista abaixo reflete o registro atual em `f
 | `create_order` | `orders:create` | Criar e registrar pedido oficial (idempotente) |
 | `get_order_edit_form` | `orders:update` | Obter formulário estruturado para edição |
 | `update_order` | `orders:update` | Atualizar dados e valores de um pedido existente |
+| `add_order_item` | `orders:update` | Incluir item em pedido existente |
 | `update_order_status` | `orders:update` | Alterar status na esteira de produção |
 | `update_delivery_details` | `orders:update` | Atualizar informações de entrega/frete |
 | `query_order_payments` | `payments:read` | Consultar pagamentos e histórico de um pedido |

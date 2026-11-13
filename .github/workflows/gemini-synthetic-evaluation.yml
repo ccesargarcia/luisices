@@ -1,0 +1,77 @@
+name: Gemini Synthetic Evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Smoke (3 casos) ou full (5 casos); ambas usam apenas dados sintéticos.'
+        required: true
+        type: choice
+        options:
+          - smoke
+          - full
+        default: smoke
+      model:
+        description: 'Modelo Gemini 3.x para esta avaliação isolada.'
+        required: true
+        type: string
+        default: gemini-3.8-flash
+      confirm_synthetic_only:
+        description: 'Confirmo chamadas ao Gemini com fixtures sintéticas e possível cobrança do provedor.'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gemini-synthetic-evaluation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    name: Evaluate Gemini with synthetic fixtures
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Restrict evaluation to protected branches
+        shell: bash
+        run: |
+          case "$GITHUB_REF" in
+            refs/heads/develop|refs/heads/main) ;;
+            *) echo 'Run this workflow only from develop or main.' >&2; exit 1 ;;
+          esac
+
+      - name: Require explicit synthetic-data and cost confirmation
+        if: ${{ inputs.confirm_synthetic_only != true }}
+        run: |
+          echo 'Confirm the synthetic-only evaluation and provider cost before running.' >&2
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Run isolated evaluation
+        env:
+          GEMINI_EVAL_API_KEY: ${{ secrets.GEMINI_EVAL_API_KEY }}
+          GEMINI_EVAL_MODEL: ${{ inputs.model }}
+          GEMINI_EVAL_SUITE: ${{ inputs.suite }}
+          GEMINI_EVAL_REPORT_PATH: ${{ runner.temp }}/gemini-synthetic-evaluation/report.json
+          GITHUB_SHA: ${{ github.sha }}
+        run: node scripts/ai-eval/live-gemini-eval.cjs
+
+      - name: Upload sanitized report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemini-synthetic-evaluation-${{ github.run_id }}
+          path: ${{ runner.temp }}/gemini-synthetic-evaluation/report.json
+          if-no-files-found: ignore
+          retention-days: 14
