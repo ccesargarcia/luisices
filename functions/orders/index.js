@@ -333,10 +333,9 @@ function normalizeQuoteProjectionForCallable(projection) {
     return {
       ...item,
       unitPrice,
-      // FirebaseOrderService.sanitizeOrderItems treats the rounded unit price as
-      // canonical for the request payload. The transaction still persists the
-      // server allocated `price` from the original projection below.
-      price: Math.round(item.quantity * unitPrice * 100) / 100,
+      // The rounded unit price is display/transport data. Keep the exact line
+      // subtotal allocated by the server so discounted items remain verifiable.
+      price: item.price,
     };
   });
   return {

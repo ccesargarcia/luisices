@@ -407,8 +407,8 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
       }),
     ]);
 
-    // This is the payload after FirebaseOrderService.sanitizeOrderItems rounds
-    // each unit price to cents and recomputes the displayed line subtotal.
+    // This mirrors the payload after FirebaseOrderService.sanitizeOrderItems
+    // rounds unit prices but preserves each compatible authoritative line total.
     const result = await handleCreateOrder({
       auth: { uid, token: { auth_time: 1 } },
       data: {
@@ -417,7 +417,7 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
           customerName: 'Cliente Centavos', customerPhone: '',
           productName: 'Produto A (3x), Produto B', quantity: 4, price: 39.99,
           items: [
-            { name: 'Produto A', quantity: 3, unitPrice: 10, price: 30 },
+            { name: 'Produto A', quantity: 3, unitPrice: 10, price: 29.99 },
             { name: 'Produto B', quantity: 1, unitPrice: 10, price: 10 },
           ],
           pricingMode: 'items', unitPrice: null, status: 'pending',
@@ -465,7 +465,7 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
           customerName: 'Cliente Item Único', customerPhone: '',
           productName: 'Produto Único (3x)', quantity: 3, price: 29.99,
           // The service rounds items, but passes the top-level unitPrice through.
-          items: [{ name: 'Produto Único', quantity: 3, unitPrice: 10, price: 30 }],
+          items: [{ name: 'Produto Único', quantity: 3, unitPrice: 10, price: 29.99 }],
           pricingMode: 'unit', unitPrice: transportUnitPrice, status: 'pending',
           deliveryDate: '2026-12-10', notes: `Gerado do orçamento ${quoteNumber}`,
           isExchange: false,

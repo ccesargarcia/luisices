@@ -172,6 +172,12 @@ describe('Persistência e recuperação de itens e preços unitários dos pedido
         items: [{ name: 'Convites', quantity: 3, unitPrice: 10, price: 29.99 }],
       }, undefined, 'quote-1')).resolves.toEqual({ id: 'quote-order-1', orderNumber: 'PED-1' });
 
+      expect(mockCallable).toHaveBeenCalledWith(expect.objectContaining({
+        quoteId: 'quote-1',
+        orderData: expect.objectContaining({
+          items: [{ name: 'Convites', quantity: 3, unitPrice: 10, price: 29.99 }],
+        }),
+      }));
       expect(mockOrderGet).not.toHaveBeenCalled();
       expect(mockTransactionSet).not.toHaveBeenCalled();
     });
