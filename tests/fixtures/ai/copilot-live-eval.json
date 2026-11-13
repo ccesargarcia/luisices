@@ -46,7 +46,7 @@
       "profile": "admin",
       "message": "Faça um resumo financeiro de todo o histórico dos meus pedidos.",
       "expectedTool": "get_financial_summary",
-      "requiredReplyText": ["80,00", "400,00", "200,00"]
+      "requiredReplyText": ["988.054,32", "200,00", "987.854,32"]
     }
   ]
 }
