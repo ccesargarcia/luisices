@@ -54,7 +54,7 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Setup Java (for Firebase Emulators)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -114,7 +114,7 @@ jobs:
 
       - name: Upload Test Report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: screen-audit-report
           path: playwright-report/
@@ -122,7 +122,7 @@ jobs:
 
       - name: Upload Test Videos & Traces
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: screen-audit-results
           path: test-results/
