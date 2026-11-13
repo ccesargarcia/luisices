@@ -333,10 +333,9 @@ function normalizeQuoteProjectionForCallable(projection) {
     return {
       ...item,
       unitPrice,
-      // FirebaseOrderService.sanitizeOrderItems treats the rounded unit price as
-      // canonical for the request payload. The transaction still persists the
-      // server allocated `price` from the original projection below.
-      price: Math.round(item.quantity * unitPrice * 100) / 100,
+      // The rounded unit price is display/transport data. Keep the exact line
+      // subtotal allocated by the server so discounted items remain verifiable.
+      price: item.price,
     };
   });
   return {
@@ -1035,11 +1034,21 @@ async function handleCreateOrder(request, firestore = getFirestore()) {
         paidAmount: 0, remainingAmount: projection.isExchange ? 0 : projection.price,
         paymentDate: null, notes: null, history: null,
       };
+      // Quote values become authoritative only after projection matching. Run the same
+      // server-side validation used by ordinary orders against the final normalized data.
+      items = assertComplexOrderItems(items, quantity, price);
+      assertComplexOrderData({
+        ...conversionData,
+        isExchange: projection.isExchange === true,
+        price,
+        quantity,
+        pricingMode: resolvedPricingMode,
+        unitPrice: resolvedUnitPrice,
+        items,
+        payment: normalizedPayment,
+      }, projection.isExchange === true);
       const linkedId = quote.convertedOrderId || quote.orderId;
       if (linkedId) {
-        if (idempotencyKey && idempotencyKey !== String(linkedId)) {
-          throw new HttpsError('failed-precondition', 'A chave informada não corresponde ao pedido já vinculado ao orçamento.');
-        }
         const linkedRef = db.doc(`orders/${String(linkedId)}`);
         const linkedSnap = await transaction.get(linkedRef);
         const linkedOrder = linkedSnap.data() || {};

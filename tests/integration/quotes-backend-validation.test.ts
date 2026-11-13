@@ -47,6 +47,16 @@ describe('Validação matemática de orçamentos nas regras do Firestore', () =>
       items: [{ name: 'Item de cinco centavos', quantity: 1, unitPrice: 0.05 }],
       discount: 10, discountType: 'percent', totalPrice: 0.04,
     }));
+    await assertSucceeds(setDoc(doc(dbFor(), 'quotes/basis-points-rounded'), {
+      ...baseQuote,
+      items: [{ name: 'Item de duzentos e cinquenta reais', quantity: 1, unitPrice: 250 }],
+      discount: 0.29, discountType: 'percent', totalPrice: 249.27,
+    }));
+    await assertFails(setDoc(doc(dbFor(), 'quotes/basis-points-old-rounding'), {
+      ...baseQuote,
+      items: [{ name: 'Item de duzentos e cinquenta reais', quantity: 1, unitPrice: 250 }],
+      discount: 0.29, discountType: 'percent', totalPrice: 249.28,
+    }));
   });
 
   it('aceita centavos decimais comuns e desconto fixo de R$ 0,29', async () => {
