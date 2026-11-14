@@ -113,6 +113,8 @@ A atualização visual de permissões depende de listeners e conectividade. Desc
 
 O Copiloto tem nove ferramentas de consulta/preparação; enriquecimento de imagens usa callables separados. Leia [capacidades, contratos e prompt aplicado](COPILOTO_IA.md).
 
+O acesso do ChatGPT e de outros clientes MCP é uma integração separada, com catálogo próprio de 31 ferramentas, OAuth/chaves, escopos e permissões atuais do perfil. Consultar pedidos ou equipe não libera por si só os valores financeiros: as respostas são redigidas conforme `payments:read` e `financial:read`. Leia o [manual ChatGPT/MCP](INTEGRACAO_CHATGPT_MCP.md); a presença do código não confirma publicação remota.
+
 Alexa é uma integração independente, com pareamento, autorização e modos de confirmação por voz ou aprovação no app. A configuração atual estabelece 15 minutos para rascunhos iniciais e 5 minutos para códigos de pareamento. No modo `app_approval`, o diálogo renova a validade para 24 horas ao encaminhar para o aplicativo; o encaminhamento de segurança após falhas de voz mantém a validade inicial. O prompt diferencia essas condições a partir de constantes compartilhadas. Consulte a interface e a configuração do ambiente; não aplicar a janela de convites de usuários a rascunhos Alexa.
 
 Links públicos de acompanhamento de pedidos podem ser criados, listados, copiados, revogados e excluídos conforme o estado do pedido e a autorização do usuário. A configuração do template e da identidade visual pertence às configurações da loja; o acesso público é servido por endpoint próprio. A disponibilidade depende da publicação das Functions e do secret `ORDER_TRACKING_ENCRYPTION_KEY` no ambiente.

@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+<title>Markmap</title>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+}
+#mindmap {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/markmap-toolbar@0.18.10/dist/style.css">
+</head>
+<body>
+<svg id="mindmap"></svg>
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script><script src="https://cdn.jsdelivr.net/npm/markmap-view@0.18.10/dist/browser/index.js"></script><script src="https://cdn.jsdelivr.net/npm/markmap-toolbar@0.18.10/dist/index.js"></script><script>((...args) => {
+                        const r = args[0];
+                        setTimeout(r);
+                    })(() => {
+        // Serialized into HTML by fillTemplate; runs in the browser.
+        const { markmap, mm } = window;
+        const tb = new markmap.Toolbar();
+        tb.attach(mm);
+        const el = tb.render();
+        el.setAttribute("style", "position:absolute;bottom:20px;right:20px");
+        document.body.append(el);
+        setTimeout(() => {
+            if (mm && typeof mm.fit === "function") {
+                mm.fit();
+            }
+        }, 1200);
+    })</script><script>((getMarkmap, getOptions, root2, jsonOptions) => {
+              const markmap = getMarkmap();
+              window.mm = markmap.Markmap.create(
+                "svg#mindmap",
+                (getOptions || markmap.deriveOptions)(jsonOptions),
+                root2
+              );
+            })(() => window.markmap,null,{"content":"&#x1f3a8; Luisices &#x2014; Gest&#xe3;o do Ateli&#xea; &amp; Papelaria Personalizada","children":[{"content":"&#x1f31f; Vis&#xe3;o Geral &amp; Prop&#xf3;sito","children":[{"content":"<strong>Dom&#xed;nio</strong>: Gest&#xe3;o completa de papelaria personalizada e ateli&#xea; artesanal","children":[],"payload":{"tag":"li","lines":"3,4"}},{"content":"<strong>Objetivo</strong>: Unificar pedidos, produ&#xe7;&#xe3;o, precifica&#xe7;&#xe3;o, CRM, loja p&#xfa;blica e IA","children":[],"payload":{"tag":"li","lines":"4,5"}},{"content":"<strong>Ambientes</strong>: Produ&#xe7;&#xe3;o (dev.luisices.com.br / luisices.com.br) e Desenvolvimento Local (Vite localhost:3000)","children":[],"payload":{"tag":"li","lines":"5,7"}}],"payload":{"tag":"h2","lines":"2,3"}},{"content":"&#x1f3d7;&#xfe0f; Arquitetura &amp; Stack Tecnol&#xf3;gica","children":[{"content":"<strong>Frontend SPA</strong>","children":[{"content":"React 19 + TypeScript 5","children":[],"payload":{"tag":"li","lines":"9,10"}},{"content":"Build Tool: Vite","children":[],"payload":{"tag":"li","lines":"10,11"}},{"content":"Roteamento: React Router DOM v6","children":[],"payload":{"tag":"li","lines":"11,12"}},{"content":"UI &amp; Estiliza&#xe7;&#xe3;o: Tailwind CSS + Radix UI Primitives + Lucide React + Motion + Sonner","children":[],"payload":{"tag":"li","lines":"12,13"}},{"content":"Formul&#xe1;rios: React Hook Form + Zod Schema Validation","children":[],"payload":{"tag":"li","lines":"13,14"}}],"payload":{"tag":"li","lines":"8,14"}},{"content":"<strong>Backend Serverless</strong>","children":[{"content":"Cloud Functions for Firebase (Node.js 22)","children":[],"payload":{"tag":"li","lines":"15,16"}},{"content":"Gateway de Borda: Cloudflare API Worker (Proxy, prote&#xe7;&#xe3;o de origem e CORS)","children":[],"payload":{"tag":"li","lines":"16,17"}},{"content":"Arquitetura Modular: Exports sob demanda por dom&#xed;nio (evita cold-starts pesados)","children":[],"payload":{"tag":"li","lines":"17,18"}}],"payload":{"tag":"li","lines":"14,18"}},{"content":"<strong>Persist&#xea;ncia &amp; Dados</strong>","children":[{"content":"Cloud Firestore: Pedidos, clientes, produtos, or&#xe7;amentos, insumos e ledger","children":[],"payload":{"tag":"li","lines":"19,20"}},{"content":"Realtime Database: Presen&#xe7;a em tempo real e sess&#xf5;es ativas","children":[],"payload":{"tag":"li","lines":"20,21"}},{"content":"Cloud Storage: Fotos de cat&#xe1;logo, comprovantes, recibos e m&#xed;dias","children":[],"payload":{"tag":"li","lines":"21,22"}}],"payload":{"tag":"li","lines":"18,22"}},{"content":"<strong>Observabilidade &amp; Governan&#xe7;a</strong>","children":[{"content":"Sentry: Monitoramento ativo de erros (frontend e backend)","children":[],"payload":{"tag":"li","lines":"23,24"}},{"content":"Firebase Analytics &amp; Performance Monitoring","children":[],"payload":{"tag":"li","lines":"24,25"}},{"content":"Su&#xed;te de Testes: Vitest (unit&#xe1;rios), Playwright (E2E), Firebase Emulator Suite (regras e integra&#xe7;&#xe3;o)","children":[],"payload":{"tag":"li","lines":"25,27"}}],"payload":{"tag":"li","lines":"22,27"}}],"payload":{"tag":"h2","lines":"7,8"}},{"content":"&#x1f4e6; M&#xf3;dulos Principais da Aplica&#xe7;&#xe3;o","children":[{"content":"&#x1f680; 1. Opera&#xe7;&#xe3;o &amp; Produ&#xe7;&#xe3;o","children":[{"content":"<strong>Quadro Kanban de Pedidos</strong>","children":[{"content":"Status: Novo, Em Produ&#xe7;&#xe3;o, Aguardando Aprova&#xe7;&#xe3;o, Pronto, Entregue, Cancelado","children":[],"payload":{"tag":"li","lines":"31,32"}},{"content":"Filtros por prioridade, data de festa e canal de origem","children":[],"payload":{"tag":"li","lines":"32,33"}},{"content":"Atribui&#xe7;&#xe3;o direta de respons&#xe1;veis na equipe","children":[],"payload":{"tag":"li","lines":"33,34"}}],"payload":{"tag":"li","lines":"30,34"}},{"content":"<strong>Fluxo de Produ&#xe7;&#xe3;o Artesanal</strong>","children":[{"content":"1. Cria&#xe7;&#xe3;o da arte digital e mockup","children":[],"payload":{"tag":"li","lines":"35,36","listIndex":1}},{"content":"2. Envio e aprova&#xe7;&#xe3;o pelo cliente","children":[],"payload":{"tag":"li","lines":"36,37","listIndex":2}},{"content":"3. Impress&#xe3;o e lamina&#xe7;&#xe3;o (brilho, fosca, hologr&#xe1;fica)","children":[],"payload":{"tag":"li","lines":"37,38","listIndex":3}},{"content":"4. Corte e vinco automatizado (Silhouette / Plotter)","children":[],"payload":{"tag":"li","lines":"38,39","listIndex":4}},{"content":"5. Montagem, colagem e aviamentos (la&#xe7;os, pedrarias)","children":[],"payload":{"tag":"li","lines":"39,40","listIndex":5}},{"content":"6. Embalagem de prote&#xe7;&#xe3;o e expedi&#xe7;&#xe3;o","children":[],"payload":{"tag":"li","lines":"40,41","listIndex":6}}],"payload":{"tag":"li","lines":"34,41"}},{"content":"<strong>Ledger Financeiro &amp; Transa&#xe7;&#xf5;es At&#xf4;micas</strong>","children":[{"content":"Controle de pagamentos (Sinal 50%, Quita&#xe7;&#xe3;o, Taxas)","children":[],"payload":{"tag":"li","lines":"42,43"}},{"content":"Idempot&#xea;ncia com limite CEL e prote&#xe7;&#xe3;o contra falhas de rede","children":[],"payload":{"tag":"li","lines":"43,44"}},{"content":"Emiss&#xe3;o de recibos digitais e relat&#xf3;rios de fluxo de caixa","children":[],"payload":{"tag":"li","lines":"44,45"}}],"payload":{"tag":"li","lines":"41,45"}},{"content":"<strong>Agenda Semanal (<code>WeeklyCalendar</code>)</strong>","children":[{"content":"Programa&#xe7;&#xe3;o visual de entregas por dia da semana","children":[],"payload":{"tag":"li","lines":"46,47"}},{"content":"Alerta de margem de seguran&#xe7;a para eventos","children":[],"payload":{"tag":"li","lines":"47,49"}}],"payload":{"tag":"li","lines":"45,49"}}],"payload":{"tag":"h3","lines":"29,30"}},{"content":"&#x1f4bc; 2. Comercial &amp; Relacionamento (CRM)","children":[{"content":"<strong>Gest&#xe3;o de Clientes (<code>Customers</code>)</strong>","children":[{"content":"Cadastro detalhado com hist&#xf3;rico de pedidos e prefer&#xea;ncias","children":[],"payload":{"tag":"li","lines":"51,52"}},{"content":"Registro de endere&#xe7;os e anivers&#xe1;rios dos filhos","children":[],"payload":{"tag":"li","lines":"52,53"}},{"content":"N&#xed;vel de fidelidade e observa&#xe7;&#xf5;es de atendimento","children":[],"payload":{"tag":"li","lines":"53,54"}}],"payload":{"tag":"li","lines":"50,54"}},{"content":"<strong>Or&#xe7;amentos Inteligentes (<code>Quotes</code>)</strong>","children":[{"content":"Composi&#xe7;&#xe3;o r&#xe1;pida de itens e prazos de validade","children":[],"payload":{"tag":"li","lines":"55,56"}},{"content":"Condi&#xe7;&#xf5;es de pagamento configur&#xe1;veis","children":[],"payload":{"tag":"li","lines":"56,57"}},{"content":"Convers&#xe3;o em pedido de produ&#xe7;&#xe3;o com 1 clique","children":[],"payload":{"tag":"li","lines":"57,58"}}],"payload":{"tag":"li","lines":"54,58"}},{"content":"<strong>Cat&#xe1;logo Interno de Produtos (<code>Products</code>)</strong>","children":[{"content":"Fichas completas com varia&#xe7;&#xf5;es (temas, tamanhos, tipos)","children":[],"payload":{"tag":"li","lines":"59,60"}},{"content":"V&#xed;nculo com receitas t&#xe9;cnicas de produ&#xe7;&#xe3;o e insumos","children":[],"payload":{"tag":"li","lines":"60,61"}}],"payload":{"tag":"li","lines":"58,61"}},{"content":"<strong>Permutas &amp; Parcerias (<code>Exchanges</code>)</strong>","children":[{"content":"Controle de trocas com criadores de conte&#xfa;do e parceiros","children":[],"payload":{"tag":"li","lines":"62,63"}},{"content":"Acompanhamento de entregas e contrapartidas","children":[],"payload":{"tag":"li","lines":"63,64"}}],"payload":{"tag":"li","lines":"61,64"}},{"content":"<strong>Galeria &amp; Portf&#xf3;lio (<code>Gallery</code>)</strong>","children":[{"content":"Mostru&#xe1;rio de trabalhos realizados","children":[],"payload":{"tag":"li","lines":"65,66"}},{"content":"Banco de refer&#xea;ncias e inspira&#xe7;&#xf5;es visuais","children":[],"payload":{"tag":"li","lines":"66,68"}}],"payload":{"tag":"li","lines":"64,68"}}],"payload":{"tag":"h3","lines":"49,50"}},{"content":"&#x1f4b0; 3. Custos &amp; Precifica&#xe7;&#xe3;o Artesanal","children":[{"content":"<strong>Gest&#xe3;o de Insumos &amp; Compras (<code>Pricing</code>)</strong>","children":[{"content":"Pap&#xe9;is (offset, fotogr&#xe1;fico, color plus, lamicote)","children":[],"payload":{"tag":"li","lines":"70,71"}},{"content":"Aviamentos, fitas de cetim, pedrarias e caixas","children":[],"payload":{"tag":"li","lines":"71,72"}},{"content":"Hist&#xf3;rico de pre&#xe7;os e compras com c&#xe1;lculo de custo unit&#xe1;rio","children":[],"payload":{"tag":"li","lines":"72,73"}}],"payload":{"tag":"li","lines":"69,73"}},{"content":"<strong>Fichas T&#xe9;cnicas &amp; Receitas de Produ&#xe7;&#xe3;o</strong>","children":[{"content":"Lista de materiais (BOM) por produto","children":[],"payload":{"tag":"li","lines":"74,75"}},{"content":"C&#xe1;lculo autom&#xe1;tico de consumo de folhas e perdas","children":[],"payload":{"tag":"li","lines":"75,76"}}],"payload":{"tag":"li","lines":"73,76"}},{"content":"<strong>Motor de Precifica&#xe7;&#xe3;o (<code>ArtisanPricingPage</code>)</strong>","children":[{"content":"Custos diretos: Mat&#xe9;ria-prima e embalagem","children":[],"payload":{"tag":"li","lines":"77,78"}},{"content":"Custos indiretos: Energia, deprecia&#xe7;&#xe3;o de equipamentos, software","children":[],"payload":{"tag":"li","lines":"78,79"}},{"content":"Custo da m&#xe3;o de obra artesanal por hora dedicada","children":[],"payload":{"tag":"li","lines":"79,80"}},{"content":"Margem de lucro pretendida, taxas de cart&#xe3;o e impostos","children":[],"payload":{"tag":"li","lines":"80,81"}}],"payload":{"tag":"li","lines":"76,81"}},{"content":"<strong>Configura&#xe7;&#xf5;es do Ateli&#xea; (<code>Settings</code>)</strong>","children":[{"content":"Metas de faturamento mensal e horas produtivas da equipe","children":[],"payload":{"tag":"li","lines":"82,84"}}],"payload":{"tag":"li","lines":"81,84"}}],"payload":{"tag":"h3","lines":"68,69"}},{"content":"&#x1f6cd;&#xfe0f; 4. Loja P&#xfa;blica &amp; Vitrine Digital","children":[{"content":"<strong>Vitrine Virtual (<code>PublicCatalog</code>)</strong>","children":[{"content":"Interface moderna para visualiza&#xe7;&#xe3;o de cole&#xe7;&#xf5;es","children":[],"payload":{"tag":"li","lines":"86,87"}},{"content":"Categorias: Anivers&#xe1;rios infantis, batizados, lembrancinhas, papelaria corporativa","children":[],"payload":{"tag":"li","lines":"87,88"}}],"payload":{"tag":"li","lines":"85,88"}},{"content":"<strong>Personaliza&#xe7;&#xe3;o Interativa</strong>","children":[{"content":"Escolha de tema, paleta de cores, nome e idade do homenageado","children":[],"payload":{"tag":"li","lines":"89,90"}},{"content":"Upload de arquivos de refer&#xea;ncia pelo cliente","children":[],"payload":{"tag":"li","lines":"90,91"}}],"payload":{"tag":"li","lines":"88,91"}},{"content":"<strong>Rastreamento de Pedidos (<code>PublicOrderTracking</code>)</strong>","children":[{"content":"Consulta p&#xfa;blica por c&#xf3;digo de rastreio seguro","children":[],"payload":{"tag":"li","lines":"92,93"}},{"content":"Linha do tempo visual do progresso da produ&#xe7;&#xe3;o","children":[],"payload":{"tag":"li","lines":"93,94"}}],"payload":{"tag":"li","lines":"91,94"}},{"content":"<strong>Gest&#xe3;o da Vitrine (<code>StoreCustomization</code> &amp; <code>StoreOrders</code>)</strong>","children":[{"content":"Personaliza&#xe7;&#xe3;o de banners, an&#xfa;ncios e identidade visual","children":[],"payload":{"tag":"li","lines":"95,96"}},{"content":"Convers&#xe3;o assistida de encomendas da vitrine em pedidos do ateli&#xea;","children":[],"payload":{"tag":"li","lines":"96,98"}}],"payload":{"tag":"li","lines":"94,98"}}],"payload":{"tag":"h3","lines":"84,85"}},{"content":"&#x1f4ac; 5. Atendimento Omnichannel","children":[{"content":"<strong>E-mails Transacionais (<code>Emails</code>)</strong>","children":[{"content":"Integra&#xe7;&#xe3;o oficial com Resend API","children":[],"payload":{"tag":"li","lines":"100,101"}},{"content":"Templates para confirma&#xe7;&#xe3;o de pedido, aprova&#xe7;&#xe3;o de arte e envio","children":[],"payload":{"tag":"li","lines":"101,102"}},{"content":"Webhooks de tracking (entregue, aberto, clicado)","children":[],"payload":{"tag":"li","lines":"102,103"}}],"payload":{"tag":"li","lines":"99,103"}},{"content":"<strong>WhatsApp Integrado (<code>WhatsAppChat</code>)</strong>","children":[{"content":"Conex&#xe3;o com Evolution API via HTTP","children":[],"payload":{"tag":"li","lines":"104,105"}},{"content":"Envio de atualiza&#xe7;&#xf5;es autom&#xe1;ticas de status","children":[],"payload":{"tag":"li","lines":"105,106"}},{"content":"Hist&#xf3;rico de mensagens sincronizado com a ficha do cliente","children":[],"payload":{"tag":"li","lines":"106,108"}}],"payload":{"tag":"li","lines":"103,108"}}],"payload":{"tag":"h3","lines":"98,99"}},{"content":"&#x1f916; 6. Intelig&#xea;ncia Artificial &amp; Copiloto","children":[{"content":"<strong>Copiloto IA no Painel (<code>functions/ai</code>)</strong>","children":[{"content":"Modelo: Google Gemini com Function Calling","children":[],"payload":{"tag":"li","lines":"110,111"}},{"content":"9 Ferramentas operacionais integradas","children":[],"payload":{"tag":"li","lines":"111,112"}},{"content":"Consulta r&#xe1;pida de pedidos, clientes, prazos e estoque","children":[],"payload":{"tag":"li","lines":"112,113"}},{"content":"Elabora&#xe7;&#xe3;o de rascunhos de or&#xe7;amentos e mensagens","children":[],"payload":{"tag":"li","lines":"113,114"}}],"payload":{"tag":"li","lines":"109,114"}},{"content":"<strong>Vis&#xe3;o Computacional</strong>","children":[{"content":"Leitura e valida&#xe7;&#xe3;o de comprovantes de PIX","children":[],"payload":{"tag":"li","lines":"115,116"}},{"content":"Extra&#xe7;&#xe3;o de paleta e estilo de imagens de refer&#xea;ncia","children":[],"payload":{"tag":"li","lines":"116,117"}}],"payload":{"tag":"li","lines":"114,117"}},{"content":"<strong>Integra&#xe7;&#xe3;o de Voz Alexa (<code>functions/alexa</code>)</strong>","children":[{"content":"Skill desenvolvida com Alexa Skills Kit (ASK SDK)","children":[],"payload":{"tag":"li","lines":"118,119"}},{"content":"Comandos de voz: &quot;Alexa, quais pedidos s&#xe3;o para hoje?&quot;","children":[],"payload":{"tag":"li","lines":"119,121"}}],"payload":{"tag":"li","lines":"117,121"}}],"payload":{"tag":"h3","lines":"108,109"}},{"content":"&#x1f510; 7. Seguran&#xe7;a, Administra&#xe7;&#xe3;o &amp; Governan&#xe7;a","children":[{"content":"<strong>Controle de Usu&#xe1;rios (<code>Users</code>)</strong>","children":[{"content":"Gest&#xe3;o de equipe e convites por e-mail","children":[],"payload":{"tag":"li","lines":"123,124"}},{"content":"Perfis de acesso (RBAC): Admin, Produ&#xe7;&#xe3;o, Atendimento","children":[],"payload":{"tag":"li","lines":"124,125"}},{"content":"Custom Claims no Firebase Auth para autoriza&#xe7;&#xe3;o estrita","children":[],"payload":{"tag":"li","lines":"125,126"}}],"payload":{"tag":"li","lines":"122,126"}},{"content":"<strong>Sess&#xf5;es &amp; Presen&#xe7;a em Tempo Real</strong>","children":[{"content":"Monitoramento de operadores logados via Realtime Database","children":[],"payload":{"tag":"li","lines":"127,128"}},{"content":"Preven&#xe7;&#xe3;o de conflitos de edi&#xe7;&#xe3;o simult&#xe2;nea","children":[],"payload":{"tag":"li","lines":"128,129"}}],"payload":{"tag":"li","lines":"126,129"}},{"content":"<strong>Pol&#xed;ticas de Seguran&#xe7;a Declarativas</strong>","children":[{"content":"<code>firestore.rules</code>: Valida&#xe7;&#xe3;o de esquema e permiss&#xf5;es por role","children":[],"payload":{"tag":"li","lines":"130,131"}},{"content":"<code>storage.rules</code>: Prote&#xe7;&#xe3;o de uploads, limites de tamanho e tipo","children":[],"payload":{"tag":"li","lines":"131,132"}},{"content":"<code>database.rules.json</code>: Acesso seguro a dados de presen&#xe7;a","children":[],"payload":{"tag":"li","lines":"132,133"}}],"payload":{"tag":"li","lines":"129,133"}}],"payload":{"tag":"h3","lines":"121,122"}}],"payload":{"tag":"h2","lines":"27,28"}}],"payload":{"tag":"h1","lines":"0,1"}},{"initialExpandLevel":-1})</script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js"></script>
+    <textarea id="original-markdown" style="display:none;"># 🎨 Luisices — Gestão do Ateliê &amp; Papelaria Personalizada
+
+## 🌟 Visão Geral &amp; Propósito
+- **Domínio**: Gestão completa de papelaria personalizada e ateliê artesanal
+- **Objetivo**: Unificar pedidos, produção, precificação, CRM, loja pública e IA
+- **Ambientes**: Produção (dev.luisices.com.br / luisices.com.br) e Desenvolvimento Local (Vite localhost:3000)
+
+## 🏗️ Arquitetura &amp; Stack Tecnológica
+- **Frontend SPA**
+  - React 19 + TypeScript 5
+  - Build Tool: Vite
+  - Roteamento: React Router DOM v6
+  - UI &amp; Estilização: Tailwind CSS + Radix UI Primitives + Lucide React + Motion + Sonner
+  - Formulários: React Hook Form + Zod Schema Validation
+- **Backend Serverless**
+  - Cloud Functions for Firebase (Node.js 22)
+  - Gateway de Borda: Cloudflare API Worker (Proxy, proteção de origem e CORS)
+  - Arquitetura Modular: Exports sob demanda por domínio (evita cold-starts pesados)
+- **Persistência &amp; Dados**
+  - Cloud Firestore: Pedidos, clientes, produtos, orçamentos, insumos e ledger
+  - Realtime Database: Presença em tempo real e sessões ativas
+  - Cloud Storage: Fotos de catálogo, comprovantes, recibos e mídias
+- **Observabilidade &amp; Governança**
+  - Sentry: Monitoramento ativo de erros (frontend e backend)
+  - Firebase Analytics &amp; Performance Monitoring
+  - Suíte de Testes: Vitest (unitários), Playwright (E2E), Firebase Emulator Suite (regras e integração)
+
+## 📦 Módulos Principais da Aplicação
+
+### 🚀 1. Operação &amp; Produção
+- **Quadro Kanban de Pedidos**
+  - Status: Novo, Em Produção, Aguardando Aprovação, Pronto, Entregue, Cancelado
+  - Filtros por prioridade, data de festa e canal de origem
+  - Atribuição direta de responsáveis na equipe
+- **Fluxo de Produção Artesanal**
+  - 1. Criação da arte digital e mockup
+  - 2. Envio e aprovação pelo cliente
+  - 3. Impressão e laminação (brilho, fosca, holográfica)
+  - 4. Corte e vinco automatizado (Silhouette / Plotter)
+  - 5. Montagem, colagem e aviamentos (laços, pedrarias)
+  - 6. Embalagem de proteção e expedição
+- **Ledger Financeiro &amp; Transações Atômicas**
+  - Controle de pagamentos (Sinal 50%, Quitação, Taxas)
+  - Idempotência com limite CEL e proteção contra falhas de rede
+  - Emissão de recibos digitais e relatórios de fluxo de caixa
+- **Agenda Semanal (`WeeklyCalendar`)**
+  - Programação visual de entregas por dia da semana
+  - Alerta de margem de segurança para eventos
+
+### 💼 2. Comercial &amp; Relacionamento (CRM)
+- **Gestão de Clientes (`Customers`)**
+  - Cadastro detalhado com histórico de pedidos e preferências
+  - Registro de endereços e aniversários dos filhos
+  - Nível de fidelidade e observações de atendimento
+- **Orçamentos Inteligentes (`Quotes`)**
+  - Composição rápida de itens e prazos de validade
+  - Condições de pagamento configuráveis
+  - Conversão em pedido de produção com 1 clique
+- **Catálogo Interno de Produtos (`Products`)**
+  - Fichas completas com variações (temas, tamanhos, tipos)
+  - Vínculo com receitas técnicas de produção e insumos
+- **Permutas &amp; Parcerias (`Exchanges`)**
+  - Controle de trocas com criadores de conteúdo e parceiros
+  - Acompanhamento de entregas e contrapartidas
+- **Galeria &amp; Portfólio (`Gallery`)**
+  - Mostruário de trabalhos realizados
+  - Banco de referências e inspirações visuais
+
+### 💰 3. Custos &amp; Precificação Artesanal
+- **Gestão de Insumos &amp; Compras (`Pricing`)**
+  - Papéis (offset, fotográfico, color plus, lamicote)
+  - Aviamentos, fitas de cetim, pedrarias e caixas
+  - Histórico de preços e compras com cálculo de custo unitário
+- **Fichas Técnicas &amp; Receitas de Produção**
+  - Lista de materiais (BOM) por produto
+  - Cálculo automático de consumo de folhas e perdas
+- **Motor de Precificação (`ArtisanPricingPage`)**
+  - Custos diretos: Matéria-prima e embalagem
+  - Custos indiretos: Energia, depreciação de equipamentos, software
+  - Custo da mão de obra artesanal por hora dedicada
+  - Margem de lucro pretendida, taxas de cartão e impostos
+- **Configurações do Ateliê (`Settings`)**
+  - Metas de faturamento mensal e horas produtivas da equipe
+
+### 🛍️ 4. Loja Pública &amp; Vitrine Digital
+- **Vitrine Virtual (`PublicCatalog`)**
+  - Interface moderna para visualização de coleções
+  - Categorias: Aniversários infantis, batizados, lembrancinhas, papelaria corporativa
+- **Personalização Interativa**
+  - Escolha de tema, paleta de cores, nome e idade do homenageado
+  - Upload de arquivos de referência pelo cliente
+- **Rastreamento de Pedidos (`PublicOrderTracking`)**
+  - Consulta pública por código de rastreio seguro
+  - Linha do tempo visual do progresso da produção
+- **Gestão da Vitrine (`StoreCustomization` &amp; `StoreOrders`)**
+  - Personalização de banners, anúncios e identidade visual
+  - Conversão assistida de encomendas da vitrine em pedidos do ateliê
+
+### 💬 5. Atendimento Omnichannel
+- **E-mails Transacionais (`Emails`)**
+  - Integração oficial com Resend API
+  - Templates para confirmação de pedido, aprovação de arte e envio
+  - Webhooks de tracking (entregue, aberto, clicado)
+- **WhatsApp Integrado (`WhatsAppChat`)**
+  - Conexão com Evolution API via HTTP
+  - Envio de atualizações automáticas de status
+  - Histórico de mensagens sincronizado com a ficha do cliente
+
+### 🤖 6. Inteligência Artificial &amp; Copiloto
+- **Copiloto IA no Painel (`functions/ai`)**
+  - Modelo: Google Gemini com Function Calling
+  - 9 Ferramentas operacionais integradas
+  - Consulta rápida de pedidos, clientes, prazos e estoque
+  - Elaboração de rascunhos de orçamentos e mensagens
+- **Visão Computacional**
+  - Leitura e validação de comprovantes de PIX
+  - Extração de paleta e estilo de imagens de referência
+- **Integração de Voz Alexa (`functions/alexa`)**
+  - Skill desenvolvida com Alexa Skills Kit (ASK SDK)
+  - Comandos de voz: &quot;Alexa, quais pedidos são para hoje?&quot;
+
+### 🔐 7. Segurança, Administração &amp; Governança
+- **Controle de Usuários (`Users`)**
+  - Gestão de equipe e convites por e-mail
+  - Perfis de acesso (RBAC): Admin, Produção, Atendimento
+  - Custom Claims no Firebase Auth para autorização estrita
+- **Sessões &amp; Presença em Tempo Real**
+  - Monitoramento de operadores logados via Realtime Database
+  - Prevenção de conflitos de edição simultânea
+- **Políticas de Segurança Declarativas**
+  - `firestore.rules`: Validação de esquema e permissões por role
+  - `storage.rules`: Proteção de uploads, limites de tamanho e tipo
+  - `database.rules.json`: Acesso seguro a dados de presença
+</textarea>
+
+    <style>
+      .mm-export-toolbar {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 8px;
+        padding: 8px 16px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        display: flex;
+        gap: 10px;
+      }
+      .mm-export-btn {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 4px;
+        background-color: #3498db;
+        color: white;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background-color 0.3s;
+      }
+      .mm-export-btn:hover { background-color: #2980b9; }
+      .mm-copy-btn { background-color: #27ae60; }
+      .mm-copy-btn:hover { background-color: #219653; }
+      @media print {
+        .mm-export-toolbar, .mm-toolbar { display: none !important; }
+        svg.markmap, svg#mindmap, #mindmap svg {
+          display: block !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          height: 100vh !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          max-height: 100vh !important;
+          overflow: visible !important;
+          page-break-inside: avoid !important;
+        }
+        body, html {
+          height: 100% !important;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: visible !important;
+        }
+      }
+    </style>
+
+
+    <script>
+      (function() {
+        const labels = {"exportPng":"Export PNG","exportJpg":"Export JPG","exportSvg":"Export SVG","copyMarkdown":"Copy Markdown","copied":"✓ Copied","copyFailed":"Failed to copy to clipboard, please check browser permissions","copyError":"Unable to copy Markdown: ","exportFailed":"Image export failed: ","pngTitle":"Export as PNG image","jpgTitle":"Export as JPG image","svgTitle":"Export as SVG image","copyTitle":"Copy original Markdown content"};
+        const exportToolbar = document.createElement('div');
+        exportToolbar.className = 'mm-export-toolbar';
+        document.body.appendChild(exportToolbar);
+
+        function addBtn(className, text, title, onClick) {
+          const btn = document.createElement('button');
+          btn.className = 'mm-export-btn ' + className;
+          btn.textContent = text;
+          btn.title = title;
+          btn.onclick = onClick;
+          exportToolbar.appendChild(btn);
+          return btn;
+        }
+
+        addBtn('png-export', labels.exportPng, labels.pngTitle, () => exportToImage('png'));
+        addBtn('jpg-export', labels.exportJpg, labels.jpgTitle, () => exportToImage('jpeg'));
+        addBtn('svg-export', labels.exportSvg, labels.svgTitle, () => exportToImage('svg'));
+        const copyBtn = addBtn('mm-copy-btn copy-markdown', labels.copyMarkdown, labels.copyTitle, copyOriginalMarkdown);
+
+        function copyOriginalMarkdown() {
+          try {
+            const markdownElement = document.getElementById('original-markdown');
+            if (!markdownElement) throw new Error('Original Markdown content not found');
+            navigator.clipboard.writeText(markdownElement.value)
+              .then(() => {
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = labels.copied;
+                copyBtn.style.backgroundColor = '#2ecc71';
+                setTimeout(() => {
+                  copyBtn.textContent = originalText;
+                  copyBtn.style.backgroundColor = '';
+                }, 2000);
+              })
+              .catch(() => alert(labels.copyFailed));
+          } catch (e) {
+            alert(labels.copyError + (e && e.message ? e.message : e));
+          }
+        }
+
+        function exportToImage(format) {
+          try {
+            const node = window.mm.svg._groups[0][0];
+            if (!node) throw new Error('Cannot find mind map SVG element');
+            window.mm.fit().then(() => {
+              const options = {
+                backgroundColor: '#ffffff',
+                quality: 1.0,
+                width: node.getBoundingClientRect().width,
+                height: node.getBoundingClientRect().height
+              };
+              const exportPromise = format === 'svg'
+                ? htmlToImage.toSvg(node, options)
+                : format === 'jpeg'
+                  ? htmlToImage.toJpeg(node, options)
+                  : htmlToImage.toPng(node, options);
+              exportPromise.then((dataUrl) => {
+                const link = document.createElement('a');
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const ext = format === 'jpeg' ? 'jpg' : format;
+                link.download = 'markmap-' + timestamp + '.' + ext;
+                link.href = dataUrl;
+                link.click();
+              }).catch((err) => console.error('Export failed:', err));
+            });
+          } catch (e) {
+            alert(labels.exportFailed + (e && e.message ? e.message : e));
+          }
+        }
+      })();
+    </script>
+
+
+</body>
+</html>

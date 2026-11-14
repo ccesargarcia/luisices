@@ -38,6 +38,8 @@ Ao executar tarefas neste repositório, consulte e siga as skills dedicadas em `
    * Use para atualizar modelos de interação de voz (`ask-cli`), fazer deploy de pacotes da skill e gerenciar rascunhos de pedidos por voz.
 10. **Próximo Passo & Continuidade:** [luisices-next-step-handoff](.agents/skills/luisices-next-step-handoff/SKILL.md)
    * Ao concluir uma etapa relevante, indique o próximo passo concreto e pergunte se o usuário quer que você prossiga; execute diretamente o que já foi solicitado.
+11. **Documentação Contínua:** [luisices-documentation](.agents/skills/luisices-documentation/SKILL.md)
+   * Use em toda alteração de código, configuração, workflow, contrato, correção ou funcionalidade nova. Avalie explicitamente impacto no Copiloto (Gemini) e no MCP/ChatGPT; revise os documentos afetados, atualize o que divergir e confira links e evidências. Registre justificativa quando não houver impacto ou atualização necessária.
 
 ---
 
@@ -54,3 +56,5 @@ Ao executar tarefas neste repositório, consulte e siga as skills dedicadas em `
    Ao modificar Cloud Functions em `functions/`, preserve rigorosamente os contratos das funções públicas (`callables` e `HTTP`), permissões e validações financeiras.
 4. **Isolamento de Funções:**
    Não crie dependências cruzadas circulares entre domínios de Cloud Functions. Mantenha os entrypoints enxutos para garantir a modularidade dos deploys seletivos por domínio (`orders`, `users`, `whatsapp`, `email`, `alexa`, `mcp`, `superfrete`).
+5. **Documentação Sempre Revisada:**
+   Em qualquer alteração ou nova funcionalidade, aplique `.agents/skills/luisices-documentation/SKILL.md`. Revise specs, guias do domínio, índices e referências cruzadas pertinentes; atualize os que ficaram desatualizados ou registre por que nenhuma edição documental é necessária.

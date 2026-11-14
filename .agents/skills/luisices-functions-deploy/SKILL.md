@@ -10,7 +10,7 @@ description: >-
 
 This skill outlines the strict architectural rules for managing, modularizing, and deploying Cloud Functions in Luisices. Inspect `functions/index.js` to see all domain modules.
 
-**Reference Architecture:** [docs/AUDITORIA_DEPENDENCIAS_FUNCTIONS_E_PLANO.md](../../docs/AUDITORIA_DEPENDENCIAS_FUNCTIONS_E_PLANO.md)
+**Reference Architecture:** [docs/AUDITORIA_DEPENDENCIAS_FUNCTIONS_E_PLANO.md](../../../docs/AUDITORIA_DEPENDENCIAS_FUNCTIONS_E_PLANO.md)
 
 ---
 

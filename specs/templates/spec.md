@@ -47,6 +47,15 @@ Que necessidade observada motiva a mudança? Como o fluxo funciona hoje? Separe 
 
 - `<coleções, campos, schemas, APIs, eventos; não inclua dados reais>`
 
+## Impacto na documentação
+
+- Guias/specs existentes revisados: `<arquivos e fontes de verdade consultados>`
+- Documentação que precisará ser atualizada: `<arquivos ou “nenhuma”, com justificativa>`
+- Índices, exemplos, comandos ou links afetados: `<itens ou não aplicável>`
+- Impacto no Copiloto (Gemini): `<impactado/não impactado; avaliar prompt, ferramentas, dados, permissões, limites e interface>`
+- Impacto no MCP/ChatGPT: `<impactado/não impactado; avaliar schema, ferramentas, escopos, OAuth/sessão, tenant e idempotência>`
+- Diferenças de comportamento Copiloto/MCP a preservar ou alterar: `<diferenças ou não aplicável>`
+
 ## Decisões e dúvidas
 
 - **Confirmado:** `<decisão baseada em código/docs>`

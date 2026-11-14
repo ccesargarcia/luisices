@@ -6,6 +6,7 @@
 **Padrões Suportados:** OpenAPI 3.0.3, MCP JSON-RPC 2.0, OAuth 2.1 (RFC 9728 / RFC 8414)
 **Ambiente de Produção:** `https://api.luisices.com.br/chatGptToolsEndpoint`  
 **Ambiente de Desenvolvimento:** `https://api.dev.luisices.com.br/chatGptToolsEndpoint`  
+**Revisão documental:** 13/11/2026; contratos conferidos contra os registros e executores locais. Isso não comprova publicação remota.
 
 ---
 
@@ -15,11 +16,12 @@
 2. [Desenhos de Arquitetura e Fluxos (Diagramas)](#2-desenhos-de-arquitetura-e-fluxos-diagramas)
 3. [Segurança, Autenticação e Autorização](#3-segurança-autenticação-e-autorização)
 4. [Endpoints de Descoberta e Infraestrutura](#4-endpoints-de-descoberta-e-infraestrutura)
-5. [Catálogo Detalhado de Ferramentas (Tools)](#5-catálogo-detalhado-de-ferramentas-tools)
+5. [Catálogo MCP e exemplos de ferramentas](#5-catalogo-mcp-e-exemplos-de-ferramentas)
+   * Exemplos detalhados (11 ferramentas; não é o catálogo completo)
    * [1. query_orders_view (Consultar Fila de Pedidos)](#1-query_orders_view)
    * [2. daily_briefing (Raio-X Operacional do Dia)](#2-daily_briefing)
    * [3. query_customers (Consultar Clientes)](#3-query_customers)
-   * [4. get_financial_summary (Resumo Financeiro & DRE)](#4-get_financial_summary)
+   * [4. get_financial_summary (Resumo Financeiro)](#4-get_financial_summary)
    * [5. calculate_pricing_estimate (Calculadora de Precificação)](#5-calculate_pricing_estimate)
    * [6. generate_whatsapp_message (Rascunho WhatsApp)](#6-generate_whatsapp_message)
    * [7. get_order_form (Formulário Estruturado de Pedido)](#7-get_order_form)
@@ -27,6 +29,7 @@
    * [9. create_order (Criar e Registrar Pedido Oficial)](#9-create_order)
    * [10. search_gallery_portfolio (Consultar Portfólio/Acervo)](#10-search_gallery_portfolio)
    * [11. get_user_summary (Desempenho de Colaboradores)](#11-get_user_summary)
+   * [Catálogo completo: 31 ferramentas e escopos](#51-catálogo-de-ferramentas-e-escopos)
 6. [Suporte Nativo ao Protocolo MCP (JSON-RPC 2.0)](#6-suporte-nativo-ao-protocolo-mcp-json-rpc-20)
 7. [Tabela de Erros HTTP e Tratamento](#7-tabela-de-erros-http-e-tratamento)
 8. [Massa de Dados Fictícios e Guia de Testes](#8-massa-de-dados-fictícios-e-guia-de-testes)
@@ -36,6 +39,8 @@
 ## 1. Visão Geral e Arquitetura
 
 O módulo de integração **ChatGPT Actions & MCP** do Luisices transforma a inteligência artificial da OpenAI e de clientes MCP (Cursor, Claude Desktop, assistentes autônomos) em um **copiloto operacional em tempo real** para o ateliê.
+
+Este contrato é distinto do Copiloto interno baseado em Gemini. O Copiloto declara nove ferramentas de chat; o MCP publica 31 ferramentas. Existem capacidades relacionadas, mas os catálogos, argumentos e autorizações não são equivalentes por padrão. Para a lista atual do MCP, consulte a tabela completa da seção 5.1; o endpoint OpenAPI publicado continua sendo a fonte normativa dos schemas de argumentos. Os exemplos desta página usam dados fictícios; os campos de resposta também dependem dos escopos concedidos e podem ser redigidos.
 
 A API permite realizar consultas de estoque, fila de produção, relatórios financeiros, cálculo de precificação com margem de lucro, geração de mensagens personalizadas e criação de pedidos oficiais diretamente a partir de comandos em linguagem natural.
 
@@ -138,7 +143,7 @@ Clientes dinâmicos existentes com callback HTTPS cadastrado podem continuar usa
       │ 1. POST /tools/create_order                           │                         │
       ├──────────────────────────>│                             │                         │
       │    Authorization: Bearer  │                             │                         │
-      │    X-Idempotency-Key...   │                             │                         │
+      │    idempotencyKey no JSON   │                             │                         │
       │                           │ 2. Valida Origem & Chave    │                         │
       │                           │    Checa Rate Limit & Scope │                         │
       │                           ├────────────────────────────>│                         │
@@ -188,9 +193,9 @@ A API suporta dois métodos equivalentes de autenticação no cabeçalho `Author
 | `customers:read` | Clientes | Buscar histórico e dados de contato de clientes | Não | Sim |
 | `customers:create` | Clientes | Cadastrar novos clientes no ateliê | Não | Não |
 | `customers:update` | Clientes | Atualizar dados cadastrais de clientes existentes | Não | Não |
-| `payments:read` | Financeiro de Pedidos | Consultar pagamentos e histórico de um pedido | Não | Não |
+| `payments:read` | Financeiro de Pedidos | Consultar pagamentos e histórico de pedidos; libera valores operacionais redigidos nas ferramentas de consulta | Não | Não |
 | `payments:write` | Financeiro de Pedidos | Registrar pagamentos recebidos em pedidos | Não | Não |
-| `financial:read` | Financeiro (Sensível) | Acesso a faturamento, ticket médio e DRE | **Sim** | Não |
+| `financial:read` | Financeiro (Sensível) | Acesso a faturamento, ticket médio e valores a receber; não apura despesas, lucro ou caixa por data de pagamento | **Sim** | Não |
 | `team:read` | Equipe (Sensível) | Auditar produtividade e pedidos por colaborador | **Sim** | Não |
 | `pricing:estimate` | Precificação & Orçamentos | Calculadora de preços, insumos e margem | Não | Sim |
 | `supplies:read` | Precificação & Insumos | Consultar insumos cadastrados, estoque e custos | Não | Sim |
@@ -202,6 +207,18 @@ A API suporta dois métodos equivalentes de autenticação no cabeçalho `Author
 | `whatsapp:compose` | Atendimento WhatsApp | Gerar textos de mensagens de cobrança e avisos | Não | Sim |
 | `gallery:read` | Galeria & Portfólio | Buscar fotos e modelos do acervo do ateliê | Não | Sim |
 
+#### Redação de dados financeiros nas respostas
+
+O backend valida o escopo exigido pela ferramenta, as permissões atuais do perfil e, quando aplicável, o papel administrativo. Ter `orders:read`, `customers:read` ou `team:read` não libera automaticamente dados financeiros.
+
+- `query_orders_view` remove `totalPrice`, `paidAmount`, `remainingAmount` e `paymentStatus` sem `payments:read` ou `financial:read`.
+- `query_customers` remove `totalSpent` sem um desses dois escopos.
+- `daily_briefing` remove contagens e totais de pagamentos e redige valores dos pedidos em atraso e das entregas do dia sem esses escopos.
+- `get_user_summary` exige acesso administrativo à ferramenta `team:read`. Sem `financial:read`, remove métricas financeiras e `totalSpent`; os valores em `sampleOrders` só aparecem com `payments:read` ou `financial:read`.
+- `payments:read` pode revelar detalhes de pagamentos, mas não libera as métricas de `financial:read`. Este último é administrativo e libera as métricas financeiras.
+
+Os executores também limitam os dados ao tenant e às permissões de módulo atuais. A redação no endpoint é uma proteção adicional; não substitui essa autorização.
+
 ---
 
 ### 3.3 Mecanismos de Proteção e Resiliência
@@ -209,8 +226,9 @@ A API suporta dois métodos equivalentes de autenticação no cabeçalho `Author
 * **Proteção de Origem (Origin Protection):** Requisições originadas via Cloudflare Worker devem conter o cabeçalho `x-origin-secret`. Requisições diretas de Ações do ChatGPT contendo uma chave `lui_...` válida são liberadas automaticamente.
 * **Rate Limiting:** Limite padrão de **60 requisições por hora por chave/usuário**. Exceder o limite resulta em erro `429 Too Many Requests`.
 * **Cache em Memória (15s):** A validação de chaves e configurações globais possui cache volátil de 15 segundos para alta performance em rajadas de chamadas.
-* **Trava de Risco Financeiro (> R$ 500,00):** Pedidos com valor total superior a R$ 500,00 criados via ChatGPT/MCP recebem automaticamente a flag `requiresFinancialApproval: true` e as tags `Aprovação Financeira` e `Valor Alto`. O assistente é instruído a alertar o usuário no chat.
-* **Proteção contra Duplicatas (Idempotência):** `create_order` exige o parâmetro `idempotencyKey`. A chave é vinculada ao usuário, à ferramenta e aos dados da operação. Repetir os mesmos dados com a mesma chave retorna o pedido original sem duplicar a gravação; reutilizar a chave com outros dados gera conflito. Omitir `confirmed` ou enviar `confirmed=true` representa a mesma operação de criação.
+* **Aviso e aprovação de pedidos de alto valor:** a partir de R$ 500,00, o executor avalia o valor e a entrada. `requiresFinancialApproval: true` só é definido para pedido de pelo menos R$ 1.500,00, sem entrada e criado por não administrador. Sem entrada, pedidos a partir de R$ 500,00 recebem aviso; a etiqueta persistida é `Aguardando Sinal`, não `Aprovação Financeira`/`Valor Alto`.
+* **Entrada financeira na criação:** informar `paidAmount` maior que zero ou `paymentMethod` requer também `payments:write`, além de `orders:create`. `payments:write` não é substituído por `payments:read`.
+* **Proteção contra duplicatas (idempotência):** operações de gravação publicam `idempotencyKey` no schema e vinculam o recibo ao usuário, à ferramenta e ao conteúdo da operação. Repetir a mesma operação com a mesma chave retorna o resultado anterior; reutilizá-la com dados diferentes gera conflito. `create_order` preserva compatibilidade: omitir `confirmed` ou enviar `true` mantém a gravação direta após a autorização do usuário no host; `false` solicita apenas a prévia. Outros fluxos de edição/registro usam confirmação explícita e, quando definidos no schema, controle de versão.
 * **Auditoria Contínua (`mcpAuditLogs`):** Todas as invocações (sucesso ou erro) são registradas assincronamente no Firestore contendo tempo de execução (ms), protocolo, usuário, ferramenta e número do pedido gerado.
 
 ### 3.4 Traces MCP no Sentry
@@ -262,9 +280,9 @@ Accept: application/json
 
 ---
 
-## 5. Catálogo Detalhado de Ferramentas (Tools)
+## 5. Catálogo MCP e exemplos de ferramentas
 
-Todas as ferramentas executadas via REST são chamadas via método **`POST`** para a URL `/tools/{nome_da_ferramenta}`.
+As 11 subseções abaixo preservam exemplos detalhados de chamada e não representam o catálogo completo. O servidor publica 31 ferramentas. A seção 5.1 lista todas elas com seus escopos; para os argumentos, tipos e limites vigentes, consulte o OpenAPI dinâmico publicado pelo endpoint. Todas as ferramentas executadas via REST são chamadas via método **`POST`** para a URL `/tools/{nome_da_ferramenta}`.
 
 ---
 
@@ -280,7 +298,9 @@ Todas as ferramentas executadas via REST são chamadas via método **`POST`** pa
 | `searchTerm` | `string` | Não | - | Filtra por nome do cliente, número do pedido (ex: `#2026-0042`) ou produto. |
 | `startDate` | `string` | Não | - | Data inicial de entrega no formato `AAAA-MM-DD`. |
 | `endDate` | `string` | Não | - | Data final de entrega no formato `AAAA-MM-DD`. |
-| `limit` | `integer` | Não | `15` | Máximo de registros retornados (limite máximo: 20). |
+| `limit` | `integer` | Não | `15` | Máximo de registros retornados (limite máximo: 50). |
+
+Sem `payments:read` ou `financial:read`, os campos financeiros do pedido são omitidos. A ferramenta respeita o acesso do perfil aos próprios pedidos e aos pedidos compartilhados com ele.
 
 #### Exemplo de Requisição HTTP:
 ```http
@@ -304,23 +324,19 @@ Content-Type: application/json
   "timestamp": "2026-10-13T10:30:00.000Z",
   "data": {
     "totalFound": 1,
-    "statusFilter": "em_producao",
+    "hasMore": false,
     "orders": [
       {
-        "id": "ORD-2026-0189",
+        "orderId": "pedido-sintetico-0189",
         "orderNumber": "#2026-0189",
         "customerName": "Cliente Exemplo",
         "customerPhone": "<TELEFONE_FICTICIO>",
-        "productName": "Kit Festa Luxo Safari Baby 3D (30 Caixas)",
+        "productName": "Kit Festa Luxo Safari Baby 3D",
         "quantity": 30,
-        "totalPrice": 450.00,
-        "paidAmount": 225.00,
-        "remainingBalance": 225.00,
-        "status": "em_producao",
-        "paymentStatus": "parcialmente_pago",
+        "status": "in-progress",
+        "rawStatus": "em produção",
         "deliveryDate": "2026-10-25",
-        "theme": "Safari Baby",
-        "tags": ["ChatGPT", "Urgente", "Festa Infantil"]
+        "theme": "Safari Baby"
       }
     ]
   }
@@ -332,7 +348,7 @@ Content-Type: application/json
 ### <a id="2-daily_briefing"></a>2. `daily_briefing` — Raio-X Operacional do Dia
 
 * **Escopo Requerido:** `orders:read`
-* **Descrição:** Fornece um panorama completo das operações do ateliê para a data especificada (ou hoje), incluindo entregas previstas, pedidos em atraso, contagem em produção e saldos pendentes a receber.
+* **Descrição:** Fornece um panorama operacional para a data especificada (ou hoje), com atrasos, entregas, produção e conclusão. Valores e contagens de pagamento só aparecem com `payments:read` ou `financial:read`.
 
 #### Parâmetros de Entrada:
 | Campo | Tipo | Obrigatório | Padrão | Descrição |
@@ -358,28 +374,27 @@ Content-Type: application/json
   "tool": "daily_briefing",
   "timestamp": "2026-10-13T10:30:00.000Z",
   "data": {
-    "referenceDate": "2026-10-13",
-    "deliveriesTodayCount": 3,
-    "overdueCount": 1,
-    "inProductionCount": 8,
-    "pendingPaymentTotal": 1380.00,
-    "deliveriesToday": [
-      {
-        "orderNumber": "#2026-0175",
-        "customerName": "Cliente Exemplo B",
-        "productName": "50 Convites de Casamento Clássicos em Papel Linho",
-        "deliveryDate": "2026-10-13",
-        "status": "em_producao",
-        "remainingBalance": 350.00
-      }
-    ],
-    "overdueOrders": [
+    "todayDate": "2026-10-13",
+    "delayedCount": 1,
+    "todayDeliveriesCount": 3,
+    "inProgressCount": 8,
+    "completedCount": 4,
+    "delayedOrders": [
       {
         "orderNumber": "#2026-0160",
-        "customerName": "Cliente Exemplo C",
-        "productName": "Topo de Bolo Acrílico Personalizado Bodas de Prata",
+        "customerName": "Cliente Exemplo B",
+        "productName": "Topo de Bolo Personalizado",
         "deliveryDate": "2026-10-11",
-        "daysOverdue": 2
+        "status": "in-progress"
+      }
+    ],
+    "todayDeliveries": [
+      {
+        "orderNumber": "#2026-0175",
+        "customerName": "Cliente Exemplo C",
+        "productName": "Convites de Casamento",
+        "deliveryDate": "2026-10-13",
+        "status": "in-progress"
       }
     ]
   }
@@ -397,7 +412,7 @@ Content-Type: application/json
 | Campo | Tipo | Obrigatório | Padrão | Descrição |
 | :--- | :--- | :---: | :---: | :--- |
 | `searchTerm` | `string` | Não | - | Nome, telefone ou cidade para filtrar. |
-| `limit` | `integer` | Não | `10` | Quantidade máxima de clientes retornados. |
+| `limit` | `integer` | Não | `10` | Quantidade máxima de clientes retornados (limite máximo: 50). |
 
 #### Exemplo de Requisição HTTP:
 ```http
@@ -419,17 +434,18 @@ Content-Type: application/json
   "tool": "query_customers",
   "timestamp": "2026-10-13T10:30:00.000Z",
   "data": {
-    "totalFound": 1,
+    "totalScoped": 1,
+    "totalFiltered": 1,
+    "isFiltered": true,
+    "hasMore": false,
     "customers": [
       {
-        "id": "CUST-9842",
+        "id": "cliente-sintetico-9842",
         "name": "Cliente Exemplo",
         "phone": "<TELEFONE_FICTICIO>",
         "city": "São Paulo",
         "state": "SP",
-        "totalOrdersCount": 4,
-        "totalSpent": 1820.00,
-        "lastOrderDate": "2026-10-10"
+        "totalOrders": 4
       }
     ]
   }
@@ -438,17 +454,17 @@ Content-Type: application/json
 
 ---
 
-### <a id="4-get_financial_summary"></a>4. `get_financial_summary` — Resumo Financeiro & DRE (Admin)
+### <a id="4-get_financial_summary"></a>4. `get_financial_summary` — Resumo Financeiro (Admin)
 
 * **Escopo Requerido:** `financial:read`
 * **Exige Perfil de Administrador:** **Sim**
-* **Descrição:** Fornece o balanço financeiro, faturamento bruto, total efetivamente recebido, valores pendentes a receber e ticket médio para o período selecionado.
+* **Descrição:** Calcula faturamento realizado e volume emitido, pagamentos acumulados nos pedidos selecionados, valores a receber e ticket médio. O período seleciona pedidos por `createdAt`; não é DRE (não calcula despesas/lucro) nem apuração de caixa por data de recebimento.
 
 #### Parâmetros de Entrada:
 | Campo | Tipo | Obrigatório | Padrão | Descrição |
 | :--- | :--- | :---: | :---: | :--- |
-| `period` | `string` | Não | `"mes"` | Valore aceitos: `"hoje"`, `"esta_semana"`, `"mes"`, `"mes_anterior"`, `"ano"`. |
-| `userIdentifier` | `string` | Não | - | Opcional: filtrar faturamento gerado por colaborador específico. |
+| `period` | `string` | Não | `"mes"` | Aceita hoje, ontem, semana/últimos 7 dias, mês atual, mês anterior, ano, `all`/`todos`, nome de mês e mês/ano como `2026-10`. |
+| `userIdentifier` | `string` | Não | - | Filtra pedidos vinculados a um colaborador por proprietário, criador ou responsável; disponível para administrador. |
 
 #### Exemplo de Requisição HTTP:
 ```http
@@ -469,17 +485,24 @@ Content-Type: application/json
   "tool": "get_financial_summary",
   "timestamp": "2026-10-13T10:30:00.000Z",
   "data": {
-    "periodLabel": "Outubro / 2026",
-    "totalOrders": 42,
-    "grossRevenue": 18450.00,
-    "totalReceived": 12300.00,
-    "totalPending": 6150.00,
-    "averageTicket": 439.28,
-    "paymentMethodsBreakdown": {
-      "pix": 14200.00,
-      "cartao_credito": 3250.00,
-      "dinheiro": 1000.00
-    }
+    "periodLabel": "Outubro de 2026 (01/10/2026 a 31/10/2026)",
+    "criterioFiltro": "Data de criação do pedido (createdAt); sem data válida excluído do intervalo",
+    "selectionDateField": "createdAt",
+    "paymentDateBasis": "not_available",
+    "paymentScopeNotice": "Pagamentos acumulados nos pedidos selecionados, inclusive registrados depois do período. Esta consulta não apura entradas de caixa por data de recebimento.",
+    "excludedMissingCreationDate": 0,
+    "faturamentoRealizado": 12000.00,
+    "volumeTotalEmitido": 18450.00,
+    "totalRecebido": 12300.00,
+    "totalPendenteReceber": 6150.00,
+    "ticketMedio": 439.28,
+    "taxaConversao": 65.0,
+    "pedidosCriadosNoPeriodo": 42,
+    "pedidosConcluidos": 27,
+    "pedidosEmProducao": 8,
+    "pedidosPendentes": 7,
+    "pedidosCancelados": 3,
+    "totalPedidosValidos": 39
   }
 }
 ```
@@ -690,7 +713,7 @@ Content-Type: application/json
 ### <a id="9-create_order"></a>9. `create_order` — Criar e Registrar Pedido Oficial (com Idempotência & Alertas)
 
 * **Escopo Requerido:** `orders:create`
-* **Descrição:** Grava oficialmente um novo pedido no banco de dados Firestore do ateliê. Gera o número sequencial `#2026-XXXX`, vincula o cliente, calcula o saldo pendente, atribui a tag `"ChatGPT"`, aplica regras de idempotência e aciona a trava financeira se o total for maior que R$ 500,00.
+* **Descrição:** Grava oficialmente um pedido, calcula o saldo, atribui a tag `ChatGPT` e aplica idempotência. Pedidos sem entrada a partir de R$ 500,00 recebem aviso; somente valores a partir de R$ 1.500,00 sem entrada e criados por não administrador recebem `requiresFinancialApproval: true`.
 
 #### Parâmetros de Entrada:
 | Campo | Tipo | Obrigatório | Padrão | Descrição |
@@ -699,13 +722,13 @@ Content-Type: application/json
 | `productName` | `string` | **Sim** | - | Nome/descrição do item encomendado. |
 | `quantity` | `integer` | **Sim** | - | Quantidade (mínimo 1). |
 | `totalPrice` | `number` | **Sim** | - | Valor total em R$. |
-| `deliveryDate` | `string` | **Sim** | - | Data de entrega prometida (`AAAA-MM-DD`). Não aceita datas passadas. |
+| `deliveryDate` | `string` | **Sim** | - | Data de entrega prometida (`AAAA-MM-DD` ou `DD/MM/AAAA`). Datas passadas são recusadas. |
 | `customerPhone` | `string` | Não | - | Telefone do cliente. |
-| `paidAmount` | `number` | Não | `0.00` | Valor de entrada/sinal já pago. |
-| `paymentMethod` | `string` | Não | `"pix"` | Enums: `"pix"`, `"cartao_credito"`, `"cartao_debito"`, `"dinheiro"`, `"transferencia"`. |
+| `paidAmount` | `number` ou `string` monetária | Não | `0.00` | Valor de entrada/sinal já recebido. Valor maior que zero exige também `payments:write`. |
+| `paymentMethod` | `string` | Não | - | Forma de pagamento já recebido. Aceita os valores do schema; informar exige também `payments:write`. |
 | `theme` | `string` | Não | - | Tema ou cores. |
 | `notes` | `string` | Não | - | Instruções especiais de personalização. |
-| `idempotencyKey` | `string` | **Sim** | - | Chave de 8 a 128 caracteres. Reutilize a mesma chave nas tentativas da mesma operação. |
+| `idempotencyKey` | `string` | **Sim** | - | Campo interno de 8 a 128 caracteres. O conector deve gerar e reutilizar silenciosamente nas tentativas da mesma operação. |
 | `confirmed` | `boolean` | Não | Compatibilidade | `false` prepara somente a prévia; `true` grava após autorização explícita. Conectores antigos sem esse campo mantêm a criação direta, após autorização do usuário no host. |
 
 `create_order` é uma ação de gravação. O conector deve obter autorização explícita do usuário antes de invocá-la para criar. Para apenas preparar dados, utilize `extract_order_draft` ou `confirmed=false`. A ausência de `confirmed` preserva o contrato dos conectores antigos e não deve ser usada para solicitar uma prévia. Não é necessário pedir novamente uma autorização já dada para os mesmos dados. Uma atualização do conector de chamada sem `confirmed` para `confirmed=true` reutiliza a mesma operação idempotente e retorna o mesmo pedido.
@@ -715,20 +738,17 @@ Content-Type: application/json
 POST /chatGptToolsEndpoint/tools/create_order HTTP/1.1
 Host: api.luisices.com.br
 Authorization: Bearer <ACCESS_TOKEN>
-X-Idempotency-Key: msp-ord-20261013-001
 Content-Type: application/json
 
 {
   "customerName": "Cliente Exemplo",
   "customerPhone": "<TELEFONE_FICTICIO>",
-  "productName": "Kit Pegue e Monte Safari 3D (50 peças)",
+  "productName": "Kit Pegue e Monte Safari 3D",
   "quantity": 50,
-  "totalPrice": 650.00,
-  "paidAmount": 300.00,
-  "paymentMethod": "pix",
+  "totalPrice": 1600.00,
   "deliveryDate": "2026-11-15",
   "theme": "Safari Baby",
-  "notes": "Nome do aniversariante: Lucas (1 ano). Colocar laço verde musgo.",
+  "notes": "Incluir acabamento em verde musgo.",
   "idempotencyKey": "msp-ord-20261013-001",
   "confirmed": true
 }
@@ -741,23 +761,22 @@ Content-Type: application/json
   "tool": "create_order",
   "timestamp": "2026-10-13T10:30:00.000Z",
   "data": {
-    "id": "ORD-2026-0201",
+    "orderId": "pedido-sintetico-0201",
     "orderNumber": "#2026-0201",
-    "status": "pendente",
+    "status": "pending",
     "customerName": "Cliente Exemplo",
     "customerPhone": "<TELEFONE_FICTICIO>",
-    "productName": "Kit Pegue e Monte Safari 3D (50 peças)",
+    "productName": "Kit Pegue e Monte Safari 3D",
     "quantity": 50,
-    "totalPrice": 650.00,
-    "paidAmount": 300.00,
-    "remainingBalance": 350.00,
-    "paymentStatus": "parcialmente_pago",
+    "totalPrice": 1600.00,
+    "paidAmount": 0,
+    "remainingAmount": 1600.00,
+    "paymentStatus": "pending",
     "deliveryDate": "2026-11-15",
-    "theme": "Safari Baby",
-    "tags": ["ChatGPT", "Aprovação Financeira", "Valor Alto"],
     "requiresFinancialApproval": true,
-    "idempotencyKey": "msp-ord-20261013-001",
-    "message": "Pedido #2026-0201 registrado com sucesso na fila de produção! ⚠️ Atenção: Por possuir valor superior a R$ 500,00, este pedido requer validação da gerência financeira."
+    "financialWarning": "Pedido de grande porte (R$ 1600.00) registrado sem entrada. A produção aguardará aprovação da administração ou pagamento de sinal mínimo (R$ 480.00).",
+    "isDuplicate": false,
+    "message": "Pedido #2026-0201 criado com sucesso para Cliente Exemplo!"
   }
 }
 ```
@@ -848,21 +867,53 @@ Content-Type: application/json
   "tool": "get_user_summary",
   "timestamp": "2026-10-13T10:30:00.000Z",
   "data": {
-    "userEmail": "usuario@example.invalid",
-    "userName": "Colaborador Exemplo",
-    "role": "admin",
-    "completedOrdersThisMonth": 28,
-    "inProductionCount": 5,
-    "onTimeDeliveryRatePercent": 98.2
+    "authorized": true,
+    "found": true,
+    "user": {
+      "uid": "colaborador-sintetico-1",
+      "name": "Colaborador Exemplo",
+      "email": "colaborador@example.invalid",
+      "role": "funcionario"
+    },
+    "customers": [
+      {
+        "name": "Cliente Exemplo",
+        "phone": "<TELEFONE_FICTICIO>",
+        "totalOrders": 4,
+        "recentProducts": ["Kit Festa", "Topo de Bolo"]
+      }
+    ],
+    "totalCustomers": 1,
+    "sampleOrders": [
+      {
+        "orderNumber": "#2026-0042",
+        "customerName": "Cliente Exemplo",
+        "productName": "Kit Festa",
+        "status": "in-progress",
+        "deliveryDate": "2026-11-15"
+      }
+    ],
+    "metrics": {
+      "totalCustomers": 1,
+      "recentCustomers": ["Cliente Exemplo"],
+      "totalOrders": 4,
+      "totalValidOrders": 4,
+      "completedOrders": 2,
+      "inProgressOrders": 1,
+      "pendingOrders": 1,
+      "cancelledOrders": 0
+    }
   }
 }
 ```
+
+Este exemplo mostra `team:read` sem `financial:read` nem `payments:read`; por isso, valores financeiros de clientes, pedidos e métricas não aparecem. A própria ferramenta exige perfil administrador.
 
 ---
 
 ### 5.1 Catálogo de ferramentas e escopos
 
-O servidor publica 30 ferramentas. A lista abaixo reflete o registro atual em `functions/mcp/openapi.js`; a autorização efetiva também exige que o perfil e a chave permitam o escopo indicado.
+O servidor publica 31 ferramentas. A lista abaixo acompanha `TOOLS_METADATA` em `functions/mcp/openapi.js` e `TOOL_SCOPE_MAP` em `functions/mcp/constants.js`; a autorização efetiva também exige que o perfil e a chave permitam o escopo indicado. O teste `tests/unit/mcp-tool-contract.test.ts` verifica nomes e escopos desta tabela contra esses registros e o dispatcher.
 
 | Ferramenta | Escopo requerido | Descrição / Módulo |
 | :--- | :--- | :--- |
@@ -874,6 +925,7 @@ O servidor publica 30 ferramentas. A lista abaixo reflete o registro atual em `f
 | `create_order` | `orders:create` | Criar e registrar pedido oficial (idempotente) |
 | `get_order_edit_form` | `orders:update` | Obter formulário estruturado para edição |
 | `update_order` | `orders:update` | Atualizar dados e valores de um pedido existente |
+| `add_order_item` | `orders:update` | Incluir item em pedido existente |
 | `update_order_status` | `orders:update` | Alterar status na esteira de produção |
 | `update_delivery_details` | `orders:update` | Atualizar informações de entrega/frete |
 | `query_order_payments` | `payments:read` | Consultar pagamentos e histórico de um pedido |
@@ -882,7 +934,7 @@ O servidor publica 30 ferramentas. A lista abaixo reflete o registro atual em `f
 | `get_customer_history` | `customers:read` | Obter histórico detalhado de compras do cliente |
 | `create_customer` | `customers:create` | Cadastrar novo cliente na base do ateliê |
 | `update_customer` | `customers:update` | Atualizar dados cadastrais de um cliente |
-| `get_financial_summary` | `financial:read` | Resumo financeiro, faturamento e DRE (Admin) |
+| `get_financial_summary` | `financial:read` | Resumo financeiro de pedidos por data de criação (Admin; não é DRE nem fluxo de caixa) |
 | `get_user_summary` | `team:read` | Auditoria de desempenho da equipe (Admin) |
 | `calculate_pricing_estimate` | `pricing:estimate` | Calculadora rápida de preço sugerido e margem |
 | `calculate_artisan_pricing` | `pricing:estimate` | Cálculo detalhado de precificação artesanal |
@@ -897,7 +949,7 @@ O servidor publica 30 ferramentas. A lista abaixo reflete o registro atual em `f
 | `generate_whatsapp_message` | `whatsapp:compose` | Gerar mensagens para cobrança, aviso ou entrega |
 | `search_gallery_portfolio` | `gallery:read` | Buscar fotos e modelos no acervo da galeria |
 
-Ferramentas que gravam dados devem ser usadas com os campos de prévia, confirmação explícita, controle de versão e/ou idempotência definidos no schema de cada operação. A autorização é validada novamente pelo backend em cada chamada.
+Ferramentas que gravam dados devem ser usadas com os campos de prévia, confirmação explícita, controle de versão e/ou idempotência definidos no schema de cada operação. A autorização é validada novamente pelo backend em cada chamada. `create_order` mantém o contrato legado de execução após autorização do host quando `confirmed` está ausente; não se deve inferir que todos os conectores apresentam a mesma tela de confirmação.
 
 ## 6. Suporte Nativo ao Protocolo MCP (JSON-RPC 2.0)
 
@@ -971,9 +1023,33 @@ Além das chamadas REST OpenAPI, o endpoint aceita requisições no padrão nati
     "content": [
       {
         "type": "text",
-        "text": "{\n  \"totalFound\": 2,\n  \"statusFilter\": \"pendente\",\n  \"orders\": [...]\n}"
+        "text": "🔎 2 pedidos encontrados.\n• #2026-0042 · Cliente Exemplo · Kit Festa · 15/11/2026 · Em produção\n• #2026-0043 · Outra Cliente · Topo de Bolo · 16/11/2026 · Pendente"
       }
     ],
+    "structuredContent": {
+      "totalFound": 2,
+      "hasMore": false,
+      "orders": [
+        {
+          "orderId": "pedido-sintetico-0042",
+          "orderNumber": "#2026-0042",
+          "customerName": "Cliente Exemplo",
+          "productName": "Kit Festa",
+          "quantity": 1,
+          "status": "in-progress",
+          "deliveryDate": "2026-11-15"
+        },
+        {
+          "orderId": "pedido-sintetico-0043",
+          "orderNumber": "#2026-0043",
+          "customerName": "Outra Cliente",
+          "productName": "Topo de Bolo",
+          "quantity": 1,
+          "status": "pending",
+          "deliveryDate": "2026-11-16"
+        }
+      ]
+    },
     "isError": false
   }
 }
@@ -985,10 +1061,11 @@ Além das chamadas REST OpenAPI, o endpoint aceita requisições no padrão nati
 
 | Código HTTP | Erro (`error`) | Causa / Descrição | Ação Recomendada |
 | :---: | :--- | :--- | :--- |
-| `400` | `INVALID_ARGUMENTS` | Parâmetros obrigatórios ausentes ou em formato incorreto. | Corrigir o JSON da requisição conforme a especificação. |
+| `400` | `INVALID_ARGUMENT` | Parâmetros obrigatórios ausentes ou em formato incorreto. | Corrigir o JSON da requisição conforme a especificação. |
 | `401` | `UNAUTHORIZED` | Cabeçalho `Authorization` ausente, chave desativada ou expirada. | Fornecer uma chave `lui_...` válida ou realizar login OAuth. |
 | `403` | `SCOPE_PERMISSION_DENIED` | A chave/usuário não possui o escopo necessário para a ferramenta. | Atribuir o escopo requerido na chave no painel do Luisices. |
-| `403` | `ADMIN_REQUIRED` | Tentativa de executar ferramenta restrita a Administradores (ex: DRE/Equipe). | Utilizar uma conta com perfil Administrador. |
+| `403` | `PROFILE_SCOPE_PERMISSION_DENIED` | A chave contém o escopo, mas o perfil não tem a permissão MCP/de módulo correspondente. | Revisar as funcionalidades MCP e a permissão do módulo no perfil. |
+| `403` | `ADMIN_REQUIRED` | Tentativa de executar ferramenta administrativa de resumo financeiro ou equipe. | Utilizar uma conta com perfil Administrador. |
 | `404` | `TOOL_NOT_FOUND` | O nome da ferramenta informado na URL não existe. | Verificar a ortografia do nome da ferramenta em `/openapi.json`. |
 | `429` | `RATE_LIMIT_EXCEEDED` | Limite de 60 requisições/hora excedido para a chave. | Aguardar o reset da janela de tempo ou aumentar o limite. |
 | `500` | `TOOL_EXECUTION_ERROR` | Erro durante o processamento interno na regra de negócio do Firebase. | Consultar os logs detalhados na coleção `mcpAuditLogs`. |
@@ -1003,7 +1080,7 @@ Para realizar testes integrados no ChatGPT Actions ou cliente MCP, utilize os da
 * **Cliente de Teste:** `Cliente Exemplo`
 * **Telefone Fictício:** `<TELEFONE_FICTICIO>`
 * **Produto de Teste 1 (Normal):** `Kit Festa Luxo Safari Baby 3D (30 peças)` — **Valor:** `R$ 350,00` — **Sinal:** `R$ 175,00`
-* **Produto de Teste 2 (Valor Alto > R$500):** `50 Caixas Personalizadas Bodas de Ouro` — **Valor:** `R$ 750,00` — **Sinal:** `R$ 400,00`
+* **Produto de Teste 2 (sem sinal; aprovação administrativa):** `50 Caixas Personalizadas Bodas de Ouro` — **Valor:** `R$ 1.600,00` — **Sinal:** `R$ 0,00`
 * **Data de Entrega Futura de Teste:** `2026-11-15`
 
 ### Roteiro Recomendado de Validação no ChatGPT:

@@ -1,6 +1,6 @@
 # Copiloto de IA: capacidades, prompt e evolução
 
-Revisão: **15/10/2026**. A implementação descrita abaixo é baseada no código presente no repositório. O estado de publicação em cada ambiente deve ser confirmado no pipeline e no próprio ambiente.
+Revisão: **13/11/2026**. A implementação descrita abaixo é baseada no código presente no repositório. O estado de publicação em cada ambiente deve ser confirmado no pipeline e no próprio ambiente.
 
 ## Onde o comportamento é definido
 
@@ -112,6 +112,32 @@ Para comparar modelos, consulte as fontes oficiais de [tarifas](https://ai.googl
 Priorize: prompt compacto; contexto sob demanda; eliminação de consultas repetidas dentro da mesma requisição; respostas determinísticas para somas/status; revisão da política de fallback; medição de latência e taxa de erro no Sentry, sem registrar conteúdo da conversa. Não é necessário introduzir banco vetorial ou nova infraestrutura para as primeiras melhorias.
 
 ## Validação local e próxima validação em DEV
+
+### Avaliação determinística offline
+
+Os testes locais verificam contratos e regras do backend com fixtures fictícias e dependências mockadas; não medem se uma chamada real do Gemini escolhe a ferramenta ou redige a melhor resposta. A suíte `tests/unit/ai/synthetic-quality-eval.test.ts` reúne 40 casos determinísticos de cálculo, busca, rascunhos, autorização e falhas; sua data está fixada em janeiro de 2025 para que os casos relativos ao dia não dependam da data do runner. `tests/unit/ai/response-contracts.test.ts` cobre ambiguidade, prompt injection no contexto, argumentos de precificação e respostas do handler com Gemini simulado. `tests/unit/ai/offline-regression-guardrails.test.ts` protege o bloqueio antes de contexto/provedor, o não despacho de ferramentas desconhecidas e a separação entre instrução confiável e resultado cadastrado não confiável.
+
+Isolamento entre tenants e metadados do Copiloto é coberto em `tests/unit/ai/profile-metadata-isolation.test.ts`. Para MCP/ChatGPT, `tests/unit/security-attack-simulations.test.ts` cobre cenários adversariais e `tests/unit/mcp-redaction-security.test.ts` verifica diretamente a redação de pedidos, clientes, briefing e resumo da equipe segundo os escopos; `mcp-oauth-security`, `backend-mcp-authorization`, `mcp-validation` e `mcp-order-number-edit` cobrem OAuth, permissões, argumentos, confirmação e idempotência. Esses testes protegem contratos próprios de cada integração e não significam paridade entre Copiloto e MCP.
+
+Execute a cobertura focada com `npx vitest run --reporter=verbose tests/unit/ai/offline-regression-guardrails.test.ts tests/unit/ai/synthetic-quality-eval.test.ts tests/unit/ai/response-contracts.test.ts tests/unit/ai/profile-metadata-isolation.test.ts tests/unit/security-attack-simulations.test.ts tests/unit/backend-mcp-authorization.test.ts tests/unit/mcp-validation.test.ts`. O resultado não substitui a futura avaliação live do Gemini; nenhum teste desta suíte envia dados ao provedor.
+
+### Avaliação live manual no GitHub Actions
+
+O workflow `.github/workflows/gemini-synthetic-evaluation.yml` executa o handler real do Copiloto com uma chave exclusiva e repositórios em memória preenchidos por fixtures versionadas em `tests/fixtures/ai/copilot-live-eval.json`. Não inicializa Firebase, não usa banco, rede de clientes, orçamento de produção nem ferramentas mutáveis. A lista de nove ferramentas é conferida contra uma allowlist revisada; uma mudança no catálogo interrompe a avaliação até revisão explícita.
+
+O workflow só aceita execução manual em `develop` ou `main`, requer confirmação explícita de uso exclusivo de dados sintéticos e custo potencial, limita a seleção a `smoke` (3 casos) ou `full` (5 casos), permite escolher um modelo Gemini 3.x e usa somente esse modelo, sem fallback. O harness live permite até 60 segundos por chamada e 90 segundos de limite total por chamada, independente do timeout mais curto do chat em produção. A rubrica reprova violações críticas, respostas truncadas pelo limite de saída do provedor e exige ao menos 90% dos critérios não críticos. Truncamento é uma falha bloqueante independente da pontuação agregada. Falhas geram logs estruturados por categoria, tipo de erro permitido, status HTTP e estados da tentativa; nunca incluem chave, prompt, argumentos, resposta do Gemini ou mensagem bruta. O relatório e o resumo do Actions mantêm apenas metadados agregados e sintéticos. O artefato expira após 14 dias.
+
+As últimas execuções conhecidas (`43515498432` e `43515690479`) terminaram como `evaluation_error`/`not_evaluated`, sem casos pontuados: uma recebeu HTTP 503 do provedor e a outra atingiu o timeout live de 60 segundos. Isso não é uma reprovação de qualidade do modelo. A validação ponta a ponta permanece pendente; os erros e a chave devem ser revistos antes de uma nova tentativa.
+
+#### Criar e cadastrar a chave dedicada
+
+1. No [Google AI Studio](https://aistudio.google.com/apikey), selecione um projeto de avaliação separado da produção. Se usar um projeto existente, importe-o no AI Studio antes de criar a chave.
+2. Crie uma chave Gemini para esse projeto. As chaves novas são do tipo de autorização; restrinja a chave à Gemini API quando a tela oferecer essa opção. Acompanhe uso e cotas no painel do projeto.
+3. No GitHub, abra `ccesargarcia/luisices` → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**. Use exatamente o nome `GEMINI_EVAL_API_KEY` e cole o valor da chave no campo do segredo. Não a coloque no repositório, em issue, PR, log ou conversa.
+4. Quando este workflow estiver disponível em `develop` ou `main`, abra **Actions** → **Gemini Synthetic Evaluation** → **Run workflow**. Comece com `smoke`, mantenha `gemini-3.8-flash` na primeira execução e marque a confirmação de dados sintéticos/custo. O workflow faz chamadas reais ao Gemini e pode consumir a cota do projeto.
+5. Consulte o resumo da execução e o artefato `gemini-synthetic-evaluation-<run_id>`; valide a decisão e as violações críticas antes de usar o resultado como baseline. O relatório não é aprovação automática de release.
+
+As instruções oficiais de [criação e restrição de chaves Gemini](https://ai.google.dev/gemini-api/docs/api-key) e de [segredos de repositório no GitHub Actions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets) podem mudar; consulte-as durante a configuração.
 
 | Cenário | Resultado esperado |
 |---|---|

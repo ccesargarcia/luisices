@@ -15,6 +15,7 @@ Documentação de pedidos e publicação revisada em **25/10/2026**, mantendo a 
 - [Arquitetura e dependências](docs/DEPENDENCIAS_E_ARQUITETURA.md)
 - [Pedidos: segurança, limite CEL](docs/SEGURANCA_LIMITE_CEL_PEDIDOS.md) e [recuperação após timeout](docs/IDEMPOTENCIA_PEDIDOS.md)
 - [Copiloto: capacidades e evolução do system prompt](docs/COPILOTO_IA.md)
+- [ChatGPT e integração MCP](docs/INTEGRACAO_CHATGPT_MCP.md)
 - [Backend e funções publicadas pelo código](functions/README.md)
 
 ## Módulos
@@ -27,13 +28,13 @@ Documentação de pedidos e publicação revisada em **25/10/2026**, mantendo a 
 | Loja pública | Produtos próprios da vitrine, personalização, encomendas e conversão em pedidos internos |
 | Atendimento | E-mails via Resend e conversas WhatsApp via Evolution API |
 | Administração | Usuários, convites, permissões, sessões e presença |
-| Assistência | Copiloto com nove ferramentas, análise de imagens e integração Alexa separada |
+| Assistência | Copiloto Gemini com nove ferramentas, MCP/ChatGPT com contrato separado, análise de imagens e Alexa independente |
 
 O Copiloto consulta dados e prepara rascunhos. Salvar um pedido ou enviar uma mensagem exige a ação correspondente na interface e autorização do backend.
 
 ## Desenvolvimento local
 
-Use **Node.js 22**, alinhado ao runtime de Functions e aos workflows. Os testes com Firebase Emulator Suite também precisam de Java compatível com a versão instalada do Firebase CLI; para este projeto, use Java 21.
+Use **Node.js 22** para desenvolvimento local, alinhado ao runtime declarado em `functions/package.json`. Workflows específicos podem fixar outra versão para tarefas fora desse runtime. Os testes com Firebase Emulator Suite também precisam de Java compatível com a versão instalada do Firebase CLI; para este projeto, use Java 21.
 
 ```bash
 npm ci
