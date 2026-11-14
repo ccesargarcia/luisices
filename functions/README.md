@@ -85,6 +85,8 @@ A política atual pode percorrer alternativas de modelo; não assumir uma única
 
 Contratos, limites e capacidades atuais do Copiloto estão documentados em [COPILOTO_IA.md](../docs/COPILOTO_IA.md). Consulte o histórico do Git e os workflows para verificar publicação de uma revisão específica.
 
+O MCP/ChatGPT é uma integração separada: `mcp/openapi.js` publica os contratos de entrada, `mcp/constants.js` associa ferramentas e escopos, `mcp/endpoint.js` valida e despacha chamadas, e `mcp/oauth.js`/`mcp/profilePermissions.js` cuidam da sessão e das permissões atuais do perfil. A API redige dados financeiros conforme os escopos concedidos. Catálogo, diferenças em relação ao Copiloto Gemini e regras de uso estão no [manual MCP](../docs/INTEGRACAO_CHATGPT_MCP.md); a documentação não comprova que uma revisão esteja publicada em DEV ou produção.
+
 ## Configuração e publicação
 
 Os nomes de parâmetros/segredos estão em [common/secrets.js](common/secrets.js) e nos módulos das integrações. Forneça valores pelo mecanismo de secrets do ambiente. Não publique valores, arquivos de service account ou identificadores de instâncias operacionais em exemplos.
@@ -105,15 +107,12 @@ Alterar documentação não exige deploy. `[skip tests]` não impede publicaçã
 
 ## Deploy seletivo em DEV
 
-O workflow `deploy-dev.yml` usa `scripts/select-functions-deploy.mjs` para comparar o código atual com o SHA do último job de Functions publicado com sucesso. Uma tentativa com falha não se torna referência; uma publicação do backend com frontend posterior com falha continua sendo referência válida. Runs que só executaram testes ou purgaram cache não são referências de backend.
+O escopo seletivo usa `scripts/functions-deploy-map.mjs`, fonte única de verdade para relacionar arquivos/domínios aos exports e montar lotes por ambiente. O workflow de DEV, produção e o workflow manual compartilham esse mapa; a seleção não analisa o grafo completo de imports nem consulta um SHA de deploy anterior.
 
-- Alteração em um módulo publica todos os seus endpoints exportados; não há análise do corpo individual de cada handler.
-- Helpers locais são percorridos transitivamente. Alterar uma dependência compartilhada publica todos os consumidores.
-- Alterações no entrypoint, bootstrap, dependências npm, configuração de Functions ou sincronização de secrets podem selecionar todo o backend. Um arquivo de runtime não reconhecido no grafo também seleciona tudo, por segurança.
-- Documentação e configurações exclusivas do Hosting não selecionam Functions. A análise é estática: não executa o backend nem lê credenciais.
-- Sem publicação de referência entre os últimos 90 runs completos, seleciona todo o backend atual. Falha de acesso à API de histórico interrompe o job, sem assumir uma referência incorreta.
-- Imports dinâmicos e dependências locais não resolvidas interrompem a seleção e exigem revisão do seletor. São suportados o formato anterior (objeto com aliases e atribuições nomeadas) e o atual, com registros `expose('nome', () => require('./dominio').nome)` de caminhos literais. Getters preservam os triggers e a descoberta no deploy; não introduza formatos novos sem atualizar o seletor e seus testes.
-- O deploy usa nomes explícitos, em grupos de até seis, e repete somente o grupo que falhou. Não tenta primeiro `--only functions` nem amplia os alvos após uma falha. Uma Function removida do código é reportada, sem exclusão remota automática.
-- `[deploy all]`, `[only functions]` ou execução manual com alvo `auto`, `all` ou `functions-only` forçam a publicação de todos os exports atuais. Use quando mudar secrets/configuração externa sem alteração de código.
+- Alterações em arquivos de domínio resolvem um ou mais escopos seletivos; sobreposições são deduplicadas. Alterações em arquivos globais, configuração ou arquivos não mapeados podem levar ao escopo `all`, conforme as regras do mapa.
+- SuperFrete é exclusivo de DEV/emulador e permanece fora dos alvos de produção.
+- Os exports e chunks são explícitos. O mapa também define fallback particionado para o escopo global quando necessário; os workflows registram o plano e executam os alvos calculados.
+- Ao adicionar ou remover exports, atualize o mapa e o fixture de exports; `tests/unit/functions-coverage.test.ts` valida cobertura e delegação dos workflows.
+- `[deploy all]`, `[only functions]` e os alvos manuais podem forçar publicação ampla. Confirme o ambiente e os nomes de destino no workflow antes de operar.
 
-O plano (SHA e nomes, sem secrets) aparece no log de detecção. Os testes do seletor rodam com `node --test tests/scripts/functions-deploy-selection.test.mjs`, sem instalação de dependências. Essa seleção é específica de DEV; o workflow de produção/manual mantém sua política atual. O tempo de Cloud Build de cada Function selecionada continua existindo.
+A análise é estática, não executa o backend nem lê credenciais. Ela não elimina o tempo de Cloud Build nem comprova que uma publicação remota terminou; confirme o resultado no run correspondente.

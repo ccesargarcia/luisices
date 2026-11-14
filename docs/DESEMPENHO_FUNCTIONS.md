@@ -38,9 +38,9 @@ As suítes de criação e edição testam REST explicitamente com a versão do A
 
 ### 3. Deploy seletivo
 
-[O seletor](../scripts/select-functions-deploy.mjs) reconhece os registros lazy e o formato anterior, pois o último SHA publicado pode usar imports imediatos. Caminhos continuam literais e a seleção não importa o backend nem consulta credenciais.
+[O mapa de deploy](../scripts/functions-deploy-map.mjs) resolve o escopo por domínio a partir dos arquivos alterados e gera os lotes de publicação por ambiente. Ele usa um mapeamento explícito de exports e dependências compartilhadas; não percorre o grafo de `require()` nem compara o código com o SHA do último deploy. Os workflows de DEV, produção e execução manual consomem esse mapa.
 
-Alterar o entrypoint seleciona **todas as Functions** nesta entrega. Alterações posteriores em um domínio voltam a selecionar seus consumidores. Export desconhecido, registro duplicado ou caminho dinâmico interrompe a seleção.
+Alterações fora dos diretórios de domínio reconhecidos — incluindo `functions/index.js`, `common/` e manifests — resolvem para `all`. Mudanças dentro de até três domínios podem gerar deploy seletivo; arquivos compartilhados conhecidos ampliam o escopo para seus consumidores. Mais de três domínios também resolvem para `all`. A cobertura dos exports e dos chunks é verificada por `tests/unit/functions-coverage.test.ts`.
 
 ## Controles preservados
 
@@ -69,7 +69,7 @@ Na verificação inicial em Android/Node 24, o carregamento de pedidos passou de
 ## Validação
 
 ```sh
-node --test tests/scripts/functions-deploy-selection.test.mjs
+npx vitest run tests/unit/functions-coverage.test.ts
 npm run lint:functions
 npx vitest run tests/unit/functions-startup.test.ts tests/unit/origin-fallback.test.ts tests/unit/origin-protection.test.ts tests/unit/sentry-sanitization.test.ts
 npx firebase emulators:exec --config firebase.test.json --project demo-luisices-review --only firestore "npx vitest run --config vitest.integration.config.ts tests/integration/create-order-function.test.ts tests/integration/complex-order-function.test.ts"

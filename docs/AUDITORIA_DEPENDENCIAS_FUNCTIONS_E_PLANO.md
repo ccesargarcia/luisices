@@ -22,11 +22,13 @@ O mapa é estático e baseado no código do repositório. Ele não mede o tempo 
 - `getAiUsage` e MCP não usam a fábrica geral de chat. Chat e enrichments agora têm entradas/fábricas separadas, com `handlers.js`, Gemini e orçamento ainda compartilhados onde necessários.
 - MCP, IA, E-mail e WhatsApp já têm entradas separadas por capacidade; em Pedidos, catálogo, SuperFrete e tracking têm entradas próprias, preservando o núcleo transacional. O isolamento de tracking e as mudanças anteriores de WhatsApp foram publicados em DEV. A separação de `registerDeviceSession` está implementada localmente e aguarda validação CI/deploy; Alexa e os demais endpoints de Usuários continuam como etapas futuras.
 
-## Como o deploy funciona hoje
+## Como o deploy funcionava na revisão de 28/10/2026
+
+Esta seção descreve a implementação observada no commit indicado no cabeçalho; não deve ser usada como instrução operacional atual. Desde então, a resolução seletiva foi consolidada em `scripts/functions-deploy-map.mjs` e nos workflows de DEV, produção e deploy manual. A referência operacional atual está em [Backend Firebase](../functions/README.md) e na [skill de deploy](../.agents/skills/luisices-functions-deploy/SKILL.md).
 
 `functions/index.js` usa getters enumeráveis (`expose(name, () => require(...))`) para manter os nomes de export públicos e carregar o módulo de domínio quando o Firebase resolve aquele export. O entrypoint também inicializa Firebase Admin/Firestore e carrega a instrumentação Sentry de forma global.
 
-`scripts/select-functions-deploy.mjs` percorre os `require()` locais de cada export e calcula os consumidores de um arquivo alterado. Os testes em `tests/scripts/functions-deploy-selection.test.mjs` cobrem, entre outros casos, alteração de módulo compartilhado, dependência transitiva, bootstrap global, arquivo de runtime sem referência, import dinâmico desconhecido, configuração e alterações de manifests.
+Na revisão registrada, o seletor percorria os `require()` locais de cada export e calculava os consumidores de um arquivo alterado. Os testes daquela implementação cobriam alteração de módulo compartilhado, dependência transitiva, bootstrap global, arquivo de runtime sem referência, import dinâmico desconhecido, configuração e alterações de manifests.
 
 O comportamento conservador é útil para segurança do deploy, mas tem custo operacional:
 

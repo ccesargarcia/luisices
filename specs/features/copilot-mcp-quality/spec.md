@@ -91,8 +91,9 @@ O objetivo desta spec é tornar verificável a compatibilidade dos contratos e i
 
 ## Impacto na documentação
 
-- Guias/specs existentes revisados: `docs/COPILOTO_IA.md`, `docs/INTEGRACAO_CHATGPT_MCP.md`, `docs/FUNCIONALIDADES.md`, `docs/README.md`, `functions/README.md`.
-- Documentação atualizada nesta iniciativa: catálogo MCP e contagem no manual; distinção entre as nove ferramentas do Copiloto e as 31 ferramentas MCP; classificação das regressões offline e instruções para avaliação live. Falta registrar a primeira execução real após configurar a chave dedicada.
+- Guias/specs existentes revisados: `docs/COPILOTO_IA.md`, `docs/INTEGRACAO_CHATGPT_MCP.md`, `docs/FUNCIONALIDADES.md`, `docs/README.md`, `functions/README.md`, `README.md` e os índices de specs.
+- Documentação atualizada nesta iniciativa: catálogo MCP e contagem no manual; distinção entre as nove ferramentas do Copiloto e as 31 ferramentas MCP; redação financeira por escopo; limites, formatos e exemplos de resposta; limiar de aprovação de pedidos; impactos de IA no guia de funcionalidades e evidência da avaliação live. `docs/README.md` já indexava os guias e não precisou ser alterado.
+- A avaliação live mais recente continua pendente: os runs `43515498432` (HTTP 503) e `43515690479` (timeout de 60s) não pontuaram casos (`totalCases=0`, `not_evaluated`). Os logs mostram que o harness chegou à chamada do caso `order-lookup`; o primeiro recebeu `http_503`, e o segundo registrou `timeout`. O segredo aparece mascarado no ambiente do runner, mas seu valor/projeto não foi inspecionado. Como chave ausente ou rejeitada normalmente falharia antes da chamada ou retornaria erro de autenticação, esse diagnóstico é improvável, não impossível. O modelo configurado `gemini-3.8-flash` consta no catálogo oficial. A evidência aponta para indisponibilidade/latência transitória do provedor, sem identificar a causa interna. Não representa falha de qualidade do modelo.
 - Índices, exemplos, comandos ou links afetados: índice do manual MCP, comandos de validação e workflows de avaliação.
 - Impacto no Copiloto (Gemini): diretamente impactado na cobertura de prompt, escolha de ferramentas, fundamentação, autorização e avaliação live.
 - Impacto no MCP/ChatGPT: diretamente impactado na consistência OpenAPI/MCP, argumentos, escopos, documentação e testes de autorização.
@@ -103,13 +104,13 @@ O objetivo desta spec é tornar verificável a compatibilidade dos contratos e i
 - **Confirmado:** a validação obrigatória de PR deve ser determinística/offline; avaliação live não é gate de merge.
 - **Proposto:** limiar live de 90% para critérios não críticos e reprovação automática em qualquer falha crítica.
 - **Confirmado para T4:** artefato GitHub Actions retido por 14 dias; relatório não armazena prompts, argumentos ou respostas textuais.
-- **Em aberto:** criar uma chave Gemini dedicada, cadastrá-la como segredo `GEMINI_EVAL_API_KEY` e executar o workflow manualmente para validar a integração ponta a ponta.
+- **Em aberto:** validar, sem revelar o valor, a associação do segredo `GEMINI_EVAL_API_KEY` ao projeto Gemini pretendido e obter uma execução live ponta a ponta quando o serviço estiver respondendo. Os logs existentes apontam para HTTP 503/timeout do provedor, sem erro de autenticação; não justificam rotacionar a chave agora.
 
 ## Validação
 
 - Testes offline de igualdade entre registro, escopo, dispatcher, validador e catálogo documental.
 - Regressões de autorização Copiloto/MCP, redação financeira, OAuth, tenant, confirmação e schemas.
-- Workflow manual validado em ambiente isolado com chave de avaliação e fixtures sintéticas; sem deploy ou acesso a dados de produção.
+- Workflow manual exercitado em ambiente isolado com fixtures sintéticas. As execuções disponíveis falharam no provedor antes de pontuar casos (HTTP 503 e timeout); não validam a qualidade live nem confirmam a associação da chave ao projeto. Sem deploy ou acesso a dados de produção.
 - Revisão humana de uma amostra dos casos e do relatório antes de aceitar a rubrica como baseline.
 
 ## Evidências de conclusão
@@ -120,4 +121,8 @@ O objetivo desta spec é tornar verificável a compatibilidade dos contratos e i
 - **T3 concluída:** `tests/unit/ai/offline-regression-guardrails.test.ts` prova que autorização negada interrompe antes do contexto e do provedor, ferramenta desconhecida não é despachada e resultado com instrução maliciosa permanece fora da instrução confiável. A cobertura existente de prompt injection, ambiguidade, tenant, redaction financeira, autorização e argumentos foi classificada em `docs/COPILOTO_IA.md`.
 - **Validação observada de T3:** `npm run typecheck` passou; a execução focada de sete arquivos (`offline-regression-guardrails`, `synthetic-quality-eval`, `response-contracts`, `profile-metadata-isolation`, `security-attack-simulations`, `backend-mcp-authorization` e `mcp-validation`) passou com 130 testes.
 - **T4 preparado, execução pendente:** workflow manual com branch permitida (`develop`/`main`), consentimento explícito de custo, modelo Gemini 3.x sem fallback, allowlist fixa das ferramentas atuais, fixtures sintéticas, repositórios em memória, relatório sem respostas brutas e retenção de 14 dias. `tests/unit/ai/live-eval-harness.test.ts` valida precondições, inventário, schema de argumentos e reprovação crítica; a validação local não chama o provedor.
-- A T4 só poderá ser marcada concluída após criar/cadastrar a chave dedicada e obter uma execução live de ponta a ponta. T5–T7 continuam pendentes; testes com mocks não medem qualidade de respostas de um modelo real.
+- A T4 só poderá ser marcada concluída após obter uma execução live de ponta a ponta com casos pontuados. T5 e T6 foram concluídas; T7 recebeu validação local determinística, mas continua aberta até a execução live da T4. Testes com mocks não medem qualidade de respostas de um modelo real.
+- **T5 concluída:** a auditoria verificou OAuth, mudanças de permissão, escopos, autorização antes do dispatcher, validação de argumentos, confirmação explícita, versão/idempotência, contratos MCP e redaction financeira. `tests/unit/mcp-redaction-security.test.ts` acrescenta cobertura direta para pedidos/clientes, briefing e resumo, inclusive a diferença entre `payments:read` e `financial:read`.
+- **Validação observada de T5:** dez arquivos de teste focados passaram (146 testes) e `node ./node_modules/typescript/bin/tsc --noEmit` passou. A execução foi local e não implica deploy nem validação remota.
+- **Validação local de T7 (13/11/2026):** `node ./node_modules/typescript/bin/tsc --noEmit` passou; Vitest focado em 13 arquivos determinísticos da iniciativa passou (194 testes); `git diff --check` passou. O workflow live não foi executado e T7 permanece aberta até a T4 obter uma execução ponta a ponta. Copiloto e MCP foram cobertos, respectivamente, pelas suítes de avaliação/harness e de contrato/autorização/redação; sem deploy ou validação remota.
+- **T6 concluída:** guias de IA/MCP e funcionalidades revisados e sincronizados; exemplos de consulta/redação e criação financeira conferidos contra executores ativos. Os índices `docs/README.md` e `README.md` já apontavam para os guias. O catálogo MCP tem verificação automatizada de nomes/escopos contra schema, dispatcher e executor.

@@ -6,9 +6,9 @@ Cada subpasta representa uma mudança coesa em andamento ou concluída. Este cat
 |---|---|---|---|
 | [order-lifecycle](order-lifecycle/spec.md) | Ciclo interno do pedido | Pronta (baseline) | Contrato atual de pedidos para orientar specs de mudanças futuras. |
 | [public-store-checkout](public-store-checkout/spec.md) | Checkout público da loja | Pronta (baseline) | Vitrine, validação server-side, gestão e conversão para pedido interno. |
-| [quote-to-order](quote-to-order/spec.md) | Conversão de orçamento | Pronta (baseline) | Conversão nativa, matemática financeira, vínculo transacional e divergências com MCP. |
+| [quote-to-order](quote-to-order/spec.md) | Conversão de orçamento | Pronta (baseline) | Conversão nativa, matemática financeira, vínculo transacional e divergências com MCP. A cobertura E2E de conflito está concluída na spec de integridade. |
 | [quote-conversion-integrity](quote-conversion-integrity/spec.md) | Integridade na conversão de orçamento | Concluída | Backend, Rules e E2E de conflito validados; quatro shards passaram em Ubuntu 26.04. |
-| [copilot-mcp-quality](copilot-mcp-quality/spec.md) | Consistência e avaliação de IA | Em andamento | T1–T3 cobrem paridade MCP, catálogo e regressões offline; avaliação Gemini live continua pendente. |
+| [copilot-mcp-quality](copilot-mcp-quality/spec.md) | Consistência e avaliação de IA | Em andamento | T1–T3, T5 e T6 concluídas; a avaliação Gemini live (T4) permanece sem resultado pontuado e o fechamento final depende dessa evidência. |
 | `<id-curto>` | Nova mudança | Rascunho | Crie uma pasta usando os modelos em `../templates/`. |
 
 ## Baseline do sistema existente

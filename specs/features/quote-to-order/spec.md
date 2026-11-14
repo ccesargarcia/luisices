@@ -104,4 +104,4 @@ O caminho MCP para `updateQuoteStatus` com `convertToOrder` tem implementação 
 
 ## Evidências de conclusão
 
-- As correções e validações estão registradas em [quote-conversion-integrity](../quote-conversion-integrity/spec.md). A cobertura E2E de conflito entre sessões continua pendente.
+- As correções e validações estão registradas em [quote-conversion-integrity](../quote-conversion-integrity/spec.md), incluindo o cenário E2E de conflito entre sessões concluído no run referenciado nessa spec.
