@@ -317,6 +317,72 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
     expect(repeatResult.success).toBe(true);
     expect(repeatResult.orderId).toBe(result.orderId);
     expect(repeatResult.alreadyExisted).toBe(true);
+
+    const retryWithFreshClientKey = await handleCreateOrder({
+      auth: { uid, token: { auth_time: 1 } },
+      data: { orderData, quoteId, idempotencyKey: 'fresh-client-retry-key' },
+    }, adminDb);
+    expect(retryWithFreshClientKey.orderId).toBe(result.orderId);
+    expect(retryWithFreshClientKey.alreadyExisted).toBe(true);
+  });
+
+  it('revalida os dados projetados do orçamento antes de criar o pedido', async () => {
+    const uid = `quote-invalid-projection-${Date.now()}`;
+    const quoteId = `quote-invalid-${Date.now()}`;
+    await Promise.all([
+      adminDb.doc(`userProfiles/${uid}`).set({
+        role: 'user', active: true,
+        permissions: { orders: { create: true }, quotes: { edit: true } },
+      }),
+      adminDb.doc(`quotes/${quoteId}`).set({
+        userId: uid, status: 'sent', quoteNumber: `ORC-${quoteId}`,
+        customerName: 'Cliente Orçamento', customerPhone: '',
+        productName: 'Convite Especial', quantity: 1, totalPrice: 120,
+        tags: [{ name: 'Inválida', color: 'red', extra: true }],
+        items: [{ name: 'Convite Especial', quantity: 1, unitPrice: 120 }],
+      }),
+    ]);
+
+    await expect(handleCreateOrder({
+      auth: { uid, token: { auth_time: 1 } },
+      data: { orderData: {
+        customerName: 'Cliente Orçamento', customerPhone: '',
+        productName: 'Convite Especial', quantity: 1, price: 120,
+        items: [{ name: 'Convite Especial', quantity: 1, unitPrice: 120, price: 120 }],
+      }, quoteId },
+    }, adminDb)).rejects.toMatchObject({ code: 'invalid-argument' });
+
+    expect((await adminDb.doc(`quotes/${quoteId}`).get()).data()?.status).toBe('sent');
+    expect((await adminDb.collection('orders').where('userId', '==', uid).get()).size).toBe(0);
+  });
+
+  it('rejeita customerId malformado na projeção do orçamento antes de qualquer gravação', async () => {
+    const uid = `quote-invalid-customer-${Date.now()}`;
+    const quoteId = `quote-customer-${Date.now()}`;
+    await Promise.all([
+      adminDb.doc(`userProfiles/${uid}`).set({
+        role: 'user', active: true,
+        permissions: { orders: { create: true }, quotes: { edit: true } },
+      }),
+      adminDb.doc(`quotes/${quoteId}`).set({
+        userId: uid, status: 'sent', quoteNumber: `ORC-${quoteId}`,
+        customerName: 'Cliente Orçamento', customerPhone: '',
+        customerId: 12345, totalPrice: 120,
+        items: [{ name: 'Convite Especial', quantity: 1, unitPrice: 120 }],
+      }),
+    ]);
+
+    await expect(handleCreateOrder({
+      auth: { uid, token: { auth_time: 1 } },
+      data: { orderData: {
+        customerName: 'Cliente Orçamento', customerPhone: '',
+        productName: 'Convite Especial', quantity: 1, price: 120,
+        items: [{ name: 'Convite Especial', quantity: 1, unitPrice: 120, price: 120 }],
+      }, quoteId },
+    }, adminDb)).rejects.toMatchObject({ code: 'invalid-argument' });
+
+    expect((await adminDb.doc(`quotes/${quoteId}`).get()).data()?.status).toBe('sent');
+    expect((await adminDb.collection('orders').where('userId', '==', uid).get()).size).toBe(0);
   });
 
   it('aceita os itens normalizados pelo serviço e persiste os centavos alocados pelo orçamento', async () => {
@@ -341,8 +407,8 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
       }),
     ]);
 
-    // This is the payload after FirebaseOrderService.sanitizeOrderItems rounds
-    // each unit price to cents and recomputes the displayed line subtotal.
+    // This mirrors the payload after FirebaseOrderService.sanitizeOrderItems
+    // rounds unit prices but preserves each compatible authoritative line total.
     const result = await handleCreateOrder({
       auth: { uid, token: { auth_time: 1 } },
       data: {
@@ -351,7 +417,7 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
           customerName: 'Cliente Centavos', customerPhone: '',
           productName: 'Produto A (3x), Produto B', quantity: 4, price: 39.99,
           items: [
-            { name: 'Produto A', quantity: 3, unitPrice: 10, price: 30 },
+            { name: 'Produto A', quantity: 3, unitPrice: 10, price: 29.99 },
             { name: 'Produto B', quantity: 1, unitPrice: 10, price: 10 },
           ],
           pricingMode: 'items', unitPrice: null, status: 'pending',
@@ -399,7 +465,7 @@ describe('Cloud Function: criação atômica de pedidos no backend (handleCreate
           customerName: 'Cliente Item Único', customerPhone: '',
           productName: 'Produto Único (3x)', quantity: 3, price: 29.99,
           // The service rounds items, but passes the top-level unitPrice through.
-          items: [{ name: 'Produto Único', quantity: 3, unitPrice: 10, price: 30 }],
+          items: [{ name: 'Produto Único', quantity: 3, unitPrice: 10, price: 29.99 }],
           pricingMode: 'unit', unitPrice: transportUnitPrice, status: 'pending',
           deliveryDate: '2026-12-10', notes: `Gerado do orçamento ${quoteNumber}`,
           isExchange: false,

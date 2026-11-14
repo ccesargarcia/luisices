@@ -16,6 +16,11 @@ describe('Cálculos e validações de orçamento', () => {
       .toEqual({ subtotal: 0.05, discountAmount: 0.01, total: 0.04 });
   });
 
+  it('calcula percentuais em basis points para manter paridade com as Rules', () => {
+    expect(calculateQuoteTotals([{ name: 'A', quantity: 1, unitPrice: 250 }], 0.29, 'percent'))
+      .toEqual({ subtotal: 250, discountAmount: 0.73, total: 249.27 });
+  });
+
   it('rejeita desconto fixo maior que o subtotal, quantidade fracionária e mais de 10 itens', () => {
     expect(() => validateQuoteMath(items, 351, 'fixed')).toThrow(/maior que o subtotal/i);
     expect(() => validateQuoteMath([{ name: 'A', quantity: 1.5, unitPrice: 5 }])).toThrow(/itens/i);

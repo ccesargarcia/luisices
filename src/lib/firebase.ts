@@ -34,6 +34,7 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
   databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || `https://${import.meta.env.VITE_FIREBASE_PROJECT_ID || 'demo-luisices'}-default-rtdb.firebaseio.com`,
 };
+const useFirebaseEmulator = import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true';
 
 // A SuperFrete integration uses the sandbox credential and is available only
 // in the development Firebase project (or a local emulator).
@@ -103,7 +104,7 @@ export const functions = functionsCustomDomain
   : getFunctions(app);
 
 // Conexão com o Firebase Local Emulator Suite quando ativado via ambiente
-if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
+if (useFirebaseEmulator) {
   const host = import.meta.env.VITE_FIREBASE_EMULATOR_HOST || 'localhost';
   try {
     connectFirestoreEmulator(db, host, 8080);
@@ -122,21 +123,25 @@ let analytics: Analytics | null = null;
 let perf: FirebasePerformance | null = null;
 
 if (typeof window !== 'undefined') {
-  isSupported().then(yes => {
-    if (yes) {
-      // Evita page_view automático com URL completa: a rota pública de acompanhamento
-      // carrega um token bearer no caminho. As páginas internas já registram views
-      // explicitamente pelo analyticsService.
-      analytics = initializeAnalytics(app, { config: { send_page_view: false } });
-      console.log('[Firebase] Analytics inicializado');
-    }
-  });
+  // Analytics e Performance usam Firebase Installations, que exige uma API key válida
+  // na nuvem. Em testes com emuladores esses serviços não são necessários.
+  if (!useFirebaseEmulator) {
+    isSupported().then(yes => {
+      if (yes) {
+        // Evita page_view automático com URL completa: a rota pública de acompanhamento
+        // carrega um token bearer no caminho. As páginas internas já registram views
+        // explicitamente pelo analyticsService.
+        analytics = initializeAnalytics(app, { config: { send_page_view: false } });
+        console.log('[Firebase] Analytics inicializado');
+      }
+    });
 
-  try {
-    perf = getPerformance(app);
-    console.log('[Firebase] Performance Monitoring inicializado');
-  } catch (error) {
-    console.warn('[Firebase] Performance Monitoring não disponível:', error);
+    try {
+      perf = getPerformance(app);
+      console.log('[Firebase] Performance Monitoring inicializado');
+    } catch (error) {
+      console.warn('[Firebase] Performance Monitoring não disponível:', error);
+    }
   }
 
   // Expor referências apenas em desenvolvimento ou testes locais para diagnósticos e testes E2E
