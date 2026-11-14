@@ -49,13 +49,13 @@ When changing a callable, HTTP function, scheduled function, or its module bound
 ```bash
 npm run typecheck
 npm --prefix functions run lint
-node --test tests/scripts/functions-deploy-selection.test.mjs
+npx vitest run tests/unit/functions-coverage.test.ts
 npx vitest run tests/unit/<focused-test>.test.ts tests/unit/functions-startup.test.ts
 ```
 
 - Prefer unit tests around extracted logic with injected Firestore, network, clock, and authorization dependencies. Cover success, invalid input, denied access, provider/database failures, and side effects that must not happen on rejected requests.
 - Startup tests should verify the public export still points to the expected handler, callable secrets/configuration and telemetry remain attached, and unrelated domains are not loaded.
-- The deploy-selection test protects the static dependency graph. Update its fixture when an endpoint moves modules, and assert that edits to the new entry module select the intended endpoint set.
+- The deploy coverage test protects the explicit domain-to-export map and workflow integration. Update `scripts/functions-deploy-map.mjs` and `tests/fixtures/functions-exports.json` when exports or module scopes change.
 - Run Firestore Emulator integration tests when security rules, transactions, or Firestore-specific behavior changes. Run Playwright E2E when a user-facing flow or frontend/backend contract changes; do not treat a backend unit test as a substitute for an E2E test when the UI behavior changed.
 - Do not claim a test passed if the runner failed before executing it. Record the exact environment/dependency error and use CI or a supported Node environment to complete the check. Do not delete lockfiles or `node_modules` to work around an optional native dependency error without first confirming the intended platform and package setup.
 

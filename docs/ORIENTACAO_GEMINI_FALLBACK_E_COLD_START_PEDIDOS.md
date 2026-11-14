@@ -34,7 +34,7 @@
 - **Origem e segurança:** `tests/unit/origin-fallback.test.ts` verifica a rejeição de chamadas diretas sem segredo para anônimos e autenticados em `createOrder`, `updateComplexOrder` e outros callables, bem como a aceitação com segredo válido.
 - **Resiliência e idempotência:** `tests/unit/resilient-callable.test.ts` verifica que timeouts e falhas de rede preservam a chave da operação sob estado inconcluso, sem acionar segunda rota ou gravação direta no cliente, e testa exaustivamente a classificação em `isTransientCallableError`.
 - **Compatibilidade:** `isGatewayUnavailableError` permanece mantido como alias para `isTransientCallableError`.
-- **Integridade da automação de deploy:** `node --test tests/scripts/functions-deploy-selection.test.mjs` confirma que os módulos alterados são descobertos corretamente pelo grafo de dependências.
+- **Integridade da automação de deploy:** `tests/unit/functions-coverage.test.ts` verifica a cobertura dos exports, o mapa explícito de domínios e a delegação dos workflows ao resolvedor de escopo.
 
 ## 3. Limites desta revisão
 

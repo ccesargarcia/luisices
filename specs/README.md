@@ -35,11 +35,12 @@ specs/
 
 1. **Investigar:** consultar constituição, funcionalidades, arquitetura, código, regras, contratos e testes relevantes.
 2. **Especificar:** definir problema, escopo, atores, requisitos e critérios de aceitação observáveis. Distinguir fatos do sistema atual de decisões propostas.
-3. **Planejar:** mapear componentes afetados, compatibilidade, segurança, dados, UX, documentação e validações.
+3. **Planejar:** mapear componentes afetados, compatibilidade, segurança, dados, UX, documentação a revisar/atualizar e validações.
 4. **Decompor:** criar tarefas pequenas ligadas a requisitos e critérios.
 5. **Implementar:** executar o plano; atualizar a spec se descoberta no código exigir outra decisão.
 6. **Verificar:** rodar typecheck obrigatório e validações aplicáveis; registrar somente resultados realmente observados.
-7. **Concluir:** atualizar status, tarefas e documentação viva.
+7. **Revisar documentação:** aplicar `.agents/skills/luisices-documentation/SKILL.md` antes e depois da implementação; avaliar e registrar impacto no Copiloto (Gemini) e MCP/ChatGPT, atualizar guias, índices e referências afetados ou justificar não impacto/não alteração. A tarefa correspondente em `tasks.md` é obrigatória.
+8. **Concluir:** atualizar status, tarefas e evidências, sem marcar como concluído trabalho ou validação não realizado.
 
 Para mudanças pequenas, de baixo risco e sem ambiguidade, uma spec curta pode registrar contexto, comportamento esperado e validação. Explique no plano por que o formato completo foi dispensado.
 

@@ -11,9 +11,9 @@ description: >-
 
 Guidelines for maintaining visual harmony, luxury craftsmanship, emotional connection, and strict token hygiene across all Luisices interfaces.
 
-**Full Reference Document:** [`design.md`](../../design.md)  
-**Semantic Theme Tokens:** [`src/styles/theme.css`](../../src/styles/theme.css)  
-**Shared UI Components:** [`src/app/components/ui/`](../../src/app/components/ui/)
+**Full Reference Document:** [`design.md`](../../../design.md)
+**Semantic Theme Tokens:** [`src/styles/theme.css`](../../../src/styles/theme.css)
+**Shared UI Components:** [`src/app/components/ui/`](../../../src/app/components/ui/)
 
 ---
 
@@ -73,7 +73,7 @@ When creating cards, floating controls, dialogs, or panels:
 ## 🧩 4. Mandatory Reuse of UI Primitives
 
 Before creating custom modal divs or drawers with manual overlays:
-Inspect and reuse the 45+ accessible primitives in [`src/app/components/ui/`](../../src/app/components/ui/):
+Inspect and reuse the 45+ accessible primitives in [`src/app/components/ui/`](../../../src/app/components/ui/):
 
 * **Drawers / Sidepanels:** Use `<Sheet>` or `<Drawer>` (handles mobile drag gestures and safe-area insets automatically).
 * **Modals & Dialogs:** Use `<Dialog>` or `<ResponsiveDialog>`.
