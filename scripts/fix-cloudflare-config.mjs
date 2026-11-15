@@ -110,6 +110,7 @@ async function run() {
 
   const WIREGUARD_IP = process.env.WIREGUARD_IP || '100.97.222.39';
   await ensureDnsRecord('wireguard', WIREGUARD_IP, 'WireGuard / Tailscale Bridge Galaxy A70');
+  await ensureDnsRecord('torrent', '35.209.209.91', 'Prowlarr Torrent Indexer (homeassistant-gcp-dev)');
 
   // Remover registro legado vpn.luisices.com.br (antigo servidor GCP descontinuado)
   const legacyVpnRecord = records.find(
