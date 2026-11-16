@@ -26,8 +26,9 @@ Para evitar dependência de `@sentry/node` e `firebase-functions` (exclusivos de
 | `POST /api/order-tracking` | `create/list/revoke/deleteOrderTrackingLink*` | [functions/orders/trackingAdminCore.js](../functions/orders/trackingAdminCore.js) |
 | `POST /api/ai-chat` | `aiAgentChat` | [functions/ai/index.js](../functions/ai/index.js) |
 | `POST /api/alexa` | `getAlexaIntegrationStatus`, `approveAlexaPairing`, `setAlexaPermission`, `revokeAlexaBinding`, `toggleGlobalAlexaIntegration`, `approveAlexaDraft`, `cancelAlexaDraft` | [functions/alexa/callables.js](../functions/alexa/callables.js) + [runtimeCompat.js](../functions/alexa/runtimeCompat.js) |
+| `POST /api/mcp-admin` | `getMcpSettingsStatus`, `createMcpApiKey`, `updateMcpApiKeyScopes`, `toggleMcpApiKey`, `revokeMcpApiKey`, `toggleGlobalMcp`, `setUserMcpEligibility`, `revokeMcpSession`, `getMcpAuditLogs`, `getMcpOpenApiSchema` | [functions/mcp/callables.js](../functions/mcp/callables.js) + [runtimeCompat.js](../functions/alexa/runtimeCompat.js) |
 
-*(Nota: o webhook de entrada da Amazon Alexa `alexaWebhook` permanece nas Cloud Functions / `api.dev.luisices.com.br`, pois é a URL configurada no Skill Endpoint da Amazon.)*
+*(Nota: os endpoints externos de entrada `alexaWebhook` e `chatGptToolsEndpoint` / OAuth MCP permanecem nas Cloud Functions via `api.dev.luisices.com.br`.)*
 
 - **Inicialização compartilhada na Vercel:** [api/_firebaseAdmin.ts](../api/_firebaseAdmin.ts) inicializa o `firebase-admin` com `preferRest: true` e valida sessões ativas via `assertActiveSessionFromBearer`.
 - **Galeria interna:** [firebaseGalleryImageService.ts](../src/services/firebaseGalleryImageService.ts) mantém cache LRU em memória na sessão (até 80 blobs, limpo ao trocar de usuário) e deduplicação de fetches simultâneos; [galleryCore.js](../functions/media/galleryCore.js) mantém cache de 15s de `userProfiles`.
@@ -40,7 +41,7 @@ O roteamento é controlado em tempo real via documento `storeSettings/public` (c
 
 - **`globalMode` (`'vercel' | 'gcp'`):** chave mestre global. Mudar para `'gcp'` redireciona imediatamente todas as rotas de volta para o Firebase Cloud Functions sem redeploy.
 - **`autoFallbackToGcp` (`boolean`):** quando ativo, falhas de infraestrutura na Vercel (`5xx`, timeout ou erro de rede) acionam automaticamente a Cloud Function equivalente no GCP via `executeWithGcpFallback`. Erros de negócio/validação (`400`, `401`, `403`, `404`, `409`, `412`) **não** acionam fallback.
-- **`routes.*` (`'inherit' | 'vercel' | 'gcp'`):** permite forçar rotas individuais (`galleryMedia`, `publicCatalogProducts`, `publicCatalogOrder`, `publicOrderTracking`, `orderTrackingAdmin`, `aiChat`, `alexa`) sem alterar as demais.
+- **`routes.*` (`'inherit' | 'vercel' | 'gcp'`):** permite forçar rotas individuais (`galleryMedia`, `publicCatalogProducts`, `publicCatalogOrder`, `publicOrderTracking`, `orderTrackingAdmin`, `aiChat`, `alexa`, `mcpAdmin`) sem alterar as demais.
 - **Segurança por host:** fora de `beta.luisices.com.br` e `loja.beta.luisices.com.br`, `resolveEffectiveProvider` sempre retorna `'gcp'`.
 - **Monitoramento e gráfico de fallbacks:** sempre que `executeWithGcpFallback` aciona o fallback para GCP, um evento é gravado localmente e sincronizado (para sessões autenticadas com permissão) em `storeSettings/backendRoutingTelemetry`, exibindo um gráfico `Recharts` por rota e os últimos eventos em **Configurações → Avançado & Segurança**.
 
@@ -49,4 +50,4 @@ O roteamento é controlado em tempo real via documento `storeSettings/public` (c
 ## 4. Impacto nas Integrações de IA (Copiloto e MCP)
 
 - **Copiloto (Gemini):** quando `aiChat` está roteado para `'vercel'` em `beta.luisices.com.br`, a chamada vai para `POST /api/ai-chat` (tentando Vertex AI `southamerica-east1` com fallback automático para `GEMINI_API_KEY` em [geminiClient.js](../functions/ai/geminiClient.js)). O system prompt, as 9 ferramentas, permissões e orçamentos em `functions/ai/` permanecem inalterados; ao alternar para `'gcp'`, o frontend chama diretamente a Cloud Function `aiAgentChat`.
-- **MCP / ChatGPT:** **sem impacto**. O servidor MCP e os endpoints OAuth/OpenAPI permanecem exclusivamente nas Cloud Functions via `api.dev.luisices.com.br` / `api.luisices.com.br`.
+- **MCP / ChatGPT:** as operações administrativas do painel (`getStatus`, criação/revogação de chaves, sessões, auditoria e schema OpenAPI) podem rodar em `POST /api/mcp-admin` nos domínios `beta` quando `mcpAdmin` estiver em `'vercel'` (com fallback automático para GCP). Já o servidor MCP e os endpoints OAuth/OpenAPI externos (`chatGptToolsEndpoint`) permanecem exclusivamente nas Cloud Functions via `api.dev.luisices.com.br` / `api.luisices.com.br`.

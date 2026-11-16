@@ -85,6 +85,13 @@ const ROUTE_DEFINITIONS: Array<{
     vercelPath: '/api/alexa',
     gcpFunction: 'getAlexaIntegrationStatus / approveAlexa* / setAlexa* / revoke* / toggle*',
   },
+  {
+    key: 'mcpAdmin',
+    label: 'Administração MCP / ChatGPT',
+    description: 'Status, chaves API, escopos, sessões, auditoria e schema OpenAPI',
+    vercelPath: '/api/mcp-admin',
+    gcpFunction: 'getMcpSettingsStatus / createMcpApiKey / revokeMcpSession / getMcpOpenApiSchema',
+  },
 ];
 
 export function BackendRoutingSettingsSection({ isAdmin }: BackendRoutingSettingsSectionProps) {
@@ -151,6 +158,7 @@ export function BackendRoutingSettingsSection({ isAdmin }: BackendRoutingSetting
         orderTrackingAdmin: 'inherit',
         aiChat: 'inherit',
         alexa: 'inherit',
+        mcpAdmin: 'inherit',
       },
     };
     void persistConfig(

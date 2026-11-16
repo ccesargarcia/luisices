@@ -11,7 +11,8 @@ export type BackendRouteKey =
   | 'publicOrderTracking'
   | 'orderTrackingAdmin'
   | 'aiChat'
-  | 'alexa';
+  | 'alexa'
+  | 'mcpAdmin';
 
 export interface BackendRoutingConfig {
   globalMode: BackendProvider;
@@ -46,6 +47,7 @@ export const DEFAULT_BACKEND_ROUTING: BackendRoutingConfig = {
     orderTrackingAdmin: 'inherit',
     aiChat: 'inherit',
     alexa: 'inherit',
+    mcpAdmin: 'inherit',
   },
 };
 
@@ -90,6 +92,7 @@ function normalizeConfig(raw: unknown): BackendRoutingConfig {
       orderTrackingAdmin: pickRoute('orderTrackingAdmin'),
       aiChat: pickRoute('aiChat'),
       alexa: pickRoute('alexa'),
+      mcpAdmin: pickRoute('mcpAdmin'),
     },
     updatedAt: typeof input.updatedAt === 'string' ? input.updatedAt : undefined,
     updatedBy: typeof input.updatedBy === 'string' ? input.updatedBy : undefined,

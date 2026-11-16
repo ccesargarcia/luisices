@@ -15,6 +15,7 @@ on:
       - 'functions/orders/publicCatalogOrderCore.js'
       - 'functions/ai/**'
       - 'functions/alexa/**'
+      - 'functions/mcp/**'
       - 'public/**'
       - 'index.html'
       - 'vite.config.*'

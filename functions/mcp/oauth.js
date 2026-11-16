@@ -7,7 +7,12 @@ const crypto = require('crypto');
 const { COLLECTIONS, MCP_SCOPES } = require('./constants');
 const { getCallerScope } = require('../ai/authorization');
 const { moduleAllowsMcpScope } = require('./profilePermissions');
-const { traceMcpStep } = require('./tracing');
+let traceMcpStep = (_phase, work) => work();
+try {
+  ({ traceMcpStep } = require('./tracing'));
+} catch {
+  // Ambiente sem @sentry/node (ex.: Vercel Functions) executa sem span do Sentry.
+}
 
 const APP_ORIGIN = () => process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard'
   ? 'https://luisices.com.br' : 'https://dev.luisices.com.br';

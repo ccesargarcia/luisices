@@ -4,9 +4,13 @@
  */
 
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
-const { HttpsError } = require('firebase-functions/v2/https');
-const { onCall } = require('../common/sentryFunctions');
-const { assertActiveSession } = require('../common/helpers');
+const { HttpsError, assertActiveSession } = require('../alexa/runtimeCompat');
+let onCall;
+try {
+  ({ onCall } = require('../common/sentryFunctions'));
+} catch {
+  onCall = (_opts, handler) => handler;
+}
 const { COLLECTIONS, MCP_SCOPES, DEFAULT_RATE_LIMIT_PER_HOUR } = require('./constants');
 const { generateApiKey, invalidateKeyCache, clearMcpAuthCache } = require('./auth');
 const { consumeSharedRateLimit, getEffectiveUserScopes } = require('./oauth');

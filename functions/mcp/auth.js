@@ -7,7 +7,12 @@ const { COLLECTIONS, CACHE_TTL_MS, DEFAULT_RATE_LIMIT_PER_HOUR, MCP_SCOPES } = r
 const { getCallerScope } = require('../ai/authorization');
 
 const { validateOAuthAccessToken, getEffectiveUserScopes, consumeSharedRateLimits } = require('./oauth');
-const { traceMcpStep } = require('./tracing');
+let traceMcpStep = (_phase, work) => work();
+try {
+  ({ traceMcpStep } = require('./tracing'));
+} catch {
+  // Ambiente sem @sentry/node (ex.: Vercel Functions) executa sem span do Sentry.
+}
 
 // Cache em memória para validação ultrarrápida de chaves (evita 1 leitura de Firestore por request)
 const KEY_CACHE = new Map();
