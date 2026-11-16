@@ -6,6 +6,8 @@ on:
       - develop
     paths:
       - 'src/**'
+      - 'api/**'
+      - 'functions/media/galleryCore.js'
       - 'public/**'
       - 'index.html'
       - 'vite.config.*'
@@ -243,6 +245,50 @@ jobs:
             await ensureCloudflareCname();
           })().catch((err) => {
             console.warn('Aviso ao configurar beta.luisices.com.br:', err.message);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Sincronizar secrets da Vercel Function (luisices-dev)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PROJECT_ID: ${{ steps.vercel-project.outputs.project_id }}
+          ORG_ID: ${{ steps.vercel-project.outputs.org_id }}
+          FIREBASE_SERVICE_ACCOUNT_DEV: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.DEV_VITE_FIREBASE_STORAGE_BUCKET }}
+        run: |
+          node <<'NODE'
+          const token = process.env.VERCEL_TOKEN;
+          const projectId = process.env.PROJECT_ID;
+          const orgId = process.env.ORG_ID || '';
+          const teamQuery = orgId.startsWith('team_') ? `&teamId=${encodeURIComponent(orgId)}` : '';
+
+          async function upsertEnv(key, value) {
+            if (!value) return;
+            const res = await fetch(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectId)}/env?upsert=true${teamQuery}`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                key,
+                value,
+                type: 'encrypted',
+                target: ['production'],
+              }),
+            });
+            if (!res.ok) {
+              throw new Error(`Falha ao sincronizar ${key} na Vercel: ${res.status} ${await res.text()}`);
+            }
+            console.log(`Env ${key} sincronizada na Vercel (production).`);
+          }
+
+          (async () => {
+            await upsertEnv('FIREBASE_SERVICE_ACCOUNT_DEV', process.env.FIREBASE_SERVICE_ACCOUNT_DEV);
+            await upsertEnv('VITE_FIREBASE_STORAGE_BUCKET', process.env.VITE_FIREBASE_STORAGE_BUCKET);
+          })().catch((err) => {
+            console.error(err);
             process.exit(1);
           });
           NODE

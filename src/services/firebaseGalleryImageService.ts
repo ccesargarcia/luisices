@@ -21,13 +21,20 @@ export function extractGalleryStoragePath(imageUrl: string): string {
 
 export function galleryMediaApiUrl(itemId?: string, storagePath?: string): string {
   if (typeof window === 'undefined') throw new Error('Galeria disponível apenas no navegador.');
+  if (!itemId && !storagePath) throw new Error('É necessário informar o item ou caminho da imagem.');
+  const normalizedHost = window.location.hostname.toLowerCase().replace(/\.$/, '');
+  if (normalizedHost === 'beta.luisices.com.br') {
+    const params = new URLSearchParams();
+    if (itemId) params.set('itemId', itemId);
+    if (storagePath) params.set('path', extractGalleryStoragePath(storagePath));
+    return `/api/gallery-media?${params.toString()}`;
+  }
   const origin = resolveOAuthApiOrigin({
     hostname: window.location.hostname,
     isDevelopmentBuild: import.meta.env.DEV,
     firebaseProjectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   });
   if (!origin) throw new Error('Não foi possível identificar o ambiente da galeria.');
-  if (!itemId && !storagePath) throw new Error('É necessário informar o item ou caminho da imagem.');
   const path = itemId ? `/media/gallery/${encodeURIComponent(itemId)}` : '/media/gallery';
   const query = storagePath ? `?path=${encodeURIComponent(extractGalleryStoragePath(storagePath))}` : '';
   return `${origin}${path}${query}`;
