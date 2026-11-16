@@ -47,6 +47,7 @@ try {
         service,
         enabled: true,
         previews_enabled: false,
+        override_existing_origin: true,
         zone_id: current?.zone_id || zone.id,
         zone_name: current?.zone_name || zoneName,
       },
