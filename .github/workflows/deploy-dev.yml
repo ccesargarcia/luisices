@@ -102,6 +102,7 @@ jobs:
               - 'cloudflare/api-worker/**'
               - 'scripts/ensure-mcp-cache-bypass.mjs'
               - 'scripts/ensure-order-tracking-rate-limit.mjs'
+              - 'scripts/ensure-api-beta-custom-domain.mjs'
               - 'scripts/purge-cloudflare-cache.mjs'
             cloudflare_cdn:
               - 'cloudflare/cdn-worker/**'

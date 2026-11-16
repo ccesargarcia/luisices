@@ -268,9 +268,6 @@ jobs:
               const cnameTarget = await getRecommendedCnameTarget(customDomain);
               await ensureCloudflareCname(customDomain, cnameTarget);
             }
-            // Este hostname termina no Worker via rota Cloudflare; o CNAME aponta
-            // para o domínio Vercel beta e precisa permanecer proxied.
-            await ensureCloudflareCname('api.beta.luisices.com.br', 'beta.luisices.com.br', true);
           })().catch((err) => {
             console.warn('Aviso ao configurar domínios beta:', err.message);
             process.exit(1);

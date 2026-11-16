@@ -116,6 +116,7 @@ jobs:
           if [ -n "$DEV_SENTRY_DSN" ]; then
             echo "$DEV_SENTRY_DSN" | npx wrangler secret put SENTRY_DSN -c cloudflare/api-worker/wrangler.toml -e dev || true
           fi
+          node scripts/ensure-api-beta-custom-domain.mjs
           npx wrangler deploy -c cloudflare/api-worker/wrangler.toml -e dev
           echo "🧹 Purgando cache das rotas MCP após deploy do API Gateway Worker (Dev)..."
           node scripts/purge-cloudflare-cache.mjs dev

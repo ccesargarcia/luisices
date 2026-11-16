@@ -45,7 +45,7 @@ Manter o fluxo de negócio e acrescentar um gateway Cloudflare para as rotas sel
 - Conferir estado, contratos e campos persistidos contra código e testes existentes.
 - Executar `npm run typecheck` e `git diff --check`.
 - Não executar testes de produto em etapa somente documental; referenciar suites como contratos de regressão.
-- Risco operacional: o limite Cloudflare é aproximado por localidade; a publicação de DNS, rota e secrets depende de sucesso dos workflows com permissões Cloudflare e Vercel.
+- Risco operacional: o limite Cloudflare é aproximado por localidade; a publicação do Custom Domain, DNS, certificado e secrets depende de sucesso dos workflows com permissões Cloudflare e Vercel.
 
 ## Reversão
 

@@ -8,7 +8,7 @@ Este guia documenta a arquitetura paralela de desenvolvimento na Vercel (`beta.l
 
 - **Firebase Hosting (Dev tradicional):** `dev.luisices.com.br` e `loja.dev.luisices.com.br`, publicados via [deploy-dev.yml](../.github/workflows/deploy-dev.yml).
 - **Vercel (Beta em `gru1`):** `beta.luisices.com.br` e `loja.beta.luisices.com.br`, publicados em paralelo na branch `develop` via [deploy-vercel-dev.yml](../.github/workflows/deploy-vercel-dev.yml) e [vercel.json](../vercel.json).
-- **Gateway de APIs selecionadas:** `api.beta.luisices.com.br` é um CNAME proxied para `beta.luisices.com.br`, interceptado pela rota do Worker `functions-dev`. O Worker encaminha apenas `POST /api/public-catalog-order`, `GET|HEAD /api/public-order-tracking` e `POST /api/order-tracking`; demais rotas recebem 404/405. O limite de borda é de 30 chamadas por minuto e por caminho/IP, usando o namespace de desenvolvimento existente `6634920188`.
+- **Gateway de APIs selecionadas:** `api.beta.luisices.com.br` é um Custom Domain do Worker `functions-dev`. Wrangler gerencia o registro DNS e o certificado de borda para esse hostname de segundo nível. O Worker encaminha apenas `POST /api/public-catalog-order`, `GET|HEAD /api/public-order-tracking` e `POST /api/order-tracking`; demais rotas recebem 404/405. O limite de borda é de 30 chamadas por minuto e por caminho/IP, usando o namespace de desenvolvimento existente `6634920188`.
 - **Proteção da origem Vercel:** o Worker injeta `x-beta-edge-secret`, e as três Functions verificam o valor em tempo constante contra `BETA_VERCEL_ORIGIN_SECRET`. O workflow de Dev sincroniza `DEV_ORIGIN_SECRET` (ou `ORIGIN_SECRET` como fallback) para a Vercel e o binding secreto do Worker.
 - **Observabilidade:** o `@vercel/speed-insights` em [App.tsx](../src/app/App.tsx) é instanciado somente quando `isVercelBetaHost()` ([betaHost.ts](../src/app/utils/betaHost.ts)) é verdadeiro (mobile e desktop).
 
@@ -58,6 +58,6 @@ O roteamento é controlado em tempo real via documento `storeSettings/public` (c
 
 ## Provisionamento e limites operacionais
 
-- [deploy-vercel-dev.yml](../.github/workflows/deploy-vercel-dev.yml) mantém os CNAMEs beta da Vercel como DNS-only e cria/atualiza `api.beta` com proxy ligado. [deploy-cloudflare.yml](../.github/workflows/deploy-cloudflare.yml) publica a rota do Worker e configura o segredo de origem.
+- [deploy-vercel-dev.yml](../.github/workflows/deploy-vercel-dev.yml) mantém os CNAMEs beta da Vercel como DNS-only. [deploy-cloudflare.yml](../.github/workflows/deploy-cloudflare.yml) remove apenas a rota/CNAME legados esperados e publica `api.beta` como Custom Domain do Worker, configurando o segredo de origem. O Custom Domain gera certificado para o hostname aninhado.
 - O rate limiter do Worker é aproximado por localização da Cloudflare, não um contador global estrito. A proteção de origem evita bypass direto das três rotas limitadas, mas o limite pode variar entre localidades; limites estritos globais exigiriam estado coordenado.
 - A criação remota do DNS e o deploy só são comprovados após execução bem-sucedida dos workflows com `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `VERCEL_TOKEN` e `DEV_ORIGIN_SECRET` (ou `ORIGIN_SECRET`) configurados.

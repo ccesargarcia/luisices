@@ -95,7 +95,7 @@ Esta spec consolida o fluxo da encomenda e registra a proteção de borda implem
 - **Confirmado:** o skill Cloudflare e os documentos consultados identificam proteção edge para tracking; isso não comprova uma regra WAF para o checkout.
 - **Confirmado:** cliente e telefone são fornecidos pela equipe ao converter para o pedido interno.
 - **Em aberto:** política de retenção e prazo de exclusão dos registros não está estabelecida nesta spec.
-- **Implementado localmente:** `api.beta.luisices.com.br` roteia as três APIs selecionadas ao Worker, e o segredo de origem é sincronizado pelos workflows de Dev. Ainda é necessário confirmar a execução remota dos workflows para comprovar DNS, rota e secrets ativos.
+- **Implementado localmente:** `api.beta.luisices.com.br` usa Custom Domain do Worker para incluir certificado TLS de hostname aninhado; o workflow remove apenas a rota/CNAME legados esperados antes do deploy. Ainda é necessário confirmar a execução remota dos workflows para comprovar DNS, certificado, rota e secrets ativos.
 - **Em aberto:** a composição integral do documento público `storeSettings/public` deve continuar restrita a configurações que podem ser lidas anonimamente; alterações nesse schema requerem revisão de privacidade.
 
 ## Validação
