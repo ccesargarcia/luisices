@@ -1,0 +1,347 @@
+name: Deploy to Vercel (Dev Parallel)
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'vite.config.*'
+      - 'package*.json'
+      - 'tsconfig*.json'
+      - 'vercel.json'
+      - '.github/workflows/deploy-vercel-dev.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "vercel-dev"
+  cancel-in-progress: true
+
+jobs:
+  deploy-vercel-dev:
+    name: ▲ Deploy Vercel (Dev Paralelo)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Instalar dependências do Frontend
+        run: npm ci --legacy-peer-deps
+
+      - name: Criar .env.local com secrets de DEV
+        env:
+          API_KEY: ${{ secrets.DEV_VITE_FIREBASE_API_KEY }}
+          AUTH_DOMAIN: ${{ secrets.DEV_VITE_FIREBASE_AUTH_DOMAIN }}
+          PROJECT_ID: ${{ secrets.DEV_VITE_FIREBASE_PROJECT_ID }}
+          STORAGE_BUCKET: ${{ secrets.DEV_VITE_FIREBASE_STORAGE_BUCKET }}
+          MESSAGING_SENDER_ID: ${{ secrets.DEV_VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          APP_ID: ${{ secrets.DEV_VITE_FIREBASE_APP_ID }}
+          MEASUREMENT_ID: ${{ secrets.DEV_VITE_FIREBASE_MEASUREMENT_ID }}
+          DATABASE_URL: ${{ secrets.DEV_VITE_FIREBASE_DATABASE_URL }}
+          STORAGE_CDN_URL: ${{ secrets.DEV_VITE_STORAGE_CDN_URL || 'https://cdn-dev.luisices.com.br' }}
+          FUNCTIONS_CUSTOM_DOMAIN: ${{ secrets.DEV_VITE_FUNCTIONS_CUSTOM_DOMAIN || 'https://api.dev.luisices.com.br' }}
+          SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN || secrets.SENTRY_DSN }}
+        run: |
+          printf 'VITE_FIREBASE_API_KEY=%s\n' "$API_KEY" >> .env.local
+          printf 'VITE_FIREBASE_AUTH_DOMAIN=%s\n' "$AUTH_DOMAIN" >> .env.local
+          printf 'VITE_FIREBASE_PROJECT_ID=%s\n' "$PROJECT_ID" >> .env.local
+          printf 'VITE_FIREBASE_STORAGE_BUCKET=%s\n' "$STORAGE_BUCKET" >> .env.local
+          printf 'VITE_FIREBASE_MESSAGING_SENDER_ID=%s\n' "$MESSAGING_SENDER_ID" >> .env.local
+          printf 'VITE_FIREBASE_APP_ID=%s\n' "$APP_ID" >> .env.local
+          printf 'VITE_FIREBASE_MEASUREMENT_ID=%s\n' "$MEASUREMENT_ID" >> .env.local
+          if [ -n "$DATABASE_URL" ]; then
+            printf 'VITE_FIREBASE_DATABASE_URL=%s\n' "$DATABASE_URL" >> .env.local
+          fi
+          printf 'VITE_STORAGE_CDN_URL=%s\n' "$STORAGE_CDN_URL" >> .env.local
+          printf 'VITE_FUNCTIONS_CUSTOM_DOMAIN=%s\n' "$FUNCTIONS_CUSTOM_DOMAIN" >> .env.local
+          if [ -n "$SENTRY_DSN" ]; then
+            printf 'VITE_SENTRY_DSN=%s\n' "$SENTRY_DSN" >> .env.local
+          fi
+
+      - name: Descobrir projeto Vercel e gerar .vercel/project.json
+        id: vercel-project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const token = process.env.VERCEL_TOKEN;
+          if (!token) {
+            console.error('VERCEL_TOKEN não configurado nos Secrets do GitHub.');
+            process.exit(1);
+          }
+          const repoName = (process.env.GITHUB_REPO || '').split('/').pop()?.toLowerCase() || 'luisices';
+          const headers = { Authorization: `Bearer ${token}` };
+
+          async function fetchJson(url) {
+            const res = await fetch(url, { headers });
+            if (!res.ok) throw new Error(`${url} -> ${res.status} ${await res.text()}`);
+            return res.json();
+          }
+
+          (async () => {
+            const userData = await fetchJson('https://api.vercel.com/v2/user');
+            const userId = userData?.user?.id;
+            const candidates = [];
+
+            const personal = await fetchJson('https://api.vercel.com/v9/projects?limit=100');
+            for (const p of personal.projects || []) {
+              candidates.push({ project: p, orgId: userId });
+            }
+
+            const teamsData = await fetchJson('https://api.vercel.com/v2/teams?limit=50');
+            for (const t of teamsData.teams || []) {
+              const teamProjects = await fetchJson(`https://api.vercel.com/v9/projects?limit=100&teamId=${encodeURIComponent(t.id)}`);
+              for (const p of teamProjects.projects || []) {
+                candidates.push({ project: p, orgId: t.id });
+              }
+            }
+
+            const match =
+              candidates.find(({ project }) => project.link?.repo?.toLowerCase() === repoName) ||
+              candidates.find(({ project }) => project.name?.toLowerCase() === repoName) ||
+              candidates.find(({ project }) => project.name?.toLowerCase().includes(repoName));
+
+            if (!match || !match.orgId) {
+              console.error('Não foi possível localizar o projeto na Vercel para o repositório:', repoName);
+              process.exit(1);
+            }
+
+            const { project, orgId } = match;
+            fs.mkdirSync('.vercel', { recursive: true });
+            fs.writeFileSync('.vercel/project.json', JSON.stringify({ projectId: project.id, orgId }, null, 2));
+
+            const domains = new Set(['beta.luisices.com.br']);
+            const targets = project.targets?.production?.alias || [];
+            for (const alias of targets) domains.add(alias);
+            if (project.name) domains.add(`${project.name}.vercel.app`);
+
+            const out = process.env.GITHUB_OUTPUT;
+            if (out) {
+              fs.appendFileSync(out, `project_id=${project.id}\n`);
+              fs.appendFileSync(out, `org_id=${orgId}\n`);
+              fs.appendFileSync(out, `project_name=${project.name}\n`);
+              fs.appendFileSync(out, `domains=${Array.from(domains).join(',')}\n`);
+            }
+            console.log(`Projeto Vercel detectado: ${project.name} (${project.id})`);
+          })().catch((err) => {
+            console.error(err);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Configurar domínio beta.luisices.com.br (Vercel + Cloudflare DNS)
+        continue-on-error: true
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PROJECT_ID: ${{ steps.vercel-project.outputs.project_id }}
+          ORG_ID: ${{ steps.vercel-project.outputs.org_id }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node <<'NODE'
+          const customDomain = 'beta.luisices.com.br';
+          const vercelToken = process.env.VERCEL_TOKEN;
+          const projectId = process.env.PROJECT_ID;
+          const orgId = process.env.ORG_ID || '';
+          const cfToken = process.env.CLOUDFLARE_API_TOKEN;
+
+          async function ensureVercelDomain() {
+            const teamQuery = orgId.startsWith('team_') ? `?teamId=${encodeURIComponent(orgId)}` : '';
+            const res = await fetch(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectId)}/domains${teamQuery}`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${vercelToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ name: customDomain }),
+            });
+            const data = await res.json();
+            if (res.ok || data?.error?.code === 'domain_already_in_use' || res.status === 409) {
+              console.log(`Domínio ${customDomain} vinculado ao projeto Vercel.`);
+            } else {
+              console.warn('Aviso ao vincular domínio na Vercel:', res.status, JSON.stringify(data));
+            }
+          }
+
+          async function ensureCloudflareCname() {
+            if (!cfToken) {
+              console.warn('CLOUDFLARE_API_TOKEN ausente; pulando DNS.');
+              return;
+            }
+            const cfHeaders = {
+              Authorization: `Bearer ${cfToken}`,
+              'Content-Type': 'application/json',
+            };
+            const zoneRes = await fetch('https://api.cloudflare.com/client/v4/zones?name=luisices.com.br', { headers: cfHeaders });
+            const zoneData = await zoneRes.json();
+            const zoneId = zoneData?.result?.[0]?.id;
+            if (!zoneId) {
+              console.warn('Zona luisices.com.br não encontrada na Cloudflare.');
+              return;
+            }
+
+            const recRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records?name=${encodeURIComponent(customDomain)}`, { headers: cfHeaders });
+            const recData = await recRes.json();
+            const existing = recData?.result?.[0];
+            const payload = {
+              type: 'CNAME',
+              name: customDomain,
+              content: 'cname.vercel-dns.com',
+              ttl: 1,
+              proxied: false,
+            };
+
+            if (existing) {
+              if (existing.type === 'CNAME' && existing.content === 'cname.vercel-dns.com' && existing.proxied === false) {
+                console.log(`DNS CNAME ${customDomain} já configurado na Cloudflare.`);
+                return;
+              }
+              const updRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${existing.id}`, {
+                method: 'PUT',
+                headers: cfHeaders,
+                body: JSON.stringify(payload),
+              });
+              const updData = await updRes.json();
+              if (!updData.success) throw new Error(`Cloudflare PUT falhou: ${JSON.stringify(updData)}`);
+              console.log(`DNS CNAME ${customDomain} atualizado na Cloudflare.`);
+            } else {
+              const createRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`, {
+                method: 'POST',
+                headers: cfHeaders,
+                body: JSON.stringify(payload),
+              });
+              const createData = await createRes.json();
+              if (!createData.success) throw new Error(`Cloudflare POST falhou: ${JSON.stringify(createData)}`);
+              console.log(`DNS CNAME ${customDomain} criado na Cloudflare.`);
+            }
+          }
+
+          (async () => {
+            await ensureVercelDomain();
+            await ensureCloudflareCname();
+          })().catch((err) => {
+            console.warn('Aviso ao configurar beta.luisices.com.br:', err.message);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Build e Deploy Prebuilt na Vercel (Dev)
+        id: vercel-deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
+          DEPLOY_URL=$(npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN" | tail -n 1 | tr -d '\r')
+          echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+          echo "Vercel deploy concluído: $DEPLOY_URL"
+
+      - name: Sincronizar domínios Vercel no Firebase Auth (luisices-dev)
+        continue-on-error: true
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+          VERCEL_DOMAINS: ${{ steps.vercel-project.outputs.domains }}
+          DEPLOY_URL: ${{ steps.vercel-deploy.outputs.url }}
+        run: |
+          node <<'NODE'
+          const crypto = require('node:crypto');
+          const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
+          if (!saRaw) process.exit(0);
+          const sa = JSON.parse(saRaw);
+          const projectId = sa.project_id || 'luisices-dev';
+
+          const desiredDomains = new Set(
+            (process.env.VERCEL_DOMAINS || '')
+              .split(',')
+              .map((d) => d.trim().toLowerCase())
+              .filter(Boolean)
+          );
+          if (process.env.DEPLOY_URL) {
+            try {
+              desiredDomains.add(new URL(process.env.DEPLOY_URL).hostname.toLowerCase());
+            } catch {}
+          }
+          if (desiredDomains.size === 0) process.exit(0);
+
+          function base64url(input) {
+            return Buffer.from(input).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+          }
+
+          async function getAccessToken() {
+            const now = Math.floor(Date.now() / 1000);
+            const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+            const claim = base64url(JSON.stringify({
+              iss: sa.client_email,
+              scope: 'https://www.googleapis.com/auth/cloud-platform',
+              aud: 'https://oauth2.googleapis.com/token',
+              iat: now,
+              exp: now + 3600,
+            }));
+            const unsigned = `${header}.${claim}`;
+            const signature = base64url(crypto.createSign('RSA-SHA256').update(unsigned).sign(sa.private_key));
+            const res = await fetch('https://oauth2.googleapis.com/token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({
+                grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                assertion: `${unsigned}.${signature}`,
+              }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(`Token error: ${JSON.stringify(data)}`);
+            return data.access_token;
+          }
+
+          (async () => {
+            const token = await getAccessToken();
+            const url = `https://identitytoolkit.googleapis.com/admin/v2/projects/${projectId}/config`;
+            const getRes = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+            const cfg = await getRes.json();
+            if (!getRes.ok) throw new Error(`Get config error: ${JSON.stringify(cfg)}`);
+
+            const current = new Set(cfg.authorizedDomains || []);
+            const missing = Array.from(desiredDomains).filter((d) => !current.has(d));
+            if (missing.length === 0) {
+              console.log('Todos os domínios Vercel já estão autorizados no Firebase Auth.');
+              return;
+            }
+
+            const updated = Array.from(new Set([...current, ...missing]));
+            const patchRes = await fetch(`${url}?updateMask=authorizedDomains`, {
+              method: 'PATCH',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ authorizedDomains: updated }),
+            });
+            const patchData = await patchRes.json();
+            if (!patchRes.ok) throw new Error(`Patch config error: ${JSON.stringify(patchData)}`);
+            console.log('Domínios adicionados ao Firebase Auth:', missing.join(', '));
+          })().catch((err) => {
+            console.warn('Aviso ao sincronizar Authorized Domains:', err.message);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Resumo do Deploy
+        if: always()
+        run: |
+          {
+            echo "### ▲ Vercel (Dev Paralelo)"
+            echo "- **Projeto:** \`${{ steps.vercel-project.outputs.project_name }}\`"
+            echo "- **URL do Deploy:** ${{ steps.vercel-deploy.outputs.url }}"
+            echo "- **Domínios:** \`${{ steps.vercel-project.outputs.domains }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

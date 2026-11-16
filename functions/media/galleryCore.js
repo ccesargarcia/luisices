@@ -31,7 +31,11 @@ function setCorsHeaders(req, res) {
   const allowed = typeof origin === 'string' && (() => {
     try {
       const url = new URL(origin);
-      return (url.protocol === 'https:' && (url.hostname === 'luisices.com.br' || url.hostname.endsWith('.luisices.com.br')))
+      return (url.protocol === 'https:' && (
+        url.hostname === 'luisices.com.br'
+        || url.hostname.endsWith('.luisices.com.br')
+        || (url.hostname.endsWith('.vercel.app') && url.hostname.includes('luisices'))
+      ))
         || (url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname));
     } catch { return false; }
   })();

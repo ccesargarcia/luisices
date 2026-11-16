@@ -10,7 +10,9 @@ export function resolveOAuthApiOrigin({ hostname, isDevelopmentBuild, firebasePr
   firebaseProjectId?: string;
 }): string | null {
   const normalizedHost = hostname.toLowerCase().replace(/\.$/, '');
-  if (normalizedHost === 'dev.luisices.com.br') return OAUTH_API_ORIGINS.development;
+  if (normalizedHost === 'dev.luisices.com.br' || normalizedHost === 'beta.luisices.com.br') {
+    return OAUTH_API_ORIGINS.development;
+  }
   if (normalizedHost === 'luisices.com.br') return OAUTH_API_ORIGINS.production;
   if (firebaseProjectId === 'luisices-dev') return OAUTH_API_ORIGINS.development;
   if (isDevelopmentBuild) return OAUTH_API_ORIGINS.development;

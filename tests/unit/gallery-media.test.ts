@@ -37,6 +37,21 @@ describe('endpoint de mídia privada da galeria', () => {
     expect(res.headers['Cache-Control']).toBe('private, no-store');
   });
 
+  it('libera CORS para domínios Luisices (incluindo previews Vercel) e bloqueia origens externas', async () => {
+    const firestore = { collection: vi.fn() };
+    const handler = createGalleryMediaHandler({ auth: {}, firestore, storage: {} });
+
+    const resAllowed = responseMock();
+    await handler({ method: 'OPTIONS', headers: { origin: 'https://luisices.vercel.app' }, query: {} } as any, resAllowed);
+    expect(resAllowed.code).toBe(204);
+    expect(resAllowed.headers['Access-Control-Allow-Origin']).toBe('https://luisices.vercel.app');
+
+    const resDenied = responseMock();
+    await handler({ method: 'OPTIONS', headers: { origin: 'https://evil.vercel.app' }, query: {} } as any, resDenied);
+    expect(resDenied.code).toBe(204);
+    expect(resDenied.headers['Access-Control-Allow-Origin']).toBeUndefined();
+  });
+
   it('transmite imagem com cache privado e rejeita path que não corresponde ao item', async () => {
     const item = { userId: 'u1', imageUrl: 'users/u1/gallery/a.webp' };
     const firestore = { collection: (name: string) => ({ doc: (id: string) => ({ get: async () => ({ exists: true, data: () => name === 'userProfiles' ? { active: true, permissions: { gallery: { view: true } } } : item }) }) }) };

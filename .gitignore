@@ -19,6 +19,7 @@ cloudflare-status-report.md
 
 # Firebase
 .firebase/
+.vercel/
 firebase-debug.log
 firestore-debug.log
 database-debug.log
