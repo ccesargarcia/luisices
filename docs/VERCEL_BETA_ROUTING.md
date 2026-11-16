@@ -42,6 +42,7 @@ O roteamento é controlado em tempo real via documento `storeSettings/public` (c
 - **`autoFallbackToGcp` (`boolean`):** quando ativo, falhas de infraestrutura na Vercel (`5xx`, timeout ou erro de rede) acionam automaticamente a Cloud Function equivalente no GCP via `executeWithGcpFallback`. Erros de negócio/validação (`400`, `401`, `403`, `404`, `409`, `412`) **não** acionam fallback.
 - **`routes.*` (`'inherit' | 'vercel' | 'gcp'`):** permite forçar rotas individuais (`galleryMedia`, `publicCatalogProducts`, `publicCatalogOrder`, `publicOrderTracking`, `orderTrackingAdmin`, `aiChat`, `alexa`) sem alterar as demais.
 - **Segurança por host:** fora de `beta.luisices.com.br` e `loja.beta.luisices.com.br`, `resolveEffectiveProvider` sempre retorna `'gcp'`.
+- **Monitoramento e gráfico de fallbacks:** sempre que `executeWithGcpFallback` aciona o fallback para GCP, um evento é gravado localmente e sincronizado (para sessões autenticadas com permissão) em `storeSettings/backendRoutingTelemetry`, exibindo um gráfico `Recharts` por rota e os últimos eventos em **Configurações → Avançado & Segurança**.
 
 ---
 

@@ -21,7 +21,19 @@ export interface BackendRoutingConfig {
   updatedBy?: string;
 }
 
+export interface BackendFallbackEvent {
+  id: string;
+  routeKey: BackendRouteKey;
+  timestamp: string;
+  reason: string;
+  status?: number;
+  host: string;
+  recoveredViaGcp: boolean;
+}
+
 const STORAGE_CACHE_KEY = 'luisices_backend_routing_v1';
+const TELEMETRY_CACHE_KEY = 'luisices_backend_routing_telemetry_v1';
+const MAX_TELEMETRY_EVENTS = 50;
 
 export const DEFAULT_BACKEND_ROUTING: BackendRoutingConfig = {
   globalMode: 'vercel',
@@ -200,6 +212,119 @@ export function isFallbackEligibleError(err: unknown): boolean {
   return false;
 }
 
+function readCachedTelemetry(): BackendFallbackEvent[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(TELEMETRY_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(0, MAX_TELEMETRY_EVENTS) : [];
+  } catch {
+    return [];
+  }
+}
+
+let telemetryEvents: BackendFallbackEvent[] = readCachedTelemetry();
+let telemetryListenerStarted = false;
+const telemetrySubscribers = new Set<(events: BackendFallbackEvent[]) => void>();
+
+function mergeTelemetryEvents(remote: BackendFallbackEvent[], local: BackendFallbackEvent[]): BackendFallbackEvent[] {
+  const byId = new Map<string, BackendFallbackEvent>();
+  for (const item of [...remote, ...local]) {
+    if (item && typeof item.id === 'string' && typeof item.routeKey === 'string') {
+      byId.set(item.id, item);
+    }
+  }
+  return Array.from(byId.values())
+    .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+    .slice(0, MAX_TELEMETRY_EVENTS);
+}
+
+function notifyTelemetrySubscribers(next: BackendFallbackEvent[]) {
+  telemetryEvents = next.slice(0, MAX_TELEMETRY_EVENTS);
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(TELEMETRY_CACHE_KEY, JSON.stringify(telemetryEvents));
+    } catch {}
+  }
+  telemetrySubscribers.forEach((cb) => cb(telemetryEvents));
+}
+
+export function ensureTelemetryListener(): void {
+  if (telemetryListenerStarted || typeof window === 'undefined') return;
+  telemetryListenerStarted = true;
+  try {
+    onSnapshot(
+      doc(db, 'storeSettings', 'backendRoutingTelemetry'),
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        if (Array.isArray(data?.events)) {
+          notifyTelemetrySubscribers(mergeTelemetryEvents(data.events, telemetryEvents));
+        }
+      },
+      () => {},
+    );
+  } catch {
+    telemetryListenerStarted = false;
+  }
+}
+
+export function getBackendFallbackTelemetry(): BackendFallbackEvent[] {
+  ensureTelemetryListener();
+  return telemetryEvents;
+}
+
+export function subscribeBackendFallbackTelemetry(
+  cb: (events: BackendFallbackEvent[]) => void,
+): () => void {
+  ensureTelemetryListener();
+  telemetrySubscribers.add(cb);
+  cb(telemetryEvents);
+  return () => {
+    telemetrySubscribers.delete(cb);
+  };
+}
+
+export async function clearBackendFallbackTelemetry(): Promise<void> {
+  notifyTelemetrySubscribers([]);
+  try {
+    await setDoc(
+      doc(db, 'storeSettings', 'backendRoutingTelemetry'),
+      { events: [], updatedAt: new Date().toISOString() },
+      { merge: true },
+    );
+  } catch {
+    // Sem permissão de escrita em ambiente público; mantém limpeza local.
+  }
+}
+
+function recordFallbackEvent(
+  routeKey: BackendRouteKey,
+  err: unknown,
+  recoveredViaGcp: boolean,
+): void {
+  const anyErr = err as { message?: string; status?: number } | null;
+  const event: BackendFallbackEvent = {
+    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+    routeKey,
+    timestamp: new Date().toISOString(),
+    reason: String(anyErr?.message || 'Erro na Vercel').slice(0, 180),
+    ...(typeof anyErr?.status === 'number' ? { status: anyErr.status } : {}),
+    host: typeof window !== 'undefined' ? window.location.hostname : 'unknown',
+    recoveredViaGcp,
+  };
+  const next = mergeTelemetryEvents([event], telemetryEvents);
+  notifyTelemetrySubscribers(next);
+  setDoc(
+    doc(db, 'storeSettings', 'backendRoutingTelemetry'),
+    { events: next, updatedAt: new Date().toISOString() },
+    { merge: true },
+  ).catch(() => {
+    // Visitantes públicos sem permissão de escrita mantêm o registro local sem erro.
+  });
+}
+
 export async function executeWithGcpFallback<T>(
   routeKey: BackendRouteKey,
   vercelCall: () => Promise<T>,
@@ -214,7 +339,14 @@ export async function executeWithGcpFallback<T>(
   } catch (err) {
     if (isAutoFallbackToGcpEnabled() && isFallbackEligibleError(err)) {
       console.warn(`[BackendRouting] Falha na Vercel em "${routeKey}". Acionando fallback automático para GCP.`, err);
-      return gcpFallbackCall();
+      try {
+        const result = await gcpFallbackCall();
+        recordFallbackEvent(routeKey, err, true);
+        return result;
+      } catch (gcpErr) {
+        recordFallbackEvent(routeKey, err, false);
+        throw gcpErr;
+      }
     }
     throw err;
   }

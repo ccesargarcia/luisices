@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Cloud, Globe, RefreshCw, ShieldAlert } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Activity, Cloud, Globe, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { toast } from 'sonner';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -10,13 +11,17 @@ import { Switch } from '../ui/switch';
 import { useAuth } from '../../../contexts/AuthContext';
 import { isVercelBetaHost } from '../../utils/betaHost';
 import {
+  type BackendFallbackEvent,
   type BackendProvider,
   type BackendRouteKey,
   type BackendRoutingConfig,
   type RouteOverride,
+  clearBackendFallbackTelemetry,
+  getBackendFallbackTelemetry,
   getBackendRoutingConfig,
   resolveEffectiveProvider,
   saveBackendRoutingConfig,
+  subscribeBackendFallbackTelemetry,
   subscribeBackendRouting,
 } from '../../../services/backendRoutingService';
 
@@ -85,12 +90,38 @@ const ROUTE_DEFINITIONS: Array<{
 export function BackendRoutingSettingsSection({ isAdmin }: BackendRoutingSettingsSectionProps) {
   const { user } = useAuth();
   const [config, setConfig] = useState<BackendRoutingConfig>(() => getBackendRoutingConfig());
+  const [fallbackEvents, setFallbackEvents] = useState<BackendFallbackEvent[]>(() => getBackendFallbackTelemetry());
   const [saving, setSaving] = useState(false);
   const onBetaHost = isVercelBetaHost();
 
   useEffect(() => {
     return subscribeBackendRouting((next) => setConfig(next));
   }, []);
+
+  useEffect(() => {
+    return subscribeBackendFallbackTelemetry((events) => setFallbackEvents(events));
+  }, []);
+
+  const chartData = useMemo(() => {
+    const counts = new Map<BackendRouteKey, { recovered: number; failed: number }>();
+    for (const def of ROUTE_DEFINITIONS) {
+      counts.set(def.key, { recovered: 0, failed: 0 });
+    }
+    for (const ev of fallbackEvents) {
+      const entry = counts.get(ev.routeKey) || { recovered: 0, failed: 0 };
+      if (ev.recoveredViaGcp) entry.recovered += 1;
+      else entry.failed += 1;
+      counts.set(ev.routeKey, entry);
+    }
+    return ROUTE_DEFINITIONS.map((def) => {
+      const c = counts.get(def.key) || { recovered: 0, failed: 0 };
+      return {
+        route: def.label.replace(' da Lojinha', '').replace(' de Acompanhamento', ''),
+        Recuperados: c.recovered,
+        Falhas: c.failed,
+      };
+    });
+  }, [fallbackEvents]);
 
   if (!isAdmin) return null;
 
@@ -294,6 +325,98 @@ export function BackendRoutingSettingsSection({ isAdmin }: BackendRoutingSetting
               );
             })}
           </div>
+        </div>
+
+        {/* Monitoramento e Gráfico de Fallbacks */}
+        <div className="space-y-4 rounded-xl border border-glass-border bg-muted/20 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Activity className="size-4 text-primary" />
+              <p className="text-sm font-semibold text-foreground">Monitoramento de Fallbacks (Vercel → GCP)</p>
+              <Badge variant={fallbackEvents.length > 0 ? 'destructive' : 'secondary'} className="text-[11px]">
+                {fallbackEvents.length} {fallbackEvents.length === 1 ? 'evento' : 'eventos'}
+              </Badge>
+            </div>
+            {fallbackEvents.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  void clearBackendFallbackTelemetry();
+                  toast.success('Histórico de fallbacks limpo.');
+                }}
+                className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <Trash2 className="size-3.5" />
+                Limpar histórico
+              </Button>
+            )}
+          </div>
+
+          <div className="h-52 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis
+                  dataKey="route"
+                  tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }}
+                  axisLine={{ stroke: 'var(--border)' }}
+                  tickLine={false}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--card)',
+                    borderColor: 'var(--border)',
+                    borderRadius: '0.75rem',
+                    color: 'var(--foreground)',
+                    fontSize: '12px',
+                  }}
+                />
+                <Bar dataKey="Recuperados" stackId="a" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Falhas" stackId="a" fill="var(--destructive)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {fallbackEvents.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Nenhum fallback para GCP registrado até o momento — todas as chamadas na Vercel responderam normalmente.
+            </p>
+          ) : (
+            <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
+              {fallbackEvents.slice(0, 10).map((ev) => (
+                <div
+                  key={ev.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 rounded-lg border border-border/60 bg-background/50 px-3 py-2 text-xs"
+                >
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-foreground">{ev.routeKey}</span>
+                      {ev.status && (
+                        <Badge variant="outline" className="text-[10px]">
+                          HTTP {ev.status}
+                        </Badge>
+                      )}
+                      <Badge variant={ev.recoveredViaGcp ? 'secondary' : 'destructive'} className="text-[10px]">
+                        {ev.recoveredViaGcp ? 'Recuperado via GCP' : 'Falhou também no GCP'}
+                      </Badge>
+                    </div>
+                    <p className="truncate text-muted-foreground">{ev.reason}</p>
+                  </div>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">
+                    {new Date(ev.timestamp).toLocaleString('pt-BR')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {config.updatedAt && (
