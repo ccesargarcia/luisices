@@ -1,27 +1,39 @@
 import { createRequire } from 'node:module';
-import { getFirebaseAdmin } from './_firebaseAdmin.js';
+import {
+  ApiHttpError,
+  assertActiveSessionFromBearer,
+  getFirebaseAdmin,
+} from './_firebaseAdmin.js';
 
 export const maxDuration = 60;
 
 const require = createRequire(import.meta.url);
-const { assertActiveSession } = require('../functions/common/helpers.js');
 const { createAiServices } = require('../functions/ai/index.js');
-const { mapToHttpsError } = require('../functions/ai/httpsError.js');
 
-function mapHttpsErrorStatus(code?: string): number {
+function resolveErrorResponse(err: unknown): { status: number; code: string; message: string } {
+  if (err instanceof ApiHttpError) {
+    return { status: err.statusCode, code: err.code, message: err.message };
+  }
+  const anyErr = err as { code?: string; message?: string; statusCode?: number } | null;
+  const code = typeof anyErr?.code === 'string' ? anyErr.code : 'internal';
+  const message =
+    typeof anyErr?.message === 'string' && anyErr.message
+      ? anyErr.message
+      : 'Erro interno ao processar o Copiloto de IA.';
+
   switch (code) {
     case 'unauthenticated':
-      return 401;
+      return { status: 401, code, message };
     case 'permission-denied':
-      return 403;
+      return { status: 403, code, message };
     case 'invalid-argument':
-      return 400;
+      return { status: 400, code, message };
     case 'resource-exhausted':
-      return 429;
+      return { status: 429, code, message };
     case 'deadline-exceeded':
-      return 504;
+      return { status: 504, code, message };
     default:
-      return 500;
+      return { status: anyErr?.statusCode || 500, code, message };
   }
 }
 
@@ -47,25 +59,20 @@ export default async function handler(
     return res.status(405).send('Method Not Allowed');
   }
 
-  const rawAuth = req.headers?.authorization;
-  const authHeader = Array.isArray(rawAuth) ? rawAuth[0] : String(rawAuth || '');
-  const match = authHeader.match(/^Bearer\s+(.+)$/i);
-  if (!match) {
-    return res.status(401).json({ error: { code: 'unauthenticated', message: 'Requer autenticação.' } });
-  }
-
   try {
     const { auth, firestore } = getFirebaseAdmin();
-    const decoded = await auth.verifyIdToken(match[1].trim(), true);
+    const session = await assertActiveSessionFromBearer(
+      auth,
+      firestore,
+      req.headers?.authorization,
+    );
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const callableRequest: Record<string, unknown> = {
-      auth: { uid: decoded.uid, token: decoded },
+    const callableRequest = {
+      auth: { uid: session.uid, token: session.token },
+      authProfile: session.profile,
       data: body,
     };
-
-    const { profile } = await assertActiveSession(callableRequest, { db: firestore });
-    callableRequest.authProfile = profile;
 
     const apiKey = typeof process.env.GEMINI_API_KEY === 'string' ? process.env.GEMINI_API_KEY : '';
     const aiServices = createAiServices(
@@ -75,13 +82,7 @@ export default async function handler(
     const result = await aiServices.handlers.aiAgentChat(callableRequest);
     return res.status(200).json(result);
   } catch (err) {
-    const mapped = mapToHttpsError(err);
-    const statusCode = mapHttpsErrorStatus(mapped?.code);
-    return res.status(statusCode).json({
-      error: {
-        code: mapped?.code || 'internal',
-        message: mapped?.message || 'Erro interno ao processar o Copiloto de IA.',
-      },
-    });
+    const { status, code, message } = resolveErrorResponse(err);
+    return res.status(status).json({ error: { code, message } });
   }
 }

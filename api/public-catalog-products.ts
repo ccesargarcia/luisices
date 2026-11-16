@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { getFirebaseAdmin } from './_firebaseAdmin.js';
 
 const require = createRequire(import.meta.url);
-const { handleGetPublicCatalogProducts } = require('../functions/orders/catalog.js');
+const { handleGetPublicCatalogProducts } = require('../functions/orders/catalogCore.js');
 
 export default async function handler(
   req: { method?: string },

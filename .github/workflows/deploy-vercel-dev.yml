@@ -9,6 +9,7 @@ on:
       - 'api/**'
       - 'functions/media/galleryCore.js'
       - 'functions/orders/catalog.js'
+      - 'functions/orders/catalogCore.js'
       - 'functions/ai/**'
       - 'public/**'
       - 'index.html'

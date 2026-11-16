@@ -46,3 +46,49 @@ export function getFirebaseAdmin(): FirebaseAdminBundle {
 
   return cachedBundle;
 }
+
+export class ApiHttpError extends Error {
+  statusCode: number;
+  code: string;
+
+  constructor(statusCode: number, code: string, message: string) {
+    super(message);
+    this.statusCode = statusCode;
+    this.code = code;
+  }
+}
+
+export async function assertActiveSessionFromBearer(
+  auth: Auth,
+  firestore: Firestore,
+  rawAuthorization: string | string[] | undefined,
+) {
+  const authHeader = Array.isArray(rawAuthorization) ? rawAuthorization[0] : String(rawAuthorization || '');
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    throw new ApiHttpError(401, 'unauthenticated', 'Requer autenticação.');
+  }
+
+  let decoded;
+  try {
+    decoded = await auth.verifyIdToken(match[1].trim(), true);
+  } catch {
+    throw new ApiHttpError(401, 'unauthenticated', 'Sessão inválida ou revogada.');
+  }
+
+  const profileSnap = await firestore.collection('userProfiles').doc(decoded.uid).get();
+  if (!profileSnap.exists || profileSnap.data()?.active === false) {
+    throw new ApiHttpError(403, 'permission-denied', 'Perfil de usuário inativo ou inexistente.');
+  }
+
+  const profile = profileSnap.data() || {};
+  const authTime = decoded.auth_time;
+  if (
+    profile.tokensValidAfterTime &&
+    (!Number.isFinite(authTime) || authTime <= profile.tokensValidAfterTime)
+  ) {
+    throw new ApiHttpError(401, 'unauthenticated', 'Sessão revogada no servidor. Faça login novamente.');
+  }
+
+  return { uid: decoded.uid, token: decoded, profile };
+}
