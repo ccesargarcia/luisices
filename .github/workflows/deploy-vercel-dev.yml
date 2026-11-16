@@ -192,7 +192,24 @@ jobs:
             }
           }
 
-          async function ensureCloudflareCname() {
+          async function getRecommendedCnameTarget() {
+            const teamQuery = orgId.startsWith('team_') ? `?teamId=${encodeURIComponent(orgId)}` : '';
+            try {
+              const res = await fetch(`https://api.vercel.com/v6/domains/${encodeURIComponent(customDomain)}/config${teamQuery}`, {
+                headers: { Authorization: `Bearer ${vercelToken}` },
+              });
+              if (res.ok) {
+                const cfg = await res.json();
+                const recommended = cfg?.recommendedCNAME?.[0]?.value;
+                if (typeof recommended === 'string' && recommended.trim()) {
+                  return recommended.trim().replace(/\.$/, '');
+                }
+              }
+            } catch {}
+            return 'd9a25377cf05a4e4.vercel-dns-017.com';
+          }
+
+          async function ensureCloudflareCname(cnameTarget) {
             if (!cfToken) {
               console.warn('CLOUDFLARE_API_TOKEN ausente; pulando DNS.');
               return;
@@ -215,14 +232,14 @@ jobs:
             const payload = {
               type: 'CNAME',
               name: customDomain,
-              content: 'cname.vercel-dns.com',
+              content: cnameTarget,
               ttl: 1,
               proxied: false,
             };
 
             if (existing) {
-              if (existing.type === 'CNAME' && existing.content === 'cname.vercel-dns.com' && existing.proxied === false) {
-                console.log(`DNS CNAME ${customDomain} já configurado na Cloudflare.`);
+              if (existing.type === 'CNAME' && existing.content === cnameTarget && existing.proxied === false) {
+                console.log(`DNS CNAME ${customDomain} -> ${cnameTarget} já configurado na Cloudflare.`);
                 return;
               }
               const updRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${existing.id}`, {
@@ -232,7 +249,7 @@ jobs:
               });
               const updData = await updRes.json();
               if (!updData.success) throw new Error(`Cloudflare PUT falhou: ${JSON.stringify(updData)}`);
-              console.log(`DNS CNAME ${customDomain} atualizado na Cloudflare.`);
+              console.log(`DNS CNAME ${customDomain} -> ${cnameTarget} atualizado na Cloudflare.`);
             } else {
               const createRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`, {
                 method: 'POST',
@@ -241,13 +258,14 @@ jobs:
               });
               const createData = await createRes.json();
               if (!createData.success) throw new Error(`Cloudflare POST falhou: ${JSON.stringify(createData)}`);
-              console.log(`DNS CNAME ${customDomain} criado na Cloudflare.`);
+              console.log(`DNS CNAME ${customDomain} -> ${cnameTarget} criado na Cloudflare.`);
             }
           }
 
           (async () => {
             await ensureVercelDomain();
-            await ensureCloudflareCname();
+            const cnameTarget = await getRecommendedCnameTarget();
+            await ensureCloudflareCname(cnameTarget);
           })().catch((err) => {
             console.warn('Aviso ao configurar beta.luisices.com.br:', err.message);
             process.exit(1);
