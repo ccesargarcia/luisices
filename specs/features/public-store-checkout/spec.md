@@ -95,7 +95,7 @@ Esta spec consolida o fluxo da encomenda e registra a proteção de borda implem
 - **Confirmado:** o skill Cloudflare e os documentos consultados identificam proteção edge para tracking; isso não comprova uma regra WAF para o checkout.
 - **Confirmado:** cliente e telefone são fornecidos pela equipe ao converter para o pedido interno.
 - **Em aberto:** política de retenção e prazo de exclusão dos registros não está estabelecida nesta spec.
-- **Implementado localmente:** `api.beta.luisices.com.br` usa Custom Domain do Worker para incluir certificado TLS de hostname aninhado; o workflow remove apenas a rota/CNAME legados esperados antes do deploy. Ainda é necessário confirmar a execução remota dos workflows para comprovar DNS, certificado, rota e secrets ativos.
+- **Isolamento de deploy:** `api.beta.luisices.com.br` é associado ao Worker dedicado `functions-beta`. O workflow Beta publica esse Worker e atualiza somente a associação do Custom Domain `api.beta`, preservando o vínculo independente de `api.dev` com `functions-dev`. O contrato das três rotas não muda; portanto não há impacto esperado no Copiloto (Gemini) nem no MCP/ChatGPT. A confirmação de estado remoto deve ser feita no workflow dedicado e na validação pós-deploy.
 - **Em aberto:** a composição integral do documento público `storeSettings/public` deve continuar restrita a configurações que podem ser lidas anonimamente; alterações nesse schema requerem revisão de privacidade.
 
 ## Validação

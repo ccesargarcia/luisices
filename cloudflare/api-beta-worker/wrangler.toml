@@ -1,0 +1,19 @@
+name = "functions-beta"
+main = "src/index.js"
+compatibility_date = "2024-09-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+[env.dev]
+name = "functions-beta"
+
+[env.dev.vars]
+ENVIRONMENT = "dev"
+
+[[env.dev.ratelimits]]
+name = "BETA_VERCEL_API_LIMITER"
+namespace_id = "6634920188"
+
+  [env.dev.ratelimits.simple]
+  limit = 30
+  period = 60

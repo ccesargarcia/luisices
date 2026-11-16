@@ -1,0 +1,52 @@
+name: Deploy Cloudflare Worker (API Beta)
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'cloudflare/api-beta-worker/**'
+      - 'scripts/ensure-api-beta-custom-domain.mjs'
+      - 'package.json'
+      - '.github/workflows/deploy-cloudflare-beta.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-api-beta
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - name: Validate deployment secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BETA_VERCEL_ORIGIN_SECRET: ${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'CLOUDFLARE_API_TOKEN ausente'; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'CLOUDFLARE_ACCOUNT_ID ausente'; exit 1; }
+          test -n "$BETA_VERCEL_ORIGIN_SECRET" || { echo 'Segredo de origem Beta ausente'; exit 1; }
+      - name: Configure Beta origin secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          BETA_VERCEL_ORIGIN_SECRET: ${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
+        run: printf '%s' "$BETA_VERCEL_ORIGIN_SECRET" | npm run cloudflare:secret:beta-origin:dev
+      - name: Deploy isolated Beta Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npm run cloudflare:deploy:api:beta:dev
+      - name: Assign only the api.beta Custom Domain
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/ensure-api-beta-custom-domain.mjs
