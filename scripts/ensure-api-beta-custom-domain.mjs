@@ -51,6 +51,19 @@ try {
     await request(`/zones/${zone.id}/dns_records/${record.id}`, { method: 'DELETE' });
     console.log(`CNAME legado removido de ${hostname}; Wrangler criará o registro e certificado do Worker.`);
   }
+
+  // Também migra api.dev.luisices.com.br de Worker Route legada para Worker Custom Domain (emite TLS 2º nível)
+  const devHostname = 'api.dev.luisices.com.br';
+  const devLegacyRoute = routes.find((item) => item.pattern === `${devHostname}/*`);
+  if (devLegacyRoute) {
+    await request(`/zones/${zone.id}/workers/routes/${devLegacyRoute.id}`, { method: 'DELETE' });
+    console.log(`Rota legada removida: ${devLegacyRoute.pattern}`);
+    const devRecords = await request(`/zones/${zone.id}/dns_records?name=${encodeURIComponent(devHostname)}`);
+    for (const record of devRecords.filter((item) => item.name === devHostname && (item.type === 'AAAA' || item.type === 'A' || item.type === 'CNAME'))) {
+      await request(`/zones/${zone.id}/dns_records/${record.id}`, { method: 'DELETE' });
+      console.log(`Registro DNS legado removido de ${devHostname}; Wrangler criará Custom Domain + TLS.`);
+    }
+  }
 } catch (error) {
   console.error(`Falha ao preparar o Custom Domain Beta: ${error.message}`);
   process.exitCode = 1;
