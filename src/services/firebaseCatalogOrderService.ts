@@ -53,7 +53,10 @@ export interface PublicCatalogProduct {
 class FirebaseCatalogOrderService {
   async getPublicCatalogProducts(): Promise<PublicCatalogProduct[]> {
     if (isVercelBetaHost()) {
-      const response = await fetch('/api/public-catalog-products', { method: 'GET' });
+      const response = await fetch('/api/public-catalog-products', {
+        method: 'GET',
+        cache: 'no-store',
+      });
       if (!response.ok) {
         throw new Error(`Falha ao carregar catálogo (${response.status}).`);
       }

@@ -6,6 +6,7 @@ let publicCatalogCache = { version: null, products: null };
 async function handleGetPublicCatalogProducts(_request, {
   getFirestore: getDb,
   isEmulator = process.env.FUNCTIONS_EMULATOR === 'true',
+  bypassCache = false,
 } = {}) {
   if (typeof getDb !== 'function') {
     throw new Error('getFirestore é obrigatório.');
@@ -15,6 +16,7 @@ async function handleGetPublicCatalogProducts(_request, {
   if (!settings.exists || settings.data()?.storePublished === false) return { products: [] };
   const catalogVersion = settings.data()?.catalogVersion ?? settings.updateTime?.toMillis?.() ?? null;
   if (
+    !bypassCache &&
     !isEmulator &&
     publicCatalogCache.products &&
     catalogVersion !== null &&

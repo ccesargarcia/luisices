@@ -25,7 +25,7 @@ export default async function handler(
     const { firestore } = getFirebaseAdmin();
     const result = await handleGetPublicCatalogProducts(
       {},
-      { getFirestore: () => firestore, isEmulator: false },
+      { getFirestore: () => firestore, isEmulator: false, bypassCache: true },
     );
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json(result);
