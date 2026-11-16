@@ -21,7 +21,7 @@ import {
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../lib/firebase';
 import { CatalogOrder, CatalogOrderStatus, Order } from '../app/types';
-import { isVercelBetaHost } from '../app/utils/betaHost';
+import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
 import { firebaseOrderService } from './firebaseOrderService';
 
 const CATALOG_ORDERS_COLLECTION = 'catalogOrders';
@@ -52,20 +52,30 @@ export interface PublicCatalogProduct {
 
 class FirebaseCatalogOrderService {
   async getPublicCatalogProducts(): Promise<PublicCatalogProduct[]> {
-    if (isVercelBetaHost()) {
-      const response = await fetch('/api/public-catalog-products', {
-        method: 'GET',
-        cache: 'no-store',
-      });
-      if (!response.ok) {
-        throw new Error(`Falha ao carregar catálogo (${response.status}).`);
-      }
-      const data = await response.json();
-      return Array.isArray(data?.products) ? data.products : [];
-    }
-    const getProducts = httpsCallable<void, { products: PublicCatalogProduct[] }>(functions, 'getPublicCatalogProducts');
-    const response = await getProducts();
-    return Array.isArray(response.data?.products) ? response.data.products : [];
+    return executeWithGcpFallback(
+      'publicCatalogProducts',
+      async () => {
+        const response = await fetch('/api/public-catalog-products', {
+          method: 'GET',
+          cache: 'no-store',
+        });
+        if (!response.ok) {
+          if (response.status >= 500) {
+            throw new VercelInfraError(`Falha ao carregar catálogo (${response.status}).`, response.status);
+          }
+          const err = new Error(`Falha ao carregar catálogo (${response.status}).`);
+          Object.assign(err, { status: response.status });
+          throw err;
+        }
+        const data = await response.json();
+        return Array.isArray(data?.products) ? data.products : [];
+      },
+      async () => {
+        const getProducts = httpsCallable<void, { products: PublicCatalogProduct[] }>(functions, 'getPublicCatalogProducts');
+        const response = await getProducts();
+        return Array.isArray(response.data?.products) ? response.data.products : [];
+      },
+    );
   }
 
   private mapDoc(id: string, data: Record<string, any>): CatalogOrder {
@@ -108,33 +118,41 @@ class FirebaseCatalogOrderService {
       idempotencyKey: orderData.idempotencyKey,
     };
 
-    if (isVercelBetaHost()) {
-      const response = await fetch('/api/public-catalog-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-store',
-        body: JSON.stringify(requestPayload),
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        const err = new Error(payload?.error?.message || `Erro ao enviar pedido (${response.status}).`);
-        if (payload?.error?.code) Object.assign(err, { code: payload.error.code });
-        if (payload?.error?.details !== undefined) Object.assign(err, { details: payload.error.details });
-        throw err;
-      }
-      if (payload && payload.orderId) {
-        return payload as CatalogOrderReceipt;
-      }
-      throw new Error('Falha ao obter confirmação do servidor para o pedido.');
-    }
+    return executeWithGcpFallback(
+      'publicCatalogOrder',
+      async () => {
+        const response = await fetch('/api/public-catalog-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify(requestPayload),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          if (response.status >= 500 && !payload?.error?.code) {
+            throw new VercelInfraError(`Erro ao enviar pedido (${response.status}).`, response.status);
+          }
+          const err = new Error(payload?.error?.message || `Erro ao enviar pedido (${response.status}).`);
+          if (payload?.error?.code) Object.assign(err, { code: payload.error.code });
+          if (payload?.error?.details !== undefined) Object.assign(err, { details: payload.error.details });
+          Object.assign(err, { status: response.status });
+          throw err;
+        }
+        if (payload && payload.orderId) {
+          return payload as CatalogOrderReceipt;
+        }
+        throw new Error('Falha ao obter confirmação do servidor para o pedido.');
+      },
+      async () => {
+        const submitOrderFn = httpsCallable<any, CatalogOrderReceipt>(functions, 'submitPublicCatalogOrder');
+        const response = await submitOrderFn(requestPayload);
 
-    const submitOrderFn = httpsCallable<any, CatalogOrderReceipt>(functions, 'submitPublicCatalogOrder');
-    const response = await submitOrderFn(requestPayload);
-
-    if (response.data && response.data.orderId) {
-      return response.data;
-    }
-    throw new Error('Falha ao obter confirmação do servidor para o pedido.');
+        if (response.data && response.data.orderId) {
+          return response.data;
+        }
+        throw new Error('Falha ao obter confirmação do servidor para o pedido.');
+      },
+    );
   }
 
   /**

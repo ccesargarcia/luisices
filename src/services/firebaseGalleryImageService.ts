@@ -1,6 +1,6 @@
 import { auth } from '../lib/firebase';
 import { resolveOAuthApiOrigin } from '../app/utils/oauthEnvironment';
-import { isVercelBetaHost } from '../app/utils/betaHost';
+import { executeWithGcpFallback, shouldUseVercelForRoute, VercelInfraError } from './backendRoutingService';
 
 const MAX_SESSION_IMAGE_CACHE = 80;
 let cachedOwnerUid: string | null = null;
@@ -44,15 +44,9 @@ export function extractGalleryStoragePath(imageUrl: string): string {
   }
 }
 
-export function galleryMediaApiUrl(itemId?: string, storagePath?: string): string {
+export function galleryMediaGcpUrl(itemId?: string, storagePath?: string): string {
   if (typeof window === 'undefined') throw new Error('Galeria disponível apenas no navegador.');
   if (!itemId && !storagePath) throw new Error('É necessário informar o item ou caminho da imagem.');
-  if (isVercelBetaHost()) {
-    const params = new URLSearchParams();
-    if (itemId) params.set('itemId', itemId);
-    if (storagePath) params.set('path', extractGalleryStoragePath(storagePath));
-    return `/api/gallery-media?${params.toString()}`;
-  }
   const origin = resolveOAuthApiOrigin({
     hostname: window.location.hostname,
     isDevelopmentBuild: import.meta.env.DEV,
@@ -62,6 +56,18 @@ export function galleryMediaApiUrl(itemId?: string, storagePath?: string): strin
   const path = itemId ? `/media/gallery/${encodeURIComponent(itemId)}` : '/media/gallery';
   const query = storagePath ? `?path=${encodeURIComponent(extractGalleryStoragePath(storagePath))}` : '';
   return `${origin}${path}${query}`;
+}
+
+export function galleryMediaApiUrl(itemId?: string, storagePath?: string): string {
+  if (typeof window === 'undefined') throw new Error('Galeria disponível apenas no navegador.');
+  if (!itemId && !storagePath) throw new Error('É necessário informar o item ou caminho da imagem.');
+  if (shouldUseVercelForRoute('galleryMedia')) {
+    const params = new URLSearchParams();
+    if (itemId) params.set('itemId', itemId);
+    if (storagePath) params.set('path', extractGalleryStoragePath(storagePath));
+    return `/api/gallery-media?${params.toString()}`;
+  }
+  return galleryMediaGcpUrl(itemId, storagePath);
 }
 
 export async function fetchPrivateGalleryImage(itemId: string | undefined, signal?: AbortSignal, storagePath?: string): Promise<Blob> {
@@ -84,17 +90,32 @@ export async function fetchPrivateGalleryImage(itemId: string | undefined, signa
 
   const requestPromise = (async () => {
     const idToken = await user.getIdToken();
-    const response = await fetch(galleryMediaApiUrl(itemId, storagePath), {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${idToken}`, Accept: 'image/*' },
-      cache: 'no-store',
-      signal,
-    });
-    if (!response.ok) throw new Error(`Não foi possível carregar a imagem (${response.status}).`);
-    if (!response.headers.get('content-type')?.startsWith('image/')) {
-      throw new Error('O servidor retornou um conteúdo que não é uma imagem.');
-    }
-    const blob = await response.blob();
+    const fetchFromUrl = async (url: string): Promise<Blob> => {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${idToken}`, Accept: 'image/*' },
+        cache: 'no-store',
+        signal,
+      });
+      if (!response.ok) {
+        if (response.status >= 500) {
+          throw new VercelInfraError(`Não foi possível carregar a imagem (${response.status}).`, response.status);
+        }
+        const err = new Error(`Não foi possível carregar a imagem (${response.status}).`);
+        Object.assign(err, { status: response.status });
+        throw err;
+      }
+      if (!response.headers.get('content-type')?.startsWith('image/')) {
+        throw new Error('O servidor retornou um conteúdo que não é uma imagem.');
+      }
+      return response.blob();
+    };
+
+    const blob = await executeWithGcpFallback(
+      'galleryMedia',
+      () => fetchFromUrl(galleryMediaApiUrl(itemId, storagePath)),
+      () => fetchFromUrl(galleryMediaGcpUrl(itemId, storagePath)),
+    );
     setCachedBlob(cacheKey, blob);
     return blob;
   })().finally(() => {

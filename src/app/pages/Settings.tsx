@@ -45,6 +45,7 @@ import { OrderTrackingTemplateSection } from '../components/settings/OrderTracki
 import { AlexaSettingsSection } from '../components/settings/AlexaSettingsSection';
 import { McpSettingsSection } from '../components/settings/McpSettingsSection';
 import { SuperfreteSettingsSection } from '../components/settings/SuperfreteSettingsSection';
+import { BackendRoutingSettingsSection } from '../components/settings/BackendRoutingSettingsSection';
 import { DangerZoneSection } from '../components/settings/DangerZoneSection';
 import type { UserSettings } from '../../services/firebaseSettingsService';
 import { isSuperfreteDevEnvironment } from '../../lib/firebase';
@@ -731,6 +732,8 @@ export function Settings() {
 
         {/* ─── ABA 5: AVANÇADO & SEGURANÇA ───────────────────────── */}
         <TabsContent value="avancado" className="space-y-6">
+          <BackendRoutingSettingsSection isAdmin={isAdmin} />
+
           {/* Informações da Conta */}
           <Card>
             <CardHeader>
