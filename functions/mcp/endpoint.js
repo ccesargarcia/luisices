@@ -332,6 +332,7 @@ const chatGptToolsEndpoint = onRequest(
         rawPath === 'docs' ||
         rawPath === 'swagger' ||
         rawPath === 'api-docs' ||
+        rawPath === 'mcp' ||
         rawPath === ''
       )) ||
       (req.method === 'POST' && (
@@ -578,7 +579,7 @@ const chatGptToolsEndpoint = onRequest(
     }
 
     // ─── ROTA 2: Health Check (/ ou /health) ─────────────────────────────────
-    if (req.method === 'GET' && (rawPath === '' || rawPath === 'health')) {
+    if (req.method === 'GET' && (rawPath === '' || rawPath === 'health' || rawPath === 'mcp')) {
       return res.status(200).json({
         status: 'online',
         service: 'Luisices MCP & ChatGPT Tools Endpoint',
