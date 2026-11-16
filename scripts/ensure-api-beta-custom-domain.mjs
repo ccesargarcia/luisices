@@ -34,11 +34,16 @@ try {
 
   const records = await request(`/zones/${zone.id}/dns_records?name=${encodeURIComponent(hostname)}`);
   const betaRecords = records.filter((item) => item.name === hostname);
+  const legacyBetaRecords = [];
   for (const record of betaRecords) {
     const currentTarget = String(record.content || '').replace(/\.$/, '').toLowerCase();
+    if (record.type === 'AAAA' && currentTarget === '100::') {
+      continue;
+    }
     if (record.type !== 'CNAME' || currentTarget !== legacyCnameTarget) {
       throw new Error(`Registro DNS inesperado em ${hostname}; nenhuma alteração foi feita.`);
     }
+    legacyBetaRecords.push(record);
   }
 
   const routes = await request(`/zones/${zone.id}/workers/routes`);
@@ -47,7 +52,7 @@ try {
     console.log(`Rota antiga removida: ${route.pattern}`);
   }
 
-  for (const record of betaRecords) {
+  for (const record of legacyBetaRecords) {
     await request(`/zones/${zone.id}/dns_records/${record.id}`, { method: 'DELETE' });
     console.log(`CNAME legado removido de ${hostname}; Wrangler criará o registro e certificado do Worker.`);
   }
