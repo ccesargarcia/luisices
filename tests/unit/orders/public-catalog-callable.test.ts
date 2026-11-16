@@ -94,4 +94,32 @@ describe('getPublicCatalogProducts callable', () => {
       'leadTimeDays', 'badge', 'isCustomizable', 'active', 'status', 'order', 'createdAt',
     );
   });
+
+  it('reuses cache when catalogVersion matches and invalidates immediately when it changes', async () => {
+    mocks.settings.mockResolvedValue({
+      exists: true,
+      data: () => ({ storePublished: true, catalogVersion: 1001 }),
+    });
+    mocks.products.mockResolvedValue({
+      docs: [{ id: 'p1', data: () => ({ name: 'Produto v1', price: 10, status: 'active' }) }],
+    });
+
+    const first = await handleGetPublicCatalogProducts({}, { getFirestore: mocks.getFirestore, isEmulator: false });
+    const second = await handleGetPublicCatalogProducts({}, { getFirestore: mocks.getFirestore, isEmulator: false });
+    expect(first.products[0].name).toBe('Produto v1');
+    expect(second.products[0].name).toBe('Produto v1');
+    expect(db.collection).toHaveBeenCalledTimes(1);
+
+    mocks.settings.mockResolvedValue({
+      exists: true,
+      data: () => ({ storePublished: true, catalogVersion: 1002 }),
+    });
+    mocks.products.mockResolvedValue({
+      docs: [{ id: 'p1', data: () => ({ name: 'Produto v2', price: 15, status: 'active' }) }],
+    });
+
+    const third = await handleGetPublicCatalogProducts({}, { getFirestore: mocks.getFirestore, isEmulator: false });
+    expect(third.products[0].name).toBe('Produto v2');
+    expect(db.collection).toHaveBeenCalledTimes(2);
+  });
 });

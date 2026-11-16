@@ -1,6 +1,6 @@
 /** Núcleo puro da leitura do catálogo público da loja (compartilhado entre Cloud Functions e Vercel). */
 
-let publicCatalogCache = { expiresAt: 0, products: null };
+let publicCatalogCache = { version: null, products: null };
 
 /** Handler separado para validar projeção e disponibilidade com um Firestore controlado. */
 async function handleGetPublicCatalogProducts(_request, {
@@ -13,7 +13,13 @@ async function handleGetPublicCatalogProducts(_request, {
   const db = getDb();
   const settings = await db.doc('storeSettings/public').get();
   if (!settings.exists || settings.data()?.storePublished === false) return { products: [] };
-  if (!isEmulator && publicCatalogCache.products && publicCatalogCache.expiresAt > Date.now()) {
+  const catalogVersion = settings.data()?.catalogVersion ?? settings.updateTime?.toMillis?.() ?? null;
+  if (
+    !isEmulator &&
+    publicCatalogCache.products &&
+    catalogVersion !== null &&
+    publicCatalogCache.version === catalogVersion
+  ) {
     return { products: publicCatalogCache.products };
   }
   const snapshot = await db.collection('storeProducts')
@@ -47,8 +53,8 @@ async function handleGetPublicCatalogProducts(_request, {
       createdAt: data.createdAt?.toDate?.()?.toISOString?.() || (typeof data.createdAt === 'string' ? data.createdAt : undefined),
     }];
   });
-  if (!isEmulator) {
-    publicCatalogCache = { products, expiresAt: Date.now() + 60_000 };
+  if (!isEmulator && catalogVersion !== null) {
+    publicCatalogCache = { version: catalogVersion, products };
   }
   return { products };
 }

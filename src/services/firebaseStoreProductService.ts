@@ -11,6 +11,7 @@ import {
   addDoc,
   getDoc,
   deleteDoc,
+  setDoc,
   getDocs,
   updateDoc,
   onSnapshot,
@@ -129,6 +130,14 @@ class FirebaseStoreProductService {
     }
   }
 
+  private async bumpCatalogVersion(): Promise<void> {
+    await setDoc(
+      doc(db, 'storeSettings', 'public'),
+      { catalogVersion: Date.now() },
+      { merge: true }
+    ).catch(() => {});
+  }
+
   async createStoreProduct(data: Partial<StoreProduct>): Promise<StoreProduct> {
     this.validateStoreProductPayload(data, true);
     const now = Timestamp.now();
@@ -153,6 +162,7 @@ class FirebaseStoreProductService {
     });
 
     const snap = await getDoc(ref);
+    await this.bumpCatalogVersion();
     return this.mapDoc(ref.id, snap.data()!);
   }
 
@@ -173,6 +183,7 @@ class FirebaseStoreProductService {
     }
     sanitized.updatedAt = Timestamp.now();
     await updateDoc(doc(db, STORE_PRODUCTS_COLLECTION, id), sanitized);
+    await this.bumpCatalogVersion();
   }
 
   async toggleStoreProductActive(id: string, active: boolean): Promise<void> {
@@ -180,6 +191,7 @@ class FirebaseStoreProductService {
       active,
       updatedAt: Timestamp.now(),
     });
+    await this.bumpCatalogVersion();
   }
 
   
@@ -241,6 +253,7 @@ class FirebaseStoreProductService {
 
   async deleteStoreProduct(id: string): Promise<void> {
     await deleteDoc(doc(db, STORE_PRODUCTS_COLLECTION, id));
+    await this.bumpCatalogVersion();
   }
 
   async uploadPhoto(productId: string, file: File): Promise<string> {
@@ -249,6 +262,7 @@ class FirebaseStoreProductService {
       imageUrl: url,
       updatedAt: Timestamp.now(),
     });
+    await this.bumpCatalogVersion();
     return url;
   }
 

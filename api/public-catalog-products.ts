@@ -27,7 +27,7 @@ export default async function handler(
       {},
       { getFirestore: () => firestore, isEmulator: false },
     );
-    res.setHeader('Cache-Control', 'public, max-age=30, s-maxage=60, stale-while-revalidate=120');
+    res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json(result);
   } catch (error) {
     console.error('[vercel/public-catalog-products] Failed:', error);
