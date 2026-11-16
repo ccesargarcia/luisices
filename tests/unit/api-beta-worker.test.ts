@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import betaWorker from '../../cloudflare/api-beta-worker/src/index.js';
 
 const originSecret = 'beta-edge-test-secret';
+const betaOrigin = 'https://beta.luisices.com.br';
 
 describe('Cloudflare Worker API Beta isolado', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -100,5 +101,98 @@ describe('Cloudflare Worker API Beta isolado', () => {
 
     expect(response.status).toBe(502);
     expect(await response.json()).toMatchObject({ error: { code: 'unavailable' } });
+  });
+
+  it('faz preflight da galeria somente para origens permitidas e sem wildcard', async () => {
+    const allowed = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/api/gallery-media?itemId=item_1', {
+        method: 'OPTIONS',
+        headers: {
+          Origin: betaOrigin,
+          'Access-Control-Request-Method': 'GET',
+          'Access-Control-Request-Headers': 'authorization',
+        },
+      }),
+      {},
+    );
+    const denied = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/api/gallery-media', {
+        method: 'OPTIONS',
+        headers: { Origin: 'https://evil.example', 'Access-Control-Request-Method': 'GET' },
+      }),
+      {},
+    );
+
+    expect(allowed.status).toBe(204);
+    expect(allowed.headers.get('Access-Control-Allow-Origin')).toBe(betaOrigin);
+    expect(allowed.headers.get('Access-Control-Allow-Origin')).not.toBe('*');
+    expect(allowed.headers.get('Access-Control-Allow-Headers')).toContain('Authorization');
+    expect(allowed.headers.get('Vary')).toBe('Origin');
+    expect(denied.status).toBe(403);
+    expect(denied.headers.get('Access-Control-Allow-Origin')).toBeNull();
+  });
+
+  it('encaminha stream privado da galeria sem wildcard CORS e preservando autorização e query', async () => {
+    const upstreamFetch = vi.fn().mockResolvedValue(new Response('private-image-stream', {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=3600',
+        'Content-Type': 'image/webp',
+        'Content-Length': '20',
+      },
+    }));
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    const response = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/api/gallery-media?itemId=item_1&path=users%2Fu1%2Fgallery%2Fa.webp', {
+        headers: {
+          Origin: betaOrigin,
+          Authorization: 'Bearer firebase-user-token',
+          'cf-connecting-ip': '203.0.113.9',
+        },
+      }),
+      { BETA_VERCEL_ORIGIN_SECRET: originSecret },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(betaOrigin);
+    expect(response.headers.get('Access-Control-Allow-Origin')).not.toBe('*');
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(response.headers.get('Cross-Origin-Resource-Policy')).toBe('cross-origin');
+    expect(response.headers.get('Content-Type')).toBe('image/webp');
+    expect(await response.text()).toBe('private-image-stream');
+
+    const [targetUrl, options] = upstreamFetch.mock.calls[0];
+    expect(targetUrl.toString()).toBe(
+      'https://beta.luisices.com.br/api/gallery-media?itemId=item_1&path=users%2Fu1%2Fgallery%2Fa.webp',
+    );
+    expect(options.headers.get('Authorization')).toBe('Bearer firebase-user-token');
+    expect(options.headers.get('x-beta-edge-secret')).toBe(originSecret);
+  });
+
+  it('usa limitador independente para a galeria e mantém CORS restrito no 429', async () => {
+    const upstreamFetch = vi.fn();
+    const galleryLimit = vi.fn().mockResolvedValue({ success: false });
+    const orderLimit = vi.fn();
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    const response = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/api/gallery-media?itemId=item_1', {
+        headers: { Origin: betaOrigin, 'cf-connecting-ip': '203.0.113.9' },
+      }),
+      {
+        BETA_VERCEL_ORIGIN_SECRET: originSecret,
+        BETA_VERCEL_GALLERY_LIMITER: { limit: galleryLimit },
+        BETA_VERCEL_API_LIMITER: { limit: orderLimit },
+      },
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(betaOrigin);
+    expect(response.headers.get('Access-Control-Allow-Origin')).not.toBe('*');
+    expect(galleryLimit).toHaveBeenCalledWith({ key: '/api/gallery-media:203.0.113.9' });
+    expect(orderLimit).not.toHaveBeenCalled();
+    expect(upstreamFetch).not.toHaveBeenCalled();
   });
 });
