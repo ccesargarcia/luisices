@@ -6,7 +6,11 @@ const require = createRequire(import.meta.url);
 const { handleSubmitPublicCatalogOrderCore } = require('../functions/orders/publicCatalogOrderCore.js');
 
 export default async function handler(
-  req: { method?: string; body?: unknown },
+  req: {
+    method?: string;
+    headers?: Record<string, string | string[] | undefined>;
+    body?: unknown;
+  },
   res: {
     setHeader: (name: string, value: string) => void;
     status: (code: number) => {

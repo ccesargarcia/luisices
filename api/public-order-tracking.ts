@@ -5,7 +5,11 @@ const require = createRequire(import.meta.url);
 const { handleGetPublicOrderTrackingCore } = require('../functions/orders/trackingCore.js');
 
 export default async function handler(
-  req: { method?: string; query?: Record<string, string | string[] | undefined> },
+  req: {
+    method?: string;
+    headers?: Record<string, string | string[] | undefined>;
+    query?: Record<string, string | string[] | undefined>;
+  },
   res: {
     setHeader: (name: string, value: string) => void;
     status: (code: number) => {
