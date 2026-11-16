@@ -16,7 +16,7 @@ const handlers = require('./handlers');
 /**
  * Fábrica de serviços de IA para ambiente de produção
  */
-function createAiServices(adminInstance, apiKey) {
+function createAiServices(adminInstance, apiKey, options = {}) {
   const db = adminInstance?.firestore ? adminInstance.firestore() : null;
   const auth = adminInstance?.auth ? adminInstance.auth() : null;
   const storage = adminInstance?.storage ? adminInstance.storage() : null;
@@ -25,6 +25,7 @@ function createAiServices(adminInstance, apiKey) {
     apiKey: apiKey || (typeof process.env.GEMINI_API_KEY === 'string' ? process.env.GEMINI_API_KEY : ''),
     primaryModel: config.MODEL_CONFIG.PRIMARY_CHAT_MODEL,
     fallbackModels: config.MODEL_CONFIG.FALLBACK_CHAT_MODELS,
+    vertexAi: options.vertexAi || null,
   });
 
   const repos = new repositories.AiDataRepositories(db, auth);

@@ -3,6 +3,7 @@ import {
   ApiHttpError,
   assertActiveSessionFromBearer,
   getFirebaseAdmin,
+  getVertexAiContext,
 } from './_firebaseAdmin.js';
 
 export const maxDuration = 60;
@@ -78,6 +79,7 @@ export default async function handler(
     const aiServices = createAiServices(
       { firestore: () => firestore, auth: () => auth },
       apiKey,
+      { vertexAi: getVertexAiContext('southamerica-east1') },
     );
     const result = await aiServices.handlers.aiAgentChat(callableRequest);
     return res.status(200).json(result);

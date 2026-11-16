@@ -1,15 +1,18 @@
-import { getApps, initializeApp, cert } from 'firebase-admin/app';
+import { getApps, initializeApp, cert, type App } from 'firebase-admin/app';
 import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, initializeFirestore, type Firestore } from 'firebase-admin/firestore';
 import { getStorage, type Storage } from 'firebase-admin/storage';
 
 interface FirebaseAdminBundle {
+  app: App;
+  projectId: string;
   auth: Auth;
   firestore: Firestore;
   storage: Storage;
 }
 
 let cachedBundle: FirebaseAdminBundle | null = null;
+let cachedAccessToken: { token: string; expiresAt: number } | null = null;
 
 export function getFirebaseAdmin(): FirebaseAdminBundle {
   if (cachedBundle) return cachedBundle;
@@ -39,12 +42,37 @@ export function getFirebaseAdmin(): FirebaseAdminBundle {
   }
 
   cachedBundle = {
+    app,
+    projectId,
     auth: getAuth(app),
     firestore,
     storage: getStorage(app),
   };
 
   return cachedBundle;
+}
+
+export function getVertexAiContext(location = 'southamerica-east1') {
+  const { app, projectId } = getFirebaseAdmin();
+  return {
+    projectId,
+    location,
+    async getAccessToken(): Promise<string> {
+      if (cachedAccessToken && cachedAccessToken.expiresAt > Date.now() + 60_000) {
+        return cachedAccessToken.token;
+      }
+      const credential = app.options.credential;
+      if (!credential || typeof credential.getAccessToken !== 'function') {
+        throw new Error('Credencial Firebase Admin indisponível para Vertex AI.');
+      }
+      const tokenRes = await credential.getAccessToken();
+      cachedAccessToken = {
+        token: tokenRes.access_token,
+        expiresAt: Date.now() + Math.max(60, Number(tokenRes.expires_in || 3600)) * 1000,
+      };
+      return cachedAccessToken.token;
+    },
+  };
 }
 
 export class ApiHttpError extends Error {

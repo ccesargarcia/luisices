@@ -1,6 +1,10 @@
+const VERCEL_BETA_HOSTS = new Set([
+  'beta.luisices.com.br',
+  'loja.beta.luisices.com.br',
+]);
+
 export function isVercelBetaHost(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    window.location.hostname.toLowerCase().replace(/\.$/, '') === 'beta.luisices.com.br'
-  );
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname.toLowerCase().replace(/\.$/, '');
+  return VERCEL_BETA_HOSTS.has(host);
 }

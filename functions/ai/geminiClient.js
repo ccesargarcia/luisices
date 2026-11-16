@@ -36,6 +36,7 @@ class GeminiClient {
     this.fallbackModel = options.fallbackModel || this.fallbackModels[0] || MODEL_CONFIG.FALLBACK_CHAT_MODEL;
     this.modelFailures = SHARED_MODEL_FAILURES;
     this.fetchFn = options.fetchFn || globalThis.fetch;
+    this.vertexAi = options.vertexAi || null;
   }
 
   isModelHealthy(model) {
@@ -80,7 +81,8 @@ class GeminiClient {
    */
   async generateContent(payload, options = {}) {
     const key = options.apiKey !== undefined ? options.apiKey : this.apiKey;
-    if (!key) {
+    const vertexCfg = options.vertexAi !== undefined ? options.vertexAi : this.vertexAi;
+    if (!key && !vertexCfg) {
       const err = new Error('Chave GEMINI_API_KEY não configurada no ambiente.');
       err.code = 'failed-precondition';
       err.isNonRetryable = true;
@@ -135,21 +137,52 @@ class GeminiClient {
       const perAttemptTimeout = Math.min(remainingTime, configuredAttemptTimeout || TIMEOUTS.FETCH_STREAM_MS || 35000);
       const timeoutId = setTimeout(() => controller.abort(), perAttemptTimeout);
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+      let url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+      const reqHeaders = {
+        'Content-Type': 'application/json',
+      };
+      let usingVertex = false;
+      if (vertexCfg && vertexCfg.projectId && typeof vertexCfg.getAccessToken === 'function') {
+        try {
+          const accessToken = await vertexCfg.getAccessToken();
+          const loc = vertexCfg.location || 'southamerica-east1';
+          const hostPrefix = loc === 'global' ? 'aiplatform.googleapis.com' : `${loc}-aiplatform.googleapis.com`;
+          url = `https://${hostPrefix}/v1/projects/${encodeURIComponent(vertexCfg.projectId)}/locations/${encodeURIComponent(loc)}/publishers/google/models/${model}:generateContent`;
+          reqHeaders.Authorization = `Bearer ${accessToken}`;
+          usingVertex = true;
+        } catch (vertexTokenErr) {
+          if (!key) throw vertexTokenErr;
+          reqHeaders['x-goog-api-key'] = key;
+        }
+      } else {
+        reqHeaders['x-goog-api-key'] = key;
+      }
+
       const attemptStartedAt = Date.now();
-      const attempt = { model, status: 'started', usageKnown: false };
+      const attempt = { model, status: 'started', usageKnown: false, provider: usingVertex ? 'vertex-ai' : 'gemini-api' };
       let attemptRecorded = false;
 
       try {
-        const resp = await this.fetchFn(url, {
+        let resp = await this.fetchFn(url, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': key,
-          },
+          headers: reqHeaders,
           body: JSON.stringify(payload),
           signal: controller.signal,
         });
+
+        // Se o Vertex AI regional rejeitar (ex.: API não habilitada ou modelo indisponível na região) e houver GEMINI_API_KEY, faz fallback imediato para a Gemini Developer API.
+        if (usingVertex && !resp.ok && [401, 403, 404].includes(resp.status) && key) {
+          attempt.vertexFallbackStatus = resp.status;
+          resp = await this.fetchFn(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': key,
+            },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          });
+        }
 
         // O timeout cobre tanto a resposta quanto o streaming do corpo HTTP
         if (!resp.ok) {

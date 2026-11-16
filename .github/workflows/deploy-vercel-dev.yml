@@ -140,7 +140,7 @@ jobs:
             fs.mkdirSync('.vercel', { recursive: true });
             fs.writeFileSync('.vercel/project.json', JSON.stringify({ projectId: project.id, orgId }, null, 2));
 
-            const domains = new Set(['beta.luisices.com.br']);
+            const domains = new Set(['beta.luisices.com.br', 'loja.beta.luisices.com.br']);
             const targets = project.targets?.production?.alias || [];
             for (const alias of targets) domains.add(alias);
             if (project.name) domains.add(`${project.name}.vercel.app`);
@@ -159,7 +159,7 @@ jobs:
           });
           NODE
 
-      - name: Configurar domínio beta.luisices.com.br (Vercel + Cloudflare DNS)
+      - name: Configurar domínios beta (Vercel + Cloudflare DNS)
         continue-on-error: true
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -168,13 +168,13 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           node <<'NODE'
-          const customDomain = 'beta.luisices.com.br';
+          const customDomains = ['beta.luisices.com.br', 'loja.beta.luisices.com.br'];
           const vercelToken = process.env.VERCEL_TOKEN;
           const projectId = process.env.PROJECT_ID;
           const orgId = process.env.ORG_ID || '';
           const cfToken = process.env.CLOUDFLARE_API_TOKEN;
 
-          async function ensureVercelDomain() {
+          async function ensureVercelDomain(customDomain) {
             const teamQuery = orgId.startsWith('team_') ? `?teamId=${encodeURIComponent(orgId)}` : '';
             const res = await fetch(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectId)}/domains${teamQuery}`, {
               method: 'POST',
@@ -188,11 +188,11 @@ jobs:
             if (res.ok || data?.error?.code === 'domain_already_in_use' || res.status === 409) {
               console.log(`Domínio ${customDomain} vinculado ao projeto Vercel.`);
             } else {
-              console.warn('Aviso ao vincular domínio na Vercel:', res.status, JSON.stringify(data));
+              console.warn(`Aviso ao vincular domínio ${customDomain} na Vercel:`, res.status, JSON.stringify(data));
             }
           }
 
-          async function getRecommendedCnameTarget() {
+          async function getRecommendedCnameTarget(customDomain) {
             const teamQuery = orgId.startsWith('team_') ? `?teamId=${encodeURIComponent(orgId)}` : '';
             try {
               const res = await fetch(`https://api.vercel.com/v6/domains/${encodeURIComponent(customDomain)}/config${teamQuery}`, {
@@ -209,7 +209,7 @@ jobs:
             return 'd9a25377cf05a4e4.vercel-dns-017.com';
           }
 
-          async function ensureCloudflareCname(cnameTarget) {
+          async function ensureCloudflareCname(customDomain, cnameTarget) {
             if (!cfToken) {
               console.warn('CLOUDFLARE_API_TOKEN ausente; pulando DNS.');
               return;
@@ -263,11 +263,13 @@ jobs:
           }
 
           (async () => {
-            await ensureVercelDomain();
-            const cnameTarget = await getRecommendedCnameTarget();
-            await ensureCloudflareCname(cnameTarget);
+            for (const customDomain of customDomains) {
+              await ensureVercelDomain(customDomain);
+              const cnameTarget = await getRecommendedCnameTarget(customDomain);
+              await ensureCloudflareCname(customDomain, cnameTarget);
+            }
           })().catch((err) => {
-            console.warn('Aviso ao configurar beta.luisices.com.br:', err.message);
+            console.warn('Aviso ao configurar domínios beta:', err.message);
             process.exit(1);
           });
           NODE
