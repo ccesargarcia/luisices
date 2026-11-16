@@ -352,6 +352,7 @@ const chatGptToolsEndpoint = onRequest(
         rawPath === 'revoke' ||
         req.body?.method === 'initialize' ||
         req.body?.method === 'notifications/initialized' ||
+        (typeof req.body?.method === 'string' && req.body.method.startsWith('notifications/')) ||
         req.body?.method === 'ping'
       ));
 
@@ -593,7 +594,18 @@ const chatGptToolsEndpoint = onRequest(
       return res.status(200).json(pluginManifest);
     }
 
-    // ─── ROTA 2: Health Check (/ ou /health) ─────────────────────────────────
+    // ─── ROTA 2: Health Check (/ ou /health) e GET /mcp ──────────────────────
+    if (req.method === 'GET' && rawPath === 'mcp') {
+      const acceptHeader = String(req.headers.accept || '').toLowerCase();
+      if (acceptHeader.includes('text/event-stream')) {
+        res.setHeader('Allow', 'POST, OPTIONS');
+        return res.status(405).json({
+          error: 'METHOD_NOT_ALLOWED',
+          message: 'SSE GET stream não habilitado; utilize POST /mcp.',
+        });
+      }
+    }
+
     if (req.method === 'GET' && (rawPath === '' || rawPath === 'health' || rawPath === 'mcp')) {
       return res.status(200).json({
         status: 'online',
@@ -662,9 +674,9 @@ const chatGptToolsEndpoint = onRequest(
         });
       }
 
-      // 3.2 Notificação initialized
-      if (method === 'notifications/initialized') {
-        return res.status(200).json({ jsonrpc: '2.0', result: {} });
+      // 3.2 Notificações MCP (ex.: notifications/initialized, notifications/cancelled)
+      if (method === 'notifications/initialized' || (typeof method === 'string' && method.startsWith('notifications/'))) {
+        return res.status(202).send('');
       }
 
       // 3.3 Ping
