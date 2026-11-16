@@ -348,7 +348,8 @@ const chatGptToolsEndpoint = onRequest(
         req.body?.method === 'ping'
       ));
 
-    if (!isPublicDiscovery) {
+    const isVercelMcpRuntime = Boolean(process.env.VERCEL_MCP_ORIGIN && process.env.VERCEL === '1');
+    if (!isPublicDiscovery && !isVercelMcpRuntime) {
       const originCheck = validateOriginSecret(req);
       if (!originCheck.allowed) {
         // Se a requisição contiver cabeçalho Authorization Bearer com chave lui_ válida,
