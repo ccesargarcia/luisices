@@ -12,8 +12,9 @@ try {
 const { getFirestore } = require('firebase-admin/firestore');
 const getAuth = () => require('firebase-admin/auth').getAuth();
 const { validateMcpRequest: validateMcpRequestWithoutTrace, touchKeyUsage } = require('./auth');
-let traceMcpRequest = (_req, _res, work) => work();
-let traceMcpStep = (_phase, work) => work();
+const noopSpan = { setAttribute() {}, setStatus() {} };
+let traceMcpRequest = (_req, _res, work) => work(noopSpan);
+let traceMcpStep = (_phase, work) => work(noopSpan);
 try {
   ({ traceMcpRequest, traceMcpStep } = require('./tracing'));
 } catch {
