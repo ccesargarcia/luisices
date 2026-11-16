@@ -213,6 +213,7 @@ class FirebaseStoreProductService {
       await b.commit();
     });
     await Promise.all(promises);
+    await this.bumpCatalogVersion();
   }
 
   async bulkToggleActive(ids: string[], active: boolean): Promise<void> {
@@ -233,6 +234,7 @@ class FirebaseStoreProductService {
       }
       await batch.commit();
     }
+    await this.bumpCatalogVersion();
   }
 
   async bulkDeleteStoreProducts(ids: string[]): Promise<void> {
@@ -249,6 +251,7 @@ class FirebaseStoreProductService {
       }
       await batch.commit();
     }
+    await this.bumpCatalogVersion();
   }
 
   async deleteStoreProduct(id: string): Promise<void> {
