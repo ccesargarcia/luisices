@@ -97,8 +97,7 @@ class FirebaseCatalogOrderService {
   async createCatalogOrder(
     orderData: Omit<CatalogOrder, 'id' | 'createdAt'> & { idempotencyKey?: string }
   ): Promise<CatalogOrderReceipt> {
-    const submitOrderFn = httpsCallable<any, CatalogOrderReceipt>(functions, 'submitPublicCatalogOrder');
-    const response = await submitOrderFn({
+    const requestPayload = {
       items: (orderData.items || []).map((item) => ({
         productId: item.productId,
         quantity: item.quantity,
@@ -107,7 +106,30 @@ class FirebaseCatalogOrderService {
       customerNotes: orderData.customerNotes,
       submittedSubtotal: orderData.subtotal,
       idempotencyKey: orderData.idempotencyKey,
-    });
+    };
+
+    if (isVercelBetaHost()) {
+      const response = await fetch('/api/public-catalog-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify(requestPayload),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const err = new Error(payload?.error?.message || `Erro ao enviar pedido (${response.status}).`);
+        if (payload?.error?.code) Object.assign(err, { code: payload.error.code });
+        if (payload?.error?.details !== undefined) Object.assign(err, { details: payload.error.details });
+        throw err;
+      }
+      if (payload && payload.orderId) {
+        return payload as CatalogOrderReceipt;
+      }
+      throw new Error('Falha ao obter confirmação do servidor para o pedido.');
+    }
+
+    const submitOrderFn = httpsCallable<any, CatalogOrderReceipt>(functions, 'submitPublicCatalogOrder');
+    const response = await submitOrderFn(requestPayload);
 
     if (response.data && response.data.orderId) {
       return response.data;

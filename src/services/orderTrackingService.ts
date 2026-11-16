@@ -1,5 +1,6 @@
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../lib/firebase';
+import { isVercelBetaHost } from '../app/utils/betaHost';
 import type { OrderTrackingTemplate } from './firebaseSettingsService';
 
 export interface PublicOrderTracking {
@@ -110,6 +111,20 @@ export const orderTrackingService = {
   },
 
   async getPublicStatus(token: string): Promise<PublicOrderTracking> {
+    if (isVercelBetaHost()) {
+      const response = await fetch(
+        `/api/public-order-tracking?token=${encodeURIComponent(token)}`,
+        { method: 'GET', cache: 'no-store' }
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const err = new Error(payload?.error?.message || 'Link de acompanhamento inválido ou desativado.');
+        if (payload?.error?.code) Object.assign(err, { code: payload.error.code });
+        if (payload?.error?.details !== undefined) Object.assign(err, { details: payload.error.details });
+        throw err;
+      }
+      return payload as PublicOrderTracking;
+    }
     const callable = httpsCallable<{ token: string }, PublicOrderTracking>(functions, 'getPublicOrderTracking');
     const result = await callable({ token });
     return result.data;

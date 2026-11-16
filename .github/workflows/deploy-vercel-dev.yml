@@ -10,6 +10,8 @@ on:
       - 'functions/media/galleryCore.js'
       - 'functions/orders/catalog.js'
       - 'functions/orders/catalogCore.js'
+      - 'functions/orders/trackingCore.js'
+      - 'functions/orders/publicCatalogOrderCore.js'
       - 'functions/ai/**'
       - 'public/**'
       - 'index.html'

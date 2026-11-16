@@ -92,3 +92,38 @@ export async function assertActiveSessionFromBearer(
 
   return { uid: decoded.uid, token: decoded, profile };
 }
+
+export function mapCoreErrorToHttp(
+  err: unknown,
+  fallbackMessage = 'Erro interno no servidor.',
+): { status: number; code: string; message: string; details?: unknown } {
+  if (err instanceof ApiHttpError) {
+    return { status: err.statusCode, code: err.code, message: err.message };
+  }
+  const anyErr = err as { code?: string; message?: string; statusCode?: number; details?: unknown } | null;
+  const code = typeof anyErr?.code === 'string' ? anyErr.code : 'internal';
+  const message = typeof anyErr?.message === 'string' && anyErr.message ? anyErr.message : fallbackMessage;
+  const details = anyErr?.details;
+
+  switch (code) {
+    case 'unauthenticated':
+      return { status: 401, code, message, details };
+    case 'permission-denied':
+      return { status: 403, code, message, details };
+    case 'not-found':
+      return { status: 404, code, message, details };
+    case 'invalid-argument':
+      return { status: 400, code, message, details };
+    case 'failed-precondition':
+      return { status: 412, code, message, details };
+    case 'aborted':
+    case 'already-exists':
+      return { status: 409, code, message, details };
+    case 'resource-exhausted':
+      return { status: 429, code, message, details };
+    case 'deadline-exceeded':
+      return { status: 504, code, message, details };
+    default:
+      return { status: anyErr?.statusCode || 500, code, message, details };
+  }
+}
