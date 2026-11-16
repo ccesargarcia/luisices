@@ -252,6 +252,10 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
+          cp .env.local .env.local.bak
+          npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+          cp .env.local.bak .env.local
+          rm -f .env.local.bak
           npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
           DEPLOY_URL=$(npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN" | tail -n 1 | tr -d '\r')
           echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
