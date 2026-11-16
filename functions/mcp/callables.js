@@ -4,7 +4,7 @@
  */
 
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
-const { HttpsError, assertActiveSession } = require('../alexa/runtimeCompat');
+const { HttpsError, assertActiveSession } = require('../common/runtimeCompat');
 let onCall;
 try {
   ({ onCall } = require('../common/sentryFunctions'));

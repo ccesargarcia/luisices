@@ -4,7 +4,7 @@
  */
 
 const { FieldValue } = require('firebase-admin/firestore');
-const { HttpsError, assertActiveSession } = require('./runtimeCompat');
+const { HttpsError, assertActiveSession } = require('../common/runtimeCompat');
 const { COLLECTIONS, recordAuditEvent } = require('./repository');
 const { getAlexaConfig } = require('./config');
 

@@ -25,8 +25,8 @@ Para evitar dependência de `@sentry/node` e `firebase-functions` (exclusivos de
 | `GET /api/public-order-tracking` | `getPublicOrderTracking` | [functions/orders/trackingCore.js](../functions/orders/trackingCore.js) |
 | `POST /api/order-tracking` | `create/list/revoke/deleteOrderTrackingLink*` | [functions/orders/trackingAdminCore.js](../functions/orders/trackingAdminCore.js) |
 | `POST /api/ai-chat` | `aiAgentChat` | [functions/ai/index.js](../functions/ai/index.js) |
-| `POST /api/alexa` | `getAlexaIntegrationStatus`, `approveAlexaPairing`, `setAlexaPermission`, `revokeAlexaBinding`, `toggleGlobalAlexaIntegration`, `approveAlexaDraft`, `cancelAlexaDraft` | [functions/alexa/callables.js](../functions/alexa/callables.js) + [runtimeCompat.js](../functions/alexa/runtimeCompat.js) |
-| `POST /api/mcp-admin` | `getMcpSettingsStatus`, `createMcpApiKey`, `updateMcpApiKeyScopes`, `toggleMcpApiKey`, `revokeMcpApiKey`, `toggleGlobalMcp`, `setUserMcpEligibility`, `revokeMcpSession`, `getMcpAuditLogs`, `getMcpOpenApiSchema` | [functions/mcp/callables.js](../functions/mcp/callables.js) + [runtimeCompat.js](../functions/alexa/runtimeCompat.js) |
+| `POST /api/alexa` | `getAlexaIntegrationStatus`, `approveAlexaPairing`, `setAlexaPermission`, `revokeAlexaBinding`, `toggleGlobalAlexaIntegration`, `approveAlexaDraft`, `cancelAlexaDraft` | [functions/alexa/callables.js](../functions/alexa/callables.js) + [runtimeCompat.js](../functions/common/runtimeCompat.js) |
+| `POST /api/mcp-admin` | `getMcpSettingsStatus`, `createMcpApiKey`, `updateMcpApiKeyScopes`, `toggleMcpApiKey`, `revokeMcpApiKey`, `toggleGlobalMcp`, `setUserMcpEligibility`, `revokeMcpSession`, `getMcpAuditLogs`, `getMcpOpenApiSchema` | [functions/mcp/callables.js](../functions/mcp/callables.js) + [runtimeCompat.js](../functions/common/runtimeCompat.js) |
 
 *(Nota: os endpoints externos de entrada `alexaWebhook` e `chatGptToolsEndpoint` / OAuth MCP permanecem nas Cloud Functions via `api.dev.luisices.com.br`.)*
 
