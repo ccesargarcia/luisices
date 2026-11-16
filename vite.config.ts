@@ -37,7 +37,7 @@ export default defineConfig(() => {
       cssCodeSplit: true,
       minify: 'esbuild',
       // Limite consciente para chunks especializados (ex: Firebase SDK e PDF renderer sob demanda)
-      chunkSizeWarningLimit: 1000,
+      chunkSizeWarningLimit: 1200,
       rollupOptions: {
         input: {
           main: path.resolve(__dirname, 'index.html'),
