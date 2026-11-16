@@ -21,6 +21,7 @@ import {
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../lib/firebase';
 import { CatalogOrder, CatalogOrderStatus, Order } from '../app/types';
+import { isVercelBetaHost } from '../app/utils/betaHost';
 import { firebaseOrderService } from './firebaseOrderService';
 
 const CATALOG_ORDERS_COLLECTION = 'catalogOrders';
@@ -51,6 +52,14 @@ export interface PublicCatalogProduct {
 
 class FirebaseCatalogOrderService {
   async getPublicCatalogProducts(): Promise<PublicCatalogProduct[]> {
+    if (isVercelBetaHost()) {
+      const response = await fetch('/api/public-catalog-products', { method: 'GET' });
+      if (!response.ok) {
+        throw new Error(`Falha ao carregar catálogo (${response.status}).`);
+      }
+      const data = await response.json();
+      return Array.isArray(data?.products) ? data.products : [];
+    }
     const getProducts = httpsCallable<void, { products: PublicCatalogProduct[] }>(functions, 'getPublicCatalogProducts');
     const response = await getProducts();
     return Array.isArray(response.data?.products) ? response.data.products : [];

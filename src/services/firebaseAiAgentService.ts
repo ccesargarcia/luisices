@@ -1,6 +1,7 @@
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../lib/firebase';
+import { auth, functions } from '../lib/firebase';
 import { AiOrderDraft, AiWhatsAppDraft, AiPricingEstimate } from '../app/types';
+import { isVercelBetaHost } from '../app/utils/betaHost';
 
 export interface AiAgentChatResponse {
   success: boolean;
@@ -31,6 +32,28 @@ export class FirebaseAiAgentService {
     history?: Array<{ role: 'user' | 'assistant'; text: string }>,
     image?: { base64: string; mimeType: string } | null
   ): Promise<AiAgentChatResponse> {
+    if (isVercelBetaHost()) {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Sessão necessária para usar o Copiloto de IA.');
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/ai-chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ message, history, image }),
+        signal: AbortSignal.timeout(65000),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const err = new Error(payload?.error?.message || `Erro no Copiloto (${response.status}).`);
+        if (payload?.error?.code) Object.assign(err, { code: payload.error.code });
+        throw err;
+      }
+      return payload as AiAgentChatResponse;
+    }
+
     const callable = httpsCallable<
       {
         message: string;

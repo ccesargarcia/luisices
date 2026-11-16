@@ -1,5 +1,6 @@
 import { auth } from '../lib/firebase';
 import { resolveOAuthApiOrigin } from '../app/utils/oauthEnvironment';
+import { isVercelBetaHost } from '../app/utils/betaHost';
 
 /** Extrai apenas o caminho do Storage, descartando tokens de URLs legadas. */
 export function extractGalleryStoragePath(imageUrl: string): string {
@@ -22,8 +23,7 @@ export function extractGalleryStoragePath(imageUrl: string): string {
 export function galleryMediaApiUrl(itemId?: string, storagePath?: string): string {
   if (typeof window === 'undefined') throw new Error('Galeria disponível apenas no navegador.');
   if (!itemId && !storagePath) throw new Error('É necessário informar o item ou caminho da imagem.');
-  const normalizedHost = window.location.hostname.toLowerCase().replace(/\.$/, '');
-  if (normalizedHost === 'beta.luisices.com.br') {
+  if (isVercelBetaHost()) {
     const params = new URLSearchParams();
     if (itemId) params.set('itemId', itemId);
     if (storagePath) params.set('path', extractGalleryStoragePath(storagePath));

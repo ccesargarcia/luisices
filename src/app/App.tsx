@@ -4,11 +4,10 @@ import { router, isStoreRoute } from './routes';
 import { AuthProvider } from '../contexts/AuthContext';
 import { ThemeProvider } from './components/common/ThemeProvider';
 import { Toaster } from './components/ui/sonner';
+import { isVercelBetaHost } from './utils/betaHost';
 
 const THEME_OPTIONS = ['light', 'dark', 'system', 'deep-ocean', 'forest-glow', 'sunset-amber'];
-const isVercelBetaHost =
-  typeof window !== 'undefined' &&
-  window.location.hostname.toLowerCase().replace(/\.$/, '') === 'beta.luisices.com.br';
+const showSpeedInsights = isVercelBetaHost();
 
 function App() {
   // A vitrine pública não deve carregar providers administrativos nem listeners de sessão.
@@ -17,7 +16,7 @@ function App() {
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem themes={THEME_OPTIONS}>
         <RouterProvider router={router} />
         <Toaster richColors closeButton position="top-right" />
-        {isVercelBetaHost ? <SpeedInsights /> : null}
+        {showSpeedInsights ? <SpeedInsights /> : null}
       </ThemeProvider>
     );
   }
@@ -28,7 +27,7 @@ function App() {
         <RouterProvider router={router} />
       </AuthProvider>
       <Toaster richColors closeButton position="top-right" />
-      {isVercelBetaHost ? <SpeedInsights /> : null}
+      {showSpeedInsights ? <SpeedInsights /> : null}
     </ThemeProvider>
   );
 }

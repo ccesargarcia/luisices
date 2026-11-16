@@ -8,6 +8,8 @@ on:
       - 'src/**'
       - 'api/**'
       - 'functions/media/galleryCore.js'
+      - 'functions/orders/catalog.js'
+      - 'functions/ai/**'
       - 'public/**'
       - 'index.html'
       - 'vite.config.*'
@@ -256,6 +258,7 @@ jobs:
           ORG_ID: ${{ steps.vercel-project.outputs.org_id }}
           FIREBASE_SERVICE_ACCOUNT_DEV: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.DEV_VITE_FIREBASE_STORAGE_BUCKET }}
+          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY }}
         run: |
           node <<'NODE'
           const token = process.env.VERCEL_TOKEN;
@@ -287,6 +290,7 @@ jobs:
           (async () => {
             await upsertEnv('FIREBASE_SERVICE_ACCOUNT_DEV', process.env.FIREBASE_SERVICE_ACCOUNT_DEV);
             await upsertEnv('VITE_FIREBASE_STORAGE_BUCKET', process.env.VITE_FIREBASE_STORAGE_BUCKET);
+            await upsertEnv('GEMINI_API_KEY', process.env.GEMINI_API_KEY);
           })().catch((err) => {
             console.error(err);
             process.exit(1);
