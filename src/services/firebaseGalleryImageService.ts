@@ -2,6 +2,30 @@ import { auth } from '../lib/firebase';
 import { resolveOAuthApiOrigin } from '../app/utils/oauthEnvironment';
 import { isVercelBetaHost } from '../app/utils/betaHost';
 
+const MAX_SESSION_IMAGE_CACHE = 80;
+let cachedOwnerUid: string | null = null;
+const sessionImageCache = new Map<string, Blob>();
+const inFlightImageFetches = new Map<string, Promise<Blob>>();
+
+function getCachedBlob(cacheKey: string): Blob | undefined {
+  const existing = sessionImageCache.get(cacheKey);
+  if (!existing) return undefined;
+  // Move para o final para manter política LRU simples.
+  sessionImageCache.delete(cacheKey);
+  sessionImageCache.set(cacheKey, existing);
+  return existing;
+}
+
+function setCachedBlob(cacheKey: string, blob: Blob): void {
+  if (sessionImageCache.has(cacheKey)) {
+    sessionImageCache.delete(cacheKey);
+  } else if (sessionImageCache.size >= MAX_SESSION_IMAGE_CACHE) {
+    const oldestKey = sessionImageCache.keys().next().value;
+    if (oldestKey !== undefined) sessionImageCache.delete(oldestKey);
+  }
+  sessionImageCache.set(cacheKey, blob);
+}
+
 /** Extrai apenas o caminho do Storage, descartando tokens de URLs legadas. */
 export function extractGalleryStoragePath(imageUrl: string): string {
   if (!imageUrl) return '';
@@ -43,16 +67,42 @@ export function galleryMediaApiUrl(itemId?: string, storagePath?: string): strin
 export async function fetchPrivateGalleryImage(itemId: string | undefined, signal?: AbortSignal, storagePath?: string): Promise<Blob> {
   const user = auth.currentUser;
   if (!user) throw new Error('Sessão necessária para carregar esta imagem.');
-  const idToken = await user.getIdToken();
-  const response = await fetch(galleryMediaApiUrl(itemId, storagePath), {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${idToken}`, Accept: 'image/*' },
-    cache: 'no-store',
-    signal,
-  });
-  if (!response.ok) throw new Error(`Não foi possível carregar a imagem (${response.status}).`);
-  if (!response.headers.get('content-type')?.startsWith('image/')) {
-    throw new Error('O servidor retornou um conteúdo que não é uma imagem.');
+
+  if (cachedOwnerUid !== user.uid) {
+    sessionImageCache.clear();
+    inFlightImageFetches.clear();
+    cachedOwnerUid = user.uid;
   }
-  return response.blob();
+
+  const normalizedPath = storagePath ? extractGalleryStoragePath(storagePath) : '';
+  const cacheKey = `${user.uid}::${itemId || ''}::${normalizedPath}`;
+  const cached = getCachedBlob(cacheKey);
+  if (cached) return cached;
+
+  const existingPromise = inFlightImageFetches.get(cacheKey);
+  if (existingPromise) return existingPromise;
+
+  const requestPromise = (async () => {
+    const idToken = await user.getIdToken();
+    const response = await fetch(galleryMediaApiUrl(itemId, storagePath), {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${idToken}`, Accept: 'image/*' },
+      cache: 'no-store',
+      signal,
+    });
+    if (!response.ok) throw new Error(`Não foi possível carregar a imagem (${response.status}).`);
+    if (!response.headers.get('content-type')?.startsWith('image/')) {
+      throw new Error('O servidor retornou um conteúdo que não é uma imagem.');
+    }
+    const blob = await response.blob();
+    setCachedBlob(cacheKey, blob);
+    return blob;
+  })().finally(() => {
+    inFlightImageFetches.delete(cacheKey);
+  });
+
+  if (!signal) {
+    inFlightImageFetches.set(cacheKey, requestPromise);
+  }
+  return requestPromise;
 }

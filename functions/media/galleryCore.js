@@ -47,7 +47,24 @@ function setCorsHeaders(req, res) {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
 }
 
-function createGalleryMediaHandler({ auth, firestore, storage, originValidator = () => ({ allowed: true }) }) {
+function createGalleryMediaHandler({ auth, firestore, storage, originValidator = () => ({ allowed: true }), profileCacheTtlMs = 15_000 }) {
+  const profileCache = new Map();
+
+  async function getCachedProfileSnap(uid) {
+    if (profileCacheTtlMs > 0) {
+      const hit = profileCache.get(uid);
+      if (hit && hit.expiresAt > Date.now()) {
+        return hit.snap;
+      }
+    }
+    const snap = await firestore.collection('userProfiles').doc(uid).get();
+    if (profileCacheTtlMs > 0 && snap.exists && snap.data()?.active !== false) {
+      if (profileCache.size >= 100) profileCache.clear();
+      profileCache.set(uid, { snap, expiresAt: Date.now() + profileCacheTtlMs });
+    }
+    return snap;
+  }
+
   return async function handleGalleryMedia(req, res) {
     setCorsHeaders(req, res);
     if (req.method === 'OPTIONS') return res.status(204).send('');
@@ -64,7 +81,7 @@ function createGalleryMediaHandler({ auth, firestore, storage, originValidator =
     try { decoded = await auth.verifyIdToken(match[1].trim(), true); }
     catch { return res.status(401).send('Invalid or revoked session'); }
     const [profileSnap, itemSnap] = await Promise.all([
-      firestore.collection('userProfiles').doc(decoded.uid).get(),
+      getCachedProfileSnap(decoded.uid),
       itemId ? firestore.collection('gallery').doc(itemId).get() : Promise.resolve(null),
     ]);
     if (!profileSnap.exists || (itemId && !itemSnap.exists)) return res.status(404).send('Gallery image not found');

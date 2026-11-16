@@ -1,6 +1,29 @@
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../lib/firebase';
+import { auth, functions } from '../lib/firebase';
 import { isVercelBetaHost } from '../app/utils/betaHost';
+
+async function callBetaTrackingApi<T>(action: string, payload: Record<string, unknown>): Promise<T> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Entre na sua conta para gerenciar links de acompanhamento.');
+  const idToken = await user.getIdToken();
+  const response = await fetch('/api/order-tracking', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+    cache: 'no-store',
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const err = new Error(data?.error?.message || `Erro ao processar link (${response.status}).`);
+    if (data?.error?.code) Object.assign(err, { code: data.error.code });
+    if (data?.error?.details !== undefined) Object.assign(err, { details: data.error.details });
+    throw err;
+  }
+  return data as T;
+}
 import type { OrderTrackingTemplate } from './firebaseSettingsService';
 
 export interface PublicOrderTracking {
@@ -37,22 +60,37 @@ export interface OrderTrackingLinkRecord {
 
 export const orderTrackingService = {
   async createLink(orderId: string, expirationDays: 7 | 30 | 90 | null): Promise<OrderTrackingLinkResult> {
+    if (isVercelBetaHost()) {
+      return callBetaTrackingApi<OrderTrackingLinkResult>('create', { orderId, expirationDays });
+    }
     const callable = httpsCallable<{ orderId: string; expirationDays: 7 | 30 | 90 | null }, OrderTrackingLinkResult>(functions, 'createOrderTrackingLink');
     const result = await callable({ orderId, expirationDays });
     return result.data;
   },
 
   async revokeLink(orderId: string): Promise<void> {
+    if (isVercelBetaHost()) {
+      await callBetaTrackingApi('revoke', { orderId });
+      return;
+    }
     const callable = httpsCallable<{ orderId: string }, { success: boolean; revoked: boolean }>(functions, 'revokeOrderTrackingLink');
     await callable({ orderId });
   },
 
   async revokeLinkById(linkId: string): Promise<void> {
+    if (isVercelBetaHost()) {
+      await callBetaTrackingApi('revokeById', { linkId });
+      return;
+    }
     const callable = httpsCallable<{ linkId: string }, { success: boolean; revoked: boolean }>(functions, 'revokeOrderTrackingLinkById');
     await callable({ linkId });
   },
 
   async deleteLink(linkId: string): Promise<void> {
+    if (isVercelBetaHost()) {
+      await callBetaTrackingApi('delete', { linkId });
+      return;
+    }
     const callable = httpsCallable<{ linkId: string }, { success: boolean; deleted: boolean }>(functions, 'deleteOrderTrackingLink');
     await callable({ linkId });
   },
@@ -68,13 +106,11 @@ export const orderTrackingService = {
     for (let offset = 0; offset < uniqueIds.length; offset += batchSize) {
       const chunk = uniqueIds.slice(offset, offset + batchSize);
       try {
-        const callable = httpsCallable<
-          { linkIds: string[] },
-          { success: boolean; deletedCount: number }
-        >(functions, 'deleteOrderTrackingLinksBatch');
-        const result = await callable({ linkIds: chunk });
-        const removed = result.data.success && result.data.deletedCount === chunk.length;
-        if (removed) deletedCount += result.data.deletedCount;
+        const resultData = isVercelBetaHost()
+          ? await callBetaTrackingApi<{ success: boolean; deletedCount: number }>('deleteBatch', { linkIds: chunk })
+          : (await httpsCallable<{ linkIds: string[] }, { success: boolean; deletedCount: number }>(functions, 'deleteOrderTrackingLinksBatch')({ linkIds: chunk })).data;
+        const removed = resultData.success && resultData.deletedCount === chunk.length;
+        if (removed) deletedCount += resultData.deletedCount;
         else failedIds.push(...chunk);
       } catch (error: any) {
         if (error?.code === 'functions/not-found' || error?.code === 'not-found') {
@@ -93,6 +129,12 @@ export const orderTrackingService = {
   },
 
   async listLinks(cursor: string | null = null): Promise<{ links: OrderTrackingLinkRecord[]; nextCursor: string | null }> {
+    if (isVercelBetaHost()) {
+      return callBetaTrackingApi<{ links: OrderTrackingLinkRecord[]; nextCursor: string | null }>('list', {
+        cursor,
+        pageSize: 50,
+      });
+    }
     const callable = httpsCallable<
       { cursor: string | null; pageSize: number },
       { links: OrderTrackingLinkRecord[]; nextCursor: string | null }
@@ -102,6 +144,10 @@ export const orderTrackingService = {
   },
 
   async getLinkForOrder(orderId: string): Promise<OrderTrackingLinkRecord | null> {
+    if (isVercelBetaHost()) {
+      const result = await callBetaTrackingApi<{ link: OrderTrackingLinkRecord | null }>('list', { orderId });
+      return result.link;
+    }
     const callable = httpsCallable<{ orderId: string }, { link: OrderTrackingLinkRecord | null }>(
       functions,
       'listOrderTrackingLinks'
