@@ -324,8 +324,13 @@ const chatGptToolsEndpoint = onRequest(
         rawPath === '.well-known/plugin.json' ||
         rawPath === 'plugin.json' ||
         rawPath === '.well-known/oauth-protected-resource' ||
+        rawPath === '.well-known/oauth-protected-resource/mcp' ||
+        rawPath === 'oauth-protected-resource' ||
+        rawPath === 'oauth-protected-resource/mcp' ||
         rawPath === '.well-known/oauth-authorization-server' ||
+        rawPath === '.well-known/oauth-authorization-server/mcp' ||
         rawPath === '.well-known/openid-configuration' ||
+        rawPath === '.well-known/openid-configuration/mcp' ||
         rawPath === 'oauth/authorize' ||
         rawPath === 'authorize' ||
         rawPath === 'favicon.ico' ||
@@ -372,8 +377,14 @@ const chatGptToolsEndpoint = onRequest(
     }
 
     // ─── ROTA 0.1: Descoberta de Recurso Protegido OAuth 2.1 (RFC 9728) ────────
-    if (req.method === 'GET' && (rawPath === '.well-known/oauth-protected-resource' || rawPath === 'oauth-protected-resource')) {
-      const metadata = getOauthProtectedResourceMetadata(baseUrl);
+    if (
+      req.method === 'GET' &&
+      (rawPath === '.well-known/oauth-protected-resource' ||
+        rawPath === '.well-known/oauth-protected-resource/mcp' ||
+        rawPath === 'oauth-protected-resource' ||
+        rawPath === 'oauth-protected-resource/mcp')
+    ) {
+      const metadata = getOauthProtectedResourceMetadata(baseUrl, { includeMcpPath: rawPath.endsWith('/mcp') });
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Cache-Control', 'public, max-age=300');
       return res.status(200).json(metadata);
@@ -382,7 +393,10 @@ const chatGptToolsEndpoint = onRequest(
     // ─── ROTA 0.2: Descoberta do Servidor de Autorização OAuth 2.1 / OIDC (RFC 8414) ──
     if (
       req.method === 'GET' &&
-      (rawPath === '.well-known/oauth-authorization-server' || rawPath === '.well-known/openid-configuration')
+      (rawPath === '.well-known/oauth-authorization-server' ||
+        rawPath === '.well-known/oauth-authorization-server/mcp' ||
+        rawPath === '.well-known/openid-configuration' ||
+        rawPath === '.well-known/openid-configuration/mcp')
     ) {
       const metadata = getOauthAuthorizationServerMetadata(baseUrl);
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -602,6 +616,26 @@ const chatGptToolsEndpoint = onRequest(
       const rpcId = req.body?.id ?? null;
       const method = req.body?.method;
       const params = req.body?.params || {};
+      const respondMcpAuthFailure = (authResult) => {
+        if (authResult.status === 429) {
+          res.setHeader('Retry-After', String(3600 - (Math.floor(Date.now() / 1000) % 3600)));
+        }
+        if ((authResult.status || 401) === 401) {
+          const authorization = req.headers.authorization || req.headers.Authorization || '';
+          res.setHeader('WWW-Authenticate', buildBearerChallenge(/^Bearer\s+\S+/i.test(authorization), `${protocol}://${apiDomain}`));
+        }
+        return res.status(authResult.status || 401).json({
+          jsonrpc: '2.0',
+          id: rpcId,
+          error: {
+            code: -32001,
+            message: authResult.message || 'Falha de autenticação. Realize o login via OAuth 2.1.',
+            data: {
+              authorization_uri: `${protocol}://${apiDomain}/oauth/authorize`,
+            },
+          },
+        });
+      };
       if ((rpcId !== null && typeof rpcId !== 'string' && typeof rpcId !== 'number') || !params || typeof params !== 'object' || Array.isArray(params)) {
         return res.status(400).json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Requisição JSON-RPC inválida.' } });
       }
@@ -641,7 +675,7 @@ const chatGptToolsEndpoint = onRequest(
       // 3.4 Listagem de Ferramentas: tools/list
       if (method === 'tools/list') {
         const authResult = await validateMcpRequest(req, db);
-        if (!authResult.success) return res.status(authResult.status || 401).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32001, message: authResult.message || 'Autenticação necessária.' } });
+        if (!authResult.success) return respondMcpAuthFailure(authResult);
         const allowedScopes = authResult.keyData.scopes || [];
 
         const filteredTools = TOOLS_METADATA.filter((tool) => {
@@ -671,7 +705,7 @@ const chatGptToolsEndpoint = onRequest(
       // MCP Apps: widget de formulário do pedido, disponível apenas com orders:update.
       if (method === 'resources/list') {
         const authResult = await validateMcpRequest(req, db);
-        if (!authResult.success) return res.status(authResult.status || 401).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32001, message: authResult.message || 'Autenticação necessária.' } });
+        if (!authResult.success) return respondMcpAuthFailure(authResult);
         const scopes = authResult.keyData.scopes || [];
         const resources = scopes.includes('*') || scopes.includes('orders:update') ? [{
           uri: 'ui://luisices/order-edit/v2.html',
@@ -684,7 +718,7 @@ const chatGptToolsEndpoint = onRequest(
 
       if (method === 'resources/read') {
         const authResult = await validateMcpRequest(req, db);
-        if (!authResult.success) return res.status(authResult.status || 401).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32001, message: authResult.message || 'Autenticação necessária.' } });
+        if (!authResult.success) return respondMcpAuthFailure(authResult);
         const scopes = authResult.keyData.scopes || [];
         if (!scopes.includes('*') && !scopes.includes('orders:update')) {
           return res.status(200).json({ jsonrpc: '2.0', id: rpcId, error: { code: -32003, message: 'Permissão negada para carregar o formulário de edição.' } });
@@ -708,22 +742,7 @@ const chatGptToolsEndpoint = onRequest(
 
         const authResult = await validateMcpRequest(req, db);
         if (!authResult.success) {
-          if (authResult.status === 429) res.setHeader('Retry-After', String(3600 - (Math.floor(Date.now() / 1000) % 3600)));
-          if (authResult.status === 401) {
-            const authorization = req.headers.authorization || req.headers.Authorization || '';
-            res.setHeader('WWW-Authenticate', buildBearerChallenge(/^Bearer\s+\S+/i.test(authorization), `${protocol}://${apiDomain}`));
-          }
-          return res.status(authResult.status || 401).json({
-            jsonrpc: '2.0',
-            id: rpcId,
-            error: {
-              code: -32001,
-              message: authResult.message || 'Falha de autenticação. Realize o login via OAuth 2.1.',
-              data: {
-                authorization_uri: `${protocol}://${apiDomain}/oauth/authorize`,
-              },
-            },
-          });
+          return respondMcpAuthFailure(authResult);
         }
 
         const { keyData, scope, keyHash } = authResult;

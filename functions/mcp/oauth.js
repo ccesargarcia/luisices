@@ -44,7 +44,12 @@ function tokenDocumentId(token) {
 function normalizeOAuthResource(value) {
   const expectedResource = OAUTH_ORIGIN();
   if (value === undefined || value === null || value === '') return expectedResource;
-  return typeof value === 'string' && value.length <= 2048 && value === expectedResource ? value : null;
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  if (value === expectedResource) return expectedResource;
+  if (value === `${expectedResource}/mcp` || value === `${expectedResource}/chatGptToolsEndpoint`) {
+    return expectedResource;
+  }
+  return null;
 }
 
 async function getOAuthClient(db, clientId, transaction) {
@@ -167,7 +172,7 @@ async function applyEndpointRateLimit(req, res, db, bucket, limit) {
 /**
  * Metadata do Recurso Protegido (RFC 9728)
  */
-function getOauthProtectedResourceMetadata(baseUrl) {
+function getOauthProtectedResourceMetadata(baseUrl, options = {}) {
   const isProd = process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard';
   const defaultDomain = isProd ? 'https://api.luisices.com.br' : 'https://api.dev.luisices.com.br';
   let origin = defaultDomain;
@@ -183,9 +188,10 @@ function getOauthProtectedResourceMetadata(baseUrl) {
   }
 
   const allScopes = Object.values(MCP_SCOPES).map((s) => s.id);
+  const resource = options.includeMcpPath ? `${origin}/mcp` : origin;
 
   return {
-    resource: origin,
+    resource,
     authorization_servers: [origin],
     scopes_supported: allScopes,
     bearer_methods_supported: ['header'],
