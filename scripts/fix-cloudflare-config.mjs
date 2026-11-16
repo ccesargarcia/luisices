@@ -161,6 +161,39 @@ async function run() {
     }
   }
 
+  // 2.5 Garantir registros DNS AAAA proxied para rotas de Workers (api.dev, api, cdn-dev, cdn)
+  console.log('\n--- 1.5. Verificando Registros DNS de Worker Routes (AAAA 100:: Proxied) ---');
+  for (const host of ['api.dev.luisices.com.br', 'api.luisices.com.br', 'cdn-dev.luisices.com.br', 'cdn.luisices.com.br']) {
+    const existing = records.find(
+      (r) => r.name === host && (r.type === 'AAAA' || r.type === 'A' || r.type === 'CNAME')
+    );
+    if (!existing) {
+      const subdomain = host.replace(`.${zone.name}`, '');
+      process.stdout.write(`• Criando registro AAAA: ${host} -> 100:: (🟠 Proxied)... `);
+      await cfRequest(`/zones/${zone.id}/dns_records`, {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'AAAA',
+          name: subdomain,
+          content: '100::',
+          ttl: 1,
+          proxied: true,
+          comment: 'Managed Worker route DNS placeholder',
+        }),
+      });
+      console.log('✅ Criado!');
+    } else if (existing.proxied !== true) {
+      process.stdout.write(`• Ativando proxy em ${host} (${existing.type})... `);
+      await cfRequest(`/zones/${zone.id}/dns_records/${existing.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ proxied: true }),
+      });
+      console.log('✅ Proxied!');
+    } else {
+      console.log(`• ${host}: ${existing.type} -> ${existing.content} (🟠 Proxied) OK.`);
+    }
+  }
+
   // 5. Ajustar SSL/TLS para 'strict'
   console.log('\n--- 3. Ajustando Modo SSL/TLS para Full (Strict) ---');
   try {
