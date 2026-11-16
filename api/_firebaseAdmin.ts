@@ -24,6 +24,9 @@ export function getFirebaseAdmin(): FirebaseAdminBundle {
 
   const serviceAccount = JSON.parse(rawServiceAccount);
   const projectId = serviceAccount.project_id || 'luisices-dev';
+  if (!process.env.GCLOUD_PROJECT) {
+    process.env.GCLOUD_PROJECT = projectId;
+  }
   const storageBucket =
     process.env.VITE_FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
 

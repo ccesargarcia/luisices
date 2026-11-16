@@ -39,7 +39,10 @@ export default async function handler(
   }
 
   try {
-    const { auth, firestore } = getFirebaseAdmin();
+    const { auth, firestore, projectId } = getFirebaseAdmin();
+    if (!process.env.ALEXA_ENVIRONMENT) {
+      process.env.ALEXA_ENVIRONMENT = projectId === 'papelaria-dashboard' ? 'prod' : 'dev';
+    }
     const session = await assertActiveSessionFromBearer(
       auth,
       firestore,

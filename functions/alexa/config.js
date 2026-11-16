@@ -3,7 +3,12 @@
  * Segue estritamente a especificação docs/ESPECIFICACAO_ALEXA_ANTIGRAVITY.md.
  */
 
-const { defineSecret } = require('firebase-functions/params');
+let defineSecret;
+try {
+  ({ defineSecret } = require('firebase-functions/params'));
+} catch {
+  defineSecret = (name) => ({ value: () => process.env[name] || '' });
+}
 
 // Segredo gerenciado no Secret Manager para hash criptográfico de identidades e códigos
 const ALEXA_IDENTITY_HMAC_KEY = defineSecret('ALEXA_IDENTITY_HMAC_KEY');
