@@ -14,6 +14,7 @@ on:
       - 'functions/orders/trackingAdminCore.js'
       - 'functions/orders/publicCatalogOrderCore.js'
       - 'functions/ai/**'
+      - 'functions/alexa/**'
       - 'public/**'
       - 'index.html'
       - 'vite.config.*'
@@ -284,6 +285,7 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.DEV_VITE_FIREBASE_STORAGE_BUCKET }}
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY }}
           ORDER_TRACKING_ENCRYPTION_KEY: ${{ secrets.DEV_ORDER_TRACKING_ENCRYPTION_KEY }}
+          ALEXA_IDENTITY_HMAC_KEY: ${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY }}
         run: |
           node <<'NODE'
           const token = process.env.VERCEL_TOKEN;
@@ -317,6 +319,7 @@ jobs:
             await upsertEnv('VITE_FIREBASE_STORAGE_BUCKET', process.env.VITE_FIREBASE_STORAGE_BUCKET);
             await upsertEnv('GEMINI_API_KEY', process.env.GEMINI_API_KEY);
             await upsertEnv('ORDER_TRACKING_ENCRYPTION_KEY', process.env.ORDER_TRACKING_ENCRYPTION_KEY);
+            await upsertEnv('ALEXA_IDENTITY_HMAC_KEY', process.env.ALEXA_IDENTITY_HMAC_KEY);
           })().catch((err) => {
             console.error(err);
             process.exit(1);

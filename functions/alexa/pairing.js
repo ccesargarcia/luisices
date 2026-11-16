@@ -9,7 +9,7 @@ const { PAIRING_CODE_TTL_MINUTES } = require('./constants');
 const { COLLECTIONS, computeCodeHash, computeBindingKey, recordAuditEvent } = require('./repository');
 const { checkPairingRateLimit } = require('./rateLimit');
 const { supportsApl, buildVoicePairingAplDirective } = require('./apl');
-const { assertActiveSession } = require('../common/helpers');
+const { assertActiveSession } = require('./runtimeCompat');
 
 /**
  * Gera desafio de 8 dígitos na presença do administrador para vincular a voz.

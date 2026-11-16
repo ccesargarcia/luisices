@@ -10,7 +10,8 @@ export type BackendRouteKey =
   | 'publicCatalogOrder'
   | 'publicOrderTracking'
   | 'orderTrackingAdmin'
-  | 'aiChat';
+  | 'aiChat'
+  | 'alexa';
 
 export interface BackendRoutingConfig {
   globalMode: BackendProvider;
@@ -32,6 +33,7 @@ export const DEFAULT_BACKEND_ROUTING: BackendRoutingConfig = {
     publicOrderTracking: 'inherit',
     orderTrackingAdmin: 'inherit',
     aiChat: 'inherit',
+    alexa: 'inherit',
   },
 };
 
@@ -75,6 +77,7 @@ function normalizeConfig(raw: unknown): BackendRoutingConfig {
       publicOrderTracking: pickRoute('publicOrderTracking'),
       orderTrackingAdmin: pickRoute('orderTrackingAdmin'),
       aiChat: pickRoute('aiChat'),
+      alexa: pickRoute('alexa'),
     },
     updatedAt: typeof input.updatedAt === 'string' ? input.updatedAt : undefined,
     updatedBy: typeof input.updatedBy === 'string' ? input.updatedBy : undefined,

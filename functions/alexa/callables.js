@@ -4,10 +4,9 @@
  */
 
 const { FieldValue } = require('firebase-admin/firestore');
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError, assertActiveSession } = require('./runtimeCompat');
 const { COLLECTIONS, recordAuditEvent } = require('./repository');
 const { getAlexaConfig } = require('./config');
-const { assertActiveSession } = require('../common/helpers');
 
 /**
  * Helper para verificar se a requisição provém de um administrador ativo.

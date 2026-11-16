@@ -73,6 +73,13 @@ const ROUTE_DEFINITIONS: Array<{
     vercelPath: '/api/ai-chat',
     gcpFunction: 'aiAgentChat',
   },
+  {
+    key: 'alexa',
+    label: 'Integração Alexa',
+    description: 'Status, pareamento, permissões, vínculos e rascunhos',
+    vercelPath: '/api/alexa',
+    gcpFunction: 'getAlexaIntegrationStatus / approveAlexa* / setAlexa* / revoke* / toggle*',
+  },
 ];
 
 export function BackendRoutingSettingsSection({ isAdmin }: BackendRoutingSettingsSectionProps) {
@@ -112,6 +119,7 @@ export function BackendRoutingSettingsSection({ isAdmin }: BackendRoutingSetting
         publicOrderTracking: 'inherit',
         orderTrackingAdmin: 'inherit',
         aiChat: 'inherit',
+        alexa: 'inherit',
       },
     };
     void persistConfig(
