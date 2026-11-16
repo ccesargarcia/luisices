@@ -4,7 +4,12 @@
 
 const { filterOrdersByScope, filterCustomersByScope, filterGalleryByScope } = require('./authorization');
 const { TOOL_LIMITS } = require('./config');
-const { traceMcpStep } = require('../mcp/tracing');
+let traceMcpStep = (_phase, work) => work();
+try {
+  ({ traceMcpStep } = require('../mcp/tracing'));
+} catch {
+  // Ambiente sem @sentry/node (ex.: Vercel Functions) executa sem span do Sentry.
+}
 const { resolvePaymentAmounts, normalizePaymentMethod } = require('./financialMath');
 
 function normalizeTimestamp(val) {
