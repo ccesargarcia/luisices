@@ -92,21 +92,30 @@ jobs:
             return res.json();
           }
 
+          async function tryFetchJson(url) {
+            try {
+              return await fetchJson(url);
+            } catch (err) {
+              console.warn(`Aviso ao consultar ${url}: ${err.message}`);
+              return null;
+            }
+          }
+
           (async () => {
-            const userData = await fetchJson('https://api.vercel.com/v2/user');
-            const userId = userData?.user?.id;
+            const userData = await tryFetchJson('https://api.vercel.com/v2/user');
+            const userId = userData?.user?.id || userData?.id;
             const candidates = [];
 
-            const personal = await fetchJson('https://api.vercel.com/v9/projects?limit=100');
-            for (const p of personal.projects || []) {
-              candidates.push({ project: p, orgId: userId });
+            const personal = await tryFetchJson('https://api.vercel.com/v9/projects?limit=100');
+            for (const p of personal?.projects || []) {
+              candidates.push({ project: p, orgId: p.accountId || userId });
             }
 
-            const teamsData = await fetchJson('https://api.vercel.com/v2/teams?limit=50');
-            for (const t of teamsData.teams || []) {
-              const teamProjects = await fetchJson(`https://api.vercel.com/v9/projects?limit=100&teamId=${encodeURIComponent(t.id)}`);
-              for (const p of teamProjects.projects || []) {
-                candidates.push({ project: p, orgId: t.id });
+            const teamsData = await tryFetchJson('https://api.vercel.com/v2/teams?limit=50');
+            for (const t of teamsData?.teams || []) {
+              const teamProjects = await tryFetchJson(`https://api.vercel.com/v9/projects?limit=100&teamId=${encodeURIComponent(t.id)}`);
+              for (const p of teamProjects?.projects || []) {
+                candidates.push({ project: p, orgId: t.id || p.accountId });
               }
             }
 
