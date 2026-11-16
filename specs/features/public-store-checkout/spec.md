@@ -1,7 +1,7 @@
 # Pedido público da loja
 
 - **ID:** `public-store-checkout`
-- **Status:** Em andamento — gateway Beta publicado; migração da leitura de produtos para o gateway em validação
+- **Status:** Implementada e publicada em Beta
 - **Responsável:** Luisices
 - **Atualizado em:** 2026-11-16
 - **Referências:** `docs/FUNCIONALIDADES.md`; `docs/MODELAGEM_AMEACAS_SEGURANCA.md`; `functions/README.md`; `functions/orders/catalog.js`; `functions/orders/index.js`; `functions/common/rateLimiters.js`; `src/app/pages/PublicCatalog.tsx`; `src/app/pages/StoreOrders.tsx`; `src/services/firebaseCatalogOrderService.ts`; `firestore.rules`; `tests/unit/public-checkout-callable.test.ts`; `tests/e2e/store-checkout.spec.ts`.
@@ -96,7 +96,7 @@ Esta spec consolida o fluxo da encomenda e registra a proteção de borda implem
 - **Confirmado:** o skill Cloudflare e os documentos consultados identificam proteção edge para tracking; isso não comprova uma regra WAF para o checkout.
 - **Confirmado:** cliente e telefone são fornecidos pela equipe ao converter para o pedido interno.
 - **Em aberto:** política de retenção e prazo de exclusão dos registros não está estabelecida nesta spec.
-- **Isolamento de deploy:** `api.beta.luisices.com.br` é associado ao Worker dedicado `functions-beta`. O workflow Beta publica esse Worker e atualiza somente a associação do Custom Domain `api.beta`, preservando o vínculo independente de `api.dev` com `functions-dev`. O gateway encaminha quatro rotas públicas/selecionadas, incluindo a leitura pública do catálogo; as respectivas Vercel Functions exigem `BETA_VERCEL_ORIGIN_SECRET`, inclusive a leitura de catálogo, para impedir bypass direto da borda. A alteração não muda contratos nem lógica do Copiloto (Gemini) ou MCP/ChatGPT. A publicação isolada do Worker já foi confirmada; a ativação da leitura no cliente e no handler aguarda o deploy Vercel.
+- **Isolamento de deploy:** `api.beta.luisices.com.br` é associado ao Worker dedicado `functions-beta`. O workflow Beta publica esse Worker e atualiza somente a associação do Custom Domain `api.beta`, preservando o vínculo independente de `api.dev` com `functions-dev`. O gateway encaminha quatro rotas públicas/selecionadas, incluindo a leitura pública do catálogo; as respectivas Vercel Functions exigem `BETA_VERCEL_ORIGIN_SECRET`, inclusive a leitura de catálogo, para impedir bypass direto da borda. A mudança preserva o payload/fallback da leitura e não altera os contratos do Copiloto (Gemini) ou MCP/ChatGPT. Worker e Vercel foram publicados; a leitura via `api.beta` respondeu 200 e o acesso direto pela Vercel respondeu 403. O workflow de Dev não publicou o Worker de `api.dev` nem Cloud Functions.
 - **Em aberto:** a composição integral do documento público `storeSettings/public` deve continuar restrita a configurações que podem ser lidas anonimamente; alterações nesse schema requerem revisão de privacidade.
 
 ## Validação
@@ -108,4 +108,6 @@ Esta spec consolida o fluxo da encomenda e registra a proteção de borda implem
 ## Evidências de conclusão
 
 - Revisados `docs/VERCEL_BETA_ROUTING.md`, `docs/MODELAGEM_AMEACAS_SEGURANCA.md`, `docs/FUNCIONALIDADES.md` e workflows; impacto Copiloto/MCP: nenhum, pois os endpoints e contratos dessas integrações não mudam.
-- Worker `functions-beta` atualizado no workflow `43975604342`; consulta controlada de `GET /api/public-catalog-products` via `api.beta` respondeu 200 e chegou à origem Vercel. O cliente Beta e o bloqueio de acesso direto ainda precisam ser comprovados após o deploy Vercel.
+- Worker `functions-beta` atualizado no workflow `43975604342`; Vercel e cliente publicados no workflow `43976983202`.
+- Verificação remota: `GET https://api.beta.luisices.com.br/api/public-catalog-products` retornou 200 com `server: cloudflare`, `cf-ray` e `x-vercel-id`; a chamada equivalente em `https://beta.luisices.com.br/api/public-catalog-products` retornou 403 com `server: Vercel`.
+- O workflow Firebase Dev registrou `Deploy Cloudflare Workers (Dev)` e `Deploy Firebase Functions (Dev)` como skipped; somente o frontend de `dev.luisices.com.br` foi publicado. Nenhuma rota/Worker ou Function de `api.dev` foi alterada por esta migração.

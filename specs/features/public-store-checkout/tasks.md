@@ -12,4 +12,5 @@
   - Evidência: `tests/unit/api-beta-worker.test.ts` passou (6 testes); `npm run typecheck` passou; workflow Cloudflare Beta `43975604342` concluiu com sucesso; consulta via `api.beta` chegou à Vercel e respondeu 200.
 - [x] **T6 — Function e cliente Beta:** exigir segredo de origem em `api/public-catalog-products.ts`; direcionar a leitura Vercel do catálogo para `api.beta`, preservando fallback GCP e payload.
   - Evidência local: teste confirma 403 sem segredo/incorreto antes de iniciar Firebase Admin; teste de `betaHost` confirma `api.beta` no Beta e URL relativa fora dele; typecheck e 13 testes focados passaram.
-- [ ] **T7 — Deploy e verificação:** publicar Vercel; confirmar GET funcional pelo gateway, rejeição sem segredo no host Vercel, limite da borda e nenhum deploy/alteração de `api.dev`; atualizar evidências.
+- [x] **T7 — Deploy e verificação:** publicar Vercel; confirmar GET funcional pelo gateway, rejeição sem segredo no host Vercel, limite da borda e nenhum deploy/alteração de `api.dev`; atualizar evidências.
+  - Evidência: workflow Cloudflare Beta `43975604342` e Vercel `43976983202` concluíram com sucesso; `api.beta` respondeu 200 e `beta.luisices.com.br` respondeu 403. O teste unitário valida 429 do limitador; no workflow Firebase Dev, deploy de Worker Cloudflare e Cloud Functions foi skipped.
