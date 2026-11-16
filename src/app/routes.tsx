@@ -1,17 +1,9 @@
 import { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
-import { Layout } from './pages/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { PermissionRoute } from './components/PermissionRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
-import { Register } from './pages/Register';
-import { Login } from './pages/Login';
-import { ResetPassword } from './pages/ResetPassword';
-import { AuthAction } from './pages/AuthAction';
-import { OAuthConsent } from './pages/OAuthConsent';
-import { OrdersProvider } from '../contexts/OrdersContext';
-import { UserSettingsProvider } from '../contexts/UserSettingsContext';
 import { canAccessPricing, canAccessArchivedOrders, canAccessEmails } from './types';
 
 /**
@@ -142,6 +134,14 @@ const ArchivedOrders     = lazyWithRetry(() => import('./pages/ArchivedOrders'),
 const ArtisanPricingPage = lazyWithRetry(() => import('./pages/ArtisanPricingPage'), 'ArtisanPricingPage');
 const ApiDocs            = lazyWithRetry(() => import('./pages/ApiDocs'), 'ApiDocs');
 const PublicOrderTracking = lazyWithRetry(() => import('./pages/PublicOrderTracking'), 'PublicOrderTracking');
+const Layout              = lazyWithRetry(() => import('./pages/Layout'), 'Layout');
+const Login               = lazyWithRetry(() => import('./pages/Login'), 'Login');
+const Register            = lazyWithRetry(() => import('./pages/Register'), 'Register');
+const ResetPassword       = lazyWithRetry(() => import('./pages/ResetPassword'), 'ResetPassword');
+const AuthAction          = lazyWithRetry(() => import('./pages/AuthAction'), 'AuthAction');
+const OAuthConsent        = lazyWithRetry(() => import('./pages/OAuthConsent'), 'OAuthConsent');
+const OrdersProvider      = lazyWithRetry(() => import('../contexts/OrdersContext'), 'OrdersProvider');
+const UserSettingsProvider = lazyWithRetry(() => import('../contexts/UserSettingsContext'), 'UserSettingsProvider');
 
 function PageLoader() {
   return (
@@ -218,27 +218,27 @@ export const router = isCatalogSubdomain
       },
       {
         path: '/login',
-        element: <Login />,
+        element: <Lazy><Login /></Lazy>,
         errorElement: <ErrorBoundary />,
       },
       {
         path: '/registrar',
-        element: <Register />,
+        element: <Lazy><Register /></Lazy>,
         errorElement: <ErrorBoundary />,
       },
       {
         path: '/recuperar-senha',
-        element: <ResetPassword />,
+        element: <Lazy><ResetPassword /></Lazy>,
         errorElement: <ErrorBoundary />,
       },
       {
         path: '/action',
-        element: <AuthAction />,
+        element: <Lazy><AuthAction /></Lazy>,
         errorElement: <ErrorBoundary />,
       },
       {
         path: '/oauth-consent',
-        element: <OAuthConsent />,
+        element: <Lazy><OAuthConsent /></Lazy>,
         errorElement: <ErrorBoundary />,
       },
       {
@@ -263,11 +263,13 @@ export const router = isCatalogSubdomain
         path: '/',
         element: (
           <ProtectedRoute>
-            <UserSettingsProvider>
-              <OrdersProvider>
-                <Layout />
-              </OrdersProvider>
-            </UserSettingsProvider>
+            <Lazy>
+              <UserSettingsProvider>
+                <OrdersProvider>
+                  <Layout />
+                </OrdersProvider>
+              </UserSettingsProvider>
+            </Lazy>
           </ProtectedRoute>
         ),
         errorElement: <ErrorBoundary />,

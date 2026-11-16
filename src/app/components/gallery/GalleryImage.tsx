@@ -11,7 +11,8 @@ interface GalleryImageProps extends Omit<React.ImgHTMLAttributes<HTMLImageElemen
 export function GalleryImage({ itemId, storagePath, onImageError, onLoad, ...props }: GalleryImageProps) {
   const imageRef = useRef<HTMLImageElement>(null);
   const onImageErrorRef = useRef(onImageError);
-  const [nearViewport, setNearViewport] = useState(false);
+  const isHighPriority = props.fetchPriority === 'high' || props.loading === 'eager';
+  const [nearViewport, setNearViewport] = useState(isHighPriority);
   const [src, setSrc] = useState('');
 
   useEffect(() => { onImageErrorRef.current = onImageError; }, [onImageError]);
