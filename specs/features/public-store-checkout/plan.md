@@ -2,7 +2,7 @@
 
 ## Abordagem
 
-Registrar o baseline da vitrine, submissão pública, gestão e conversão usando as fontes atuais. Não alterar interface, Functions, Rules, Cloudflare ou dados nesta etapa.
+Manter o fluxo de negócio e acrescentar um gateway Cloudflare para as rotas selecionadas da Vercel Beta, com rate limit de borda e autenticação entre Worker e origem Vercel.
 
 ## Componentes existentes
 
@@ -19,7 +19,9 @@ Registrar o baseline da vitrine, submissão pública, gestão e conversão usand
 
 ## Contratos, dados e compatibilidade
 
-- Nenhum contrato ou dado muda nesta entrega.
+- Nenhum contrato de payload, resposta ou dado persistido muda nesta entrega.
+- As URLs de transporte do Beta mudam para `api.beta.luisices.com.br` nas rotas de submissão pública e acompanhamento.
+- `x-beta-edge-secret` é interno Worker→Vercel; o navegador não o envia e o Worker substitui qualquer valor recebido pelo segredo configurado.
 - Preservar nomes de callables, formato de resposta e status persistidos.
 - O payload público é minimizado e não contém identificação de contato; conversão coleta esses dados no painel.
 - Separar em specs futuras mudanças de `storeSettings`, catálogo, rate limit distribuído/edge e atendimento externo.
@@ -28,21 +30,22 @@ Registrar o baseline da vitrine, submissão pública, gestão e conversão usand
 
 - Preço e disponibilidade são reconsultados no servidor; não confiar em valores enviados pelo browser.
 - A criação direta de `catalogOrders` continua negada nas Rules.
-- Não descrever `RateLimiterMemory` como proteção global/distribuída ou Cloudflare como proteção do checkout sem evidência por ambiente.
+- O Worker aplica 30 req/min por caminho/IP usando o namespace Dev existente; o limiter é aproximado por localidade. O limitador backend do checkout continua ativo.
+- Secrets `DEV_ORIGIN_SECRET` (ou `ORIGIN_SECRET`) são necessários. Os handlers Vercel falham fechado quando `BETA_VERCEL_ORIGIN_SECRET` não está configurado.
 - Não incluir segredos, IPs reais, dados de clientes ou logs contendo PII.
 - Consultar `luisices-platform-security` e `luisices-cloudflare` em implementação futura que altere o endpoint ou sua proteção.
 
 ## UX e documentação
 
 - A mensagem de sucesso representa confirmação de registro no backend e disponibilização do link; não significa WhatsApp enviado nem pagamento/compra confirmados.
-- Atualizar `docs/FUNCIONALIDADES.md` e os guias de ameaças/Cloudflare se o comportamento operacional for alterado.
+- `docs/VERCEL_BETA_ROUTING.md` registra o domínio, limites, proteção de origem e status de provisionamento. Copiloto e MCP não são afetados porque suas rotas e contratos não mudam.
 
 ## Validação e riscos
 
 - Conferir estado, contratos e campos persistidos contra código e testes existentes.
 - Executar `npm run typecheck` e `git diff --check`.
 - Não executar testes de produto em etapa somente documental; referenciar suites como contratos de regressão.
-- Risco operacional documentado: rate limiting em memória é por instância; regras edge para checkout não estão comprovadas pelos arquivos consultados.
+- Risco operacional: o limite Cloudflare é aproximado por localidade; a publicação de DNS, rota e secrets depende de sucesso dos workflows com permissões Cloudflare e Vercel.
 
 ## Reversão
 

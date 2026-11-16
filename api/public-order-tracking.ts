@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { getFirebaseAdmin, mapCoreErrorToHttp } from './_firebaseAdmin.js';
+import { assertBetaEdgeRequest, getFirebaseAdmin, mapCoreErrorToHttp } from './_firebaseAdmin.js';
 
 const require = createRequire(import.meta.url);
 const { handleGetPublicOrderTrackingCore } = require('../functions/orders/trackingCore.js');
@@ -23,6 +23,7 @@ export default async function handler(
   }
 
   try {
+    assertBetaEdgeRequest(req.headers?.['x-beta-edge-secret']);
     const rawToken = req.query?.token;
     const token = Array.isArray(rawToken) ? rawToken[0] : rawToken;
     const { firestore } = getFirebaseAdmin();

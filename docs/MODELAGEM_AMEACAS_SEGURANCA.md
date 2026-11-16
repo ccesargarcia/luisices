@@ -149,10 +149,10 @@ Esses controles foram observados em código. A presença no repositório não pr
 ### T7 — Abuso de endpoints públicos e consumo de recursos
 
 - **STRIDE:** negação de serviço, fraude/custo.
-- **Cenário:** checkout público, tracking, mídia ou integrações recebem tráfego automatizado. Parte dos rate limits usa `RateLimiterMemory`, que é local à instância e pode perder estado em reinicialização ou não ser compartilhado entre instâncias. Cloudflare aplica limite específico de tracking no Worker; a proteção não deve ser generalizada para todos os endpoints.
+- **Cenário:** checkout público, tracking, mídia ou integrações recebem tráfego automatizado. Parte dos rate limits usa `RateLimiterMemory`, que é local à instância e pode perder estado em reinicialização ou não ser compartilhado entre instâncias. No Beta, as rotas públicas/admin selecionadas da Vercel passam por `api.beta.luisices.com.br`, com limite Cloudflare de 30 chamadas/minuto por caminho/IP e segredo entre Worker e origem. A publicação remota precisa ser confirmada no workflow e o contador é aproximado por localidade.
 - **Impacto:** spam de encomendas, exaustão de quota, latência, custos e indisponibilidade para operadores.
 - **Prioridade:** alta para endpoints públicos com efeito persistente; média para leitura pública.
-- **Ações:** usar rate limit distribuído/na borda para rotas públicas; limitar payload e custo antes de chamadas a terceiros; adicionar idempotência no checkout; monitorar volume, erros e custo; testar burst e limites de instância.
+- **Ações:** ampliar rate limit distribuído/na borda às rotas públicas relevantes; limitar payload e custo antes de chamadas a terceiros; adicionar idempotência no checkout; monitorar volume, erros e custo; testar burst e limites de instância.
 
 ### T8 — Spoofing ou replay de webhook
 

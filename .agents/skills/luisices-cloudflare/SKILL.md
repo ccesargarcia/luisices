@@ -18,8 +18,10 @@ Luisices uses Cloudflare for edge routing, caching, and rate limiting:
 
 1. **API Worker (`cloudflare/api-worker/`)**:
    * **Dev Route:** `api.dev.luisices.com.br/*` ➔ proxies to `https://us-central1-luisices-dev.cloudfunctions.net`
+   * **Beta Route:** `api.beta.luisices.com.br/*` ➔ `functions-dev` Worker; allowlist proxies selected Vercel Beta order APIs to `https://beta.luisices.com.br` and requires `BETA_VERCEL_ORIGIN_SECRET`.
    * **Prod Route:** `api.luisices.com.br/*` ➔ proxies to `https://us-central1-papelaria-dashboard.cloudfunctions.net`
    * **Rate Limiter:** `PUBLIC_ORDER_TRACKING_LIMITER` (30 req / 60s) to protect tracking endpoints from abuse.
+   * Beta uses the Dev limiter namespace and a route/IP key for `POST /api/public-catalog-order`, `GET|HEAD /api/public-order-tracking`, and `POST /api/order-tracking`.
 
 2. **CDN Worker (`cloudflare/cdn-worker/`)**:
    * **Dev Route:** `cdn-dev.luisices.com.br/*` ➔ proxies to `luisices-dev.firebasestorage.app` (TTL: 300s)

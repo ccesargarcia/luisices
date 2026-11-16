@@ -22,6 +22,7 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../lib/firebase';
 import { CatalogOrder, CatalogOrderStatus, Order } from '../app/types';
 import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
+import { getVercelBetaApiUrl } from '../app/utils/betaHost';
 import { firebaseOrderService } from './firebaseOrderService';
 
 const CATALOG_ORDERS_COLLECTION = 'catalogOrders';
@@ -121,7 +122,7 @@ class FirebaseCatalogOrderService {
     return executeWithGcpFallback(
       'publicCatalogOrder',
       async () => {
-        const response = await fetch('/api/public-catalog-order', {
+        const response = await fetch(getVercelBetaApiUrl('/api/public-catalog-order'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           cache: 'no-store',

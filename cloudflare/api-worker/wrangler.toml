@@ -41,7 +41,8 @@ namespace_id = "6634920187"
 [env.dev]
 name = "functions-dev"
 routes = [
-  { pattern = "api.dev.luisices.com.br/*", zone_name = "luisices.com.br" }
+  { pattern = "api.dev.luisices.com.br/*", zone_name = "luisices.com.br" },
+  { pattern = "api.beta.luisices.com.br/*", zone_name = "luisices.com.br" }
 ]
 [env.dev.vars]
 ENVIRONMENT = "dev"

@@ -1,12 +1,13 @@
 import { httpsCallable } from 'firebase/functions';
 import { auth, functions } from '../lib/firebase';
 import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
+import { getVercelBetaApiUrl } from '../app/utils/betaHost';
 
 async function callBetaTrackingApi<T>(action: string, payload: Record<string, unknown>): Promise<T> {
   const user = auth.currentUser;
   if (!user) throw new Error('Entre na sua conta para gerenciar links de acompanhamento.');
   const idToken = await user.getIdToken();
-  const response = await fetch('/api/order-tracking', {
+  const response = await fetch(getVercelBetaApiUrl('/api/order-tracking'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -184,7 +185,7 @@ export const orderTrackingService = {
       'publicOrderTracking',
       async () => {
         const response = await fetch(
-          `/api/public-order-tracking?token=${encodeURIComponent(token)}`,
+          `${getVercelBetaApiUrl('/api/public-order-tracking')}?token=${encodeURIComponent(token)}`,
           { method: 'GET', cache: 'no-store' }
         );
         const payload = await response.json().catch(() => null);

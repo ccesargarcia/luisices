@@ -21,6 +21,7 @@
     "cloudflare:deploy:cdn:dev": "wrangler deploy -c cloudflare/cdn-worker/wrangler.toml -e dev",
     "cloudflare:deploy:cdn:prod": "wrangler deploy -c cloudflare/cdn-worker/wrangler.toml -e production",
     "cloudflare:deploy:api:dev": "wrangler deploy -c cloudflare/api-worker/wrangler.toml -e dev",
+    "cloudflare:secret:beta-origin:dev": "wrangler secret put BETA_VERCEL_ORIGIN_SECRET -c cloudflare/api-worker/wrangler.toml -e dev",
     "cloudflare:deploy:api:prod": "wrangler deploy -c cloudflare/api-worker/wrangler.toml -e production",
     "cloudflare:deploy:dev": "npm run cloudflare:deploy:cdn:dev && npm run cloudflare:deploy:api:dev",
     "cloudflare:deploy:prod": "npm run cloudflare:deploy:cdn:prod && npm run cloudflare:deploy:api:prod",

@@ -163,7 +163,6 @@ jobs:
           NODE
 
       - name: Configurar domínios beta (Vercel + Cloudflare DNS)
-        continue-on-error: true
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           PROJECT_ID: ${{ steps.vercel-project.outputs.project_id }}
@@ -212,10 +211,9 @@ jobs:
             return 'd9a25377cf05a4e4.vercel-dns-017.com';
           }
 
-          async function ensureCloudflareCname(customDomain, cnameTarget) {
+          async function ensureCloudflareCname(customDomain, cnameTarget, proxied = false) {
             if (!cfToken) {
-              console.warn('CLOUDFLARE_API_TOKEN ausente; pulando DNS.');
-              return;
+              throw new Error('CLOUDFLARE_API_TOKEN ausente; não é possível configurar o DNS Beta.');
             }
             const cfHeaders = {
               Authorization: `Bearer ${cfToken}`,
@@ -225,8 +223,7 @@ jobs:
             const zoneData = await zoneRes.json();
             const zoneId = zoneData?.result?.[0]?.id;
             if (!zoneId) {
-              console.warn('Zona luisices.com.br não encontrada na Cloudflare.');
-              return;
+              throw new Error('Zona luisices.com.br não encontrada na Cloudflare.');
             }
 
             const recRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records?name=${encodeURIComponent(customDomain)}`, { headers: cfHeaders });
@@ -237,11 +234,11 @@ jobs:
               name: customDomain,
               content: cnameTarget,
               ttl: 1,
-              proxied: false,
+              proxied,
             };
 
             if (existing) {
-              if (existing.type === 'CNAME' && existing.content === cnameTarget && existing.proxied === false) {
+              if (existing.type === 'CNAME' && existing.content === cnameTarget && existing.proxied === proxied) {
                 console.log(`DNS CNAME ${customDomain} -> ${cnameTarget} já configurado na Cloudflare.`);
                 return;
               }
@@ -252,7 +249,7 @@ jobs:
               });
               const updData = await updRes.json();
               if (!updData.success) throw new Error(`Cloudflare PUT falhou: ${JSON.stringify(updData)}`);
-              console.log(`DNS CNAME ${customDomain} -> ${cnameTarget} atualizado na Cloudflare.`);
+              console.log(`DNS CNAME ${customDomain} -> ${cnameTarget} atualizado na Cloudflare (proxy ${proxied ? 'ativo' : 'desativado'}).`);
             } else {
               const createRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`, {
                 method: 'POST',
@@ -261,7 +258,7 @@ jobs:
               });
               const createData = await createRes.json();
               if (!createData.success) throw new Error(`Cloudflare POST falhou: ${JSON.stringify(createData)}`);
-              console.log(`DNS CNAME ${customDomain} -> ${cnameTarget} criado na Cloudflare.`);
+              console.log(`DNS CNAME ${customDomain} -> ${cnameTarget} criado na Cloudflare (proxy ${proxied ? 'ativo' : 'desativado'}).`);
             }
           }
 
@@ -271,6 +268,9 @@ jobs:
               const cnameTarget = await getRecommendedCnameTarget(customDomain);
               await ensureCloudflareCname(customDomain, cnameTarget);
             }
+            // Este hostname termina no Worker via rota Cloudflare; o CNAME aponta
+            // para o domínio Vercel beta e precisa permanecer proxied.
+            await ensureCloudflareCname('api.beta.luisices.com.br', 'beta.luisices.com.br', true);
           })().catch((err) => {
             console.warn('Aviso ao configurar domínios beta:', err.message);
             process.exit(1);
@@ -287,6 +287,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY }}
           ORDER_TRACKING_ENCRYPTION_KEY: ${{ secrets.DEV_ORDER_TRACKING_ENCRYPTION_KEY }}
           ALEXA_IDENTITY_HMAC_KEY: ${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY }}
+          BETA_VERCEL_ORIGIN_SECRET: ${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
         run: |
           node <<'NODE'
           const token = process.env.VERCEL_TOKEN;
@@ -316,11 +317,15 @@ jobs:
           }
 
           (async () => {
+            if (!process.env.BETA_VERCEL_ORIGIN_SECRET) {
+              throw new Error('DEV_ORIGIN_SECRET ou ORIGIN_SECRET é obrigatório para proteger as APIs Beta.');
+            }
             await upsertEnv('FIREBASE_SERVICE_ACCOUNT_DEV', process.env.FIREBASE_SERVICE_ACCOUNT_DEV);
             await upsertEnv('VITE_FIREBASE_STORAGE_BUCKET', process.env.VITE_FIREBASE_STORAGE_BUCKET);
             await upsertEnv('GEMINI_API_KEY', process.env.GEMINI_API_KEY);
             await upsertEnv('ORDER_TRACKING_ENCRYPTION_KEY', process.env.ORDER_TRACKING_ENCRYPTION_KEY);
             await upsertEnv('ALEXA_IDENTITY_HMAC_KEY', process.env.ALEXA_IDENTITY_HMAC_KEY);
+            await upsertEnv('BETA_VERCEL_ORIGIN_SECRET', process.env.BETA_VERCEL_ORIGIN_SECRET);
           })().catch((err) => {
             console.error(err);
             process.exit(1);

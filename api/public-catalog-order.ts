@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { Timestamp } from 'firebase-admin/firestore';
-import { getFirebaseAdmin, mapCoreErrorToHttp } from './_firebaseAdmin.js';
+import { assertBetaEdgeRequest, getFirebaseAdmin, mapCoreErrorToHttp } from './_firebaseAdmin.js';
 
 const require = createRequire(import.meta.url);
 const { handleSubmitPublicCatalogOrderCore } = require('../functions/orders/publicCatalogOrderCore.js');
@@ -24,6 +24,7 @@ export default async function handler(
   }
 
   try {
+    assertBetaEdgeRequest(req.headers?.['x-beta-edge-secret']);
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const { firestore } = getFirebaseAdmin();
     const result = await handleSubmitPublicCatalogOrderCore(body, {

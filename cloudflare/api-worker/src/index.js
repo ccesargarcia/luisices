@@ -17,7 +17,7 @@ const DEFAULT_ORIGINS = {
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
-  'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept, X-Client-Version, X-Requested-With, x-origin-secret, sentry-trace, baggage',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept, X-Client-Version, X-Requested-With, x-origin-secret, x-beta-edge-secret, sentry-trace, baggage',
   'Access-Control-Expose-Headers': 'X-MCP-Trace-Id, X-Edge-Origin-Ms, X-Edge-Elapsed-Ms, Server-Timing',
   'Access-Control-Max-Age': '86400',
 };
@@ -34,6 +34,73 @@ const handler = {
     }
 
     const url = new URL(request.url);
+
+    // API Beta Vercel: somente rotas selecionadas são encaminhadas. O domínio
+    // beta principal permanece apontando diretamente para a Vercel.
+    if (url.hostname === 'api.beta.luisices.com.br') {
+      const allowedRoutes = new Map([
+        ['/api/public-catalog-order', new Set(['POST'])],
+        ['/api/public-order-tracking', new Set(['GET', 'HEAD'])],
+        ['/api/order-tracking', new Set(['POST'])],
+      ]);
+      const allowedMethods = allowedRoutes.get(url.pathname);
+      if (!allowedMethods || !allowedMethods.has(request.method)) {
+        return new Response(JSON.stringify({ error: { code: 'not-found', message: 'Rota não encontrada.' } }), {
+          status: allowedMethods ? 405 : 404,
+          headers: { ...CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+        });
+      }
+
+      const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
+      if (env.PUBLIC_ORDER_TRACKING_LIMITER) {
+        const { success } = await env.PUBLIC_ORDER_TRACKING_LIMITER.limit({ key: `beta:${url.pathname}:${clientIp}` });
+        if (!success) {
+          return new Response(JSON.stringify({ error: { code: 'resource-exhausted', message: 'Muitas requisições. Aguarde um pouco e tente novamente.' } }), {
+            status: 429,
+            headers: { ...CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+          });
+        }
+      }
+
+      const upstreamUrl = new URL(url.pathname + url.search, 'https://beta.luisices.com.br');
+      const upstreamHeaders = new Headers(request.headers);
+      upstreamHeaders.delete('host');
+      const betaOriginSecret = env.BETA_VERCEL_ORIGIN_SECRET ? env.BETA_VERCEL_ORIGIN_SECRET.trim() : '';
+      if (!betaOriginSecret) {
+        return new Response(JSON.stringify({ error: { code: 'unavailable', message: 'Serviço temporariamente indisponível.' } }), {
+          status: 503,
+          headers: { ...CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+        });
+      }
+      upstreamHeaders.set('x-beta-edge-secret', betaOriginSecret);
+      upstreamHeaders.set('x-forwarded-host', url.hostname);
+      upstreamHeaders.set('x-forwarded-proto', 'https');
+      if (clientIp !== 'unknown') upstreamHeaders.set('x-forwarded-for', clientIp);
+      const body = ['GET', 'HEAD'].includes(request.method) ? undefined : await request.arrayBuffer();
+
+      try {
+        const upstream = await fetch(upstreamUrl, {
+          method: request.method,
+          headers: upstreamHeaders,
+          body,
+          redirect: 'manual',
+        });
+        const responseHeaders = new Headers(upstream.headers);
+        for (const [name, value] of Object.entries(CORS_HEADERS)) responseHeaders.set(name, value);
+        responseHeaders.set('Cache-Control', 'no-store');
+        return new Response(upstream.body, {
+          status: upstream.status,
+          statusText: upstream.statusText,
+          headers: responseHeaders,
+        });
+      } catch (error) {
+        console.error('beta_vercel_api_proxy_failed', { path: url.pathname, message: error?.message });
+        return new Response(JSON.stringify({ error: { code: 'unavailable', message: 'Serviço temporariamente indisponível.' } }), {
+          status: 502,
+          headers: { ...CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+        });
+      }
+    }
 
     // Protege a consulta pública do pedido antes de encaminhar ao Firebase.
     // Limite de 30 chamadas por minuto por IP, separado por ambiente.

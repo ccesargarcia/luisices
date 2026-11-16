@@ -1,7 +1,7 @@
 # Pedido público da loja
 
 - **ID:** `public-store-checkout`
-- **Status:** Pronta (baseline do comportamento atual)
+- **Status:** Implementada localmente; publicação Beta pendente de workflows com credenciais Cloudflare/Vercel
 - **Responsável:** Luisices
 - **Atualizado em:** 2026-11-12
 - **Referências:** `docs/FUNCIONALIDADES.md`; `docs/MODELAGEM_AMEACAS_SEGURANCA.md`; `functions/README.md`; `functions/orders/catalog.js`; `functions/orders/index.js`; `functions/common/rateLimiters.js`; `src/app/pages/PublicCatalog.tsx`; `src/app/pages/StoreOrders.tsx`; `src/services/firebaseCatalogOrderService.ts`; `firestore.rules`; `tests/unit/public-checkout-callable.test.ts`; `tests/e2e/store-checkout.spec.ts`.
@@ -10,7 +10,7 @@
 
 A vitrine pública permite consultar produtos publicados, montar uma sacola e solicitar uma encomenda. O backend persiste uma entrada em `catalogOrders` após recalcular os valores a partir do catálogo e verificar as configurações da loja. A interface então apresenta um texto de WhatsApp pré-preenchido para o cliente.
 
-Esta spec consolida o fluxo existente, incluindo o recebimento e a conversão administrativa da encomenda em pedido interno. Não propõe mudanças funcionais. Código local e testes não comprovam que Workers, secrets, regras WAF ou Functions estejam publicados em determinado ambiente.
+Esta spec consolida o fluxo da encomenda e registra a proteção de borda implementada para a rota Vercel Beta. Código local não comprova que DNS, Worker ou secrets tenham sido publicados em determinado ambiente.
 
 ## Objetivos
 
@@ -23,7 +23,7 @@ Esta spec consolida o fluxo existente, incluindo o recebimento e a conversão ad
 - Pagamento online, cobrança, confirmação de venda ou reserva/baixa de estoque.
 - Edição/publicação de produtos e personalização completa da loja, salvo as configurações que governam disponibilidade e pedido mínimo.
 - Pedido da loja criado por outros canais, como Alexa/MCP, e integrações de frete.
-- Redesenho da política de rate limiting, configuração de Cloudflare/WAF, migração de documentos ou publicação remota.
+- Migração de documentos e publicação remota manual fora dos workflows versionados.
 
 ## Atores e permissões
 
@@ -56,7 +56,7 @@ Esta spec consolida o fluxo existente, incluindo o recebimento e a conversão ad
 - **CA-4 (RF-6):** loja desabilitada, configuração ausente/inválida, subtotal abaixo do mínimo ou total desatualizado impedem persistência; preço desatualizado exige revisão antes de nova confirmação.
 - **CA-5 (RF-7):** caracteres de controle e strings excessivas não chegam sem sanitização ao registro; imagem persistida vem do produto oficial.
 - **CA-6 (RF-8):** retry com mesma chave e payload confirmado devolve o mesmo ID/código sem duplicar; mesma chave com conteúdo diferente falha; uma nova intenção de compra gera chave diferente.
-- **CA-7 (RF-9):** rate limiter é consumido antes de operações de Firestore e excesso resulta em rejeição. Documentação de produto não descreve o limitador em memória como distribuído nem garante proteção de borda para checkout sem configuração comprovada.
+- **CA-7 (RF-9):** o checkout mantém o limite backend existente e, quando roteado pela Vercel Beta, também passa pelo Worker em `api.beta`, limitado a 30 chamadas/minuto por caminho/IP. O Worker exige segredo de origem e o handler Vercel rejeita chamadas sem ele. O limite Cloudflare é aproximado por localidade, não global estrito; a proteção remota só é considerada ativa após confirmação do workflow.
 - **CA-8 (RF-10):** escrita direta em `catalogOrders` é negada a anônimos e autenticados; operador sem perfil ativo/permissão da loja não pode consultar ou gerir o histórico.
 - **CA-9 (RF-11, RF-12):** status e exclusão só mudam pelo operador autorizado; conversão cria no máximo um pedido interno vinculado e persiste o vínculo de conversão. Dados legados sem verificação server-side são revalidados antes de virarem pedido de produção.
 - **CA-10 (RF-4, RF-12):** dados de contato inseridos durante a conversão passam a compor o pedido interno, mas a submissão pública inicial não afirma armazenar o nome ou telefone do visitante.
@@ -95,7 +95,7 @@ Esta spec consolida o fluxo existente, incluindo o recebimento e a conversão ad
 - **Confirmado:** o skill Cloudflare e os documentos consultados identificam proteção edge para tracking; isso não comprova uma regra WAF para o checkout.
 - **Confirmado:** cliente e telefone são fornecidos pela equipe ao converter para o pedido interno.
 - **Em aberto:** política de retenção e prazo de exclusão dos registros não está estabelecida nesta spec.
-- **Em aberto:** limites efetivos, regras WAF, estado de Secrets/Workers e rate limit remoto precisam ser verificados por ambiente antes de mudar ou anunciar postura operacional.
+- **Implementado localmente:** `api.beta.luisices.com.br` roteia as três APIs selecionadas ao Worker, e o segredo de origem é sincronizado pelos workflows de Dev. Ainda é necessário confirmar a execução remota dos workflows para comprovar DNS, rota e secrets ativos.
 - **Em aberto:** a composição integral do documento público `storeSettings/public` deve continuar restrita a configurações que podem ser lidas anonimamente; alterações nesse schema requerem revisão de privacidade.
 
 ## Validação
@@ -106,4 +106,5 @@ Esta spec consolida o fluxo existente, incluindo o recebimento e a conversão ad
 
 ## Evidências de conclusão
 
-- `<preencher após validação desta baseline documental>`
+- Revisados `docs/VERCEL_BETA_ROUTING.md`, `docs/MODELAGEM_AMEACAS_SEGURANCA.md`, `docs/FUNCIONALIDADES.md` e workflows; impacto Copiloto/MCP: nenhum, pois os endpoints e contratos dessas integrações não mudam.
+- Typecheck e diff serão registrados após a implementação local; deploy/DNS remotos não foram executados nesta sessão por ausência de credencial Cloudflare local.

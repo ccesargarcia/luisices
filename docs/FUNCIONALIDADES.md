@@ -119,6 +119,8 @@ Alexa é uma integração independente, com pareamento, autorização e modos de
 
 Links públicos de acompanhamento de pedidos podem ser criados, listados, copiados, revogados e excluídos conforme o estado do pedido e a autorização do usuário. A configuração do template e da identidade visual pertence às configurações da loja; o acesso público é servido por endpoint próprio. A disponibilidade depende da publicação das Functions e do secret `ORDER_TRACKING_ENCRYPTION_KEY` no ambiente.
 
+No Beta Vercel, submissão da loja pública e consultas/gestão de links de acompanhamento usam `api.beta.luisices.com.br`, com limite Cloudflare e segredo de origem Worker→Vercel. A cobertura remota depende da configuração de DNS, Worker e secrets pelos workflows; consulte o [guia de roteamento Beta](VERCEL_BETA_ROUTING.md).
+
 Fontes: [constantes compartilhadas](../functions/alexa/constants.js), [configuração Alexa](../functions/alexa/config.js), [diálogo](../functions/alexa/dialog.js), [Functions de acompanhamento](../functions/orders/index.js).
 
 ## Mobile e instalação

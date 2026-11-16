@@ -101,8 +101,14 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BETA_VERCEL_ORIGIN_SECRET: ${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
         run: |
           echo "🚀 Realizando deploy do API Gateway Worker em DEV (api.dev.luisices.com.br)..."
+          if [ -z "$BETA_VERCEL_ORIGIN_SECRET" ]; then
+            echo "❌ Secret DEV_ORIGIN_SECRET ou ORIGIN_SECRET obrigatório para proteger api.beta."
+            exit 1
+          fi
+          printf '%s' "$BETA_VERCEL_ORIGIN_SECRET" | npm run cloudflare:secret:beta-origin:dev
           if [ -n "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ]; then
             echo "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" | npx wrangler secret put ORIGIN_SECRET -c cloudflare/api-worker/wrangler.toml -e dev || true
           fi

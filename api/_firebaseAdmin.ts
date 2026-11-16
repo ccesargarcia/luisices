@@ -2,6 +2,7 @@ import { getApps, initializeApp, cert, type App } from 'firebase-admin/app';
 import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, initializeFirestore, type Firestore } from 'firebase-admin/firestore';
 import { getStorage, type Storage } from 'firebase-admin/storage';
+import { timingSafeEqual } from 'node:crypto';
 
 interface FirebaseAdminBundle {
   app: App;
@@ -86,6 +87,17 @@ export class ApiHttpError extends Error {
     super(message);
     this.statusCode = statusCode;
     this.code = code;
+  }
+}
+
+export function assertBetaEdgeRequest(rawHeader: string | string[] | undefined) {
+  const expected = process.env.BETA_VERCEL_ORIGIN_SECRET || '';
+  const supplied = Array.isArray(rawHeader) ? rawHeader[0] || '' : String(rawHeader || '');
+  if (!expected || !supplied) throw new ApiHttpError(403, 'permission-denied', 'Origem não autorizada.');
+  const expectedBuffer = Buffer.from(expected);
+  const suppliedBuffer = Buffer.from(supplied);
+  if (expectedBuffer.length !== suppliedBuffer.length || !timingSafeEqual(expectedBuffer, suppliedBuffer)) {
+    throw new ApiHttpError(403, 'permission-denied', 'Origem não autorizada.');
   }
 }
 

@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { FieldValue } from 'firebase-admin/firestore';
 import {
+  assertBetaEdgeRequest,
   assertActiveSessionFromBearer,
   getFirebaseAdmin,
   mapCoreErrorToHttp,
@@ -39,6 +40,7 @@ export default async function handler(
   }
 
   try {
+    assertBetaEdgeRequest(req.headers?.['x-beta-edge-secret']);
     const { auth, firestore } = getFirebaseAdmin();
     const session = await assertActiveSessionFromBearer(
       auth,
