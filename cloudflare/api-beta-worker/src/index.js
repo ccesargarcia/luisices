@@ -6,6 +6,7 @@ const CORS_HEADERS = {
 };
 
 const ALLOWED_ROUTES = new Map([
+  ['/api/public-catalog-products', new Set(['GET', 'HEAD'])],
   ['/api/public-catalog-order', new Set(['POST'])],
   ['/api/public-order-tracking', new Set(['GET', 'HEAD'])],
   ['/api/order-tracking', new Set(['POST'])],
