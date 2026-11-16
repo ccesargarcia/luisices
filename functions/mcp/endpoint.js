@@ -3,11 +3,22 @@
  * Configurado com minInstances: 0 para custo zero quando inativo.
  */
 
-const { onRequest } = require('../common/sentryFunctions');
+let onRequest;
+try {
+  ({ onRequest } = require('../common/sentryFunctions'));
+} catch {
+  onRequest = (_opts, handler) => handler;
+}
 const { getFirestore } = require('firebase-admin/firestore');
 const getAuth = () => require('firebase-admin/auth').getAuth();
 const { validateMcpRequest: validateMcpRequestWithoutTrace, touchKeyUsage } = require('./auth');
-const { traceMcpRequest, traceMcpStep } = require('./tracing');
+let traceMcpRequest = (_req, _res, work) => work();
+let traceMcpStep = (_phase, work) => work();
+try {
+  ({ traceMcpRequest, traceMcpStep } = require('./tracing'));
+} catch {
+  // Ambiente sem @sentry/node (ex.: Vercel Functions) executa sem spans do Sentry.
+}
 const {
   getOauthProtectedResourceMetadata,
   getOauthAuthorizationServerMetadata,
@@ -21,9 +32,19 @@ const { TOOL_SCOPE_MAP, MCP_SCOPES } = require('./constants');
 const { buildOpenApiSchema, TOOLS_METADATA } = require('./openapi');
 const { validateToolArguments } = require('./validation');
 const { createMcpAiServices } = require('./aiServices');
-const { ORIGIN_SECRET } = require('../common/secrets');
+let ORIGIN_SECRET = null;
+try {
+  ({ ORIGIN_SECRET } = require('../common/secrets'));
+} catch {
+  ORIGIN_SECRET = null;
+}
 const { validateOriginSecret } = require('../originProtection');
-const { captureApiError } = require('../common/sentry');
+let captureApiError = () => {};
+try {
+  ({ captureApiError } = require('../common/sentry'));
+} catch {
+  captureApiError = () => {};
+}
 const { formatToolResultText, publicErrorMessage } = require('./presentation');
 
 const MCP_ASSISTANT_INSTRUCTIONS = [
@@ -278,10 +299,12 @@ const chatGptToolsEndpoint = onRequest(
 
     const isProd = process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard';
     // Domínio público fixo por ambiente; não derive issuer/challenges de Host fornecido pelo cliente.
-    const apiDomain = isProd ? 'api.luisices.com.br' : 'api.dev.luisices.com.br';
+    const apiDomain = process.env.VERCEL_MCP_DOMAIN || (isProd ? 'api.luisices.com.br' : 'api.dev.luisices.com.br');
 
     const protocol = 'https';
-    const baseUrl = `https://${apiDomain}/chatGptToolsEndpoint`;
+    const baseUrl = process.env.VERCEL_MCP_ORIGIN
+      ? process.env.VERCEL_MCP_ORIGIN
+      : `https://${apiDomain}/chatGptToolsEndpoint`;
 
     try {
 

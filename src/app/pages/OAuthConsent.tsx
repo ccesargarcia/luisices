@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { resolveOAuthApiOrigin } from '../utils/oauthEnvironment';
+import { isVercelBetaHost } from '../utils/betaHost';
 
 const SCOPE_DESCRIPTIONS: Record<string, { label: string; description: string }> = {
   'orders:read': { label: 'Consultar Pedidos & Prazos', description: 'Visualizar a fila de produção, consultar entregas em um período de até 31 dias e verificar o status dos pedidos.' },
@@ -43,6 +44,9 @@ export function OAuthConsent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const apiOrigin = useMemo(() => {
     if (typeof window === 'undefined') return null;
+    if (isVercelBetaHost()) {
+      return window.location.origin;
+    }
     return resolveOAuthApiOrigin({
       hostname: window.location.hostname,
       isDevelopmentBuild: import.meta.env.DEV,

@@ -5,7 +5,12 @@
  */
 
 const crypto = require('crypto');
-const { defineSecret } = require('firebase-functions/params');
+let defineSecret;
+try {
+  ({ defineSecret } = require('firebase-functions/params'));
+} catch {
+  defineSecret = (name) => ({ value: () => process.env[name] || '' });
+}
 
 const ORIGIN_SECRET = defineSecret('ORIGIN_SECRET');
 

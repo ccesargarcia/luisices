@@ -33,6 +33,30 @@
   ],
   "rewrites": [
     {
+      "source": "/.well-known/(.*)",
+      "destination": "/api/mcp-server?mcpPath=.well-known/$1"
+    },
+    {
+      "source": "/oauth/(.*)",
+      "destination": "/api/mcp-server?mcpPath=oauth/$1"
+    },
+    {
+      "source": "/tools/(.*)",
+      "destination": "/api/mcp-server?mcpPath=tools/$1"
+    },
+    {
+      "source": "/mcp",
+      "destination": "/api/mcp-server?mcpPath=mcp"
+    },
+    {
+      "source": "/mcp/(.*)",
+      "destination": "/api/mcp-server?mcpPath=mcp/$1"
+    },
+    {
+      "source": "/(ai-plugin\\.json|plugin\\.json|openapi\\.json|openapi\\.yaml)",
+      "destination": "/api/mcp-server?mcpPath=$1"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }

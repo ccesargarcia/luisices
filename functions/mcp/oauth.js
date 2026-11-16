@@ -14,10 +14,14 @@ try {
   // Ambiente sem @sentry/node (ex.: Vercel Functions) executa sem span do Sentry.
 }
 
-const APP_ORIGIN = () => process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard'
-  ? 'https://luisices.com.br' : 'https://dev.luisices.com.br';
-const OAUTH_ORIGIN = () => process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard'
-  ? 'https://api.luisices.com.br' : 'https://api.dev.luisices.com.br';
+const APP_ORIGIN = () => process.env.VERCEL_MCP_ORIGIN
+  ? process.env.VERCEL_MCP_ORIGIN
+  : (process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard'
+    ? 'https://luisices.com.br' : 'https://dev.luisices.com.br');
+const OAUTH_ORIGIN = () => process.env.VERCEL_MCP_ORIGIN
+  ? process.env.VERCEL_MCP_ORIGIN
+  : (process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard'
+    ? 'https://api.luisices.com.br' : 'https://api.dev.luisices.com.br');
 const ALLOWED_SCOPES = new Set(Object.values(MCP_SCOPES).map((scope) => scope.id));
 const INTERNAL_OAUTH_CLIENT = Object.freeze({
   clientId: 'chatgpt-mcp',
