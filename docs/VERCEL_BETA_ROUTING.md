@@ -8,8 +8,8 @@ Este guia documenta a arquitetura paralela de desenvolvimento na Vercel (`beta.l
 
 - **Firebase Hosting (Dev tradicional):** `dev.luisices.com.br` e `loja.dev.luisices.com.br`, publicados via [deploy-dev.yml](../.github/workflows/deploy-dev.yml).
 - **Vercel (Beta em `gru1`):** `beta.luisices.com.br` e `loja.beta.luisices.com.br`, publicados em paralelo na branch `develop` via [deploy-vercel-dev.yml](../.github/workflows/deploy-vercel-dev.yml) e [vercel.json](../vercel.json).
-- **Gateway de APIs selecionadas:** `api.beta.luisices.com.br` é associado ao Worker isolado `functions-beta`, separado de `functions-dev` (`api.dev`). O Worker encaminha apenas `POST /api/public-catalog-order`, `GET|HEAD /api/public-order-tracking` e `POST /api/order-tracking`; demais rotas recebem 404/405. O limite de borda é de 30 chamadas por minuto e por caminho/IP, usando o namespace de desenvolvimento existente `6634920188`.
-- **Proteção da origem Vercel:** o Worker injeta `x-beta-edge-secret`, e as três Functions verificam o valor em tempo constante contra `BETA_VERCEL_ORIGIN_SECRET`. O workflow de Dev sincroniza `DEV_ORIGIN_SECRET` (ou `ORIGIN_SECRET` como fallback) para a Vercel e o binding secreto do Worker.
+- **Gateway de APIs selecionadas:** `api.beta.luisices.com.br` é associado ao Worker isolado `functions-beta`, separado de `functions-dev` (`api.dev`). O Worker encaminha `GET|HEAD /api/public-catalog-products`, `POST /api/public-catalog-order`, `GET|HEAD /api/public-order-tracking` e `POST /api/order-tracking`; demais rotas recebem 404/405. O limite de borda é de 30 chamadas por minuto e por caminho/IP, usando o namespace de desenvolvimento existente `6634920188`.
+- **Proteção da origem Vercel:** o Worker injeta `x-beta-edge-secret`, e as quatro Functions verificam o valor em tempo constante contra `BETA_VERCEL_ORIGIN_SECRET`. O workflow de Dev sincroniza `DEV_ORIGIN_SECRET` (ou `ORIGIN_SECRET` como fallback) para a Vercel e o binding secreto do Worker.
 - **Observabilidade:** o `@vercel/speed-insights` em [App.tsx](../src/app/App.tsx) é instanciado somente quando `isVercelBetaHost()` ([betaHost.ts](../src/app/utils/betaHost.ts)) é verdadeiro (mobile e desktop).
 
 ---
@@ -46,7 +46,7 @@ O roteamento é controlado em tempo real via documento `storeSettings/public` (c
 - **`autoFallbackToGcp` (`boolean`):** quando ativo, falhas de infraestrutura na Vercel (`5xx`, timeout ou erro de rede) acionam automaticamente a Cloud Function equivalente no GCP via `executeWithGcpFallback`. Erros de negócio/validação (`400`, `401`, `403`, `404`, `409`, `412`) **não** acionam fallback.
 - **`routes.*` (`'inherit' | 'vercel' | 'gcp'`):** permite forçar rotas individuais (`galleryMedia`, `publicCatalogProducts`, `publicCatalogOrder`, `publicOrderTracking`, `orderTrackingAdmin`, `aiChat`, `alexa`, `mcpAdmin`) sem alterar as demais.
 - **Segurança por host:** fora de `beta.luisices.com.br` e `loja.beta.luisices.com.br`, `resolveEffectiveProvider` sempre retorna `'gcp'`.
-- **Chamadas de API Beta:** as três rotas acima usam `api.beta.luisices.com.br`; as demais APIs continuam no host Beta e o roteamento/fallback por serviço permanece controlado pelo feature flag. A proteção de origem impede chamadas diretas às rotas Vercel protegidas sem passar pelo Worker.
+- **Chamadas de API Beta:** as quatro rotas acima usam `api.beta.luisices.com.br`; as demais APIs continuam no host Beta e o roteamento/fallback por serviço permanece controlado pelo feature flag. A proteção de origem impede chamadas diretas às rotas Vercel protegidas sem passar pelo Worker.
 - **Monitoramento e gráfico de fallbacks:** sempre que `executeWithGcpFallback` aciona o fallback para GCP, um evento é gravado localmente e sincronizado (para sessões autenticadas com permissão) em `storeSettings/backendRoutingTelemetry`, exibindo um gráfico `Recharts` por rota e os últimos eventos em **Configurações → Avançado & Segurança**.
 
 ---
@@ -59,5 +59,5 @@ O roteamento é controlado em tempo real via documento `storeSettings/public` (c
 ## Provisionamento e limites operacionais
 
 - [deploy-vercel-dev.yml](../.github/workflows/deploy-vercel-dev.yml) mantém os CNAMEs beta da Vercel como DNS-only. [deploy-cloudflare-beta.yml](../.github/workflows/deploy-cloudflare-beta.yml) publica somente `functions-beta`, configura o segredo de origem e atribui apenas o Custom Domain `api.beta` pela API da Cloudflare. O workflow não publica `functions-dev` nem altera `api.dev`; a associação existente de DNS/certificado do Custom Domain é preservada.
-- O rate limiter do Worker é aproximado por localização da Cloudflare, não um contador global estrito. A proteção de origem evita bypass direto das três rotas limitadas, mas o limite pode variar entre localidades; limites estritos globais exigiriam estado coordenado.
+- O rate limiter do Worker é aproximado por localização da Cloudflare, não um contador global estrito. A proteção de origem evita bypass direto das quatro rotas limitadas, mas o limite pode variar entre localidades; limites estritos globais exigiriam estado coordenado.
 - A criação remota do DNS e o deploy só são comprovados após execução bem-sucedida dos workflows com `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `VERCEL_TOKEN` e `DEV_ORIGIN_SECRET` (ou `ORIGIN_SECRET`) configurados.

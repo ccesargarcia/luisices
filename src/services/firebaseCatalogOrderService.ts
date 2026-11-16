@@ -56,7 +56,7 @@ class FirebaseCatalogOrderService {
     return executeWithGcpFallback(
       'publicCatalogProducts',
       async () => {
-        const response = await fetch('/api/public-catalog-products', {
+        const response = await fetch(getVercelBetaApiUrl('/api/public-catalog-products'), {
           method: 'GET',
           cache: 'no-store',
         });

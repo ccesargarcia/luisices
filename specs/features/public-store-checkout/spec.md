@@ -1,9 +1,9 @@
 # Pedido público da loja
 
 - **ID:** `public-store-checkout`
-- **Status:** Implementada localmente; publicação Beta pendente de workflows com credenciais Cloudflare/Vercel
+- **Status:** Em andamento — gateway Beta publicado; migração da leitura de produtos para o gateway em validação
 - **Responsável:** Luisices
-- **Atualizado em:** 2026-11-12
+- **Atualizado em:** 2026-11-16
 - **Referências:** `docs/FUNCIONALIDADES.md`; `docs/MODELAGEM_AMEACAS_SEGURANCA.md`; `functions/README.md`; `functions/orders/catalog.js`; `functions/orders/index.js`; `functions/common/rateLimiters.js`; `src/app/pages/PublicCatalog.tsx`; `src/app/pages/StoreOrders.tsx`; `src/services/firebaseCatalogOrderService.ts`; `firestore.rules`; `tests/unit/public-checkout-callable.test.ts`; `tests/e2e/store-checkout.spec.ts`.
 
 ## Problema e contexto
@@ -35,7 +35,7 @@ Esta spec consolida o fluxo da encomenda e registra a proteção de borda implem
 
 ## Requisitos funcionais observados
 
-- **RF-1 — Projeção pública:** `getPublicCatalogProducts` devolve uma allowlist de campos necessários à vitrine; não entrega documentos completos de `storeProducts`. Produtos publicados como `active` ou `paused` podem aparecer na projeção; somente `active` é aceito para nova encomenda. Produtos ocultos/ inválidos ficam fora do resultado.
+- **RF-1 — Projeção pública:** `getPublicCatalogProducts` devolve uma allowlist de campos necessários à vitrine; não entrega documentos completos de `storeProducts`. Produtos publicados como `active` ou `paused` podem aparecer na projeção; somente `active` é aceito para nova encomenda. Produtos ocultos/inválidos ficam fora do resultado. No host Beta, a leitura Vercel usa `api.beta.luisices.com.br` e exige segredo de origem; o fallback GCP e o contrato da resposta permanecem iguais.
 - **RF-2 — Disponibilidade da vitrine:** se `storeSettings/public` não existe ou a loja tem `storePublished === false`, a callable de leitura devolve lista vazia. A configuração pública é legível pelas Rules, portanto esse documento só pode conter campos destinados a leitura pública.
 - **RF-3 — Sacola e confirmação:** a página mantém sacola no `localStorage` e observações da encomenda na sessão do navegador. Ao confirmar, registra primeiro a encomenda via `submitPublicCatalogOrder`; somente após sucesso mostra o código oficial e monta/abre um link `wa.me`. Se o popup for bloqueado, oferece o link para abertura manual. Uma encomenda registrada não prova que o visitante enviou a mensagem ou concluiu a compra.
 - **RF-4 — Dados recebidos:** a submissão persiste itens verificados, quantidades, personalização aceita, observações, subtotal oficial, subtotal submetido, código, status e indicadores de verificação. O endpoint atual não persiste nome ou telefone do visitante. Dados de contato são preenchidos no fluxo interno quando a equipe converte a encomenda.
@@ -43,7 +43,7 @@ Esta spec consolida o fluxo da encomenda e registra a proteção de borda implem
 - **RF-6 — Pedido mínimo e preço alterado:** o backend exige configuração existente da loja, respeita publicação e flags de desativação de encomendas, valida o mínimo configurado e compara `submittedSubtotal` com o total recalculado. Se o preço mudou desde a exibição, rejeita com conflito e solicita revisão da sacola; não grava uma encomenda com total diferente sem confirmação do cliente.
 - **RF-7 — Sanitização:** notas do cliente são limitadas e caracteres de controle são removidos antes de persistir. Personalização textual aceita também é limitada e sanitizada. O backend compõe a imagem a partir do produto oficial, não da URL fornecida pelo cliente.
 - **RF-8 — Idempotência:** a interface deriva uma chave da intenção da sacola/observações e guarda a tentativa em `sessionStorage`. No backend, chave válida cria ID determinístico por hash da chave e a gravação usa transação; repetição compatível retorna o registro existente e conteúdo diferente com a mesma chave é recusado. Sem chave válida, é criado ID aleatório, sem a mesma garantia de replay determinístico.
-- **RF-9 — Limite de abuso:** antes de consultar/gravar dados da encomenda, a callable consome um limitador de 10 tentativas por 15 minutos, por IP confiável, usando `RateLimiterMemory`. Esse estado é local à instância e não é compartilhado de forma distribuída. A documentação/configuração disponível não comprova rate limit Cloudflare/WAF específico para o checkout; limites do endpoint de acompanhamento não devem ser atribuídos ao checkout.
+- **RF-9 — Limite de abuso:** antes de consultar/gravar dados da encomenda, a callable consome um limitador de 10 tentativas por 15 minutos, por IP confiável, usando `RateLimiterMemory`. Esse estado é local à instância e não é compartilhado de forma distribuída. No Beta, checkout e consulta pública de produtos também passam pelo limitador Cloudflare de 30 chamadas por minuto por caminho/IP; tracking continua no mesmo gateway. O limite edge é aproximado por localidade, não global estrito.
 - **RF-10 — Firestore:** regras negam criação direta em `catalogOrders` para anônimos e usuários autenticados. Leitura, atualização e exclusão do histórico exigem perfil ativo e admin ou permissão da loja. A gravação pública passa pela callable com Admin SDK.
 - **RF-11 — Gestão e estados:** a tela interna lista/escuta o histórico, permite atualizar status (`received`, `in_contact`, `converted`, `cancelled`) e excluir o registro. A exclusão é definitiva no fluxo atual. A disponibilidade dos controles depende da autorização da tela e das Rules.
 - **RF-12 — Conversão em produção:** pessoa autorizada informa os dados de atendimento necessários (nome, telefone e entrega) e a equipe converte pelo caminho de `createOrder`, associando o `catalogOrderId`. A transação cria pedido/ledger e marca a encomenda como convertida com referência ao pedido. Pedidos legados sem `verifiedByServer` têm preço recalculado contra o catálogo antes da conversão; pedidos verificados usam os valores oficiais persistidos na submissão. Repetir conversão reconhece o vínculo existente em vez de criar outro pedido.
@@ -60,6 +60,7 @@ Esta spec consolida o fluxo da encomenda e registra a proteção de borda implem
 - **CA-8 (RF-10):** escrita direta em `catalogOrders` é negada a anônimos e autenticados; operador sem perfil ativo/permissão da loja não pode consultar ou gerir o histórico.
 - **CA-9 (RF-11, RF-12):** status e exclusão só mudam pelo operador autorizado; conversão cria no máximo um pedido interno vinculado e persiste o vínculo de conversão. Dados legados sem verificação server-side são revalidados antes de virarem pedido de produção.
 - **CA-10 (RF-4, RF-12):** dados de contato inseridos durante a conversão passam a compor o pedido interno, mas a submissão pública inicial não afirma armazenar o nome ou telefone do visitante.
+- **CA-11 (RF-1, RF-9):** no host Beta, a leitura pública do catálogo passa pelo Worker `functions-beta`, mantém o mesmo payload e fallback GCP e retorna os dados sem cache. A Vercel recusa chamada direta sem `x-beta-edge-secret`; a rota do Worker permite apenas GET/HEAD, aplica limite por caminho/IP e não encaminha a rota para outras origens/hosts.
 
 ## Requisitos não funcionais e integridade
 
@@ -95,16 +96,16 @@ Esta spec consolida o fluxo da encomenda e registra a proteção de borda implem
 - **Confirmado:** o skill Cloudflare e os documentos consultados identificam proteção edge para tracking; isso não comprova uma regra WAF para o checkout.
 - **Confirmado:** cliente e telefone são fornecidos pela equipe ao converter para o pedido interno.
 - **Em aberto:** política de retenção e prazo de exclusão dos registros não está estabelecida nesta spec.
-- **Isolamento de deploy:** `api.beta.luisices.com.br` é associado ao Worker dedicado `functions-beta`. O workflow Beta publica esse Worker e atualiza somente a associação do Custom Domain `api.beta`, preservando o vínculo independente de `api.dev` com `functions-dev`. O contrato das três rotas não muda; portanto não há impacto esperado no Copiloto (Gemini) nem no MCP/ChatGPT. A confirmação de estado remoto deve ser feita no workflow dedicado e na validação pós-deploy.
+- **Isolamento de deploy:** `api.beta.luisices.com.br` é associado ao Worker dedicado `functions-beta`. O workflow Beta publica esse Worker e atualiza somente a associação do Custom Domain `api.beta`, preservando o vínculo independente de `api.dev` com `functions-dev`. O gateway encaminha quatro rotas públicas/selecionadas, incluindo a leitura pública do catálogo; as respectivas Vercel Functions exigem `BETA_VERCEL_ORIGIN_SECRET`, inclusive a leitura de catálogo, para impedir bypass direto da borda. A alteração não muda contratos nem lógica do Copiloto (Gemini) ou MCP/ChatGPT. A publicação isolada do Worker já foi confirmada; a ativação da leitura no cliente e no handler aguarda o deploy Vercel.
 - **Em aberto:** a composição integral do documento público `storeSettings/public` deve continuar restrita a configurações que podem ser lidas anonimamente; alterações nesse schema requerem revisão de privacidade.
 
 ## Validação
 
 - Revisão documental e das fontes de código listadas acima.
-- `npm run typecheck` e `git diff --check` para esta alteração documental.
+- `npm run typecheck`, testes dedicados `tests/unit/api-beta-worker.test.ts` e `git diff --check`.
 - Para mudanças futuras do checkout: `tests/unit/public-checkout-callable.test.ts`, `tests/unit/security-hardening.test.ts`, `tests/unit/security-attack-simulations.test.ts`, `tests/e2e/store-checkout.spec.ts` e validação no emulador/ambiente compatível conforme o domínio alterado.
 
 ## Evidências de conclusão
 
 - Revisados `docs/VERCEL_BETA_ROUTING.md`, `docs/MODELAGEM_AMEACAS_SEGURANCA.md`, `docs/FUNCIONALIDADES.md` e workflows; impacto Copiloto/MCP: nenhum, pois os endpoints e contratos dessas integrações não mudam.
-- Typecheck e diff serão registrados após a implementação local; deploy/DNS remotos não foram executados nesta sessão por ausência de credencial Cloudflare local.
+- Worker `functions-beta` atualizado no workflow `43975604342`; consulta controlada de `GET /api/public-catalog-products` via `api.beta` respondeu 200 e chegou à origem Vercel. O cliente Beta e o bloqueio de acesso direto ainda precisam ser comprovados após o deploy Vercel.

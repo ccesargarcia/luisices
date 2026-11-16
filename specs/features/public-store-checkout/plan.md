@@ -22,6 +22,9 @@ Manter o fluxo de negócio e acrescentar um gateway Cloudflare para as rotas sel
 - Nenhum contrato de payload, resposta ou dado persistido muda nesta entrega.
 - As URLs de transporte do Beta mudam para `api.beta.luisices.com.br` nas rotas de submissão pública e acompanhamento.
 - O gateway Beta deve ser implantado em Worker próprio (`functions-beta`); sua automação só pode atualizar a associação de `api.beta`, sem executar deploy ou alteração DNS/rota em `api.dev` (`functions-dev`).
+- A leitura `GET /api/public-catalog-products` do cliente Beta deve passar pelo gateway, com o segredo verificado na Function Vercel, mantendo o callable GCP de fallback e o payload público existente.
+- Fazer deploy em duas fases: primeiro disponibilizar a allowlist do Worker; confirmar a rota remota; depois publicar a verificação do segredo na Vercel e a mudança do cliente, evitando uma janela em que o frontend chame rota inexistente.
+- Aplicar o limitador existente ao caminho de catálogo e validar GET/HEAD permitidos, métodos/rotas negados, ausência de segredo, 429 e falha da origem; não alterar `api.dev`.
 - `x-beta-edge-secret` é interno Worker→Vercel; o navegador não o envia e o Worker substitui qualquer valor recebido pelo segredo configurado.
 - Preservar nomes de callables, formato de resposta e status persistidos.
 - O payload público é minimizado e não contém identificação de contato; conversão coleta esses dados no painel.
