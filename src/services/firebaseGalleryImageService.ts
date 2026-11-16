@@ -1,5 +1,6 @@
 import { auth } from '../lib/firebase';
 import { resolveOAuthApiOrigin } from '../app/utils/oauthEnvironment';
+import { getVercelBetaApiUrl } from '../app/utils/betaHost';
 import { executeWithGcpFallback, shouldUseVercelForRoute, VercelInfraError } from './backendRoutingService';
 
 const MAX_SESSION_IMAGE_CACHE = 80;
@@ -65,7 +66,7 @@ export function galleryMediaApiUrl(itemId?: string, storagePath?: string): strin
     const params = new URLSearchParams();
     if (itemId) params.set('itemId', itemId);
     if (storagePath) params.set('path', extractGalleryStoragePath(storagePath));
-    return `/api/gallery-media?${params.toString()}`;
+    return getVercelBetaApiUrl(`/api/gallery-media?${params.toString()}`);
   }
   return galleryMediaGcpUrl(itemId, storagePath);
 }
