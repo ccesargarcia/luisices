@@ -53,6 +53,7 @@ O webhook de voz Alexa e as rotas públicas da skill são implementações disti
 - **CA-4:** revisão confirma que o handler continua chamando os mesmos callables e não altera as verificações de papel, ownership e permissões; testes existentes do domínio Alexa continuam aprovando.
 - **CA-5:** deploy em duas fases: Worker Beta primeiro, depois Function/cliente; teste remoto confirma bypass 403, POST sem sessão pelo gateway 401, OPTIONS 204 e GET 405.
 - **CA-6:** nenhum deploy de Worker/Functions Dev e nenhuma alteração em `api.dev`.
+- **CA-7:** usuário autenticado abre Configurações → Alexa no Beta e consulta o status sem erro; usar somente a ação de leitura `getStatus` para a verificação manual.
 
 ## Requisitos não funcionais e integridade
 
@@ -98,4 +99,8 @@ O webhook de voz Alexa e as rotas públicas da skill são implementações disti
 
 ## Evidências de conclusão
 
-- Preencher após testes, deploy e verificação remota; não considerar integração de voz testada por esta migração.
+- `npm run typecheck` e `npm run build` passaram; 50 testes focados passaram em 8 arquivos; `git diff --check` passou.
+- Worker Beta [publicado](https://github.com/ccesargarcia/luisices/actions/runs/43987633541) e Vercel [publicada](https://github.com/ccesargarcia/luisices/actions/runs/43987891619), ambos com sucesso.
+- Verificações remotas: POST pelo gateway sem sessão `401`, bypass da origem `403`, OPTIONS `204` e GET `405`.
+- Worker Dev e Functions Dev ficaram `skipped`; Firebase Hosting Dev publicou o frontend pela mudança em `src`. `api.dev` não foi alterada.
+- Pendente: teste manual do painel Alexa com sessão autorizada (CA-7); a integração pública de voz não foi testada nem alterada.
