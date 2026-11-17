@@ -48,7 +48,7 @@ describe('Cloudflare Worker API Beta isolado', () => {
     vi.stubGlobal('fetch', upstreamFetch);
 
     const unknownPath = await betaWorker.fetch(
-      new Request('https://api.beta.luisices.com.br/api/mcp-admin'),
+      new Request('https://api.beta.luisices.com.br/api/not-allowlisted'),
       { BETA_VERCEL_ORIGIN_SECRET: originSecret },
     );
     const wrongHost = await betaWorker.fetch(
@@ -58,6 +58,89 @@ describe('Cloudflare Worker API Beta isolado', () => {
 
     expect(unknownPath.status).toBe(404);
     expect(wrongHost.status).toBe(404);
+    expect(upstreamFetch).not.toHaveBeenCalled();
+  });
+
+  it('encaminha somente POST do MCP Admin, preservando bearer e body e aplicando o limite por rota', async () => {
+    const upstreamFetch = vi.fn().mockResolvedValue(Response.json({ success: true }));
+    const limit = vi.fn().mockResolvedValue({ success: true });
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    const response = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/api/mcp-admin', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer firebase-user-token',
+          'Content-Type': 'application/json',
+          'cf-connecting-ip': '203.0.113.10',
+        },
+        body: JSON.stringify({ action: 'getStatus' }),
+      }),
+      { BETA_VERCEL_ORIGIN_SECRET: originSecret, BETA_VERCEL_API_LIMITER: { limit } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ success: true });
+    expect(limit).toHaveBeenCalledWith({ key: '/api/mcp-admin:203.0.113.10' });
+    const [targetUrl, options] = upstreamFetch.mock.calls[0];
+    expect(targetUrl.toString()).toBe('https://beta.luisices.com.br/api/mcp-admin');
+    expect(options.method).toBe('POST');
+    expect(options.headers.get('Authorization')).toBe('Bearer firebase-user-token');
+    expect(options.headers.get('x-beta-edge-secret')).toBe(originSecret);
+    expect(new TextDecoder().decode(options.body)).toBe(JSON.stringify({ action: 'getStatus' }));
+  });
+
+  it('nega métodos diferentes de POST em MCP Admin sem consultar a origem', async () => {
+    const upstreamFetch = vi.fn();
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    const response = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/api/mcp-admin', { method: 'GET' }),
+      { BETA_VERCEL_ORIGIN_SECRET: originSecret },
+    );
+
+    expect(response.status).toBe(405);
+    expect(upstreamFetch).not.toHaveBeenCalled();
+  });
+
+  it('responde o preflight de MCP Admin no gateway permitindo Authorization', async () => {
+    const upstreamFetch = vi.fn();
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    const response = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/api/mcp-admin', {
+        method: 'OPTIONS',
+        headers: {
+          Origin: betaOrigin,
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'authorization,content-type',
+        },
+      }),
+      {},
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(response.headers.get('Access-Control-Allow-Headers')).toContain('Authorization');
+    expect(upstreamFetch).not.toHaveBeenCalled();
+  });
+
+  it('retorna 429 no limite do MCP Admin antes de consultar a origem', async () => {
+    const upstreamFetch = vi.fn();
+    const limit = vi.fn().mockResolvedValue({ success: false });
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    const response = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/api/mcp-admin', {
+        method: 'POST',
+        headers: { 'cf-connecting-ip': '203.0.113.10' },
+        body: JSON.stringify({ action: 'getStatus' }),
+      }),
+      { BETA_VERCEL_ORIGIN_SECRET: originSecret, BETA_VERCEL_API_LIMITER: { limit } },
+    );
+
+    expect(response.status).toBe(429);
+    expect(limit).toHaveBeenCalledWith({ key: '/api/mcp-admin:203.0.113.10' });
     expect(upstreamFetch).not.toHaveBeenCalled();
   });
 

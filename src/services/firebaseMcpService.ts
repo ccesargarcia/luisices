@@ -5,6 +5,7 @@
 
 import { httpsCallable } from 'firebase/functions';
 import { auth, functions } from '../lib/firebase';
+import { getVercelBetaApiUrl } from '../app/utils/betaHost';
 import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
 import {
   McpSettingsStatus,
@@ -17,7 +18,7 @@ async function callBetaMcpApi<T>(action: string, payload: Record<string, unknown
   const user = auth.currentUser;
   if (!user) throw new Error('Entre na sua conta para gerenciar a integração MCP.');
   const idToken = await user.getIdToken();
-  const response = await fetch('/api/mcp-admin', {
+  const response = await fetch(getVercelBetaApiUrl('/api/mcp-admin'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

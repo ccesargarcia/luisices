@@ -9,6 +9,8 @@ describe('betaHost API URL selection', () => {
 
     expect(getVercelBetaApiUrl('/api/public-catalog-products'))
       .toBe('https://api.beta.luisices.com.br/api/public-catalog-products');
+    expect(getVercelBetaApiUrl('/api/mcp-admin'))
+      .toBe('https://api.beta.luisices.com.br/api/mcp-admin');
   });
 
   it('keeps a relative URL outside Beta', () => {
