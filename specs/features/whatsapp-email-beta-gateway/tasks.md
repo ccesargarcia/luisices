@@ -6,4 +6,5 @@
 - [x] **T4 — Roteamento Beta e fallback nos serviços (RF-5):** atualizar `firebaseWhatsAppService.ts`, `emailService.ts`, `backendRoutingService.ts` e `BackendRoutingSettingsSection.tsx`.
 - [x] **T5 — Testes unitários (CA-1, CA-2):** criar `tests/unit/communications-admin-api.test.ts` e `tests/unit/communications-service-routing.test.ts` e validar suítes de e-mail e WhatsApp existentes.
 - [x] **T6 — Documentação e impacto de IA:** atualizar `docs/VERCEL_BETA_ROUTING.md` e `specs/features/README.md`.
-- [ ] **T7 — Rollout coordenado e validação remota (CA-3, CA-4):** publicar Worker Beta e Vercel Beta e validar `403` direto, `401` sem sessão no gateway, `204` em `OPTIONS` e `405` em `GET`.
+- [x] **T7 — Rollout coordenado e validação remota (CA-3, CA-4):** publicar Worker Beta e Vercel Beta e validar `403` direto, `401` sem sessão no gateway, `204` em `OPTIONS` e `405` em `GET`.
+  - Evidência: Worker Beta e Vercel Beta (`44184494799`) publicados com sucesso; verificações remotas confirmaram `403` direto na origem, `401` sem sessão no gateway, `OPTIONS` `204`, `GET` `405` e `404` em `_communicationsActionDispatcher`.

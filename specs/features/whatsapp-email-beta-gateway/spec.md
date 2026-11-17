@@ -1,7 +1,7 @@
 # WhatsApp e E-mail (Painel) pelo gateway Beta
 
 - **ID:** `whatsapp-email-beta-gateway`
-- **Status:** Pronta
+- **Status:** Concluída
 - **Responsável:** Luisices
 - **Atualizado em:** 2026-11-17
 - **Referências:** `docs/VERCEL_BETA_ROUTING.md`; `functions/whatsapp/`; `functions/email/`; `src/services/firebaseWhatsAppService.ts`; `src/services/emailService.ts`; `cloudflare/api-beta-worker/src/index.js`.
@@ -51,3 +51,9 @@ Os webhooks externos de recebimento (`evolutionWhatsAppWebhook` e `resendReceivi
 - **CA-2:** testes unitários de `firebaseWhatsAppService` e `emailService` comprovam chamada a `api.beta` no Beta e fallback para o callable GCP em erro `5xx`.
 - **CA-3:** `npm run typecheck`, testes unitários de WhatsApp/E-mail e `git diff --check` aprovados.
 - **CA-4:** deploy coordenado (Worker Beta → Vercel Beta) e verificação remota confirmando `403` direto na origem, `401` sem sessão no gateway, `204` em `OPTIONS` e `405` em `GET`.
+
+## Evidências de conclusão
+
+- `npm run typecheck`, **58 testes unitários aprovados (0 falhas)** (`communications-admin-api.test.ts`, `communications-service-routing.test.ts`, `api-beta-worker.test.ts`, `email-service.test.ts`, `backend-routing.test.ts`) e `git diff --check` aprovados.
+- Deploy do Worker Beta (`4418449...`, 46s) e Deploy Vercel (`44184494799`, 1m56s) concluídos com sucesso.
+- Verificação remota em `POST /api/communications-admin`: chamada direta na origem Vercel `403`, gateway sem sessão `401`, `OPTIONS` `204`, `GET` `405`, e helper privado `api/_communicationsActionDispatcher` não exposto (`404`).
