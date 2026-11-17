@@ -1,6 +1,8 @@
 import type { User } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../lib/firebase';
+import { executeWithGcpFallback } from './backendRoutingService';
+import { callBetaUsersApi } from './firebaseUserService';
 
 type DesiredClaims = { role: string; active?: boolean };
 type RepairResult = { synced: boolean; status?: string };
@@ -21,8 +23,15 @@ export async function repairClaimsIfNeeded(user: User, profile: DesiredClaims): 
   }
 
   const repair = (async () => {
-    const callable = httpsCallable<{ uid: string }, RepairResult>(functions, 'repairUserClaims');
-    const { data } = await callable({ uid: user.uid });
+    const data = await executeWithGcpFallback(
+      'usersAdmin',
+      () => callBetaUsersApi<RepairResult>('repairUserClaims', { uid: user.uid }),
+      async () => {
+        const callable = httpsCallable<{ uid: string }, RepairResult>(functions, 'repairUserClaims');
+        const res = await callable({ uid: user.uid });
+        return res.data;
+      },
+    );
     if (data.synced !== true) return { synced: false, status: data.status || 'pending' };
     // Refresh só propaga claims já gravadas no servidor; não cria privilégios.
     const freshToken = await user.getIdTokenResult(true);

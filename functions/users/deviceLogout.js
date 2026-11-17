@@ -1,4 +1,4 @@
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('../common/runtimeCompat');
 
 function validateDocumentId(value) {
   return typeof value === 'string' && value.length > 0 && value.length <= 128

@@ -128,7 +128,19 @@ const formatActionLink = (rawFirebaseLink, fallbackMode = 'resetPassword') => {
   return rawFirebaseLink;
 };
 
-const { HttpsError } = require('./runtimeCompat');
+let HttpsError;
+try {
+  ({ HttpsError } = require('firebase-functions/v2/https'));
+} catch {
+  HttpsError = class CompatHttpsError extends Error {
+    constructor(code, message, details) {
+      super(message);
+      this.name = 'HttpsError';
+      this.code = code;
+      if (details !== undefined) this.details = details;
+    }
+  };
+}
 
 /**
  * Valida a autenticidade da sessão com barreira temporal estrita contra revogação de tokens

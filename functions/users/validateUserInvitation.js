@@ -1,6 +1,6 @@
 const crypto = require('node:crypto');
 const { getFirestore } = require('firebase-admin/firestore');
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('../common/runtimeCompat');
 const { onCall } = require('../common/sentryFunctions');
 const { validateUserInvitationCore } = require('./validateUserInvitationCore');
 

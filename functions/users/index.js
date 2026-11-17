@@ -4,7 +4,7 @@
 
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
 const getAuth = () => require('firebase-admin/auth').getAuth();
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('../common/runtimeCompat');
 const { onCall } = require('../common/sentryFunctions');
 const { RESEND_API_KEY, EVOLUTION_API_KEY } = require('../common/secrets');
 const getPasswordResetLimiter = () => require('../common/rateLimiters').passwordResetLimiter;

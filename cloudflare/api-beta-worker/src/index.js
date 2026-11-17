@@ -94,6 +94,7 @@ const ALLOWED_ROUTES = new Map([
   [AI_CHAT_PATH, new Set(['POST'])],
   ['/api/mcp-admin', new Set(['POST'])],
   ['/api/communications-admin', new Set(['POST'])],
+  ['/api/users-admin', new Set(['POST'])],
   ['/api/public-catalog-products', new Set(['GET', 'HEAD'])],
   ['/api/public-catalog-order', new Set(['POST'])],
   ['/api/public-order-tracking', new Set(['GET', 'HEAD'])],

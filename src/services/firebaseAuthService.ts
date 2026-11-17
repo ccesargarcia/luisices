@@ -15,6 +15,8 @@ import {
 } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { auth, functions } from '../lib/firebase';
+import { executeWithGcpFallback } from './backendRoutingService';
+import { callBetaUsersApi } from './firebaseUserService';
 
 export class FirebaseAuthService {
   /**
@@ -36,8 +38,16 @@ export class FirebaseAuthService {
       await updateProfile(userCredential.user, { displayName });
     }
 
-    const sendVerification = httpsCallable(functions, 'sendVerificationEmail');
-    await sendVerification({ inviteToken });
+    await executeWithGcpFallback<void>(
+      'usersAdmin',
+      async () => {
+        await callBetaUsersApi('sendVerificationEmail', { inviteToken });
+      },
+      async () => {
+        const sendVerification = httpsCallable(functions, 'sendVerificationEmail');
+        await sendVerification({ inviteToken });
+      },
+    );
 
     return userCredential.user;
   }
@@ -72,10 +82,16 @@ export class FirebaseAuthService {
    */
   async resetPassword(email: string): Promise<void> {
     try {
-      // Chamar Cloud Function que envia email via SendGrid
-      const sendResetEmail = httpsCallable(functions, 'sendPasswordResetEmail');
-
-      await sendResetEmail({ email });
+      await executeWithGcpFallback<void>(
+        'usersAdmin',
+        async () => {
+          await callBetaUsersApi('sendPasswordResetEmail', { email }, { optionalAuth: true });
+        },
+        async () => {
+          const sendResetEmail = httpsCallable(functions, 'sendPasswordResetEmail');
+          await sendResetEmail({ email });
+        },
+      );
 
     } catch (error) {
       console.error('Erro ao enviar email de recuperação:', error);

@@ -1,5 +1,5 @@
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('../common/runtimeCompat');
 const { activateInvitedAccountCore } = require('./invitationActivationCore');
 const { INVITED_USER_PERMISSIONS } = require('./invitedUserPermissions');
 

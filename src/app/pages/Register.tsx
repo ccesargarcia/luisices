@@ -10,6 +10,8 @@ import { Loader2, UserPlus, Mail, Lock, User } from 'lucide-react';
 import { trackSignUp } from '../../services/analyticsService';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
+import { executeWithGcpFallback } from '../../services/backendRoutingService';
+import { callBetaUsersApi } from '../../services/firebaseUserService';
 import { firebaseAuthService } from '../../services/firebaseAuthService';
 
 export function Register() {
@@ -27,8 +29,15 @@ export function Register() {
 
   useEffect(() => {
     if (!inviteToken) return;
-    httpsCallable<{ token: string }, { email: string }>(functions, 'validateUserInvitation')({ token: inviteToken })
-      .then(({ data }) => {
+    executeWithGcpFallback(
+      'usersAdmin',
+      () => callBetaUsersApi<{ email: string }>('validateUserInvitation', { token: inviteToken }, { optionalAuth: true }),
+      async () => {
+        const res = await httpsCallable<{ token: string }, { email: string }>(functions, 'validateUserInvitation')({ token: inviteToken });
+        return res.data;
+      },
+    )
+      .then((data) => {
         setInviteEmail(data.email);
         setEmail(data.email);
       })

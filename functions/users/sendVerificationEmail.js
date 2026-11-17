@@ -1,6 +1,6 @@
 const { getAuth } = require('firebase-admin/auth');
 const { getFirestore } = require('firebase-admin/firestore');
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('../common/runtimeCompat');
 const { onCall } = require('../common/sentryFunctions');
 const { RESEND_API_KEY } = require('../common/secrets');
 const { sendVerificationEmailCore } = require('./sendVerificationEmailCore');

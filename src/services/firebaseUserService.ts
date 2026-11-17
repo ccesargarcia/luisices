@@ -18,8 +18,46 @@ import {
 import { httpsCallable } from 'firebase/functions';
 import { auth, db, functions } from '../lib/firebase';
 import { UserProfile, UserRole, Permission, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS, EMPLOYEE_PERMISSIONS } from '../app/types';
+import { getVercelBetaApiUrl } from '../app/utils/betaHost';
+import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
 
 const USERS_COLLECTION = 'userProfiles';
+
+export async function callBetaUsersApi<T>(
+  action: string,
+  payload: Record<string, unknown> = {},
+  options: { optionalAuth?: boolean } = {},
+): Promise<T> {
+  const user = auth.currentUser;
+  if (!user && !options.optionalAuth) {
+    throw Object.assign(new Error('Sua sessão expirou. Entre novamente.'), { code: 'unauthenticated' });
+  }
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (user) {
+    const idToken = await user.getIdToken();
+    headers.Authorization = `Bearer ${idToken}`;
+  }
+  const response = await fetch(getVercelBetaApiUrl('/api/users-admin'), {
+    method: 'POST',
+    headers,
+    cache: 'no-store',
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    if (response.status >= 500) {
+      throw new VercelInfraError(`Erro no módulo de usuários (${response.status}).`, response.status);
+    }
+    const err = new Error(data?.error?.message || `Erro no módulo de usuários (${response.status}).`);
+    if (data?.error?.code) Object.assign(err, { code: data.error.code });
+    if (data?.error?.details !== undefined) Object.assign(err, { details: data.error.details });
+    Object.assign(err, { status: response.status });
+    throw err;
+  }
+  return data as T;
+}
 
 function normalizeDate(value: any): string | undefined {
   if (typeof value === 'string') return value;
@@ -50,19 +88,41 @@ export interface UserSyncResult {
 
 export class FirebaseUserService {
   async registerDeviceSession(deviceId: string, userAgent: string): Promise<void> {
-    const callable = httpsCallable(functions, 'registerDeviceSession');
-    await callable({ deviceId, userAgent });
+    await executeWithGcpFallback<void>(
+      'usersAdmin',
+      async () => {
+        await callBetaUsersApi('registerDeviceSession', { deviceId, userAgent });
+      },
+      async () => {
+        const callable = httpsCallable(functions, 'registerDeviceSession');
+        await callable({ deviceId, userAgent });
+      },
+    );
   }
 
   async revokeAllSessions(uid: string): Promise<UserSyncResult> {
-    const callable = httpsCallable<{ uid: string }, UserSyncResult>(functions, 'revokeAllSessions');
-    const result = await callable({ uid });
-    return result.data;
+    return executeWithGcpFallback(
+      'usersAdmin',
+      () => callBetaUsersApi<UserSyncResult>('revokeAllSessions', { uid }),
+      async () => {
+        const callable = httpsCallable<{ uid: string }, UserSyncResult>(functions, 'revokeAllSessions');
+        const result = await callable({ uid });
+        return result.data;
+      },
+    );
   }
 
   async revokeDeviceSession(uid: string, deviceId: string): Promise<void> {
-    const callable = httpsCallable<{ uid: string; deviceId: string }, { success: boolean }>(functions, 'revokeDeviceSession');
-    await callable({ uid, deviceId });
+    await executeWithGcpFallback<void>(
+      'usersAdmin',
+      async () => {
+        await callBetaUsersApi('revokeDeviceSession', { uid, deviceId });
+      },
+      async () => {
+        const callable = httpsCallable<{ uid: string; deviceId: string }, { success: boolean }>(functions, 'revokeDeviceSession');
+        await callable({ uid, deviceId });
+      },
+    );
   }
 
   async getUserDevices(uid: string): Promise<DeviceSession[]> {
@@ -85,8 +145,16 @@ export class FirebaseUserService {
   }
 
   async sendAdminPasswordReset(email: string): Promise<void> {
-    const callable = httpsCallable(functions, 'sendAdminPasswordReset');
-    await callable({ email });
+    await executeWithGcpFallback<void>(
+      'usersAdmin',
+      async () => {
+        await callBetaUsersApi('sendAdminPasswordReset', { email });
+      },
+      async () => {
+        const callable = httpsCallable(functions, 'sendAdminPasswordReset');
+        await callable({ email });
+      },
+    );
   }
 
   async createUserInvitation(email: string, whatsappPhone?: string): Promise<{
@@ -94,15 +162,21 @@ export class FirebaseUserService {
     repairedExistingAccount?: boolean;
     verificationSent?: boolean;
   }> {
-    const callable = httpsCallable<
-      { email: string; whatsappPhone?: string },
-      { success: boolean; expiresAt?: string; repairedExistingAccount?: boolean; verificationSent?: boolean }
-    >(
-      functions,
-      'createUserInvitation',
+    return executeWithGcpFallback(
+      'usersAdmin',
+      () => callBetaUsersApi<{ success: boolean; expiresAt?: string; repairedExistingAccount?: boolean; verificationSent?: boolean }>('createUserInvitation', { email, whatsappPhone }),
+      async () => {
+        const callable = httpsCallable<
+          { email: string; whatsappPhone?: string },
+          { success: boolean; expiresAt?: string; repairedExistingAccount?: boolean; verificationSent?: boolean }
+        >(
+          functions,
+          'createUserInvitation',
+        );
+        const result = await callable({ email, whatsappPhone });
+        return result.data;
+      },
     );
-    const result = await callable({ email, whatsappPhone });
-    return result.data;
   }
   /**
    * Cria um novo usuário via Cloud Function segura (com validação de admin no servidor),
@@ -115,13 +189,19 @@ export class FirebaseUserService {
     role: UserRole,
     permissions: Permission,
   ): Promise<UserProfile> {
-    const callable = httpsCallable<
-      { email: string; password: string; displayName: string; role: string; permissions: Permission },
-      { success: boolean; uid: string; profile: UserProfile }
-    >(functions, 'createUser');
-
-    const result = await callable({ email, password, displayName, role, permissions });
-    return result.data.profile;
+    const data = await executeWithGcpFallback(
+      'usersAdmin',
+      () => callBetaUsersApi<{ success: boolean; uid: string; profile: UserProfile }>('createUser', { email, password, displayName, role, permissions }),
+      async () => {
+        const callable = httpsCallable<
+          { email: string; password: string; displayName: string; role: string; permissions: Permission },
+          { success: boolean; uid: string; profile: UserProfile }
+        >(functions, 'createUser');
+        const result = await callable({ email, password, displayName, role, permissions });
+        return result.data;
+      },
+    );
+    return data.profile;
   }
 
   /**
@@ -185,12 +265,19 @@ export class FirebaseUserService {
     const batches: string[][] = [];
     for (let index = 0; index < uids.length; index += 100) batches.push(uids.slice(index, index + 100));
     const results = await Promise.all(batches.map(async (batch) => {
-      const callable = httpsCallable<{ uids: string[] }, { users: Array<{ uid: string; authCreatedAt?: string; lastSignInAt?: string }> }>(
-        functions,
-        'getUserAccountMetadata',
+      const data = await executeWithGcpFallback(
+        'usersAdmin',
+        () => callBetaUsersApi<{ users: Array<{ uid: string; authCreatedAt?: string; lastSignInAt?: string }> }>('getUserAccountMetadata', { uids: batch }),
+        async () => {
+          const callable = httpsCallable<{ uids: string[] }, { users: Array<{ uid: string; authCreatedAt?: string; lastSignInAt?: string }> }>(
+            functions,
+            'getUserAccountMetadata',
+          );
+          const result = await callable({ uids: batch });
+          return result.data;
+        },
       );
-      const result = await callable({ uids: batch });
-      return result.data.users;
+      return data.users;
     }));
     return results.flat();
   }
@@ -199,18 +286,30 @@ export class FirebaseUserService {
    * Atualiza dados do perfil (role, permissions, displayName, active).
    */
   async updateUserProfile(uid: string, data: Partial<Omit<UserProfile, 'uid' | 'createdAt' | 'createdBy'>>): Promise<UserSyncResult> {
-    const callable = httpsCallable<Record<string, any>, UserSyncResult>(functions, 'updateUser');
-    const result = await callable({ uid, ...data });
-    return result.data;
+    return executeWithGcpFallback(
+      'usersAdmin',
+      () => callBetaUsersApi<UserSyncResult>('updateUser', { uid, ...data }),
+      async () => {
+        const callable = httpsCallable<Record<string, any>, UserSyncResult>(functions, 'updateUser');
+        const result = await callable({ uid, ...data });
+        return result.data;
+      },
+    );
   }
 
   /**
    * Ativa ou desativa um usuário (soft-delete).
    */
   async setUserActive(uid: string, active: boolean): Promise<UserSyncResult> {
-    const callable = httpsCallable<{ uid: string; active: boolean }, UserSyncResult>(functions, 'updateUser');
-    const result = await callable({ uid, active });
-    return result.data;
+    return executeWithGcpFallback(
+      'usersAdmin',
+      () => callBetaUsersApi<UserSyncResult>('updateUser', { uid, active }),
+      async () => {
+        const callable = httpsCallable<{ uid: string; active: boolean }, UserSyncResult>(functions, 'updateUser');
+        const result = await callable({ uid, active });
+        return result.data;
+      },
+    );
   }
 
   /**
@@ -218,8 +317,16 @@ export class FirebaseUserService {
    * A exclusão é realizada exclusivamente via Cloud Function administrativa para garantir atomicidade.
    */
   async deleteUser(uid: string): Promise<void> {
-    const callable = httpsCallable<{ uid: string }, { success: boolean }>(functions, 'deleteUser');
-    await callable({ uid });
+    await executeWithGcpFallback<void>(
+      'usersAdmin',
+      async () => {
+        await callBetaUsersApi('deleteUser', { uid });
+      },
+      async () => {
+        const callable = httpsCallable<{ uid: string }, { success: boolean }>(functions, 'deleteUser');
+        await callable({ uid });
+      },
+    );
   }
 
   /**

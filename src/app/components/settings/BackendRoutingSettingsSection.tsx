@@ -99,6 +99,13 @@ const ROUTE_DEFINITIONS: Array<{
     vercelPath: '/api/communications-admin',
     gcpFunction: '*WhatsApp* / sendCustomEmail / getEmailUsage',
   },
+  {
+    key: 'usersAdmin',
+    label: 'Usuários, Convites & Sessões',
+    description: 'Gestão de equipe, convites, verificação de e-mail, claims e sessões',
+    vercelPath: '/api/users-admin',
+    gcpFunction: 'createUser / updateUser / deleteUser / *Invitation* / *Session* / repairUserClaims',
+  },
 ];
 
 export function BackendRoutingSettingsSection({ isAdmin }: BackendRoutingSettingsSectionProps) {
@@ -167,6 +174,7 @@ export function BackendRoutingSettingsSection({ isAdmin }: BackendRoutingSetting
         alexa: 'inherit',
         mcpAdmin: 'inherit',
         communicationsAdmin: 'inherit',
+        usersAdmin: 'inherit',
       },
     };
     void persistConfig(

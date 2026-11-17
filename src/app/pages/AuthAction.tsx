@@ -4,6 +4,8 @@ import { applyActionCode, confirmPasswordReset, signInWithEmailAndPassword, sign
 import { auth } from '../../lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
+import { executeWithGcpFallback } from '../../services/backendRoutingService';
+import { callBetaUsersApi } from '../../services/firebaseUserService';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -44,8 +46,16 @@ export function AuthAction() {
           await auth.currentUser?.reload();
           await auth.currentUser?.getIdToken(true);
           if (inviteToken) {
-            const completeInvitation = httpsCallable(functions, 'completeUserInvitation');
-            await completeInvitation({ token: inviteToken });
+            await executeWithGcpFallback<void>(
+              'usersAdmin',
+              async () => {
+                await callBetaUsersApi('completeUserInvitation', { token: inviteToken }, { optionalAuth: true });
+              },
+              async () => {
+                const completeInvitation = httpsCallable(functions, 'completeUserInvitation');
+                await completeInvitation({ token: inviteToken });
+              },
+            );
           }
           setSuccess(true);
           setVerifying(false);

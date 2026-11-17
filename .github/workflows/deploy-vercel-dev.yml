@@ -20,6 +20,7 @@ on:
       - 'functions/common/**'
       - 'functions/email/**'
       - 'functions/mcp/**'
+      - 'functions/users/**'
       - 'functions/whatsapp/**'
       - 'public/**'
       - 'index.html'
