@@ -1,7 +1,7 @@
 # Enriquecimento Visual e Uso de IA pelo gateway Beta
 
 - **ID:** `ai-enrichment-beta-gateway`
-- **Status:** Em andamento
+- **Status:** Concluída
 - **Responsável:** Luisices
 - **Atualizado em:** 2026-11-17
 - **Referências:** `docs/VERCEL_BETA_ROUTING.md`; `docs/COPILOTO_IA.md`; `api/ai-chat.ts`; `functions/ai/enrichmentServices.js`; `functions/ai/usageHandler.js`; `src/services/firebaseGalleryService.ts`; `src/services/firebaseStoreProductService.ts`; `cloudflare/api-beta-worker/src/index.js`.
@@ -52,3 +52,9 @@ Como `POST /api/ai-chat` já está na allowlist do Worker `functions-beta` (com 
 - **CA-2:** testes unitários dos serviços de cliente comprovam chamada a `https://api.beta.luisices.com.br/api/ai-chat` no host Beta e fallback automático para o callable GCP em erro `413`/`5xx`.
 - **CA-3:** `npm run typecheck`, `npm run build`, testes unitários e `git diff --check` aprovados.
 - **CA-4:** verificação remota após deploy Vercel confirma `403` direto na origem Vercel e `401` sem sessão via `https://api.beta.luisices.com.br/api/ai-chat` para `action: "enrichStoreProduct"`.
+
+## Evidências de conclusão
+
+- `npm run typecheck`, testes unitários (`tests/unit/ai-chat-api-origin.test.ts` e `tests/unit/ai-enrichment-service-routing.test.ts`) e `git diff --check` aprovados.
+- Deploy Vercel concluído com sucesso no run [`44163266089`](https://github.com/ccesargarcia/luisices/actions/runs/44163266089).
+- Verificação remota em `POST /api/ai-chat` (`{"action":"enrichStoreProduct"}`): chamada direta na origem Vercel `403`, gateway sem sessão `401`, `OPTIONS` `204` e `GET` `405`.
