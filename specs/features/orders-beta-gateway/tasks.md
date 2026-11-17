@@ -5,4 +5,5 @@
 - [x] **T3 — Roteamento Beta e fallback nos serviços (RF-4):** atualizar `firebaseOrderService.ts`, `superfreteService.ts` e rótulo em `BackendRoutingSettingsSection.tsx`.
 - [x] **T4 — Testes unitários (CA-1, CA-2):** criar `tests/unit/orders-admin-api.test.ts` e `tests/unit/superfrete-service-routing.test.ts` e validar a suíte de pedidos existente.
 - [x] **T5 — Documentação e impacto de IA:** atualizar `docs/VERCEL_BETA_ROUTING.md` e `specs/features/README.md`.
-- [ ] **T6 — Validação local e remota (CA-3, CA-4):** rodar `npm run typecheck`, testes unitários, `git diff --check`, publicar na Vercel e validar `api.beta.luisices.com.br/api/order-tracking` vs origem direta.
+- [x] **T6 — Validação local e remota (CA-3, CA-4):** rodar `npm run typecheck`, testes unitários, `git diff --check`, publicar na Vercel e validar `api.beta.luisices.com.br/api/order-tracking` vs origem direta.
+  - Evidência: deploy Vercel `44166338230` concluído com sucesso; verificações remotas confirmaram bypass direto `403`, gateway sem sessão `401` (`createOrder` e `calculateSuperfreteShipping`), `OPTIONS` `204` e `GET` `405`.

@@ -1,7 +1,7 @@
 # Pedidos e SuperFrete pelo gateway Beta
 
 - **ID:** `orders-beta-gateway`
-- **Status:** Em andamento
+- **Status:** Concluída
 - **Responsável:** Luisices
 - **Atualizado em:** 2026-11-17
 - **Referências:** `docs/VERCEL_BETA_ROUTING.md`; `docs/IDEMPOTENCIA_PEDIDOS.md`; `docs/SEGURANCA_LIMITE_CEL_PEDIDOS.md`; `api/order-tracking.ts`; `functions/orders/index.js`; `functions/orders/superfrete.js`; `src/services/firebaseOrderService.ts`; `src/services/superfreteService.ts`; `cloudflare/api-beta-worker/src/index.js`.
@@ -48,3 +48,9 @@ Como `POST /api/order-tracking` já está publicado na allowlist do Worker `func
 - **CA-2:** testes unitários de `superfreteService` e `firebaseOrderService` comprovam roteamento para `https://api.beta.luisices.com.br/api/order-tracking` no Beta e fallback para o callable GCP em erro `5xx` preservando `idempotencyKey` / `operationId`.
 - **CA-3:** `npm run typecheck`, suíte de testes unitários de pedidos e `git diff --check` aprovados.
 - **CA-4:** verificação remota após deploy Vercel confirma `403` direto na origem Vercel e `401` sem sessão via `https://api.beta.luisices.com.br/api/order-tracking` para `action: "createOrder"` e `action: "calculateSuperfreteShipping"`.
+
+## Evidências de conclusão
+
+- `npm run typecheck`, 41 testes unitários em 3 suítes (`orders-admin-api.test.ts`, `superfrete-service-routing.test.ts` e `complex-order-validation.test.ts`) e `git diff --check` aprovados.
+- Deploy Vercel concluído com sucesso no run [`44166338230`](https://github.com/ccesargarcia/luisices/actions/runs/44166338230) (incluindo sincronização de `SUPERFRETE_SANDBOX_TOKEN`).
+- Verificação remota em `POST /api/order-tracking`: chamada direta na origem Vercel `403`, gateway sem sessão `401` (`createOrder` e `calculateSuperfreteShipping`), `OPTIONS` `204` e `GET` `405`.
