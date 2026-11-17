@@ -4,7 +4,7 @@
 - **Status:** Recuperação concluída; monitoramento implementado, integração Kuma pendente de configuração do secret
 - **Responsável:** Luisices
 - **Atualizado em:** 2026-11-17
-- **Referências:** `scripts/recover-github-pages-certificate.mjs`; `scripts/check-github-pages-origin-tls.mjs`; workflows `audit-cloudflare.yml` e `monitor-github-pages-origin-tls.yml`; `docs/GITHUB_PAGES_CERT_RECOVERY.md`.
+- **Referências:** `scripts/recover-github-pages-certificate.mjs`; `scripts/check-github-pages-origin-tls.mjs`; `scripts/github-pages-origin-tls.mjs`; workflows `audit-cloudflare.yml` e `monitor-github-pages-origin-tls.yml`; `docs/GITHUB_PAGES_CERT_RECOVERY.md`.
 
 ## Problema e contexto
 

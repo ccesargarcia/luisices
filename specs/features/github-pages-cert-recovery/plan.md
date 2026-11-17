@@ -9,8 +9,8 @@ Adicionar operações manuais e opt-in à workflow de auditoria existente. A rot
 | Área | Arquivos/módulos atuais | Alteração proposta |
 |---|---|---|
 | Auditoria Cloudflare | `.github/workflows/audit-cloudflare.yml` | Adicionar operações manuais explícitas de DNS-only e restauração, mantendo escopo mínimo |
-| Recuperação | `scripts/recover-github-pages-certificate.mjs` | Conferir DNS, alternar proxy dos cinco registros, validar certificado e testar hosts |
-| Monitoramento de origem | `scripts/check-github-pages-origin-tls.mjs`; `.github/workflows/monitor-github-pages-origin-tls.yml` | Consultar Pages API e sondar TLS/SNI dos dois hosts nos quatro IPs diariamente; notificar monitor Push do Kuma se configurado |
+| Recuperação | `scripts/recover-github-pages-certificate.mjs`; `scripts/github-pages-origin-tls.mjs` | Conferir DNS, alternar proxy dos cinco registros, validar TLS/SNI diretamente nos oito pares host/IP e testar HTTPS público |
+| Monitoramento de origem | `scripts/check-github-pages-origin-tls.mjs`; `scripts/github-pages-origin-tls.mjs`; `.github/workflows/monitor-github-pages-origin-tls.yml` | Consultar Pages API e sondar TLS/SNI dos dois hosts nos quatro IPs diariamente; notificar monitor Push do Kuma se configurado |
 | Documentação | `docs/GITHUB_PAGES_CERT_RECOVERY.md`; `docs/README.md`; spec | Registrar falha observada, procedimento, escopo e permissões |
 
 ## Contratos, dados e compatibilidade
@@ -25,7 +25,7 @@ Adicionar operações manuais e opt-in à workflow de auditoria existente. A rot
 - Nenhum token de escrita do Pages é concedido ao workflow; a atualização do domínio é feita pela pessoa operadora na UI do GitHub.
 - Validação rígida dos quatro destinos A e CNAME de `www`; em divergência, não altera nada.
 - Certificado inválido impede a restauração do proxy; a política SSL não é reduzida.
-- A checagem testa diretamente a origem Pages em oito pares host/IP e sinaliza validade inferior a 21 dias. Usa `pages: read`; não tem permissões de mutação DNS ou Pages.
+- Recuperação e checagem usam o mesmo probe TLS direto para evitar resultado baseado em DNS cache/Cloudflare. O monitor testa oito pares host/IP e sinaliza validade inferior a 21 dias. Usa `pages: read`; não tem permissões de mutação DNS ou Pages.
 - O monitor HTTP já existente observa a borda Cloudflare. O heartbeat Push separado observa o certificado da origem; o Push URL fica exclusivamente no Actions Secret `UPTIME_KUMA_PAGES_CERT_PUSH_URL`.
 
 ## UX e documentação

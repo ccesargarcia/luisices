@@ -1,44 +1,12 @@
-import tls from 'node:tls';
 import { appendFile } from 'node:fs/promises';
+import { GITHUB_PAGES_IPS, inspectGitHubPagesTls } from './github-pages-origin-tls.mjs';
 
 const DOMAIN = 'luisices.com.br';
 const HOSTS = [DOMAIN, `www.${DOMAIN}`];
-const PAGES_IPS = [
-  '185.199.108.153',
-  '185.199.109.153',
-  '185.199.110.153',
-  '185.199.111.153',
-];
 const REPOSITORY = process.env.GITHUB_REPOSITORY;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const PUSH_URL = process.env.UPTIME_KUMA_PAGES_CERT_PUSH_URL;
 const MIN_VALIDITY_DAYS = 21;
-
-function connectAndInspect(hostname, ip) {
-  return new Promise((resolve, reject) => {
-    const socket = tls.connect({
-      host: ip,
-      port: 443,
-      servername: hostname,
-      rejectUnauthorized: true,
-      checkServerIdentity: (_serverName, certificate) => tls.checkServerIdentity(hostname, certificate),
-      timeout: 10_000,
-    });
-    socket.once('secureConnect', () => {
-      const certificate = socket.getPeerCertificate();
-      const expiry = Date.parse(certificate.valid_to);
-      const daysRemaining = Math.floor((expiry - Date.now()) / 86_400_000);
-      socket.end();
-      if (!Number.isFinite(expiry) || daysRemaining < MIN_VALIDITY_DAYS) {
-        reject(new Error(`Certificado de origem para ${hostname} em ${ip} vence em menos de ${MIN_VALIDITY_DAYS} dias.`));
-        return;
-      }
-      resolve({ hostname, ip, daysRemaining, expiresAt: new Date(expiry).toISOString() });
-    });
-    socket.once('timeout', () => socket.destroy(new Error(`Timeout TLS ao conectar ${hostname} em ${ip}.`)));
-    socket.once('error', reject);
-  });
-}
 
 async function verifyPagesApi() {
   const response = await fetch(`https://api.github.com/repos/${REPOSITORY}/pages`, {
@@ -80,7 +48,7 @@ if (!REPOSITORY || !GITHUB_TOKEN) {
 let summary = '';
 try {
   const pages = await verifyPagesApi();
-  const probes = await Promise.all(HOSTS.flatMap((host) => PAGES_IPS.map((ip) => connectAndInspect(host, ip))));
+  const probes = await Promise.all(HOSTS.flatMap((host) => GITHUB_PAGES_IPS.map((ip) => inspectGitHubPagesTls(host, ip, MIN_VALIDITY_DAYS))));
   const soonestExpiry = probes.reduce((soonest, probe) => (probe.daysRemaining < soonest.daysRemaining ? probe : soonest));
   summary = `Origem GitHub Pages válida; certificado TLS direto vence em ${soonestExpiry.expiresAt} (${soonestExpiry.daysRemaining} dias). API Pages: ${pages.daysRemaining} dias.`;
   for (const probe of probes) console.log(`TLS direto válido: ${probe.hostname} via ${probe.ip}; vence ${probe.expiresAt}.`);

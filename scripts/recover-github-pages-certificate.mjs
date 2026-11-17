@@ -1,15 +1,12 @@
+import { GITHUB_PAGES_IPS, inspectGitHubPagesTls } from './github-pages-origin-tls.mjs';
+
 const DOMAIN = 'luisices.com.br';
 const WWW = `www.${DOMAIN}`;
 const CLOUDFLARE_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const OPERATION = process.env.OPERATION;
 const REPOSITORY = process.env.GITHUB_REPOSITORY;
-const EXPECTED_APEX_IPS = new Set([
-  '185.199.108.153',
-  '185.199.109.153',
-  '185.199.110.153',
-  '185.199.111.153',
-]);
+const EXPECTED_APEX_IPS = new Set(GITHUB_PAGES_IPS);
 const EXPECTED_WWW_TARGET = 'ccesargarcia.github.io';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -94,7 +91,7 @@ async function verifyDnsOnly() {
       query(WWW, 'CNAME'),
     ]);
     const expectedIpsPresent = [...EXPECTED_APEX_IPS].every((ip) => ips.includes(ip));
-    if (expectedIpsPresent && cnames.includes(EXPECTED_WWW_TARGET)) {
+    if (expectedIpsPresent && new Set(cnames).has(EXPECTED_WWW_TARGET)) {
       console.log('DNS público já anuncia diretamente o GitHub Pages para o domínio raiz e www.');
       return;
     }
@@ -123,11 +120,10 @@ async function currentPagesCertificate() {
   }
 }
 
-async function verifyOriginHttpsDirect() {
-  for (const host of [DOMAIN, WWW]) {
-    const response = await fetch(`https://${host}/`, { redirect: 'follow' });
-    if (!response.ok) throw new Error(`HTTPS direto de ${host} retornou HTTP ${response.status}.`);
-    console.log(`HTTPS direto do GitHub Pages para ${host}: HTTP ${response.status}; certificado TLS validado.`);
+async function verifyOriginTlsDirect() {
+  const probes = await Promise.all([DOMAIN, WWW].flatMap((host) => GITHUB_PAGES_IPS.map((ip) => inspectGitHubPagesTls(host, ip))));
+  for (const probe of probes) {
+    console.log(`TLS direto da origem validado: ${probe.hostname} via ${probe.ip}; certificado vence ${probe.expiresAt}.`);
   }
 }
 
@@ -147,7 +143,7 @@ if (OPERATION === 'github-pages-dns-only') {
   console.log('DNS-only confirmado. Reinicie o vínculo do domínio em Settings → Pages e aguarde certificado emitido antes de restaurar o proxy.');
 } else {
   await currentPagesCertificate();
-  await verifyOriginHttpsDirect();
+  await verifyOriginTlsDirect();
   await setProxy(zoneId, records, true);
   await verifyPublicSite();
   console.log('Certificado válido confirmado, proxy Cloudflare restaurado e HTTPS verificado para os dois hosts.');
