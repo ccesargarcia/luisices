@@ -75,6 +75,9 @@ function onCall(...args) {
   const hasOptions = args.length > 1;
   const options = hasOptions ? args[0] : {};
   const handler = hasOptions ? args[1] : args[0];
+  if (process.env.VERCEL === '1') {
+    return wrapHandler(handler, 'onCall');
+  }
   const secrets = [...new Set([...(options.secrets || []), ORIGIN_SECRET])];
   const protectedHandler = wrapHandler(async (request) => {
     const origin = validateOriginSecret(request?.rawRequest);
