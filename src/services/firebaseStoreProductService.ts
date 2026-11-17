@@ -25,6 +25,8 @@ import { auth, db, functions } from '../lib/firebase';
 import { StoreProduct, Product } from '../app/types';
 import { firebaseStorageService } from './firebaseStorageService';
 import { toPublicCdnUrl } from '../app/utils/cdnUtils';
+import { getVercelBetaApiUrl } from '../app/utils/betaHost';
+import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
 
 const STORE_PRODUCTS_COLLECTION = 'storeProducts';
 
@@ -270,13 +272,44 @@ class FirebaseStoreProductService {
   }
 
   async enrichStoreProductWithAi(params: EnrichStoreProductParams): Promise<StoreProductAiSuggestion> {
-    const callable = httpsCallable<EnrichStoreProductParams, StoreProductAiSuggestion>(
-      functions,
-      'enrichStoreProductWithAi',
-      { timeout: 120000 }
+    return executeWithGcpFallback(
+      'aiChat',
+      async () => {
+        const user = auth.currentUser;
+        if (!user) throw new Error('É necessário estar autenticado.');
+        const idToken = await user.getIdToken();
+        const response = await fetch(getVercelBetaApiUrl('/api/ai-chat'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ action: 'enrichStoreProduct', ...params }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          if (response.status === 413 && payload?.error?.code === 'vercel-payload-too-large') {
+            throw new VercelInfraError('A solicitação excede 4 MiB no gateway. Reduza a imagem ou habilite o fallback GCP.', 413);
+          }
+          if (response.status >= 500 && !payload?.error?.code) {
+            throw new VercelInfraError(`Erro ao enriquecer produto com IA (${response.status}).`, response.status);
+          }
+          const err = new Error(payload?.error?.message || `Erro ao enriquecer produto com IA (${response.status})`);
+          (err as Error & { code?: string }).code = payload?.error?.code;
+          throw err;
+        }
+        return payload as StoreProductAiSuggestion;
+      },
+      async () => {
+        const callable = httpsCallable<EnrichStoreProductParams, StoreProductAiSuggestion>(
+          functions,
+          'enrichStoreProductWithAi',
+          { timeout: 120000 }
+        );
+        const result = await callable(params);
+        return result.data;
+      },
     );
-    const result = await callable(params);
-    return result.data;
   }
 
   async importFromInternalProduct(prod: Product): Promise<StoreProduct> {

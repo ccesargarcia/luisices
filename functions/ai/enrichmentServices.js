@@ -8,13 +8,14 @@ const {
   createEnrichStoreProductHandler,
 } = require('./handlers');
 
-function createAiEnrichmentServices(adminInstance, apiKey) {
+function createAiEnrichmentServices(adminInstance, apiKey, options = {}) {
   const db = adminInstance?.firestore ? adminInstance.firestore() : null;
   const storage = adminInstance?.storage ? adminInstance.storage() : null;
   const geminiClient = new GeminiClient({
     apiKey: apiKey || (typeof process.env.GEMINI_API_KEY === 'string' ? process.env.GEMINI_API_KEY : ''),
     primaryModel: config.MODEL_CONFIG.PRIMARY_CHAT_MODEL,
     fallbackModels: config.MODEL_CONFIG.FALLBACK_CHAT_MODELS,
+    vertexAi: options.vertexAi || null,
   });
   const budgetManager = new AiBudgetManager(db);
 
