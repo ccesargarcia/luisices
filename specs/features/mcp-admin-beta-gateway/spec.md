@@ -1,7 +1,7 @@
 # Administração MCP pelo gateway Beta
 
 - **ID:** `mcp-admin-beta-gateway`
-- **Status:** Em andamento
+- **Status:** Concluída
 - **Responsável:** Luisices
 - **Atualizado em:** 2026-11-16
 - **Referências:** `docs/VERCEL_BETA_ROUTING.md`; `api/mcp-admin.ts`; `src/services/firebaseMcpService.ts`; `src/app/utils/betaHost.ts`; `functions/mcp/callables.js`; `cloudflare/api-beta-worker/src/index.js`; `tests/unit/api-beta-worker.test.ts`.

@@ -90,6 +90,66 @@ describe('Cloudflare Worker API Beta isolado', () => {
     expect(new TextDecoder().decode(options.body)).toBe(JSON.stringify({ action: 'getStatus' }));
   });
 
+  it('encaminha somente POST administrativo da Alexa pelo binding de APIs Beta', async () => {
+    const upstreamFetch = vi.fn().mockResolvedValue(Response.json({ success: true }));
+    const limit = vi.fn().mockResolvedValue({ success: true });
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    const response = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/api/alexa', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer firebase-user-token',
+          'Content-Type': 'application/json',
+          'cf-connecting-ip': '203.0.113.11',
+        },
+        body: JSON.stringify({ action: 'getStatus' }),
+      }),
+      { BETA_VERCEL_ORIGIN_SECRET: originSecret, BETA_VERCEL_API_LIMITER: { limit } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(limit).toHaveBeenCalledWith({ key: '/api/alexa:203.0.113.11' });
+    const [targetUrl, options] = upstreamFetch.mock.calls[0];
+    expect(targetUrl.toString()).toBe('https://beta.luisices.com.br/api/alexa');
+    expect(options.method).toBe('POST');
+    expect(options.headers.get('Authorization')).toBe('Bearer firebase-user-token');
+    expect(options.headers.get('x-beta-edge-secret')).toBe(originSecret);
+    expect(new TextDecoder().decode(options.body)).toBe(JSON.stringify({ action: 'getStatus' }));
+  });
+
+  it('nega métodos diferentes de POST em Alexa sem consultar a origem', async () => {
+    const upstreamFetch = vi.fn();
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    const response = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/api/alexa', { method: 'GET' }),
+      { BETA_VERCEL_ORIGIN_SECRET: originSecret },
+    );
+
+    expect(response.status).toBe(405);
+    expect(upstreamFetch).not.toHaveBeenCalled();
+  });
+
+  it('retorna 429 no limite da rota Alexa antes de consultar a origem', async () => {
+    const upstreamFetch = vi.fn();
+    const limit = vi.fn().mockResolvedValue({ success: false });
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    const response = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/api/alexa', {
+        method: 'POST',
+        headers: { 'cf-connecting-ip': '203.0.113.11' },
+        body: JSON.stringify({ action: 'getStatus' }),
+      }),
+      { BETA_VERCEL_ORIGIN_SECRET: originSecret, BETA_VERCEL_API_LIMITER: { limit } },
+    );
+
+    expect(response.status).toBe(429);
+    expect(limit).toHaveBeenCalledWith({ key: '/api/alexa:203.0.113.11' });
+    expect(upstreamFetch).not.toHaveBeenCalled();
+  });
+
   it('nega métodos diferentes de POST em MCP Admin sem consultar a origem', async () => {
     const upstreamFetch = vi.fn();
     vi.stubGlobal('fetch', upstreamFetch);

@@ -10,12 +10,13 @@ import {
   AlexaIntegrationStatus,
   AlexaConfirmationMode,
 } from '../app/types';
+import { getVercelBetaApiUrl } from '../app/utils/betaHost';
 
 async function callBetaAlexaApi<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
   const user = auth.currentUser;
   if (!user) throw new Error('Entre na sua conta para gerenciar a integração Alexa.');
   const idToken = await user.getIdToken();
-  const response = await fetch('/api/alexa', {
+  const response = await fetch(getVercelBetaApiUrl('/api/alexa'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

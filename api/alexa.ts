@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import {
+  assertBetaEdgeRequest,
   assertActiveSessionFromBearer,
   getFirebaseAdmin,
   mapCoreErrorToHttp,
@@ -31,14 +32,15 @@ export default async function handler(
   },
 ) {
   res.setHeader('Cache-Control', 'no-store');
-  if (req.method === 'OPTIONS') {
-    return res.status(204).send('');
-  }
-  if (req.method !== 'POST') {
-    return res.status(405).send('Method Not Allowed');
-  }
-
   try {
+    assertBetaEdgeRequest(req.headers?.['x-beta-edge-secret']);
+    if (req.method === 'OPTIONS') {
+      return res.status(204).send('');
+    }
+    if (req.method !== 'POST') {
+      return res.status(405).send('Method Not Allowed');
+    }
+
     const { auth, firestore, projectId } = getFirebaseAdmin();
     if (!process.env.ALEXA_ENVIRONMENT) {
       process.env.ALEXA_ENVIRONMENT = projectId === 'papelaria-dashboard' ? 'prod' : 'dev';
