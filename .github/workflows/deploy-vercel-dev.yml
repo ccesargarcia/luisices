@@ -323,9 +323,39 @@ jobs:
             await upsertEnv('ORDER_TRACKING_ENCRYPTION_KEY', process.env.ORDER_TRACKING_ENCRYPTION_KEY);
             await upsertEnv('ALEXA_IDENTITY_HMAC_KEY', process.env.ALEXA_IDENTITY_HMAC_KEY);
             await upsertEnv('BETA_VERCEL_ORIGIN_SECRET', process.env.BETA_VERCEL_ORIGIN_SECRET);
+            await upsertEnv('VERCEL_MCP_ORIGIN', 'https://api.beta.luisices.com.br');
+            await upsertEnv('VERCEL_MCP_DOMAIN', 'api.beta.luisices.com.br');
+            await upsertEnv('VERCEL_MCP_APP_ORIGIN', 'https://beta.luisices.com.br');
+            await upsertEnv('VERCEL_MCP_DOCUMENTATION_URL', 'https://api.beta.luisices.com.br/openapi.json');
           })().catch((err) => {
             console.error(err);
             process.exit(1);
+          });
+          NODE
+
+      - name: Aguardar gateway MCP público no Worker Beta
+        run: |
+          node <<'NODE'
+          const endpoint = 'https://api.beta.luisices.com.br/mcp';
+          const maxAttempts = 60;
+          (async () => {
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+              try {
+              const response = await fetch(endpoint, { signal: AbortSignal.timeout(3000) });
+                if (response.status === 200) {
+                  console.log('Gateway MCP Beta respondeu 200; liberando a publicação Vercel.');
+                  return;
+                }
+                console.log(`Gateway MCP Beta ainda não está pronto (HTTP ${response.status}; tentativa ${attempt}/${maxAttempts}).`);
+              } catch {
+                console.log(`Gateway MCP Beta indisponível (tentativa ${attempt}/${maxAttempts}).`);
+              }
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+            throw new Error('Worker Beta não publicou /mcp; publicação Vercel interrompida antes da troca do issuer OAuth.');
+          })().catch((error) => {
+            console.error(error.message);
+            process.exitCode = 1;
           });
           NODE
 

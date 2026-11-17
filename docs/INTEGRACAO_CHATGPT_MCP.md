@@ -6,6 +6,8 @@
 **Padrões Suportados:** OpenAPI 3.0.3, MCP JSON-RPC 2.0, OAuth 2.1 (RFC 9728 / RFC 8414)
 **Ambiente de Produção:** `https://api.luisices.com.br/chatGptToolsEndpoint`  
 **Ambiente de Desenvolvimento:** `https://api.dev.luisices.com.br/chatGptToolsEndpoint`  
+
+**Beta Vercel:** a conexão MCP atual permanece em `https://beta.luisices.com.br` até a publicação da migração registrada em [mcp-public-beta-gateway](../specs/features/mcp-public-beta-gateway/spec.md). Após o corte, a URL será `https://api.beta.luisices.com.br/mcp`; clientes conectados precisarão autorizar novamente devido à mudança do issuer/resource OAuth. `https://api.dev.luisices.com.br` permanece inalterado.
 **Revisão documental:** 13/11/2026; contratos conferidos contra os registros e executores locais. Isso não comprova publicação remota.
 
 ---

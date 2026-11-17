@@ -269,11 +269,16 @@ const chatGptToolsEndpoint = onRequest(
     secrets: [ORIGIN_SECRET],
   },
   (req, res) => traceMcpRequest(req, res, async () => {
+    const isVercelMcpRuntime = Boolean(process.env.VERCEL_MCP_ORIGIN && process.env.VERCEL === '1');
     // Tratamento de preflight CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-origin-secret, x-cf-origin-token, openai-ephemeral-user-id, sentry-trace, baggage');
-    res.setHeader('Access-Control-Expose-Headers', 'X-MCP-Trace-Id');
+    res.setHeader('Access-Control-Allow-Headers', isVercelMcpRuntime
+      ? 'Content-Type, Authorization, Accept, MCP-Protocol-Version, Last-Event-ID, x-origin-secret, x-cf-origin-token, openai-ephemeral-user-id, sentry-trace, baggage'
+      : 'Content-Type, Authorization, x-origin-secret, x-cf-origin-token, openai-ephemeral-user-id, sentry-trace, baggage');
+    res.setHeader('Access-Control-Expose-Headers', isVercelMcpRuntime
+      ? 'X-MCP-Trace-Id, WWW-Authenticate, Location, Retry-After'
+      : 'X-MCP-Trace-Id');
 
     if (req.method === 'OPTIONS') {
       return res.status(204).send('');
@@ -284,8 +289,6 @@ const chatGptToolsEndpoint = onRequest(
       try { bodyBytes = Buffer.byteLength(JSON.stringify(req.body), 'utf8'); } catch (_err) { bodyBytes = Infinity; }
       if (bodyBytes > 64 * 1024) return res.status(413).json({ error: 'PAYLOAD_TOO_LARGE', message: 'O corpo da requisição excede o limite permitido.' });
     }
-
-    const db = getFirestore();
 
     // Normalização rigorosa do caminho (suporta chamadas diretas com ou sem prefixo chatGptToolsEndpoint)
     const rawPath = (req.path || req.url || '')
@@ -306,6 +309,15 @@ const chatGptToolsEndpoint = onRequest(
     const baseUrl = process.env.VERCEL_MCP_ORIGIN
       ? process.env.VERCEL_MCP_ORIGIN
       : `https://${apiDomain}/chatGptToolsEndpoint`;
+    const originHeader = req.headers.origin || req.headers.Origin;
+    const hasOrigin = originHeader !== undefined && originHeader !== null && originHeader !== '';
+
+    if (isVercelMcpRuntime && rawPath === 'mcp' && hasOrigin
+        && (Array.isArray(originHeader) || originHeader !== 'https://beta.luisices.com.br')) {
+      return res.status(403).json({ error: 'origin_not_allowed' });
+    }
+
+    const db = getFirestore();
 
     try {
 
@@ -356,7 +368,6 @@ const chatGptToolsEndpoint = onRequest(
         req.body?.method === 'ping'
       ));
 
-    const isVercelMcpRuntime = Boolean(process.env.VERCEL_MCP_ORIGIN && process.env.VERCEL === '1');
     if (!isPublicDiscovery && !isVercelMcpRuntime) {
       const originCheck = validateOriginSecret(req);
       if (!originCheck.allowed) {

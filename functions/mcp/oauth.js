@@ -14,8 +14,10 @@ try {
   // Ambiente sem @sentry/node (ex.: Vercel Functions) executa sem span do Sentry.
 }
 
-const APP_ORIGIN = () => process.env.VERCEL_MCP_ORIGIN
-  ? process.env.VERCEL_MCP_ORIGIN
+const APP_ORIGIN = () => process.env.VERCEL_MCP_APP_ORIGIN
+  ? process.env.VERCEL_MCP_APP_ORIGIN
+  : process.env.VERCEL_MCP_ORIGIN
+    ? process.env.VERCEL_MCP_ORIGIN
   : (process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard'
     ? 'https://luisices.com.br' : 'https://dev.luisices.com.br');
 const OAUTH_ORIGIN = () => process.env.VERCEL_MCP_ORIGIN
@@ -188,14 +190,15 @@ function getOauthProtectedResourceMetadata(baseUrl, options = {}) {
   }
 
   const allScopes = Object.values(MCP_SCOPES).map((s) => s.id);
-  const resource = options.includeMcpPath ? `${origin}/mcp` : origin;
+  const resource = options.includeMcpPath && !process.env.VERCEL_MCP_ORIGIN ? `${origin}/mcp` : origin;
 
   return {
     resource,
     authorization_servers: [origin],
     scopes_supported: allScopes,
     bearer_methods_supported: ['header'],
-    resource_documentation: `${origin}/chatGptToolsEndpoint/openapi.json`,
+    resource_documentation: process.env.VERCEL_MCP_DOCUMENTATION_URL
+      || `${origin}/chatGptToolsEndpoint/openapi.json`,
   };
 }
 

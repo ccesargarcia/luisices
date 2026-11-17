@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { getFirebaseAdmin } from './_firebaseAdmin.js';
+import { ApiHttpError, assertBetaEdgeRequest, getFirebaseAdmin } from './_firebaseAdmin.js';
 
 export const maxDuration = 30;
 
@@ -22,13 +22,27 @@ export default async function handler(
     };
   },
 ) {
-  getFirebaseAdmin();
   if (!process.env.VERCEL_MCP_ORIGIN) {
-    process.env.VERCEL_MCP_ORIGIN = 'https://beta.luisices.com.br';
+    process.env.VERCEL_MCP_ORIGIN = 'https://api.beta.luisices.com.br';
   }
   if (!process.env.VERCEL_MCP_DOMAIN) {
-    process.env.VERCEL_MCP_DOMAIN = 'beta.luisices.com.br';
+    process.env.VERCEL_MCP_DOMAIN = 'api.beta.luisices.com.br';
   }
+  if (!process.env.VERCEL_MCP_APP_ORIGIN) {
+    process.env.VERCEL_MCP_APP_ORIGIN = 'https://beta.luisices.com.br';
+  }
+  if (!process.env.VERCEL_MCP_DOCUMENTATION_URL) {
+    process.env.VERCEL_MCP_DOCUMENTATION_URL = 'https://api.beta.luisices.com.br/openapi.json';
+  }
+
+  try {
+    assertBetaEdgeRequest(req.headers?.['x-beta-edge-secret']);
+  } catch (error) {
+    const statusCode = error instanceof ApiHttpError ? error.statusCode : 403;
+    return res.status(statusCode).json({ error: { code: 'permission-denied', message: 'Origem não autorizada.' } });
+  }
+
+  getFirebaseAdmin();
 
   const rawMcpPath = req.query?.mcpPath;
   const mcpPath = Array.isArray(rawMcpPath) ? rawMcpPath[0] : rawMcpPath;
