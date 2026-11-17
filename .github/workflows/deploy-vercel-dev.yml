@@ -143,6 +143,22 @@ jobs:
             fs.mkdirSync('.vercel', { recursive: true });
             fs.writeFileSync('.vercel/project.json', JSON.stringify({ projectId: project.id, orgId }, null, 2));
 
+            // Garante que a Production Branch do projeto Vercel seja 'develop' para que merges em 'main'
+            // nunca disparem deploy automático na Vercel sobrescrevendo beta.luisices.com.br.
+            if (project.link?.productionBranch !== 'develop') {
+              const teamQuery = String(orgId).startsWith('team_') ? `?teamId=${encodeURIComponent(orgId)}` : '';
+              try {
+                const branchRes = await fetch(`https://api.vercel.com/v9/projects/${encodeURIComponent(project.id)}/branch${teamQuery}`, {
+                  method: 'PATCH',
+                  headers: { ...headers, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ branch: 'develop' }),
+                });
+                console.log('Atualização de Production Branch na Vercel (/branch):', branchRes.status);
+              } catch (e) {
+                console.warn('Aviso ao atualizar Production Branch na Vercel:', e.message);
+              }
+            }
+
             const domains = new Set(['beta.luisices.com.br', 'loja.beta.luisices.com.br']);
             const targets = project.targets?.production?.alias || [];
             for (const alias of targets) domains.add(alias);
@@ -341,7 +357,13 @@ jobs:
           (async () => {
             for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
               try {
-              const response = await fetch(endpoint, { signal: AbortSignal.timeout(3000) });
+                const optRes = await fetch(endpoint, { method: 'OPTIONS', signal: AbortSignal.timeout(3000) });
+                const allowHeaders = optRes.headers.get('access-control-allow-headers') || '';
+                if (optRes.status === 204 && allowHeaders.includes('MCP-Protocol-Version')) {
+                  console.log('Gateway MCP Beta ativo na borda Cloudflare (OPTIONS 204); liberando publicação Vercel.');
+                  return;
+                }
+                const response = await fetch(endpoint, { signal: AbortSignal.timeout(3000) });
                 if (response.status === 200) {
                   console.log('Gateway MCP Beta respondeu 200; liberando a publicação Vercel.');
                   return;

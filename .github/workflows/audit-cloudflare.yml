@@ -2,15 +2,26 @@ name: Cloudflare - Auditoria de Status Provisionado
 
 on:
   workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Operação: auditoria somente leitura ou recuperação controlada do certificado do GitHub Pages'
+        required: true
+        default: audit
+        type: choice
+        options:
+          - audit
+          - github-pages-dns-only
+          - restore-github-pages-proxy
 
 permissions:
   contents: read
+  pages: read
 
 jobs:
   audit-cloudflare:
     name: Inspecionar Infraestrutura Cloudflare
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
 
     steps:
       - name: Checkout Repositório
@@ -26,6 +37,31 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Executar Auditoria Cloudflare
+        if: inputs.operation == 'audit'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npm run cloudflare:status
+
+      - name: Desativar temporariamente proxy do GitHub Pages
+        if: inputs.operation == 'github-pages-dns-only'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          OPERATION: ${{ inputs.operation }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/recover-github-pages-certificate.mjs
+
+      - name: Restaurar proxy após validar certificado
+        if: inputs.operation == 'restore-github-pages-proxy'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          OPERATION: ${{ inputs.operation }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/recover-github-pages-certificate.mjs
+
+      - name: Auditar configuração final
+        if: always() && inputs.operation != 'audit'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
