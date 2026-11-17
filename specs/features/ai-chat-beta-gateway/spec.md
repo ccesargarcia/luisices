@@ -87,4 +87,8 @@ No Beta, o Copiloto usa `POST /api/ai-chat` na origem Vercel. As demais rotas j�
 
 ## Evidências de conclusão
 
-- Preencher após testes, workflows e validações remotas. `api.dev` deve permanecer fora dos deploys desta mudança.
+- Testes focados: 4 arquivos, 25 testes passaram; `npm run typecheck` passou.
+- Fase 1: workflow [43992768696](https://github.com/ccesargarcia/luisices/actions/runs/43992768696) publicou Worker Beta; smoke check POST 401, GET 405 e OPTIONS 204.
+- Fase 2: workflow [43993107372](https://github.com/ccesargarcia/luisices/actions/runs/43993107372) publicou Vercel Beta; workflow [43993107437](https://github.com/ccesargarcia/luisices/actions/runs/43993107437) passou testes e publicou apenas Hosting do frontend Dev. Worker Dev, Functions Dev, Rules e índices ficaram ignorados.
+- Smoke check após fase 2: POST/OPTIONS direto em `beta.luisices.com.br/api/ai-chat` retornaram 403; via `api.beta`, POST sem bearer 401, GET 405 e OPTIONS 204.
+- `api.dev` não foi alterada nem recebeu deploy. Falta a validação autenticada do Copiloto com texto e imagem pelo usuário; manter status `Em andamento` até essa confirmação.
