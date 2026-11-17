@@ -20,6 +20,7 @@ Este diretório consolida a documentação técnica oficial, arquitetura viva e 
 | **[Funcionalidades](FUNCIONALIDADES.md)** | Catálogo completo de módulos funcionais (pedidos, clientes, vitrine pública, e-mails corporativos, WhatsApp, financeiro e estoque). |
 | **[Dependências & Arquitetura](DEPENDENCIAS_E_ARQUITETURA.md)** | Visão estrutural de serviços, entrypoints frontend/backend, modelo de dados multi-tenant e pipelines de deploy. |
 | **[Operação e recuperação](OPERACAO_E_RECUPERACAO.md)** | Auditoria de pedidos, validação E2E, diagnóstico de falhas e recuperação de deploy ou dados. |
+| **[Monitoramento TLS do GitHub Pages](GITHUB_PAGES_ORIGIN_TLS_MONITORING.md)** | Verificação diária do certificado de origem do GitHub Pages e integração com monitor Push do Uptime Kuma. |
 | **[Segurança de pedidos e limite CEL](SEGURANCA_LIMITE_CEL_PEDIDOS.md)** | Limite de avaliações do Firestore, separação entre gravação direta e Function, autorização e testes de regressão para pedidos com 1–10 itens. |
 | **[Modelagem de ameaças](MODELAGEM_AMEACAS_SEGURANCA.md)** | Ativos, atores, limites de confiança, controles observados, ameaças STRIDE, riscos residuais e prioridades de mitigação. |
 | **[Idempotência e recuperação de pedidos](IDEMPOTENCIA_PEDIDOS.md)** | Chaves de operação, recibos transacionais, retomada após timeout e limites da recuperação no navegador. |
