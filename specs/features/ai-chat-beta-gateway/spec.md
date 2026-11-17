@@ -1,7 +1,7 @@
 # Copiloto de IA pelo gateway Beta
 
 - **ID:** `ai-chat-beta-gateway`
-- **Status:** Em andamento
+- **Status:** Concluída
 - **Responsável:** Luisices
 - **Atualizado em:** 2026-11-16
 - **Referências:** `api/ai-chat.ts`, `src/services/firebaseAiAgentService.ts`, `cloudflare/api-beta-worker/src/index.js`, `functions/ai/handlers.js`
@@ -91,4 +91,5 @@ No Beta, o Copiloto usa `POST /api/ai-chat` na origem Vercel. As demais rotas j�
 - Fase 1: workflow [43992768696](https://github.com/ccesargarcia/luisices/actions/runs/43992768696) publicou Worker Beta; smoke check POST 401, GET 405 e OPTIONS 204.
 - Fase 2: workflow [43993107372](https://github.com/ccesargarcia/luisices/actions/runs/43993107372) publicou Vercel Beta; workflow [43993107437](https://github.com/ccesargarcia/luisices/actions/runs/43993107437) passou testes e publicou apenas Hosting do frontend Dev. Worker Dev, Functions Dev, Rules e índices ficaram ignorados.
 - Smoke check após fase 2: POST/OPTIONS direto em `beta.luisices.com.br/api/ai-chat` retornaram 403; via `api.beta`, POST sem bearer 401, GET 405 e OPTIONS 204.
-- `api.dev` não foi alterada nem recebeu deploy. Falta a validação autenticada do Copiloto com texto e imagem pelo usuário; manter status `Em andamento` até essa confirmação.
+- Validação autenticada confirmada pelo usuário: Copiloto respondeu a texto e imagem, e a Function apareceu nos logs da Vercel. O usuário também observou o log `[GeminiClient] Modelo gemini-3.6-flash restabelecido com sucesso`, indicando recuperação do contador de falhas do provedor.
+- `api.dev` não foi alterada nem recebeu deploy. Critérios e validações da migração concluídos.

@@ -14,5 +14,5 @@
   - Evidência: workflow [43992768696](https://github.com/ccesargarcia/luisices/actions/runs/43992768696) passou; `POST` remoto 401, `GET` 405 e `OPTIONS` 204.
 - [x] **T7 — Implantação fase 2:** publicar Vercel Beta e validar bloqueio da origem e gateway.
   - Evidência: [Vercel Beta](https://github.com/ccesargarcia/luisices/actions/runs/43993107372) e [validação/deploy Dev](https://github.com/ccesargarcia/luisices/actions/runs/43993107437) concluídos; origem POST/OPTIONS 403, gateway POST 401, GET 405 e OPTIONS 204. Worker Dev, Functions Dev, Firestore Indexes e Rules ficaram `skipped`; Hosting `dev.luisices.com.br` publicou o frontend.
-- [ ] **T8 — Fechamento:** validar o Copiloto autenticado com texto e imagem e registrar status.
-  - Evidência: aguardando confirmação de teste autenticado do usuário; `api.dev` não foi alterada.
+- [x] **T8 — Fechamento:** validar o Copiloto autenticado com texto e imagem e registrar status.
+  - Evidência: usuário confirmou respostas com texto e imagem e visualizou a execução nos logs da Vercel; também reportou recuperação do modelo `gemini-3.6-flash`. `api.dev` não foi alterada.
