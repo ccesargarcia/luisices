@@ -44,7 +44,7 @@ Como `POST /api/order-tracking` já está publicado na allowlist do Worker `func
 
 ## Critérios de aceitação
 
-- **CA-1:** testes unitários de `api/order-tracking.ts` comprovam bloqueio `403` sem `x-beta-edge-secret` (inclusive em `OPTIONS`), `405` em `GET` com segredo válido e despacho das novas ações.
+- **CA-1:** testes unitários de `api/order-tracking.ts` comprovam bloqueio `403` sem `x-beta-edge-secret` (inclusive em `OPTIONS`) e `405` em `GET` com segredo válido; `order-tracking-action-dispatcher.test.ts` cobre o despacho das quatro novas ações e preservação das ações de links no dispatcher original.
 - **CA-2:** testes unitários de `superfreteService` e `firebaseOrderService` comprovam roteamento para `https://api.beta.luisices.com.br/api/order-tracking` no Beta e fallback para o callable GCP em erro `5xx` preservando `idempotencyKey` / `operationId`.
 - **CA-3:** `npm run typecheck`, suíte de testes unitários de pedidos e `git diff --check` aprovados.
 - **CA-4:** verificação remota após deploy Vercel confirma `403` direto na origem Vercel e `401` sem sessão via `https://api.beta.luisices.com.br/api/order-tracking` para `action: "createOrder"` e `action: "calculateSuperfreteShipping"`.
@@ -54,3 +54,5 @@ Como `POST /api/order-tracking` já está publicado na allowlist do Worker `func
 - `npm run typecheck`, 41 testes unitários em 3 suítes (`orders-admin-api.test.ts`, `superfrete-service-routing.test.ts` e `complex-order-validation.test.ts`) e `git diff --check` aprovados.
 - Deploy Vercel concluído com sucesso no run [`44166338230`](https://github.com/ccesargarcia/luisices/actions/runs/44166338230) (incluindo sincronização de `SUPERFRETE_SANDBOX_TOKEN`).
 - Verificação remota em `POST /api/order-tracking`: chamada direta na origem Vercel `403`, gateway sem sessão `401` (`createOrder` e `calculateSuperfreteShipping`), `OPTIONS` `204` e `GET` `405`.
+- **Correção de gatilho Vercel (2026-11-17):** os caminhos `functions/orders/index.js` e `functions/orders/superfrete.js` foram incluídos em `deploy-vercel-dev.yml`, para que alterações exclusivas nesses módulos também iniciem a publicação Beta. Essa alteração local ainda requer o fluxo normal de CI/deploy após merge.
+- **Cobertura do dispatcher (2026-11-17):** `order-tracking-action-dispatcher.test.ts` verifica os quatro handlers Beta com o mesmo request autenticado e instância Firestore, e garante que ações de links continuem no dispatcher original.

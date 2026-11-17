@@ -118,4 +118,37 @@ describe('AI Enrichment Beta gateway routing & GCP fallback', () => {
       mimeType: 'image/jpeg',
     });
   });
+
+  it('falls back to GCP when gallery enrichment returns a 500 internal error payload', async () => {
+    vi.stubGlobal('window', { location: { hostname: 'beta.luisices.com.br' } });
+    fetchMock.mockResolvedValue(
+      Response.json({ error: { code: 'internal', message: 'Falha inesperada na Vercel.' } }, { status: 500 }),
+    );
+    callableMock.mockResolvedValue({
+      data: { success: true, aiDescription: 'Descrição recuperada pelo GCP' },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await firebaseGalleryService.enrichItemWithAi('gallery-item-500');
+
+    expect(result).toEqual({ success: true, aiDescription: 'Descrição recuperada pelo GCP' });
+    expect(callableMock).toHaveBeenCalledWith({ itemId: 'gallery-item-500' });
+  });
+
+  it('falls back to GCP when store product enrichment returns a 500 internal error payload', async () => {
+    vi.stubGlobal('window', { location: { hostname: 'beta.luisices.com.br' } });
+    fetchMock.mockResolvedValue(
+      Response.json({ error: { code: 'internal', message: 'Falha inesperada na Vercel.' } }, { status: 500 }),
+    );
+    callableMock.mockResolvedValue({
+      data: { name: 'Produto recuperado pelo GCP', category: 'Papelaria' },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const params = { imageBase64: 'data:image/jpeg;base64,BBBB', mimeType: 'image/jpeg' };
+    const result = await firebaseStoreProductService.enrichStoreProductWithAi(params);
+
+    expect(result).toEqual({ name: 'Produto recuperado pelo GCP', category: 'Papelaria' });
+    expect(callableMock).toHaveBeenCalledWith(params);
+  });
 });

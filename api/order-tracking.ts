@@ -6,6 +6,7 @@ import {
   getFirebaseAdmin,
   mapCoreErrorToHttp,
 } from './_firebaseAdmin.js';
+import { dispatchBetaOrderAction } from './orderTrackingActionDispatcher.js';
 
 const require = createRequire(import.meta.url);
 const {
@@ -66,6 +67,14 @@ export default async function handler(
       data: payload,
     };
 
+    const betaAction = await dispatchBetaOrderAction(action || '', callableRequest, firestore, {
+      createOrder: (request, db) => handleCreateOrder(request, db as typeof firestore),
+      updateComplexOrder: (request, db) => handleUpdateComplexOrder(request, db as typeof firestore),
+      calculateSuperfreteShipping: (request) => handleCalculateSuperfreteShipping(request),
+      createSuperfreteLabel: (request) => handleCreateSuperfreteLabel(request),
+    });
+    if (betaAction.handled) return res.status(200).json(betaAction.result);
+
     let result: unknown;
     switch (action) {
       case 'create':
@@ -104,18 +113,6 @@ export default async function handler(
           db: firestore,
           fieldValue: FieldValue,
         });
-        break;
-      case 'createOrder':
-        result = await handleCreateOrder(callableRequest, firestore);
-        break;
-      case 'updateComplexOrder':
-        result = await handleUpdateComplexOrder(callableRequest, firestore);
-        break;
-      case 'calculateSuperfreteShipping':
-        result = await handleCalculateSuperfreteShipping(callableRequest);
-        break;
-      case 'createSuperfreteLabel':
-        result = await handleCreateSuperfreteLabel(callableRequest);
         break;
       default:
         return res.status(400).json({ error: { code: 'invalid-argument', message: 'Ação inválida.' } });

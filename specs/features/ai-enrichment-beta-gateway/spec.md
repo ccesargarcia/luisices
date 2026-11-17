@@ -43,13 +43,13 @@ Como `POST /api/ai-chat` já está na allowlist do Worker `functions-beta` (com 
   - `action === 'getUsage'` → `createGetAiUsageHandler({ db: firestore })(callableRequest)`
   - Qualquer outro valor de `action` → `400 invalid-argument`.
 - **RF-2 — Vertex AI no enriquecimento:** `createAiEnrichmentServices(adminInstance, apiKey, options)` aceita `options.vertexAi` e repassa ao `GeminiClient`, mantendo fallback automático para `GEMINI_API_KEY`.
-- **RF-3 — Roteamento e fallback no cliente:** `firebaseGalleryService.enrichItemWithAi` e `firebaseStoreProductService.enrichStoreProductWithAi` usam `executeWithGcpFallback('aiChat', ...)` e `getVercelBetaApiUrl('/api/ai-chat')`. Respostas `413` (`vercel-payload-too-large`) ou `>= 500` sem código de negócio disparam `VercelInfraError` para acionar o fallback GCP; erros `400`/`401`/`403`/`404`/`429` são propagados diretamente.
+- **RF-3 — Roteamento e fallback no cliente:** `firebaseGalleryService.enrichItemWithAi` e `firebaseStoreProductService.enrichStoreProductWithAi` usam `executeWithGcpFallback('aiChat', ...)` e `getVercelBetaApiUrl('/api/ai-chat')`. Respostas `413` (`vercel-payload-too-large`) ou qualquer resposta `>= 500` — inclusive o payload `{ error: { code: 'internal' } }` emitido pelo handler — disparam `VercelInfraError` para acionar o fallback GCP; erros de negócio `400`/`401`/`403`/`404`/`429` são propagados diretamente.
 - **RF-4 — Mapeamento de erros HTTP:** `not-found` mapeado para `404` em `api/ai-chat.ts` (necessário quando `itemId` da galeria não existe).
 
 ## Critérios de aceitação
 
-- **CA-1:** testes unitários de `api/ai-chat.ts` comprovam bloqueio `403` sem `x-beta-edge-secret`, despacho correto para `chat`, `enrichGalleryItem`, `enrichStoreProduct`, `getUsage` e erro `400` para `action` desconhecida.
-- **CA-2:** testes unitários dos serviços de cliente comprovam chamada a `https://api.beta.luisices.com.br/api/ai-chat` no host Beta e fallback automático para o callable GCP em erro `413`/`5xx`.
+- **CA-1:** testes unitários verificam bloqueio `403` sem `x-beta-edge-secret`, rejeição de métodos diferentes de POST após validar a origem, despacho de `chat`, `enrichGalleryItem`, `enrichStoreProduct` e `getUsage`, e erro `invalid-argument` para ação desconhecida.
+- **CA-2:** testes unitários dos serviços de cliente comprovam chamada a `https://api.beta.luisices.com.br/api/ai-chat` no host Beta e fallback automático para o callable GCP em erro `413` e em `500` com `{ error: { code: 'internal' } }`.
 - **CA-3:** `npm run typecheck`, `npm run build`, testes unitários e `git diff --check` aprovados.
 - **CA-4:** verificação remota após deploy Vercel confirma `403` direto na origem Vercel e `401` sem sessão via `https://api.beta.luisices.com.br/api/ai-chat` para `action: "enrichStoreProduct"`.
 
@@ -58,3 +58,4 @@ Como `POST /api/ai-chat` já está na allowlist do Worker `functions-beta` (com 
 - `npm run typecheck`, testes unitários (`tests/unit/ai-chat-api-origin.test.ts` e `tests/unit/ai-enrichment-service-routing.test.ts`) e `git diff --check` aprovados.
 - Deploy Vercel concluído com sucesso no run [`44163266089`](https://github.com/ccesargarcia/luisices/actions/runs/44163266089).
 - Verificação remota em `POST /api/ai-chat` (`{"action":"enrichStoreProduct"}`): chamada direta na origem Vercel `403`, gateway sem sessão `401`, `OPTIONS` `204` e `GET` `405`.
+- **Correção de fallback (2026-11-17):** respostas `>= 500` agora acionam fallback mesmo quando o JSON inclui `error.code: 'internal'`; testes de regressão cobrem enriquecimento de Galeria e Vitrine. `ai-action-dispatcher.test.ts` cobre as quatro ações e ação desconhecida.

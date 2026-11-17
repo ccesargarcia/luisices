@@ -234,7 +234,7 @@ export class FirebaseGalleryService {
           if (response.status === 413 && payload?.error?.code === 'vercel-payload-too-large') {
             throw new VercelInfraError('A solicitação excede 4 MiB no gateway. Reduza a imagem ou habilite o fallback GCP.', 413);
           }
-          if (response.status >= 500 && !payload?.error?.code) {
+          if (response.status >= 500) {
             throw new VercelInfraError(`Erro ao analisar arte com IA (${response.status}).`, response.status);
           }
           const err = new Error(payload?.error?.message || `Erro ao analisar arte com IA (${response.status})`);

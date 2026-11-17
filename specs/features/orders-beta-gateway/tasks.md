@@ -7,3 +7,5 @@
 - [x] **T5 — Documentação e impacto de IA:** atualizar `docs/VERCEL_BETA_ROUTING.md` e `specs/features/README.md`.
 - [x] **T6 — Validação local e remota (CA-3, CA-4):** rodar `npm run typecheck`, testes unitários, `git diff --check`, publicar na Vercel e validar `api.beta.luisices.com.br/api/order-tracking` vs origem direta.
   - Evidência: deploy Vercel `44166338230` concluído com sucesso; verificações remotas confirmaram bypass direto `403`, gateway sem sessão `401` (`createOrder` e `calculateSuperfreteShipping`), `OPTIONS` `204` e `GET` `405`.
+- [x] **T7 — Gatilhos da publicação Vercel:** incluir `functions/orders/index.js` e `functions/orders/superfrete.js` nos caminhos monitorados por `deploy-vercel-dev.yml`, para que alterações isoladas nesses handlers também sejam publicadas.
+- [x] **T8 — Cobertura direta do dispatcher:** extrair o roteamento das ações Beta para helper testável, cobrir as quatro ações e confirmar que ações de links seguem no dispatcher existente.
