@@ -6,7 +6,7 @@ import {
   getFirebaseAdmin,
   mapCoreErrorToHttp,
 } from './_firebaseAdmin.js';
-import { dispatchBetaOrderAction } from './orderTrackingActionDispatcher.js';
+import { dispatchBetaOrderAction } from './_orderTrackingActionDispatcher.js';
 
 const require = createRequire(import.meta.url);
 const {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { dispatchBetaOrderAction } from '../../api/orderTrackingActionDispatcher';
+import { dispatchBetaOrderAction } from '../../api/_orderTrackingActionDispatcher';
 
 describe('Beta order API action dispatcher', () => {
   it.each(['createOrder', 'updateComplexOrder', 'calculateSuperfreteShipping', 'createSuperfreteLabel'])(

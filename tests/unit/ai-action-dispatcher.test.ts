@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { dispatchAiAction } from '../../api/aiActionDispatcher';
+import { dispatchAiAction } from '../../api/_aiActionDispatcher';
 
 describe('AI API action dispatcher', () => {
   it.each(['chat', 'enrichGalleryItem', 'enrichStoreProduct', 'getUsage'])(

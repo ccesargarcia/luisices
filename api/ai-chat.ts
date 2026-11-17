@@ -6,7 +6,7 @@ import {
   getFirebaseAdmin,
   getVertexAiContext,
 } from './_firebaseAdmin.js';
-import { dispatchAiAction } from './aiActionDispatcher.js';
+import { dispatchAiAction } from './_aiActionDispatcher.js';
 
 export const maxDuration = 60;
 

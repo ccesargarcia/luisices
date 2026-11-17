@@ -40,7 +40,7 @@ Como `POST /api/order-tracking` já está publicado na allowlist do Worker `func
 - **RF-1 — Compatibilidade de runtime:** `functions/orders/index.js` e `functions/orders/superfrete.js` carregam na Vercel sem depender de `firebase-functions` ou `@sentry/node`, exportando `handleCreateOrder`, `handleUpdateComplexOrder`, `handleCalculateSuperfreteShipping` e `handleCreateSuperfreteLabel`.
 - **RF-2 — Despacho em `api/order-tracking.ts`:** validar `assertBetaEdgeRequest` no início do handler (antes de `OPTIONS` e `POST`) e suportar as ações `createOrder`, `updateComplexOrder`, `calculateSuperfreteShipping` e `createSuperfreteLabel` mantendo as 6 ações de links existentes.
 - **RF-3 — Segredo SuperFrete:** sincronizar `SUPERFRETE_SANDBOX_TOKEN` no `deploy-vercel-dev.yml`.
-- **RF-4 — Cliente e idempotência:** `firebaseOrderService` e `superfreteService` usam `executeWithGcpFallback('orderTrackingAdmin', ...)` e `getVercelBetaApiUrl('/api/order-tracking')` enviando as mesmas chaves `idempotencyKey` / `operationId`. Erros de negócio (`400`, `401`, `403`, `404`, `409`, `412`, `429`) não acionam fallback; falhas de infraestrutura (`>= 500` sem código de negócio) acionam o callable GCP com a mesma chave idempotente.
+- **RF-4 — Cliente e idempotência:** `firebaseOrderService` e `superfreteService` usam `executeWithGcpFallback('orderTrackingAdmin', ...)` e `getVercelBetaApiUrl('/api/order-tracking')` enviando as mesmas chaves `idempotencyKey` / `operationId`. Erros de negócio (`400`, `401`, `403`, `404`, `409`, `412`, `429`) não acionam fallback; qualquer resposta `>= 500` (inclusive `{ error: { code: 'internal' } }`) aciona o callable GCP com a mesma chave idempotente.
 
 ## Critérios de aceitação
 

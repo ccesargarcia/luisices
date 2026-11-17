@@ -18,7 +18,7 @@ async function callBetaSuperfreteApi<T>(action: string, payload: Record<string, 
   });
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    if (response.status >= 500 && !data?.error?.code) {
+    if (response.status >= 500) {
       throw new VercelInfraError(`Erro na SuperFrete (${response.status}).`, response.status);
     }
     const err = new Error(data?.error?.message || `Erro na SuperFrete (${response.status}).`);
