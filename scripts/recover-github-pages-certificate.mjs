@@ -1,6 +1,7 @@
 const DOMAIN = 'luisices.com.br';
 const WWW = `www.${DOMAIN}`;
 const CLOUDFLARE_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const OPERATION = process.env.OPERATION;
 const REPOSITORY = process.env.GITHUB_REPOSITORY;
 const EXPECTED_APEX_IPS = new Set([
@@ -17,6 +18,9 @@ if (!CLOUDFLARE_TOKEN || !REPOSITORY) {
 }
 if (!['github-pages-dns-only', 'restore-github-pages-proxy'].includes(OPERATION)) {
   throw new Error('Operação ausente ou não suportada.');
+}
+if (OPERATION === 'restore-github-pages-proxy' && !GITHUB_TOKEN) {
+  throw new Error('A permissão de leitura do GitHub Pages é necessária para restaurar o proxy.');
 }
 
 async function cloudflare(path, options = {}) {
@@ -102,7 +106,11 @@ async function verifyDnsOnly() {
 
 async function currentPagesCertificate() {
   const response = await fetch(`https://api.github.com/repos/${REPOSITORY}/pages`, {
-    headers: { Accept: 'application/vnd.github+json' },
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
   });
   const page = await response.json().catch(() => ({}));
   if (!response.ok || page.cname !== DOMAIN) {

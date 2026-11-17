@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  pages: read
 
 jobs:
   audit-cloudflare:
@@ -54,6 +55,7 @@ jobs:
         if: inputs.operation == 'restore-github-pages-proxy'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           OPERATION: ${{ inputs.operation }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node scripts/recover-github-pages-certificate.mjs

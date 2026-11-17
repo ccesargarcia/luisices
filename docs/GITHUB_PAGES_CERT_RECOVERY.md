@@ -15,7 +15,7 @@ Se o certificado não for emitido, mantenha os registros em DNS-only e revise a 
 
 ## Permissões e credenciais
 
-A auditoria padrão é somente leitura. As etapas DNS usam `CLOUDFLARE_API_TOKEN` já armazenado nos GitHub Actions Secrets para atualizar exclusivamente os cinco registros verificados. A reautorização do domínio é feita pela interface GitHub Pages, sem conceder permissões adicionais ao workflow. Tokens não são impressos nos logs.
+A auditoria padrão é somente leitura. As etapas DNS usam `CLOUDFLARE_API_TOKEN` já armazenado nos GitHub Actions Secrets para atualizar exclusivamente os cinco registros verificados. A reautorização do domínio é feita pela interface GitHub Pages. A workflow recebe somente `pages: read` para conferir o certificado antes de restaurar o proxy; usa o `GITHUB_TOKEN` efêmero e não imprime credenciais.
 
 ## Verificação
 

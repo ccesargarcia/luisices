@@ -46,7 +46,7 @@ Em 2026-11-17, `luisices.com.br` e `www.luisices.com.br` retornaram Cloudflare 5
 
 ## Requisitos não funcionais e integridade
 
-- Segurança: Cloudflare token vem de Actions Secret; workflow não recebe permissão de escrita do GitHub Pages; logs não podem imprimir credenciais.
+- Segurança: Cloudflare token vem de Actions Secret; workflow recebe apenas `pages: read`, não escrita; logs não podem imprimir credenciais.
 - Integridade: destinos, nomes e contagem de registros são verificados antes das atualizações; operação repetida é segura.
 - Disponibilidade: durante DNS-only e emissão, o site pode permanecer inacessível por HTTPS; a política SSL do Cloudflare não é reduzida.
 - Compatibilidade: sem alteração de aplicativo, APIs, dados, Copiloto Gemini ou MCP/ChatGPT.
@@ -62,7 +62,7 @@ Em 2026-11-17, `luisices.com.br` e `www.luisices.com.br` retornaram Cloudflare 5
 
 - **Confirmado:** o host principal usa GitHub Pages, Cloudflare está em Full Strict e a API GitHub Pages reporta `bad_authz` com certificado expirado.
 - **Confirmado:** DNS Cloudflare vigente apontava os destinos corretos do Pages, com proxy ativo no apex e `www`.
-- **Confirmado:** a rotina separa a etapa DNS-only da restauração, que exige certificado válido; a remoção e readição do domínio ficam na interface Pages para não conceder privilégios administrativos amplos ao workflow.
+- **Confirmado:** a rotina separa a etapa DNS-only da restauração, que exige certificado válido; a remoção e readição do domínio ficam na interface Pages. A checagem do certificado usa somente `pages: read`.
 
 ## Validação
 
@@ -75,4 +75,4 @@ Em 2026-11-17, `luisices.com.br` e `www.luisices.com.br` retornaram Cloudflare 5
 
 - A API Pages retornou `bad_authz`, domínios `luisices.com.br` e `www.luisices.com.br`, expiração 2026-11-17.
 - TLS direto para `185.199.108.153` apresentou certificado Let's Encrypt expirado em 2026-11-17 06:12:09 UTC.
-- Cloudflare audit run `44133050217` confirmou SSL Full Strict e proxy ativo nos cinco registros; a workflow de recuperação ainda não foi executada.
+- Cloudflare audit run `44133050217` confirmou SSL Full Strict e proxy ativo nos cinco registros; workflow `44137573785` confirmou DNS-only; workflow `44139321462` não restaurou proxy porque faltava permissão de leitura Pages. A política SSL continua Full Strict.
