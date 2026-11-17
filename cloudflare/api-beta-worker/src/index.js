@@ -11,6 +11,7 @@ const GALLERY_CORS_HEADERS = 'Authorization, Content-Type, x-origin-secret, x-cf
 
 const ALLOWED_ROUTES = new Map([
   [GALLERY_MEDIA_PATH, new Set(['GET', 'HEAD'])],
+  ['/api/alexa', new Set(['POST'])],
   ['/api/mcp-admin', new Set(['POST'])],
   ['/api/public-catalog-products', new Set(['GET', 'HEAD'])],
   ['/api/public-catalog-order', new Set(['POST'])],
