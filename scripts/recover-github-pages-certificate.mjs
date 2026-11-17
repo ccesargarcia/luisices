@@ -110,8 +110,16 @@ async function currentPagesCertificate() {
   }
   const cert = page.https_certificate;
   const expiry = cert?.expires_at ? Date.parse(cert.expires_at) : 0;
-  if (cert?.state !== 'issued' || expiry <= Date.now() + 86_400_000) {
+  if (!['approved', 'issued'].includes(cert?.state) || expiry <= Date.now() + 86_400_000) {
     throw new Error(`Certificado GitHub Pages não está válido para restaurar proxy (estado ${cert?.state || 'indisponível'}).`);
+  }
+}
+
+async function verifyOriginHttpsDirect() {
+  for (const host of [DOMAIN, WWW]) {
+    const response = await fetch(`https://${host}/`, { redirect: 'follow' });
+    if (!response.ok) throw new Error(`HTTPS direto de ${host} retornou HTTP ${response.status}.`);
+    console.log(`HTTPS direto do GitHub Pages para ${host}: HTTP ${response.status}; certificado TLS validado.`);
   }
 }
 
@@ -131,6 +139,7 @@ if (OPERATION === 'github-pages-dns-only') {
   console.log('DNS-only confirmado. Reinicie o vínculo do domínio em Settings → Pages e aguarde certificado emitido antes de restaurar o proxy.');
 } else {
   await currentPagesCertificate();
+  await verifyOriginHttpsDirect();
   await setProxy(zoneId, records, true);
   await verifyPublicSite();
   console.log('Certificado válido confirmado, proxy Cloudflare restaurado e HTTPS verificado para os dois hosts.');

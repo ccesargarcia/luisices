@@ -8,8 +8,8 @@ Na workflow manual **Cloudflare - Auditoria de Status Provisionado**, siga estas
 
 1. Confere os quatro IPs oficiais do GitHub Pages no domínio raiz e o CNAME `www` para `ccesargarcia.github.io`. Se houver qualquer divergência, encerra antes de alterar DNS.
 2. Execute `github-pages-dns-only`. A workflow desativa temporariamente o proxy somente nesses cinco registros e aguarda a propagação.
-3. Em GitHub → Settings → Pages, remova e salve o domínio customizado; em seguida cadastre novamente `luisices.com.br` e aguarde o certificado ficar válido. Mantenha HTTPS obrigatório.
-4. Execute `restore-github-pages-proxy`. A rotina só restaura o proxy quando a API do GitHub confirmar `https_certificate.state = issued` e testa os dois endereços por HTTPS.
+3. Em GitHub → Settings → Pages, remova e salve o domínio customizado; em seguida cadastre novamente `luisices.com.br` e aguarde a emissão do certificado. Mantenha HTTPS obrigatório.
+4. Execute `restore-github-pages-proxy`. A rotina exige estado `approved` ou `issued`, validade futura e conexão TLS direta válida aos dois hosts antes de restaurar o proxy; depois testa o HTTPS público pela Cloudflare.
 
 Se o certificado não for emitido, mantenha os registros em DNS-only e revise a validação de domínio/CNAME antes de restaurar o proxy. A operação não altera `api.dev`, outros Workers, registros de email, conteúdo, regras SSL/TLS ou outros registros DNS.
 
@@ -19,4 +19,4 @@ A auditoria padrão é somente leitura. As etapas DNS usam `CLOUDFLARE_API_TOKEN
 
 ## Verificação
 
-Após a execução, confirme `https_certificate.state = issued` na configuração Pages e respostas HTTPS sem erro para `https://luisices.com.br` e `https://www.luisices.com.br`.
+Após a execução, confirme `https_certificate.state = approved` ou `issued`, `https_enforced = true` e respostas HTTPS sem erro para `https://luisices.com.br` e `https://www.luisices.com.br`.
