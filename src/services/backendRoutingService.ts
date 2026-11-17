@@ -200,6 +200,7 @@ export function isFallbackEligibleError(err: unknown): boolean {
   if (!err) return false;
   if (err instanceof VercelInfraError) return true;
   const anyErr = err as { code?: string; status?: number; name?: string } | null;
+  if (anyErr?.code === 'vercel-payload-too-large' && anyErr.status === 413) return true;
   if (typeof anyErr?.code === 'string' && BUSINESS_ERROR_CODES.has(anyErr.code)) {
     return false;
   }

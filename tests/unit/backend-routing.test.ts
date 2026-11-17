@@ -36,6 +36,10 @@ describe('backendRoutingService', () => {
     expect(isFallbackEligibleError(authErr)).toBe(false);
 
     expect(isFallbackEligibleError(new VercelInfraError('Internal Error', 500))).toBe(true);
+    expect(isFallbackEligibleError(new VercelInfraError('Payload exceeded gateway limit', 413))).toBe(true);
+    expect(isFallbackEligibleError({ code: 'vercel-payload-too-large', status: 413 })).toBe(true);
+    expect(isFallbackEligibleError({ code: 'resource-exhausted', status: 429 })).toBe(false);
+    expect(isFallbackEligibleError({ code: 'invalid-argument', status: 400 })).toBe(false);
     expect(isFallbackEligibleError(new TypeError('Failed to fetch'))).toBe(true);
     const timeoutErr = Object.assign(new Error('timeout'), { name: 'TimeoutError' });
     expect(isFallbackEligibleError(timeoutErr)).toBe(true);

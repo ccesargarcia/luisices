@@ -2,6 +2,7 @@ import { httpsCallable } from 'firebase/functions';
 import { auth, functions } from '../lib/firebase';
 import { AiOrderDraft, AiWhatsAppDraft, AiPricingEstimate } from '../app/types';
 import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
+import { getVercelBetaApiUrl } from '../app/utils/betaHost';
 
 export interface AiAgentChatResponse {
   success: boolean;
@@ -38,7 +39,7 @@ export class FirebaseAiAgentService {
         const user = auth.currentUser;
         if (!user) throw new Error('Sessão necessária para usar o Copiloto de IA.');
         const idToken = await user.getIdToken();
-        const response = await fetch('/api/ai-chat', {
+        const response = await fetch(getVercelBetaApiUrl('/api/ai-chat'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -49,6 +50,9 @@ export class FirebaseAiAgentService {
         });
         const payload = await response.json().catch(() => null);
         if (!response.ok) {
+          if (response.status === 413 && payload?.error?.code === 'vercel-payload-too-large') {
+            throw new VercelInfraError('A solicitação excede 4 MiB no gateway. Reduza a imagem ou habilite o fallback GCP.', 413);
+          }
           if (response.status >= 500 && !payload?.error?.code) {
             throw new VercelInfraError(`Erro no Copiloto (${response.status}).`, response.status);
           }

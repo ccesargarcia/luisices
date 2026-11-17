@@ -4,6 +4,8 @@ Revisão: **13/11/2026**. A implementação descrita abaixo é baseada no códig
 
 ## Onde o comportamento é definido
 
+No host Beta, o envio do chat pode ser roteado pelo gateway `api.beta.luisices.com.br`. O Worker aceita `POST /api/ai-chat` com limite de corpo de 4 MiB para Vercel; corpos acima disso usam o fallback GCP somente quando o fallback automático está ativo e permanecem sujeitos aos limites da callable. Esse caminho não altera ferramentas, prompt, autorização ou orçamento.
+
 | Arquivo | Papel |
 |---|---|
 | [schemas.js](../functions/ai/schemas.js) | `COPILOT_SYSTEM_INSTRUCTION`, nove declarações de ferramentas e prompts de visão |

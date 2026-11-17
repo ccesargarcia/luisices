@@ -111,7 +111,7 @@ A atualização visual de permissões depende de listeners e conectividade. Desc
 
 ## IA e Alexa
 
-O Copiloto tem nove ferramentas de consulta/preparação; enriquecimento de imagens usa callables separados. Leia [capacidades, contratos e prompt aplicado](COPILOTO_IA.md).
+O Copiloto tem nove ferramentas de consulta/preparação; enriquecimento de imagens usa callables separados. No Beta, o chat pode passar por `api.beta.luisices.com.br`; corpos acima de 4 MiB podem usar fallback GCP sujeito à configuração e aos limites da callable. Leia [capacidades, contratos e prompt aplicado](COPILOTO_IA.md) e o [roteamento Beta](VERCEL_BETA_ROUTING.md).
 
 O acesso do ChatGPT e de outros clientes MCP é uma integração separada, com catálogo próprio de 31 ferramentas, OAuth/chaves, escopos e permissões atuais do perfil. Consultar pedidos ou equipe não libera por si só os valores financeiros: as respostas são redigidas conforme `payments:read` e `financial:read`. Leia o [manual ChatGPT/MCP](INTEGRACAO_CHATGPT_MCP.md); a presença do código não confirma publicação remota.
 
