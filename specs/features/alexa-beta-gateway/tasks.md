@@ -12,5 +12,5 @@
   - Evidência: guia, runbook e catálogo atualizados; Copiloto/Gemini e MCP/ChatGPT sem impacto; endpoint de voz Alexa permanece separado.
 - [x] **T6 — Deploy e verificação Beta (CA-5, CA-6):** publicar Worker, validar, publicar Vercel/cliente e confirmar isolamento Dev.
   - Evidência: Worker [publicado](https://github.com/ccesargarcia/luisices/actions/runs/43987633541), Vercel [publicada](https://github.com/ccesargarcia/luisices/actions/runs/43987891619); requests 401/403/204/405 conforme spec. Worker Dev e Functions Dev ficaram `skipped`; Firebase Hosting Dev publicou o frontend; `api.dev` não foi alterada.
-- [ ] **T7 — Validação manual (CA-7):** abrir Configurações → Alexa no Beta e consultar status com uma sessão autorizada.
-  - Evidência: confirmação do usuário de que a leitura `getStatus` funciona; não alterar permissões nem bindings durante a validação.
+- [x] **T7 — Validação manual (CA-7):** abrir Configurações → Alexa no Beta e consultar status com uma sessão autorizada.
+  - Evidência: usuário confirmou que está funcionando; validação foi somente leitura, sem alterar permissões nem bindings.

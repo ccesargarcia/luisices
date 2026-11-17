@@ -1,7 +1,7 @@
 # Administração Alexa pelo gateway Beta
 
 - **ID:** `alexa-beta-gateway`
-- **Status:** Em andamento
+- **Status:** Concluída
 - **Responsável:** Luisices
 - **Atualizado em:** 2026-11-16
 - **Referências:** `docs/VERCEL_BETA_ROUTING.md`; `docs/ESPECIFICACAO_ALEXA_ANTIGRAVITY.md`; `api/alexa.ts`; `src/services/firebaseAlexaService.ts`; `functions/alexa/callables.js`; `cloudflare/api-beta-worker/src/index.js`.
@@ -103,4 +103,4 @@ O webhook de voz Alexa e as rotas públicas da skill são implementações disti
 - Worker Beta [publicado](https://github.com/ccesargarcia/luisices/actions/runs/43987633541) e Vercel [publicada](https://github.com/ccesargarcia/luisices/actions/runs/43987891619), ambos com sucesso.
 - Verificações remotas: POST pelo gateway sem sessão `401`, bypass da origem `403`, OPTIONS `204` e GET `405`.
 - Worker Dev e Functions Dev ficaram `skipped`; Firebase Hosting Dev publicou o frontend pela mudança em `src`. `api.dev` não foi alterada.
-- Pendente: teste manual do painel Alexa com sessão autorizada (CA-7); a integração pública de voz não foi testada nem alterada.
+- O usuário confirmou que a consulta autenticada do painel Alexa no Beta funciona (CA-7). A integração pública de voz não foi testada nem alterada.
