@@ -1,5 +1,5 @@
 const moduleInitializationStartedAt = process.hrtime.bigint();
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('../common/runtimeCompat');
 const { onCall } = require('../common/sentryFunctions');
 const { EVOLUTION_API_KEY } = require('../common/secrets');
 const { EVOLUTION_API_URL, EVOLUTION_INSTANCE } = require('../common/helpers');

@@ -10,8 +10,37 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../lib/firebase';
+import { auth, db, functions } from '../lib/firebase';
 import { SendEmailPayload, EmailUsage } from '../app/types';
+import { getVercelBetaApiUrl } from '../app/utils/betaHost';
+import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
+
+async function callBetaEmailApi<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Entre na sua conta para utilizar o módulo de E-mail.');
+  const idToken = await user.getIdToken();
+  const response = await fetch(getVercelBetaApiUrl('/api/communications-admin'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+    cache: 'no-store',
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    if (response.status >= 500) {
+      throw new VercelInfraError(`Erro no módulo de E-mail (${response.status}).`, response.status);
+    }
+    const err = new Error(data?.error?.message || `Erro no módulo de E-mail (${response.status}).`);
+    if (data?.error?.code) Object.assign(err, { code: data.error.code });
+    if (data?.error?.details !== undefined) Object.assign(err, { details: data.error.details });
+    Object.assign(err, { status: response.status });
+    throw err;
+  }
+  return data as T;
+}
 
 export class EmailService {
   async getAllTrashedEmailIds(): Promise<{ received: string[]; sent: string[] }> {
@@ -50,27 +79,40 @@ export class EmailService {
    * Envia um e-mail utilizando a Cloud Function sendCustomEmail (Resend)
    */
   async sendEmail(payload: SendEmailPayload): Promise<{ success: boolean; emailId?: string; id?: string }> {
-    const callable = httpsCallable<SendEmailPayload, { success: boolean; emailId?: string; id?: string }>(
-      functions,
-      'sendCustomEmail'
+    return executeWithGcpFallback(
+      'communicationsAdmin',
+      () => callBetaEmailApi<{ success: boolean; emailId?: string; id?: string }>('sendCustomEmail', payload as unknown as Record<string, unknown>),
+      async () => {
+        const callable = httpsCallable<SendEmailPayload, { success: boolean; emailId?: string; id?: string }>(
+          functions,
+          'sendCustomEmail'
+        );
+        const result = await callable(payload);
+        return result.data;
+      },
     );
-    const result = await callable(payload);
-    return result.data;
   }
 
   /**
    * Consulta a cota / limite de envio diário e mensal de e-mails
    */
   async getEmailUsage(): Promise<EmailUsage> {
-    const callable = httpsCallable<
-      void,
-      { success: boolean; daily: EmailUsage['daily']; monthly: EmailUsage['monthly']; source?: EmailUsage['source'] }
-    >(functions, 'getEmailUsage');
-    const result = await callable();
+    const data = await executeWithGcpFallback(
+      'communicationsAdmin',
+      () => callBetaEmailApi<{ success: boolean; daily: EmailUsage['daily']; monthly: EmailUsage['monthly']; source?: EmailUsage['source'] }>('getEmailUsage'),
+      async () => {
+        const callable = httpsCallable<
+          void,
+          { success: boolean; daily: EmailUsage['daily']; monthly: EmailUsage['monthly']; source?: EmailUsage['source'] }
+        >(functions, 'getEmailUsage');
+        const result = await callable();
+        return result.data;
+      },
+    );
     return {
-      daily: result.data.daily,
-      monthly: result.data.monthly,
-      source: result.data.source,
+      daily: data.daily,
+      monthly: data.monthly,
+      source: data.source,
     };
   }
 

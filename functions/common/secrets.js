@@ -2,7 +2,12 @@
  * Centralização de Secrets gerenciados via Google Secret Manager / Firebase Params.
  */
 
-const { defineSecret } = require('firebase-functions/params');
+let defineSecret;
+try {
+  ({ defineSecret } = require('firebase-functions/params'));
+} catch {
+  defineSecret = (name) => ({ value: () => process.env[name] || '' });
+}
 
 const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
 const EVOLUTION_API_KEY = defineSecret('EVOLUTION_API_KEY');

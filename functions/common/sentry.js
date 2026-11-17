@@ -2,7 +2,18 @@
  * Sentry para Cloud Functions. Este módulo deve ser carregado antes do Firebase
  * Admin e das declarações de triggers para permitir a instrumentação automática.
  */
-const Sentry = require('@sentry/node');
+let Sentry;
+try {
+  Sentry = require('@sentry/node');
+} catch {
+  Sentry = {
+    getClient: () => null,
+    withScope: (fn) => fn({ setTag: () => {}, setContext: () => {}, setExtra: () => {} }),
+    captureException: () => {},
+    flush: async () => false,
+    metrics: { distribution: () => {} },
+  };
+}
 const firstInvocationSpans = new Set();
 
 /** Mede a primeira execução do handler e registra o tempo de avaliação do módulo separadamente. */

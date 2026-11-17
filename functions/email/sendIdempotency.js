@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('../common/runtimeCompat');
 const LEASE_MS = 120000;
 // Margem conservadora em relação à retenção de 24h do provedor.
 const RETRY_WINDOW_MS = 23 * 60 * 60 * 1000;

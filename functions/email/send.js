@@ -1,7 +1,7 @@
 /** Envio de e-mails via Resend. Isolado do webhook e da limpeza agendada. */
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
 const { getStorage } = require('firebase-admin/storage');
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('../common/runtimeCompat');
 const { onCall } = require('../common/sentryFunctions');
 const crypto = require('crypto');
 const { RESEND_API_KEY } = require('../common/secrets');

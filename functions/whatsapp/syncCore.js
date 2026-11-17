@@ -1,4 +1,4 @@
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('../common/runtimeCompat');
 
 async function syncWhatsAppChatMessagesCore({
   request,

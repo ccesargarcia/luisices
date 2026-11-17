@@ -2,7 +2,32 @@
  * Instâncias de Rate Limiting centralizadas para proteção contra abusos e DoS.
  */
 
-const { RateLimiterMemory } = require('rate-limiter-flexible');
+let RateLimiterMemory;
+try {
+  ({ RateLimiterMemory } = require('rate-limiter-flexible'));
+} catch {
+  RateLimiterMemory = class InMemoryRateLimiter {
+    constructor({ points, duration }) {
+      this.points = points;
+      this.durationMs = duration * 1000;
+      this.buckets = new Map();
+    }
+    async consume(key) {
+      const now = Date.now();
+      const entry = this.buckets.get(key);
+      if (!entry || entry.expiresAt <= now) {
+        this.buckets.set(key, { count: 1, expiresAt: now + this.durationMs });
+        return;
+      }
+      if (entry.count >= this.points) {
+        const err = new Error('Rate limit exceeded');
+        err.msBeforeNext = entry.expiresAt - now;
+        throw err;
+      }
+      entry.count += 1;
+    }
+  };
+}
 
 // Rate limiter: 3 tentativas por email a cada hora (redefinição de senha)
 const passwordResetLimiter = new RateLimiterMemory({

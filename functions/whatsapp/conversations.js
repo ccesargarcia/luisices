@@ -1,7 +1,7 @@
 const moduleInitializationStartedAt = process.hrtime.bigint();
 
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('../common/runtimeCompat');
 const { withFirstInvocationSpan } = require('../common/sentry');
 const { onCall: onCallWithTelemetry } = require('../common/sentryFunctions');
 const { normalizeWhatsAppNumber, assertActiveSession } = require('../common/helpers');

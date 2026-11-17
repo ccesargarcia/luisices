@@ -92,6 +92,13 @@ const ROUTE_DEFINITIONS: Array<{
     vercelPath: '/api/mcp-admin',
     gcpFunction: 'getMcpSettingsStatus / createMcpApiKey / revokeMcpSession / getMcpOpenApiSchema',
   },
+  {
+    key: 'communicationsAdmin',
+    label: 'WhatsApp & E-mail (Painel)',
+    description: 'Envio, sincronização, status WhatsApp e envio/cota de E-mail',
+    vercelPath: '/api/communications-admin',
+    gcpFunction: '*WhatsApp* / sendCustomEmail / getEmailUsage',
+  },
 ];
 
 export function BackendRoutingSettingsSection({ isAdmin }: BackendRoutingSettingsSectionProps) {
@@ -159,6 +166,7 @@ export function BackendRoutingSettingsSection({ isAdmin }: BackendRoutingSetting
         aiChat: 'inherit',
         alexa: 'inherit',
         mcpAdmin: 'inherit',
+        communicationsAdmin: 'inherit',
       },
     };
     void persistConfig(

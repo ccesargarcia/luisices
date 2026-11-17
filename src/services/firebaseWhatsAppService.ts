@@ -3,6 +3,35 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions, auth } from '../lib/firebase';
 import { WhatsAppMessage, WhatsAppConversation } from '../app/types';
 import { normalizePhoneForWhatsApp } from '../app/utils/whatsapp';
+import { getVercelBetaApiUrl } from '../app/utils/betaHost';
+import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
+
+async function callBetaWhatsAppApi<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Entre na sua conta para utilizar o WhatsApp.');
+  const idToken = await user.getIdToken();
+  const response = await fetch(getVercelBetaApiUrl('/api/communications-admin'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+    cache: 'no-store',
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    if (response.status >= 500) {
+      throw new VercelInfraError(`Erro no WhatsApp (${response.status}).`, response.status);
+    }
+    const err = new Error(data?.error?.message || `Erro no WhatsApp (${response.status}).`);
+    if (data?.error?.code) Object.assign(err, { code: data.error.code });
+    if (data?.error?.details !== undefined) Object.assign(err, { details: data.error.details });
+    Object.assign(err, { status: response.status });
+    throw err;
+  }
+  return data as T;
+}
 
 export interface WhatsAppStatusResult {
   connected: boolean;
@@ -30,22 +59,30 @@ export const firebaseWhatsAppService = {
     const requestId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `wa_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
-    const sendCallable = httpsCallable<
-      { phone: string; text: string; customerName?: string; customerId?: string; requestId: string },
-      { success: boolean; message: string; data: any }
-    >(functions, 'sendWhatsAppDirectMessage');
-
-    const result = await sendCallable({
+    const payload = {
       phone: cleanPhone,
       text: text.trim(),
       customerName: customerName || undefined,
       customerId: customerId || undefined,
       requestId,
-    });
+    };
+
+    const data = await executeWithGcpFallback(
+      'communicationsAdmin',
+      () => callBetaWhatsAppApi<{ success: boolean; message: string; data: any }>('sendWhatsAppDirectMessage', payload),
+      async () => {
+        const sendCallable = httpsCallable<
+          typeof payload,
+          { success: boolean; message: string; data: any }
+        >(functions, 'sendWhatsAppDirectMessage');
+        const result = await sendCallable(payload);
+        return result.data;
+      },
+    );
 
     return {
-      success: result.data.success,
-      message: result.data.message || 'Mensagem enviada com sucesso!',
+      success: data.success,
+      message: data.message || 'Mensagem enviada com sucesso!',
     };
   },
 
@@ -61,20 +98,27 @@ export const firebaseWhatsAppService = {
     if (!cleanPhone) throw new Error('Número de WhatsApp inválido.');
     if (!messageDocId && !evolutionMessageId) throw new Error('Identificador da mensagem não informado.');
 
-    const deleteCallable = httpsCallable<
-      { phone: string; messageDocId?: string; evolutionMessageId?: string },
-      { success: boolean; message: string }
-    >(functions, 'deleteWhatsAppMessage');
-
-    const result = await deleteCallable({
+    const payload = {
       phone: cleanPhone,
       messageDocId,
       evolutionMessageId,
-    });
+    };
+    const data = await executeWithGcpFallback(
+      'communicationsAdmin',
+      () => callBetaWhatsAppApi<{ success: boolean; message: string }>('deleteWhatsAppMessage', payload),
+      async () => {
+        const deleteCallable = httpsCallable<
+          typeof payload,
+          { success: boolean; message: string }
+        >(functions, 'deleteWhatsAppMessage');
+        const result = await deleteCallable(payload);
+        return result.data;
+      },
+    );
 
     return {
-      success: result.data.success,
-      message: result.data.message || 'Mensagem apagada com sucesso!',
+      success: data.success,
+      message: data.message || 'Mensagem apagada com sucesso!',
     };
   },
 
@@ -85,17 +129,23 @@ export const firebaseWhatsAppService = {
     const cleanPhone = normalizePhoneForWhatsApp(phone);
     if (!cleanPhone) throw new Error('Número de WhatsApp inválido.');
 
-    const syncCallable = httpsCallable<
-      { phone: string },
-      { success: boolean; count: number; message: string }
-    >(functions, 'syncWhatsAppChatMessages');
-
-    const result = await syncCallable({ phone: cleanPhone });
+    const data = await executeWithGcpFallback(
+      'communicationsAdmin',
+      () => callBetaWhatsAppApi<{ success: boolean; count: number; message: string }>('syncWhatsAppChatMessages', { phone: cleanPhone }),
+      async () => {
+        const syncCallable = httpsCallable<
+          { phone: string },
+          { success: boolean; count: number; message: string }
+        >(functions, 'syncWhatsAppChatMessages');
+        const result = await syncCallable({ phone: cleanPhone });
+        return result.data;
+      },
+    );
 
     return {
-      success: result.data.success,
-      count: result.data.count,
-      message: result.data.message || 'Mensagens sincronizadas!',
+      success: data.success,
+      count: data.count,
+      message: data.message || 'Mensagens sincronizadas!',
     };
   },
 
@@ -175,8 +225,16 @@ export const firebaseWhatsAppService = {
     const cleanPhone = normalizePhoneForWhatsApp(phone);
     if (!cleanPhone) return;
 
-    const callable = httpsCallable<{ phone: string }, { success: boolean }>(functions, 'markWhatsAppChatRead');
-    await callable({ phone: cleanPhone });
+    await executeWithGcpFallback<void>(
+      'communicationsAdmin',
+      async () => {
+        await callBetaWhatsAppApi('markWhatsAppChatRead', { phone: cleanPhone });
+      },
+      async () => {
+        const callable = httpsCallable<{ phone: string }, { success: boolean }>(functions, 'markWhatsAppChatRead');
+        await callable({ phone: cleanPhone });
+      },
+    );
   },
 
   /**
@@ -186,11 +244,20 @@ export const firebaseWhatsAppService = {
     const cleanPhone = normalizePhoneForWhatsApp(phone);
     if (!cleanPhone) return;
 
-    const callable = httpsCallable<
-      { phone: string; customerName: string; customerId?: string },
-      { success: boolean }
-    >(functions, 'ensureWhatsAppConversation');
-    await callable({ phone: cleanPhone, customerName: customerName || cleanPhone, customerId });
+    const payload = { phone: cleanPhone, customerName: customerName || cleanPhone, customerId };
+    await executeWithGcpFallback<void>(
+      'communicationsAdmin',
+      async () => {
+        await callBetaWhatsAppApi('ensureWhatsAppConversation', payload);
+      },
+      async () => {
+        const callable = httpsCallable<
+          typeof payload,
+          { success: boolean }
+        >(functions, 'ensureWhatsAppConversation');
+        await callable(payload);
+      },
+    );
   },
 
   /**
@@ -198,12 +265,18 @@ export const firebaseWhatsAppService = {
    */
   async getInstanceStatus(): Promise<WhatsAppStatusResult> {
     try {
-      const statusCallable = httpsCallable<void, WhatsAppStatusResult>(
-        functions,
-        'getWhatsAppInstanceStatus'
+      return await executeWithGcpFallback(
+        'communicationsAdmin',
+        () => callBetaWhatsAppApi<WhatsAppStatusResult>('getWhatsAppInstanceStatus'),
+        async () => {
+          const statusCallable = httpsCallable<void, WhatsAppStatusResult>(
+            functions,
+            'getWhatsAppInstanceStatus'
+          );
+          const res = await statusCallable();
+          return res.data;
+        },
       );
-      const res = await statusCallable();
-      return res.data;
     } catch (err: any) {
       console.warn('[firebaseWhatsAppService] Erro ao verificar status da instância:', err);
       return {

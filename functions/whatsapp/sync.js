@@ -1,7 +1,7 @@
 const moduleInitializationStartedAt = process.hrtime.bigint();
 
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('../common/runtimeCompat');
 const { onCall } = require('../common/sentryFunctions');
 const { EVOLUTION_API_KEY } = require('../common/secrets');
 const {

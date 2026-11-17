@@ -1,4 +1,4 @@
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('../common/runtimeCompat');
 
 async function authorizeChat(request, phone, { db, assertActiveSession, customerId, create = false }) {
   const { uid, profile } = await assertActiveSession(request);

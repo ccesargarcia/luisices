@@ -13,7 +13,36 @@ let ResendClient;
 const getResend = (apiKey) => {
   if (!apiKey) return null;
   if (!ResendClient) {
-    ({ Resend: ResendClient } = require('resend'));
+    try {
+      ({ Resend: ResendClient } = require('resend'));
+    } catch {
+      ResendClient = class ResendFetchCompat {
+        constructor(key) {
+          this.apiKey = key;
+          this.emails = {
+            send: async (payload, options = {}) => {
+              const headers = {
+                Authorization: `Bearer ${this.apiKey}`,
+                'Content-Type': 'application/json',
+              };
+              if (options?.idempotencyKey) {
+                headers['Idempotency-Key'] = String(options.idempotencyKey);
+              }
+              const res = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(payload),
+              });
+              const json = await res.json().catch(() => null);
+              if (!res.ok) {
+                return { data: null, error: json || { message: `HTTP ${res.status}`, statusCode: res.status } };
+              }
+              return { data: json, error: null };
+            },
+          };
+        }
+      };
+    }
   }
   return new ResendClient(apiKey);
 };
@@ -99,7 +128,7 @@ const formatActionLink = (rawFirebaseLink, fallbackMode = 'resetPassword') => {
   return rawFirebaseLink;
 };
 
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('./runtimeCompat');
 
 /**
  * Valida a autenticidade da sessão com barreira temporal estrita contra revogação de tokens

@@ -1,8 +1,23 @@
 /** Firebase v2 trigger wrappers that report unexpected handler failures. */
 const { Sentry } = require('./sentry');
-const firebaseHttps = require('firebase-functions/v2/https');
-const firebaseScheduler = require('firebase-functions/v2/scheduler');
-const { HttpsError } = firebaseHttps;
+const { HttpsError } = require('./runtimeCompat');
+let firebaseHttps;
+let firebaseScheduler;
+try {
+  firebaseHttps = require('firebase-functions/v2/https');
+} catch {
+  firebaseHttps = {
+    onRequest: (_opts, handler) => (typeof _opts === 'function' ? _opts : handler),
+    onCall: (_opts, handler) => (typeof _opts === 'function' ? _opts : handler),
+  };
+}
+try {
+  firebaseScheduler = require('firebase-functions/v2/scheduler');
+} catch {
+  firebaseScheduler = {
+    onSchedule: (_opts, handler) => (typeof _opts === 'function' ? _opts : handler),
+  };
+}
 const { ORIGIN_SECRET } = require('./secrets');
 const { validateOriginSecret } = require('../originProtection');
 
