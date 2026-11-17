@@ -55,6 +55,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      pull-requests: read
     outputs:
       frontend: ${{ steps.targets.outputs.frontend }}
       functions: ${{ steps.targets.outputs.functions }}
@@ -69,6 +70,7 @@ jobs:
       need_frontend_validation: ${{ steps.targets.outputs.need_frontend_validation }}
       has_changes: ${{ steps.targets.outputs.has_changes }}
       mcp_metadata: ${{ steps.targets.outputs.mcp_metadata }}
+      skip_dev_deploy: ${{ steps.targets.outputs.skip_dev_deploy }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -133,6 +135,34 @@ jobs:
               - 'scripts/audit-order-integrity.mjs'
               - 'scripts/order-integrity-audit-core.mjs'
 
+      - name: Detectar PR Beta sem deploy em ambientes Dev
+        id: beta-deploy-policy
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { pathToFileURL } = await import('node:url');
+            const policyUrl = pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/dev-deploy-policy.mjs`);
+            const { shouldSkipDevDeploy } = await import(policyUrl.href);
+            let pullRequests = [];
+            if (context.eventName === 'push' && context.ref === 'refs/heads/develop') {
+              const result = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                commit_sha: context.sha,
+              });
+              pullRequests = result.data;
+            }
+
+            const skip = shouldSkipDevDeploy({
+              eventName: context.eventName,
+              ref: context.ref,
+              pullRequests,
+            });
+            core.setOutput('skip_dev_deploy', String(skip));
+            if (skip) {
+              core.notice('PR marcada beta-only-no-dev-deploy: validações seguem; publicações em Dev serão ignoradas.');
+            }
+
       - name: Resolver Alvos e Estratégia de Testes
         id: targets
         env:
@@ -152,6 +182,7 @@ jobs:
           FILTER_CI: ${{ steps.filter.outputs.ci }}
           FILTER_MAINTENANCE: ${{ steps.filter.outputs.maintenance }}
           FILTER_MCP_METADATA: ${{ steps.filter.outputs.mcp_metadata }}
+          SKIP_DEV_DEPLOY: ${{ steps.beta-deploy-policy.outputs.skip_dev_deploy }}
           FILTER_CLOUDFLARE_API: ${{ steps.filter.outputs.cloudflare_api }}
           FILTER_CLOUDFLARE_CDN: ${{ steps.filter.outputs.cloudflare_cdn }}
         run: |
@@ -272,6 +303,7 @@ jobs:
           echo "need_frontend_validation=$NEED_FRONTEND_VALIDATION" >> "$GITHUB_OUTPUT"
           echo "has_changes=$HAS_CHANGES" >> "$GITHUB_OUTPUT"
           echo "mcp_metadata=$FILTER_MCP_METADATA" >> "$GITHUB_OUTPUT"
+          echo "skip_dev_deploy=${SKIP_DEV_DEPLOY:-false}" >> "$GITHUB_OUTPUT"
           CLOUDFLARE_TARGET=''
           if [ "$FILTER_CLOUDFLARE_API" = 'true' ] && [ "$FILTER_CLOUDFLARE_CDN" = 'true' ]; then
             CLOUDFLARE_TARGET='all'
@@ -452,6 +484,7 @@ jobs:
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
+      needs.detect-changes.outputs.skip_dev_deploy != 'true' &&
       needs.detect-changes.outputs.indexes == 'true' &&
       (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
       (needs.functions-validation.result == 'success' || needs.functions-validation.result == 'skipped')
@@ -466,6 +499,7 @@ jobs:
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
+      needs.detect-changes.outputs.skip_dev_deploy != 'true' &&
       (needs.functions-validation.result == 'success' || needs.functions-validation.result == 'skipped') &&
       needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
@@ -554,6 +588,7 @@ jobs:
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
+      needs.detect-changes.outputs.skip_dev_deploy != 'true' &&
       (needs.functions-validation.result == 'success' || needs.functions-validation.result == 'skipped') &&
       (needs.deploy-indexes.result == 'success' || needs.deploy-indexes.result == 'skipped') &&
       (needs.detect-changes.outputs.functions == 'true' || needs.detect-changes.outputs.mcp_metadata == 'true')
@@ -739,6 +774,7 @@ jobs:
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
+      needs.detect-changes.outputs.skip_dev_deploy != 'true' &&
       (needs.cloudflare-validation.result == 'success' || needs.cloudflare-validation.result == 'skipped') &&
       needs.detect-changes.outputs.cloudflare_target != ''
     uses: ./.github/workflows/deploy-cloudflare.yml
@@ -753,6 +789,7 @@ jobs:
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
+      needs.detect-changes.outputs.skip_dev_deploy != 'true' &&
       (needs.deploy.result == 'success' || needs.deploy.result == 'skipped') &&
       (needs.deploy-cloudflare.result == 'success' || needs.deploy-cloudflare.result == 'skipped') &&
       needs.detect-changes.outputs.mcp_metadata == 'true' &&
@@ -769,6 +806,7 @@ jobs:
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
+      needs.detect-changes.outputs.skip_dev_deploy != 'true' &&
       needs.detect-changes.outputs.rules == 'true' &&
       (needs.deploy-indexes.result == 'success' || needs.deploy-indexes.result == 'skipped') &&
       (needs.deploy.result == 'success' || needs.deploy.result == 'skipped') &&

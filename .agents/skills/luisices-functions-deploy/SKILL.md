@@ -61,6 +61,10 @@ git diff --name-only origin/develop HEAD -- functions/
 
 ## 🚀 2. Deploying Cloud Functions
 
+### PRs exclusivas do Beta
+
+Antes de integrar em `develop` uma PR que não deve publicar recursos nos ambientes Dev (Firebase Hosting/Functions, Firestore/Storage Rules, índices ou Cloudflare Dev), aplique o label `beta-only-no-dev-deploy`. O workflow mantém testes e validações e ignora os jobs de publicação. Use o label somente quando nenhuma parte da mudança precisar chegar a Dev; pushes diretos e execuções manuais mantêm a política normal.
+
 When deploying to Firebase:
 
 ### Full Deploy & Secret Pruning:

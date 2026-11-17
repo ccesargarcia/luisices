@@ -2,17 +2,17 @@
 
 ## Abordagem
 
-Implementação local preparada na branch `feat/mcp-public-beta-gateway`, sem publicação. O Worker tem allowlist MCP própria; o handler Vercel valida o segredo antes do Firebase; OAuth separa origem API (`api.beta`) de UI/consentimento (`beta`); e a página de consentimento Beta chama a API pelo gateway. Permanecem pendentes a verificação Cloudflare do namespace, o rollout coordenado e o aceite remoto.
+Implementação na branch `feat/mcp-public-beta-gateway` e publicação Beta concluídas. O Worker tem allowlist MCP própria; o handler Vercel valida o segredo antes do Firebase; OAuth separa origem API (`api.beta`) de UI/consentimento (`beta`); e a página de consentimento Beta chama a API pelo gateway. Permanecem pendentes a verificação account-wide do namespace e o aceite com reconexão ChatGPT.
 
 A troca de issuer/resource deve ser tratada como mudança de identidade OAuth: credenciais antigas vinculadas à origem Beta atual não renovarão nem serão aceitas após o corte; os clientes devem reconectar. Não aceitar tokens de duas origens. Configurar `VERCEL_MCP_ORIGIN`/`VERCEL_MCP_DOMAIN` para a API `api.beta` e uma nova `VERCEL_MCP_APP_ORIGIN` para UI/consentimento `beta`. Nenhuma etapa deve acionar deploy de `api.dev` ou `functions-dev`.
 
 ## Prioridades e sequência
 
 1. **P0 — Preparar o corte:** confirmar com o usuário a janela de troca OAuth e a reconexão obrigatória; verificar a unicidade account-wide do namespace MCP; confirmar que o cliente ChatGPT usa Origin ausente e que a tela Beta usa `https://beta.luisices.com.br`. A conexão antiga pode falhar durante a troca e precisa de comunicação clara.
-2. **P1 — Implementar e validar o caminho novo sem alterar o cliente ativo:** allowlist e testes no Worker Beta, segredo de origem no handler Vercel e verificações locais. Publicar o Worker Beta isoladamente enquanto a origem antiga ainda está ativa; o novo gateway pode responder com a configuração antiga até a fase seguinte.
-3. **P2 — Corte coordenado de identidade OAuth:** mudar issuer/resource para `api.beta`, configurar origem da UI separadamente, atualizar consentimento e `resource_documentation`, proteger a origem e encaminhar o cliente para o novo domínio. Executar como uma janela coordenada; informar reconexão imediatamente.
-4. **P3 — Aceite Beta:** provar discovery, autorização nova, consentimento, token, `tools/list`, uma ferramenta somente de leitura, bypass direto 403, limites e isolamento de `api.dev`; reconectar o cliente ChatGPT.
-5. **P4 — Fechamento:** revisar documentação viva e telemetria sanitizada; ajustar limite se necessário e registrar evidências de deploy separadas dos testes locais.
+2. **P1 — Implementar e validar o caminho novo:** concluído localmente e publicado pelo Worker/Vercel Beta; testes de forwarding, guard, metadados OAuth e smoke checks remotos passaram.
+3. **P2 — Corte coordenado de identidade OAuth:** concluído no deploy; issuer/resource são `api.beta`, UI de consentimento permanece em `beta`, e a origem exige segredo. O cliente antigo precisa autorizar novamente.
+4. **P3 — Aceite Beta:** parcialmente concluído: discovery, metadados, 403 de bypass e isolamento observável de `api.dev` foram verificados; auditoria do namespace e reconexão ChatGPT com ferramenta somente de leitura ainda faltam.
+5. **P4 — Fechamento:** confirmar namespace account-wide, concluir reconexão do cliente, observar telemetria sanitizada e registrar evidências. Corrigir em fluxo separado o gate que permitiu redeploy seletivo de Functions MCP Dev no merge.
 
 ## Componentes existentes
 
@@ -24,7 +24,7 @@ A troca de issuer/resource deve ser tratada como mudança de identidade OAuth: c
 | Rewrites Vercel | `vercel.json` | Preservar UI `/oauth-consent`; manter rewrites existentes, mas o handler MCP deve negar bypass direto sem segredo |
 | Consentimento | `src/app/pages/OAuthConsent.tsx`; `src/app/utils/oauthEnvironment.ts`; `src/app/utils/betaHost.ts` | No Beta, chama `/oauth/authorize` pelo `api.beta`, mantendo a UI no host Beta |
 | Configuração/deploy | `.github/workflows/deploy-vercel-dev.yml`; workflow de deploy Cloudflare Beta; secrets/env Vercel | Sincronizar configuração e segredo somente para recursos Beta; verificar que paths de Dev não são alterados |
-| Testes e documentação | testes Worker/MCP/OAuth; `docs/VERCEL_BETA_ROUTING.md`; `docs/INTEGRACAO_CHATGPT_MCP.md`; `specs/features/README.md` | Cobrem os critérios locais; guias e índices registram a implementação pendente de publicação e a reconexão |
+| Testes e documentação | testes Worker/MCP/OAuth; `docs/VERCEL_BETA_ROUTING.md`; `docs/INTEGRACAO_CHATGPT_MCP.md`; `specs/features/README.md` | Cobrem os critérios locais; guias e índices registram a publicação concluída, a ocorrência de deploy seletivo Dev e a reconexão pendente |
 
 ## Contratos, dados e compatibilidade
 

@@ -73,7 +73,7 @@ Sem `--dry-run`, remove apenas os diretórios gerados previstos no script, dentr
 
 | Branch | Ambiente | Workflow principal |
 |---|---|---|
-| `develop` | Desenvolvimento/QA | [deploy-dev.yml](.github/workflows/deploy-dev.yml): seleciona frontend, Functions e regras/índices conforme alterações ou parâmetros |
+| `develop` | Desenvolvimento/QA | [deploy-dev.yml](.github/workflows/deploy-dev.yml): seleciona componentes por alteração; PRs exclusivamente Beta podem usar `beta-only-no-dev-deploy` para validar sem publicar em Dev |
 | `main` | Produção | [deploy.yml](.github/workflows/deploy.yml): frontend no GitHub Pages e regras; Functions publicadas automaticamente pelo [workflow de backend](.github/workflows/deploy-functions-manual.yml) quando seus arquivos mudam |
 
 O workflow de DEV decide as validações conforme alterações e parâmetros; não executa obrigatoriamente todos os E2E em cada push. `[skip tests]` pula testes, mas permite deploy. `[skip ci]` evita os workflows de push/pull request; verificações gerenciadas pelo GitHub, como CodeQL, podem continuar.

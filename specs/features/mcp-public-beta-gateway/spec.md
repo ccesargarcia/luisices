@@ -8,11 +8,11 @@
 
 ## Problema e contexto
 
-O servidor MCP público do ambiente Beta atualmente responde em `https://beta.luisices.com.br`. As rewrites Vercel direcionam descoberta, OAuth, ferramentas e `/mcp` para `api/mcp-server.ts`, que delega ao endpoint MCP. O Worker de `https://api.beta.luisices.com.br` encaminha uma allowlist de APIs Vercel, mas ainda não inclui o servidor MCP público. Os metadados OAuth observados e os defaults de `api/mcp-server.ts` identificam `beta.luisices.com.br` como origem do MCP.
+Na inspeção inicial, o servidor MCP público do ambiente Beta respondia em `https://beta.luisices.com.br`. As rewrites Vercel direcionam descoberta, OAuth, ferramentas e `/mcp` para `api/mcp-server.ts`, que delega ao endpoint MCP. O Worker de `https://api.beta.luisices.com.br` ainda não incluía o servidor MCP público, e os metadados/defaults identificavam `beta.luisices.com.br` como origem. Após o merge do PR #188, o gateway MCP Beta foi publicado; as evidências remotas atuais estão registradas em `tasks.md`.
 
 O handler MCP permite o runtime Vercel sem exigir a proteção de origem que é aplicada em outros caminhos. Assim, adicionar um proxy no Worker sem proteger a origem não impediria chamadas diretas ao host Beta. A tela de consentimento OAuth está hospedada no Beta e atualmente constrói chamadas para a API no mesmo host.
 
-Esta especificação acompanha a implementação preparada na branch `feat/mcp-public-beta-gateway`. **O código ainda não foi publicado**: até o rollout coordenado, o cliente Beta ativo continua usando `https://beta.luisices.com.br` e o comportamento remoto atual permanece vigente.
+Esta especificação acompanha a implementação da branch `feat/mcp-public-beta-gateway` e seu rollout coordenado. A publicação mudou o issuer/resource e exige que clientes Beta existentes autorizem novamente. O aceite com reconexão ChatGPT e a checagem account-wide do namespace permanecem pendentes.
 
 ## Objetivos
 
@@ -30,7 +30,7 @@ Esta especificação acompanha a implementação preparada na branch `feat/mcp-p
 - Migrar o MCP administrativo `/api/mcp-admin` (já coberto por `mcp-admin-beta-gateway`).
 - Alterar catálogo de ferramentas, seus schemas, escopos OAuth ou regras de autorização de negócio.
 - Habilitar SSE no endpoint MCP; o comportamento atual de `GET /mcp` com `Accept: text/event-stream` deve ser preservado.
-- Fazer deploy ou mudar DNS/domínios como parte desta especificação; essas ações só ocorrerão em etapa futura aprovada.
+- Não realizar deploy manual nem reconfigurar `api.dev`; a publicação Beta ocorre pelos workflows autorizados em `develop`, com os gates e a verificação registrados nas tarefas.
 
 ## Atores e permissões
 
@@ -116,13 +116,13 @@ Esta especificação acompanha a implementação preparada na branch `feat/mcp-p
 - **Confirmado:** o MCP Beta atualmente está roteado por `beta.luisices.com.br`; `/mcp` e endpoints OAuth são reescritos para `api/mcp-server.ts`.
 - **Confirmado:** os defaults no handler anunciam `beta.luisices.com.br`; a página de consentimento Beta chama a API no próprio host. O helper OAuth atual monta `resource_documentation` em `/chatGptToolsEndpoint/openapi.json`, caminho que não deve ser anunciado pelo novo gateway.
 - **Confirmado:** o handler MCP limita corpo a 64 KiB; `GET /mcp` responde 405 a pedido SSE; ferramentas MCP limitam chaves a até 300/h, OAuth limita usuário a 120/h e endpoints OAuth têm limites próprios por IP.
-- **Implementado na branch, ainda não publicado:** `VERCEL_MCP_ORIGIN=https://api.beta.luisices.com.br` e `VERCEL_MCP_DOMAIN=api.beta.luisices.com.br` definem API/resource/issuer. `VERCEL_MCP_APP_ORIGIN=https://beta.luisices.com.br` define UI/redirect de consentimento; nenhuma origem é derivada do request.
-- **Implementado na branch, ainda não publicado:** resource canônico único sem sufixo `/mcp`, `https://api.beta.luisices.com.br`; ambas as variantes de Protected Resource Metadata anunciam esse resource e `resource_documentation` aponta para `/openapi.json` no gateway.
-- **Implementado na branch, ainda não publicado:** handler Vercel MCP exige `BETA_VERCEL_ORIGIN_SECRET` antes de inicializar Firebase Admin.
-- **Implementado na branch, ainda não publicado:** sem compatibilidade dupla de issuer. Após o corte, o cliente precisará reconectar e autorizar novamente; nenhuma migração em massa de dados OAuth foi adicionada.
-- **Implementado na branch, ainda não publicado:** binding Cloudflare MCP isolado, 120 requisições/minuto por bearer hash e por família MCP; chamadas anônimas usam IP. Quotas existentes no backend permanecem autoritativas; não se reutiliza o binding geral de 30/min e tokens não são registrados.
-- **Implementado na branch, ainda não publicado:** permitir Origin `https://beta.luisices.com.br` e ausência de Origin; negar outros Origins presentes. O comportamento real do cliente ChatGPT ainda requer validação pós-publicação.
-- **Pendente antes da publicação:** verificar que o namespace `6634920189` é único na conta Cloudflare e provisionar o binding MCP sem reutilizar ou alterar namespace das demais APIs. O valor inicial não é um teto global estrito.
+- **Implementado e publicado:** `VERCEL_MCP_ORIGIN=https://api.beta.luisices.com.br` e `VERCEL_MCP_DOMAIN=api.beta.luisices.com.br` definem API/resource/issuer. `VERCEL_MCP_APP_ORIGIN=https://beta.luisices.com.br` define UI/redirect de consentimento; nenhuma origem é derivada do request.
+- **Implementado e publicado:** resource canônico único sem sufixo `/mcp`, `https://api.beta.luisices.com.br`; ambas as variantes de Protected Resource Metadata anunciam esse resource e `resource_documentation` aponta para `/openapi.json` no gateway.
+- **Implementado e publicado:** handler Vercel MCP exige `BETA_VERCEL_ORIGIN_SECRET` antes de inicializar Firebase Admin.
+- **Implementado e publicado:** sem compatibilidade dupla de issuer. Após o corte, o cliente precisa reconectar e autorizar novamente; nenhuma migração em massa de dados OAuth foi adicionada.
+- **Implementado e publicado:** binding Cloudflare MCP isolado, 120 requisições/minuto por bearer hash e por família MCP; chamadas anônimas usam IP. Quotas existentes no backend permanecem autoritativas; não se reutiliza o binding geral de 30/min e tokens não são registrados.
+- **Implementado e publicado:** permitir Origin `https://beta.luisices.com.br` e ausência de Origin; negar outros Origins presentes. O comportamento real do cliente ChatGPT ainda precisa de aceite.
+- **Pendente operacional:** confirmar por consulta account-wide que o namespace `6634920189` é único e dedicado ao MCP Beta. O deploy do Worker passou, mas isso não substitui a auditoria de unicidade. O valor inicial não é um teto global estrito.
 - **Restrição invariável:** `api.dev.luisices.com.br` não pode ser alterado em nenhuma etapa desta iniciativa.
 
 ## Validação
@@ -131,9 +131,12 @@ Esta especificação acompanha a implementação preparada na branch `feat/mcp-p
 - Testes do handler Vercel MCP: segredo antes de Firebase, bypass 403 e forwarding aceito.
 - Testes do endpoint/cliente: rotas discovery/MCP/OAuth, host de consentimento, issuer/resource e ferramentas sem mudança de contrato.
 - Testes de Origin/CORS e cabeçalhos MCP: origem permitida/negada/ausente, `MCP-Protocol-Version`, `Accept` com JSON e SSE, `WWW-Authenticate` e `Retry-After` preservados.
-- Validação local concluída na branch: `npm run typecheck`; 91 testes em 7 arquivos Worker/MCP/OAuth; lint de 107 arquivos Functions; build Vite; validação YAML/TOML e `git diff --check`.
-- Wranger dry-run indisponível neste ambiente Android ARM64 por ausência de binário `workerd` compatível; validação remota Cloudflare não feita por falta de `CLOUDFLARE_API_TOKEN`.
-- Revisão do workflow e verificações remotas de gateway, bypass e OAuth continuam pendentes; nenhum deploy foi executado.
+- Validação local concluída antes do merge: `npm run typecheck`; 91 testes em 7 arquivos Worker/MCP/OAuth; lint de 107 arquivos Functions; build Vite; validação YAML/TOML e `git diff --check`.
+- Wrangler dry-run indisponível neste ambiente Android ARM64 por ausência de binário `workerd` compatível; consulta account-wide Cloudflare não feita por falta de `CLOUDFLARE_API_TOKEN`.
+- Deploy Cloudflare Beta (run `44002637046`) e Vercel Beta (run `44002637065`) concluíram com sucesso. `GET https://api.beta.luisices.com.br/mcp` e os documentos OAuth retornaram 200 e anunciaram `api.beta`; chamada direta à origem Vercel MCP retornou 403.
+- `api.dev` respondeu 200 e continua anunciando `https://api.dev.luisices.com.br`. Worker Dev foi ignorado no run de merge.
+- Limitação operacional do merge: workflow Firebase Dev publicou Hosting Dev e concluiu o deploy seletivo da família MCP antes do cancelamento. O run terminou `cancelled`, mas a etapa de Functions já havia concluído; isso motivou a spec `beta-only-dev-deploy-guard`. Nenhuma mudança na rota/issuer `api.dev` foi observada na verificação remota.
+- Reconexão do cliente ChatGPT e auditoria account-wide do namespace continuam pendentes.
 
 ## Referências de protocolo e plataforma
 
@@ -143,4 +146,4 @@ Esta especificação acompanha a implementação preparada na branch `feat/mcp-p
 
 ## Evidências de conclusão
 
-- Implementação local revisada em 2026-11-16, na branch `feat/mcp-public-beta-gateway`; testes locais concluídos. Publicação, verificação account-wide do namespace e aceite remoto ainda pendentes.
+- Implementação publicada após merge em 2026-11-17; validações locais e smoke checks remotos concluídos. Reautorização ChatGPT e confirmação account-wide do namespace permanecem pendentes.

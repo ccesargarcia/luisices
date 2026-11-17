@@ -27,6 +27,7 @@ Este diretório consolida a documentação técnica oficial, arquitetura viva e 
 | **[Integração ChatGPT & MCP](INTEGRACAO_CHATGPT_MCP.md)** | Manual da API do Plugin ChatGPT e servidor MCP (OpenAPI 3.0.3, OAuth 2.1, 31 ferramentas, escopos e idempotência); inclui o estado da migração Beta pelo gateway e mantém os contratos distintos das nove ferramentas do Copiloto Gemini. |
 | **[Especificação Alexa](ESPECIFICACAO_ALEXA_ANTIGRAVITY.md)** | Especificação técnica e arquitetura de integração da Skill da Alexa. |
 | **[Backend Cloud Functions](../functions/README.md)** | Organização de micro-serviços, triggers, webhooks e tarefas agendadas no Firebase Gen2 / Cloud Run. |
+| **[Fluxo coordenado de deploy](DEPLOYMENT_RELEASE_FLOW.md)** | Integração em `develop`, release em `main`, execução seletiva e proteção para PRs Beta-only. |
 | **[Desempenho das Functions](DESEMPENHO_FUNCTIONS.md)** | Carregamento por domínio, preferência REST, escala para zero, medição e validação de cold start. |
 | **[Beta Vercel & Roteamento Dinâmico](VERCEL_BETA_ROUTING.md)** | Ambiente paralelo na Vercel (`beta.luisices.com.br` / `loja.beta.luisices.com.br`), Functions `gru1`, feature flag `Vercel ↔ GCP` e fallback automático. |
 

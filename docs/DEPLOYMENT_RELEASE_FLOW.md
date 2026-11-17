@@ -19,6 +19,8 @@ Ordem quando os componentes correspondentes mudarem:
 
 Os jobs não relacionados à mudança são ignorados. O deploy de regras não repete o deploy dos índices. A publicação de rules permanece depois da aplicação, evitando publicar uma regra incompatível antes do restante do release.
 
+PRs que alteram exclusivamente recursos Beta e não devem publicar nada nos ambientes Dev precisam receber, antes do merge, o label `beta-only-no-dev-deploy`. No push de merge em `develop`, o workflow consulta a PR associada: mantém testes e validações, mas ignora Functions, Hosting, Rules, índices, Workers e purge de cache Dev. O label só deve ser usado quando a mudança não precisa ser promovida para Dev. Pushes diretos e dispatches manuais continuam seguindo a política normal.
+
 Quando um push em `develop` corresponde exatamente ao merge de uma PR, o workflow só reutiliza a validação se a árvore de arquivos do merge for idêntica à árvore testada e os dois checks obrigatórios (`e2e-tests (1)` e `e2e-tests (2)`) tiverem sido aprovados na mesma execução completa da workflow `test-actions.yml`, cujo evento seja `pull_request` e cujo SHA seja exatamente o da cabeça testada da PR. Nesse caso, unitários/E2E não são repetidos após o merge. Se qualquer validação falhar, faltar, divergir ou não puder ser consultada, os testes normais permanecem antes do deploy. Pushes diretos continuam executando os testes necessários.
 
 Quando a própria workflow `test-actions.yml` é disparada pelo push de merge em `develop`, ela usa a mesma prova (PR mesclada, árvore idêntica, dois shards aprovados na mesma execução) para não repetir a suíte. Pushes diretos, divergências ou falhas de consulta continuam executando os testes.
