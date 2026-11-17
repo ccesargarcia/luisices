@@ -8,5 +8,5 @@
   - Evidência: links/referências conferidos e comportamento documentado.
 - [x] **T4 — Validação:** typecheck, teste focado, YAML e diff.
   - Evidência: registrar resultados realmente executados; nenhuma publicação foi iniciada.
-- [ ] **T5 — Fechamento:** registrar PR/commit e status final sem marcar trabalho remoto não observado.
-  - Evidência: checklist e status coerentes.
+- [x] **T5 — Fechamento:** registrar PR/commit e status final sem marcar trabalho remoto não observado.
+  - Evidência: commit `87c3532` publicado na branch `fix/beta-only-skip-firebase-dev`; PR draft [#189](https://github.com/ccesargarcia/luisices/pull/189) aberta contra `develop`. A PR aguarda revisão/merge; a proteção ainda não está ativa em `develop`.
