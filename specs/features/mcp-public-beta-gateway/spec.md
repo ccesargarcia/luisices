@@ -1,9 +1,9 @@
 # Servidor MCP público pelo gateway Beta
 
 - **ID:** `mcp-public-beta-gateway`
-- **Status:** Em andamento
+- **Status:** Concluída
 - **Responsável:** Luisices
-- **Atualizado em:** 2026-11-16
+- **Atualizado em:** 2026-11-17
 - **Referências:** `docs/VERCEL_BETA_ROUTING.md`; `docs/INTEGRACAO_CHATGPT_MCP.md`; `cloudflare/api-beta-worker/src/index.js`; `api/mcp-server.ts`; `functions/mcp/endpoint.js`; `src/app/pages/OAuthConsent.tsx`; `vercel.json`; `specs/features/mcp-admin-beta-gateway/`.
 
 ## Problema e contexto

@@ -1,7 +1,7 @@
 # Impedir deploy Dev em PRs exclusivos do Beta
 
 - **ID:** `beta-only-dev-deploy-guard`
-- **Status:** Em andamento
+- **Status:** Concluída
 - **Responsável:** Luisices
 - **Atualizado em:** 2026-11-17
 - **Referências:** `.github/workflows/deploy-dev.yml`; `scripts/dev-deploy-policy.mjs`; `docs/DEPLOYMENT_RELEASE_FLOW.md`; `specs/features/mcp-public-beta-gateway/tasks.md`.

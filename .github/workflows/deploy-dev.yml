@@ -281,10 +281,13 @@ jobs:
             fi
           fi
 
-          # Mudanças de pipeline validam o build sem publicar o Hosting.
+          # Mudanças de pipeline ou deploys suprimidos por política Beta-only validam o build sem publicar o Hosting.
           NEED_FRONTEND_VALIDATION=false
           if [ "$FILTER_CI" = "true" ] && [ "$FILTER_FRONTEND" != "true" ]; then
             NEED_FRONTEND_VALIDATION=true
+          elif [ "$SKIP_TESTS" != "true" ] && [ "${SKIP_DEV_DEPLOY:-false}" = "true" ] && [ "$DEPLOY_FRONTEND" = "true" ]; then
+            NEED_FRONTEND_VALIDATION=true
+            NEED_FUNCTIONS_VALIDATION=true
           fi
 
           # 5. Determinar se há algo para deployar
