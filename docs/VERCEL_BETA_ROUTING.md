@@ -14,6 +14,16 @@ Este guia documenta a arquitetura paralela de desenvolvimento na Vercel (`beta.l
 - **Estado da migração Alexa Admin:** Worker e Vercel publicados em 16/11/2026 (horário de Brasília). Os [workflows do Worker Beta](https://github.com/ccesargarcia/luisices/actions/runs/43987633541) e [Vercel](https://github.com/ccesargarcia/luisices/actions/runs/43987891619) concluíram com sucesso. Verificação remota: gateway sem sessão 401, origem Vercel direta 403, OPTIONS 204 e GET 405. O usuário confirmou o painel funcionando com sessão autorizada. Worker Dev e Functions Dev ficaram `skipped`; o workflow publicou o frontend Firebase Dev. O webhook e o fluxo de voz continuam separados.
 - **Observabilidade:** o `@vercel/speed-insights` em [App.tsx](../src/app/App.tsx) é instanciado somente quando `isVercelBetaHost()` ([betaHost.ts](../src/app/utils/betaHost.ts)) é verdadeiro (mobile e desktop).
 
+### MCP público pelo gateway Beta
+
+A migração do MCP público está implementada na branch `feat/mcp-public-beta-gateway`, mas **ainda não foi publicada**. Até o corte, a conexão Beta existente continua usando `https://beta.luisices.com.br`; `api.dev.luisices.com.br` não faz parte da mudança.
+
+Após publicar, o Worker `api.beta` encaminhará allowlist específica para descoberta OAuth, OpenAPI, `/mcp`, `/tools/:toolName` e OAuth (`/oauth/authorize`, `/oauth/consent`, `/oauth/register`, `/oauth/token`, `/oauth/revoke`). O acesso direto à origem Vercel MCP exigirá o segredo do Worker. A tela `/oauth-consent` continuará na aplicação `beta.luisices.com.br`, enquanto suas chamadas de API usarão `api.beta`.
+
+O MCP terá binding de rate limit isolado (120/minuto por hash de bearer; IP para chamadas anônimas), corpo máximo de 64 KiB e CORS restrito à origem da aplicação Beta. O binding nativo é aproximado por localização; as quotas de chave/usuário e OAuth no backend continuam sendo os limites autoritativos. O namespace `6634920189` precisa ser conferido como único na conta Cloudflare antes da publicação.
+
+A origem/resource/issuer OAuth mudará de `beta.luisices.com.br` para `api.beta.luisices.com.br`. Conexões e tokens Beta existentes precisarão de nova autorização; não haverá aceitação simultânea dos dois issuers. O workflow Vercel agora aguarda o Worker publicar `/mcp` antes de implantar a proteção e a nova identidade, para evitar publicar a origem antes do gateway.
+
 ---
 
 ## 2. Vercel Functions (`api/`) e Núcleos Compartilhados

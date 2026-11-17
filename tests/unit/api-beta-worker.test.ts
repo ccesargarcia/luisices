@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import betaWorker from '../../cloudflare/api-beta-worker/src/index.js';
 
 const originSecret = 'beta-edge-test-secret';
@@ -88,6 +89,145 @@ describe('Cloudflare Worker API Beta isolado', () => {
     expect(options.headers.get('Authorization')).toBe('Bearer firebase-user-token');
     expect(options.headers.get('x-beta-edge-secret')).toBe(originSecret);
     expect(new TextDecoder().decode(options.body)).toBe(JSON.stringify({ action: 'getStatus' }));
+  });
+
+  it('encaminha POST MCP pelo binding dedicado, preservando protocolo e limitando por hash do bearer', async () => {
+    const upstreamFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-MCP-Trace-Id': 'trace-1' },
+    }));
+    const mcpLimit = vi.fn().mockResolvedValue({ success: true });
+    const apiLimit = vi.fn();
+    vi.stubGlobal('fetch', upstreamFetch);
+    const authorization = 'Bearer oauth-token-for-test';
+    const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize' });
+
+    const response = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/mcp?source=chatgpt', {
+        method: 'POST',
+        headers: {
+          Authorization: authorization,
+          Accept: 'application/json, text/event-stream',
+          'MCP-Protocol-Version': '2025-11-25',
+          'Content-Type': 'application/json',
+          Origin: betaOrigin,
+          'cf-connecting-ip': '203.0.113.21',
+        },
+        body,
+      }),
+      {
+        BETA_VERCEL_ORIGIN_SECRET: originSecret,
+        BETA_VERCEL_MCP_LIMITER: { limit: mcpLimit },
+        BETA_VERCEL_API_LIMITER: { limit: apiLimit },
+      },
+    );
+
+    const authFingerprint = createHash('sha256').update(authorization).digest('hex');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(betaOrigin);
+    expect(response.headers.get('X-MCP-Trace-Id')).toBe('trace-1');
+    expect(mcpLimit).toHaveBeenCalledWith({ key: `mcp:credential:${authFingerprint}` });
+    expect(apiLimit).not.toHaveBeenCalled();
+    const [targetUrl, options] = upstreamFetch.mock.calls[0];
+    expect(targetUrl.toString()).toBe(`${betaOrigin}/mcp?source=chatgpt`);
+    expect(options.headers.get('Authorization')).toBe(authorization);
+    expect(options.headers.get('Accept')).toBe('application/json, text/event-stream');
+    expect(options.headers.get('MCP-Protocol-Version')).toBe('2025-11-25');
+    expect(options.headers.get('x-beta-edge-secret')).toBe(originSecret);
+    expect(new TextDecoder().decode(options.body)).toBe(body);
+  });
+
+  it('preserva os aliases públicos legados dos manifestos MCP', async () => {
+    const upstreamFetch = vi.fn().mockResolvedValue(Response.json({ name: 'Luisices MCP' }));
+    const mcpLimit = vi.fn().mockResolvedValue({ success: true });
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    for (const path of ['/.well-known/ai-plugin.json', '/.well-known/plugin.json', '/ai-plugin.json', '/plugin.json']) {
+      const response = await betaWorker.fetch(
+        new Request(`https://api.beta.luisices.com.br${path}`),
+        { BETA_VERCEL_ORIGIN_SECRET: originSecret, BETA_VERCEL_MCP_LIMITER: { limit: mcpLimit } },
+      );
+      expect(response.status, path).toBe(200);
+    }
+
+    expect(upstreamFetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('usa o limite anônimo por IP e aceita somente o Origin do frontend Beta no MCP', async () => {
+    const upstreamFetch = vi.fn().mockResolvedValue(Response.json({ status: 'online' }));
+    const mcpLimit = vi.fn().mockResolvedValue({ success: true });
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    const allowed = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/mcp', {
+        headers: { Origin: betaOrigin, 'cf-connecting-ip': '203.0.113.22' },
+      }),
+      { BETA_VERCEL_ORIGIN_SECRET: originSecret, BETA_VERCEL_MCP_LIMITER: { limit: mcpLimit } },
+    );
+    const denied = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/mcp', {
+        headers: { Origin: 'https://attacker.example', 'cf-connecting-ip': '203.0.113.22' },
+      }),
+      { BETA_VERCEL_ORIGIN_SECRET: originSecret, BETA_VERCEL_MCP_LIMITER: { limit: mcpLimit } },
+    );
+
+    expect(allowed.status).toBe(200);
+    expect(mcpLimit).toHaveBeenCalledWith({ key: 'mcp:ip:203.0.113.22' });
+    expect(denied.status).toBe(403);
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('responde o preflight MCP somente para origem, método e headers permitidos', async () => {
+    const upstreamFetch = vi.fn();
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    const response = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/mcp', {
+        method: 'OPTIONS',
+        headers: {
+          Origin: betaOrigin,
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'authorization,content-type,mcp-protocol-version',
+        },
+      }),
+      {},
+    );
+    const denied = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/mcp', {
+        method: 'OPTIONS',
+        headers: { Origin: 'https://attacker.example', 'Access-Control-Request-Method': 'POST' },
+      }),
+      {},
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(betaOrigin);
+    expect(response.headers.get('Access-Control-Allow-Headers')).toContain('MCP-Protocol-Version');
+    expect(response.headers.get('Access-Control-Expose-Headers')).toContain('WWW-Authenticate');
+    expect(denied.status).toBe(403);
+    expect(upstreamFetch).not.toHaveBeenCalled();
+  });
+
+  it('rejeita payload MCP acima de 64 KiB e falha fechado sem binding dedicado', async () => {
+    const upstreamFetch = vi.fn();
+    const mcpLimit = vi.fn().mockResolvedValue({ success: true });
+    vi.stubGlobal('fetch', upstreamFetch);
+    const oversized = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: 'tools/call', payload: 'x'.repeat(64 * 1024) }),
+      }),
+      { BETA_VERCEL_ORIGIN_SECRET: originSecret, BETA_VERCEL_MCP_LIMITER: { limit: mcpLimit } },
+    );
+    const unconfigured = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/mcp'),
+      { BETA_VERCEL_ORIGIN_SECRET: originSecret },
+    );
+
+    expect(oversized.status).toBe(413);
+    expect(unconfigured.status).toBe(503);
+    expect(upstreamFetch).not.toHaveBeenCalled();
   });
 
   it('encaminha somente POST administrativo da Alexa pelo binding de APIs Beta', async () => {

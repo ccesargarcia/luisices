@@ -25,3 +25,12 @@ namespace_id = "995162384091772"
   [env.dev.ratelimits.simple]
   limit = 240
   period = 60
+
+[[env.dev.ratelimits]]
+name = "BETA_VERCEL_MCP_LIMITER"
+# Dedicated Beta MCP namespace; verify account-wide uniqueness before deployment.
+namespace_id = "6634920189"
+
+  [env.dev.ratelimits.simple]
+  limit = 120
+  period = 60

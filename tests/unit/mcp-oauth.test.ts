@@ -50,6 +50,32 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
       expect(metadata.token_endpoint_auth_methods_supported).toContain('none');
     });
 
+    it('mantém resource e documentação canônicos para o gateway MCP Beta', () => {
+      const prior = {
+        origin: process.env.VERCEL_MCP_ORIGIN,
+        documentationUrl: process.env.VERCEL_MCP_DOCUMENTATION_URL,
+      };
+      process.env.VERCEL_MCP_ORIGIN = 'https://api.beta.luisices.com.br';
+      process.env.VERCEL_MCP_DOCUMENTATION_URL = 'https://api.beta.luisices.com.br/openapi.json';
+
+      try {
+        const rootMetadata = getOauthProtectedResourceMetadata('https://api.beta.luisices.com.br');
+        const mcpMetadata = getOauthProtectedResourceMetadata('https://api.beta.luisices.com.br', { includeMcpPath: true });
+        const authorizationMetadata = getOauthAuthorizationServerMetadata('https://api.beta.luisices.com.br');
+
+        expect(rootMetadata.resource).toBe('https://api.beta.luisices.com.br');
+        expect(mcpMetadata.resource).toBe('https://api.beta.luisices.com.br');
+        expect(rootMetadata.resource_documentation).toBe('https://api.beta.luisices.com.br/openapi.json');
+        expect(authorizationMetadata.issuer).toBe('https://api.beta.luisices.com.br');
+        expect(authorizationMetadata.token_endpoint).toBe('https://api.beta.luisices.com.br/oauth/token');
+      } finally {
+        if (prior.origin === undefined) delete process.env.VERCEL_MCP_ORIGIN;
+        else process.env.VERCEL_MCP_ORIGIN = prior.origin;
+        if (prior.documentationUrl === undefined) delete process.env.VERCEL_MCP_DOCUMENTATION_URL;
+        else process.env.VERCEL_MCP_DOCUMENTATION_URL = prior.documentationUrl;
+      }
+    });
+
     it('deve servir /.well-known/oauth-protected-resource via Cloudflare Worker proxy', async () => {
       const mockFetch = vi.fn().mockResolvedValue(
         new Response(

@@ -5,8 +5,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { resolveOAuthApiOrigin } from '../utils/oauthEnvironment';
-import { isVercelBetaHost } from '../utils/betaHost';
+import { resolveOAuthConsentApiOrigin } from '../utils/oauthEnvironment';
 
 const SCOPE_DESCRIPTIONS: Record<string, { label: string; description: string }> = {
   'orders:read': { label: 'Consultar Pedidos & Prazos', description: 'Visualizar a fila de produção, consultar entregas em um período de até 31 dias e verificar o status dos pedidos.' },
@@ -42,18 +41,15 @@ export function OAuthConsent() {
   const [scopes, setScopes] = useState<string[]>([]);
   const [authenticatedEmail, setAuthenticatedEmail] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const apiOrigin = useMemo(() => {
+  const apiUrl = useMemo(() => {
     if (typeof window === 'undefined') return null;
-    if (isVercelBetaHost()) {
-      return window.location.origin;
-    }
-    return resolveOAuthApiOrigin({
+    const apiOrigin = resolveOAuthConsentApiOrigin({
       hostname: window.location.hostname,
       isDevelopmentBuild: import.meta.env.DEV,
       firebaseProjectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
     });
+    return apiOrigin ? `${apiOrigin}/oauth/authorize` : null;
   }, []);
-  const apiUrl = apiOrigin ? `${apiOrigin}/oauth/authorize` : null;
 
   useEffect(() => {
     if (!apiUrl) {
