@@ -90,3 +90,14 @@ Never alter public callable argument contracts, return payloads, or authenticati
 
 ### Persisted dates
 Store `createdAt`/`updatedAt` in Firestore as `FieldValue.serverTimestamp()` (or a JS `Date`) whenever the field is used in `orderBy` (orders, quotes, salesLedger, userProfiles). Firestore orders values by type first, so mixing ISO strings and Timestamps breaks chronological queries. Serialize to ISO strings only in callable/tool **responses** (e.g. `createUser` returns `profile.createdAt` as ISO but writes a Timestamp).
+
+---
+
+## ▲ 4. Vercel Serverless Functions (`api/*.ts` — Ambiente Beta)
+
+Ao criar, refatorar ou mover handlers para Vercel Functions em `api/` (consulte também [docs/VERCEL_BETA_ROUTING.md](../../../docs/VERCEL_BETA_ROUTING.md)):
+
+1. **Prefixo `_` obrigatório para helpers internos:** qualquer arquivo em `api/` que não seja um endpoint HTTP público (dispatchers, helpers Admin, tipos) **deve** começar com `_` (ex.: `api/_firebaseAdmin.ts`, `api/_aiActionDispatcher.ts`, `api/_orderTrackingActionDispatcher.ts`). Arquivos sem `_` são compilados pela Vercel como rotas públicas `/api/<nome>`, podendo retornar `500 FUNCTION_INVOCATION_FAILED` e consumir slots de deployment.
+2. **Consolidar por dispatcher de domínio (limite Hobby `NO_MORE_FUNCTIONS`):** em projetos Vite com pasta `api/`, cada arquivo sem `_` conta como 1 Serverless Function separada. Para evitar o erro histórico do plano Hobby (`NO_MORE_FUNCTIONS` — máximo de **12 Serverless Functions** por deployment) e reduzir cold starts, sempre agrupe ações relacionadas em um único dispatcher por domínio (`api/order-tracking.ts`, `api/ai-chat.ts`, `api/mcp-admin.ts`, `api/alexa.ts`, etc.) em vez de criar um arquivo por callable.
+3. **Ordem de proteção de origem (`x-beta-edge-secret`):** todo endpoint encaminhado pelo Worker `functions-beta` (`api.beta.luisices.com.br`) deve chamar `assertBetaEdgeRequest(req.headers?.['x-beta-edge-secret'])` **antes** de `OPTIONS`, verificação de método HTTP ou `getFirebaseAdmin()`.
+4. **Gatilhos de deploy na Vercel:** sempre que uma Vercel Function em `api/` passar a importar um módulo em `functions/`, confirme que o caminho do módulo está listado no filtro `paths:` de `.github/workflows/deploy-vercel-dev.yml` e que `vercel.json` mantém `"git": { "deploymentEnabled": false }` para impedir sobrescrita automática pela branch `main`.

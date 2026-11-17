@@ -46,6 +46,7 @@ Para evitar dependência de `@sentry/node` e `firebase-functions` (exclusivos de
 *(Nota: o webhook de entrada da Amazon Alexa `alexaWebhook` e o servidor MCP oficial em `api.dev.luisices.com.br` continuam ativos no GCP em paralelo; na Vercel, `https://beta.luisices.com.br` expõe o servidor MCP completo com OAuth 2.1 apontando para `beta.luisices.com.br`.)*
 
 - **Inicialização compartilhada na Vercel:** [api/_firebaseAdmin.ts](../api/_firebaseAdmin.ts) inicializa o `firebase-admin` com `preferRest: true` e valida sessões ativas via `assertActiveSessionFromBearer`.
+- **Convenção `api/_*.ts` e dispatchers de domínio:** em projetos Vite com pasta `api/`, todo arquivo sem prefixo `_` é publicado pela Vercel como 1 Serverless Function pública. Helpers internos devem usar prefixo `_` (`api/_firebaseAdmin.ts`, `api/_aiActionDispatcher.ts`, `api/_orderTrackingActionDispatcher.ts`) e novas operações devem ser consolidadas em dispatchers de domínio para reduzir *cold starts* e preservar compatibilidade com o limite histórico de 12 Serverless Functions por deployment no plano Hobby (`NO_MORE_FUNCTIONS`).
 - **Galeria interna:** [firebaseGalleryImageService.ts](../src/services/firebaseGalleryImageService.ts) mantém cache LRU em memória na sessão (até 80 blobs, limpo ao trocar de usuário) e deduplicação de fetches simultâneos; [galleryCore.js](../functions/media/galleryCore.js) mantém cache de 15s de `userProfiles`.
 
 ---
