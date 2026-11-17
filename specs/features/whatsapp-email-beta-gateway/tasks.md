@@ -8,3 +8,4 @@
 - [x] **T6 — Documentação e impacto de IA:** atualizar `docs/VERCEL_BETA_ROUTING.md` e `specs/features/README.md`.
 - [x] **T7 — Rollout coordenado e validação remota (CA-3, CA-4):** publicar Worker Beta e Vercel Beta e validar `403` direto, `401` sem sessão no gateway, `204` em `OPTIONS` e `405` em `GET`.
   - Evidência: Worker Beta e Vercel Beta (`44184494799`) publicados com sucesso; verificações remotas confirmaram `403` direto na origem, `401` sem sessão no gateway, `OPTIONS` `204`, `GET` `405` e `404` em `_communicationsActionDispatcher`.
+- [ ] **T8 — Validação autenticada no painel Beta (pendência pós-rollout):** testar manualmente com sessão autenticada em `beta.luisices.com.br` `getWhatsAppInstanceStatus`, envio/sincronização de mensagem WhatsApp, `getEmailUsage` e `sendCustomEmail` (confirmando também que `DEV_RESEND_API_KEY` / `DEV_EVOLUTION_API_KEY` estão ativos na Vercel).
