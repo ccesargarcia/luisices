@@ -100,4 +100,5 @@ No Beta, a rota de administração MCP já usa uma Function Vercel quando `mcpAd
 
 - Preparação local concluída: Worker, handler Vercel, cliente Beta, testes e documentação implementados.
 - `npm run typecheck` passou; 75 testes focados passaram em 10 arquivos; `git diff --check` passou.
-- Deploy e verificação remota ainda pendentes; nenhuma alteração externa foi executada nesta preparação.
+- Deploy Beta concluído em 17/11/2026: Worker [workflow 43984969755](https://github.com/ccesargarcia/luisices/actions/runs/43984969755) e Vercel [workflow 43985221593](https://github.com/ccesargarcia/luisices/actions/runs/43985221593) passaram.
+- Verificação remota: bypass direto à origem Vercel `403`, POST pelo gateway sem bearer `401`, preflight `204` e GET no gateway `405`. Deploys de Worker Dev e Functions Dev ficaram `skipped`; `api.dev` permaneceu intocado.
