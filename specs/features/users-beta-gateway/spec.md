@@ -1,7 +1,7 @@
 # Gestão de Usuários, Convites e Sessões pelo gateway Beta
 
 - **ID:** `users-beta-gateway`
-- **Status:** Pronta
+- **Status:** Concluída
 - **Responsável:** Luisices
 - **Atualizado em:** 2026-11-17
 - **Referências:** `docs/VERCEL_BETA_ROUTING.md`; `functions/users/`; `src/services/firebaseUserService.ts`; `src/services/firebaseAuthService.ts`; `src/services/claimsRepairService.ts`; `cloudflare/api-beta-worker/src/index.js`.
@@ -47,3 +47,9 @@ Para manter o projeto dentro do limite de 12 Serverless Functions do plano Hobby
 - **CA-2:** testes unitários dos serviços de cliente comprovam chamada a `api.beta` no Beta e fallback para o callable GCP em erro `5xx`.
 - **CA-3:** `npm run typecheck`, suítes unitárias de usuários/convites/claims/device-logout e `git diff --check` aprovados.
 - **CA-4:** deploy coordenado (Worker Beta → Vercel Beta) e verificação remota confirmando `403` direto na origem, `401` sem sessão em ação protegida no gateway, `204` em `OPTIONS` e `405` em `GET`.
+
+## Evidências de conclusão
+
+- `npm run typecheck`, **110 testes unitários aprovados (0 falhas)** nas 8 suítes relacionadas (`users-admin-api`, `users-service-routing`, `create-user-invitation-core`, `complete-user-invitation-core`, `device-logout-authorization`, `claims-repair-resilience`, `api-beta-worker`, `backend-routing`), **69 testes aprovados** após ajuste de `sentryFunctions.onCall` para `VERCEL === '1'`, e `git diff --check` aprovados.
+- Deploy do Worker Beta (`4418614`, 36s) e Deploy Vercel (`44186958795`, 2m14s) concluídos com sucesso.
+- Verificação remota em `POST /api/users-admin`: chamada direta na origem Vercel `403`, ação protegida (`createUser`) sem sessão `401`, ação pública (`validateUserInvitation` com token inválido) `404` (`not-found`), `OPTIONS` `204`, `GET` `405`, e helper privado `api/_usersActionDispatcher` não exposto (`404`).
