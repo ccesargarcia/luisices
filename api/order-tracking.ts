@@ -16,6 +16,14 @@ const {
   deleteOrderTrackingLinkCore,
   deleteOrderTrackingLinksBatchCore,
 } = require('../functions/orders/trackingAdminCore.js');
+const {
+  handleCreateOrder,
+  handleUpdateComplexOrder,
+} = require('../functions/orders/index.js');
+const {
+  handleCalculateSuperfreteShipping,
+  handleCreateSuperfreteLabel,
+} = require('../functions/orders/superfrete.js');
 
 export default async function handler(
   req: {
@@ -32,15 +40,16 @@ export default async function handler(
   },
 ) {
   res.setHeader('Cache-Control', 'no-store');
-  if (req.method === 'OPTIONS') {
-    return res.status(204).send('');
-  }
-  if (req.method !== 'POST') {
-    return res.status(405).send('Method Not Allowed');
-  }
 
   try {
     assertBetaEdgeRequest(req.headers?.['x-beta-edge-secret']);
+    if (req.method === 'OPTIONS') {
+      return res.status(204).send('');
+    }
+    if (req.method !== 'POST') {
+      return res.status(405).send('Method Not Allowed');
+    }
+
     const { auth, firestore } = getFirebaseAdmin();
     const session = await assertActiveSessionFromBearer(
       auth,
@@ -51,6 +60,11 @@ export default async function handler(
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const { action, ...payload } = (body || {}) as { action?: string } & Record<string, unknown>;
     const encryptionKeyBase64 = process.env.ORDER_TRACKING_ENCRYPTION_KEY || '';
+    const callableRequest = {
+      auth: { uid: session.uid, token: session.token },
+      authProfile: session.profile,
+      data: payload,
+    };
 
     let result: unknown;
     switch (action) {
@@ -90,6 +104,18 @@ export default async function handler(
           db: firestore,
           fieldValue: FieldValue,
         });
+        break;
+      case 'createOrder':
+        result = await handleCreateOrder(callableRequest, firestore);
+        break;
+      case 'updateComplexOrder':
+        result = await handleUpdateComplexOrder(callableRequest, firestore);
+        break;
+      case 'calculateSuperfreteShipping':
+        result = await handleCalculateSuperfreteShipping(callableRequest);
+        break;
+      case 'createSuperfreteLabel':
+        result = await handleCreateSuperfreteLabel(callableRequest);
         break;
       default:
         return res.status(400).json({ error: { code: 'invalid-argument', message: 'Ação inválida.' } });

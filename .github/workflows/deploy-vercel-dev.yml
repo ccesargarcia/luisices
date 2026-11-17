@@ -300,6 +300,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY }}
           ORDER_TRACKING_ENCRYPTION_KEY: ${{ secrets.DEV_ORDER_TRACKING_ENCRYPTION_KEY }}
           ALEXA_IDENTITY_HMAC_KEY: ${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY }}
+          SUPERFRETE_SANDBOX_TOKEN: ${{ secrets.SUPERFRETE_SANDBOX_TOKEN }}
           BETA_VERCEL_ORIGIN_SECRET: ${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
         run: |
           node <<'NODE'
@@ -338,6 +339,7 @@ jobs:
             await upsertEnv('GEMINI_API_KEY', process.env.GEMINI_API_KEY);
             await upsertEnv('ORDER_TRACKING_ENCRYPTION_KEY', process.env.ORDER_TRACKING_ENCRYPTION_KEY);
             await upsertEnv('ALEXA_IDENTITY_HMAC_KEY', process.env.ALEXA_IDENTITY_HMAC_KEY);
+            await upsertEnv('SUPERFRETE_SANDBOX_TOKEN', process.env.SUPERFRETE_SANDBOX_TOKEN);
             await upsertEnv('BETA_VERCEL_ORIGIN_SECRET', process.env.BETA_VERCEL_ORIGIN_SECRET);
             await upsertEnv('VERCEL_MCP_ORIGIN', 'https://api.beta.luisices.com.br');
             await upsertEnv('VERCEL_MCP_DOMAIN', 'api.beta.luisices.com.br');

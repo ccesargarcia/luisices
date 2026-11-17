@@ -26,6 +26,37 @@ import { MAX_ORDER_TAGS } from '../app/utils/orderLimits';
 import { firebaseLedgerService } from './firebaseLedgerService';
 import { firebaseCustomerService } from './firebaseCustomerService';
 import { loadPendingOrderOperation, savePendingOrderOperation, clearPendingOrderOperation } from './pendingOrderOperations';
+import { getVercelBetaApiUrl } from '../app/utils/betaHost';
+import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
+
+async function callBetaOrderAdminApi<T>(action: string, payload: Record<string, unknown>): Promise<T> {
+  const user = auth.currentUser;
+  if (!user) {
+    throw Object.assign(new Error('Requer autenticação.'), { code: 'unauthenticated' });
+  }
+  const idToken = await user.getIdToken();
+  const response = await fetch(getVercelBetaApiUrl('/api/order-tracking'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+    cache: 'no-store',
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    if (response.status >= 500 && !data?.error?.code) {
+      throw new VercelInfraError(`Erro ao processar pedido (${response.status}).`, response.status);
+    }
+    const err = new Error(data?.error?.message || `Erro ao processar pedido (${response.status}).`);
+    if (data?.error?.code) Object.assign(err, { code: data.error.code });
+    if (data?.error?.details !== undefined) Object.assign(err, { details: data.error.details });
+    Object.assign(err, { status: response.status });
+    throw err;
+  }
+  return data as T;
+}
 
 const ORDERS_COLLECTION = 'orders';
 
@@ -557,27 +588,30 @@ export class FirebaseOrderService {
 
     // 2. Tentar criar via Cloud Function autoritativa (isolamento CEL total e recuperação de estado)
     try {
-      const callable = httpsCallable<{
-        orderData: Partial<Order>;
-        catalogOrderId?: string;
-        quoteId?: string;
-        idempotencyKey?: string;
-      }, { success: boolean; orderId: string; orderNumber: string }>(
-        functions,
-        'createOrder',
-      );
-      const response = await callable({
+      const createPayload = {
         orderData: sanitizedData,
         catalogOrderId,
         quoteId,
         idempotencyKey: effectiveOrderId,
-      });
-      if (response?.data?.orderId) {
+      };
+      const responseData = await executeWithGcpFallback(
+        'orderTrackingAdmin',
+        () => callBetaOrderAdminApi<{ success: boolean; orderId: string; orderNumber: string }>('createOrder', createPayload),
+        async () => {
+          const callable = httpsCallable<typeof createPayload, { success: boolean; orderId: string; orderNumber: string }>(
+            functions,
+            'createOrder',
+          );
+          const res = await callable(createPayload);
+          return res?.data;
+        },
+      );
+      if (responseData?.orderId) {
         if (quoteId) {
-          return { id: response.data.orderId, orderNumber: response.data.orderNumber };
+          return { id: responseData.orderId, orderNumber: responseData.orderNumber };
         }
         try {
-          const saved = await this.readDocFromServer(doc(db, ORDERS_COLLECTION, response.data.orderId));
+          const saved = await this.readDocFromServer(doc(db, ORDERS_COLLECTION, responseData.orderId));
           if (!saved?.exists()) throw new Error('Pedido ainda não disponível para leitura.');
           return this.mapOrderDoc(saved);
         } catch (_readErr: any) {
@@ -585,11 +619,11 @@ export class FirebaseOrderService {
           // preserva a chave idempotente no erro para que um retry recupere o mesmo pedido
           const unconfirmedErr: any = new Error(
             `O pedido foi processado pelo servidor, mas a confirmação da leitura falhou. ` +
-            `A chave (${response.data.orderId}) foi preservada. Repita a operação para carregar o pedido gravado.`
+            `A chave (${responseData.orderId}) foi preservada. Repita a operação para carregar o pedido gravado.`
           );
           unconfirmedErr.code = 'unconfirmed-order';
-          unconfirmedErr.orderId = response.data.orderId;
-          unconfirmedErr.idempotencyKey = response.data.orderId;
+          unconfirmedErr.orderId = responseData.orderId;
+          unconfirmedErr.idempotencyKey = responseData.orderId;
           unconfirmedErr.isUnconfirmed = true;
           throw unconfirmedErr;
         }
@@ -1095,22 +1129,25 @@ export class FirebaseOrderService {
         || doc(collection(db, ORDERS_COLLECTION)).id;
 
       try {
-        const callable = httpsCallable<{
-          orderId: string;
-          expectedVersion: number;
-          updates: typeof updates;
-          operationId?: string;
-        }, { success: boolean; alreadyApplied?: boolean }>(
-          functions,
-          'updateComplexOrder',
-        );
-        const response = await callable({
+        const updatePayload = {
           orderId,
           expectedVersion: targetVersion,
           updates: sanitizedUpdates,
           operationId: effectiveOperationId,
-        });
-        if (response?.data?.success !== true) {
+        };
+        const responseData = await executeWithGcpFallback(
+          'orderTrackingAdmin',
+          () => callBetaOrderAdminApi<{ success: boolean; alreadyApplied?: boolean }>('updateComplexOrder', updatePayload),
+          async () => {
+            const callable = httpsCallable<typeof updatePayload, { success: boolean; alreadyApplied?: boolean }>(
+              functions,
+              'updateComplexOrder',
+            );
+            const res = await callable(updatePayload);
+            return res?.data;
+          },
+        );
+        if (responseData?.success !== true) {
           throw Object.assign(new Error('Não foi possível confirmar a resposta da edição.'), { code: 'internal' });
         }
         return;

@@ -59,10 +59,10 @@ const ROUTE_DEFINITIONS: Array<{
   },
   {
     key: 'orderTrackingAdmin',
-    label: 'Links de Acompanhamento',
-    description: 'Geração, listagem, revogação e exclusão de links',
+    label: 'Pedidos, Rastreamento & SuperFrete',
+    description: 'Criação/edição de pedidos, links de acompanhamento e SuperFrete',
     vercelPath: '/api/order-tracking',
-    gcpFunction: 'create/list/revoke/deleteOrderTrackingLink*',
+    gcpFunction: 'createOrder / updateComplexOrder / *OrderTrackingLink* / *Superfrete*',
   },
   {
     key: 'galleryMedia',

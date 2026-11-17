@@ -4,11 +4,20 @@
  */
 
 const { getFirestore, Timestamp } = require('firebase-admin/firestore');
-const { HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError, assertActiveSession } = require('../common/runtimeCompat');
 const crypto = require('crypto');
-const { onCall } = require('../common/sentryFunctions');
-const { SUPERFRETE_SANDBOX_TOKEN } = require('../common/secrets');
-const { assertActiveSession } = require('../common/helpers');
+let onCall;
+try {
+  ({ onCall } = require('../common/sentryFunctions'));
+} catch {
+  onCall = (_opts, handler) => handler;
+}
+let SUPERFRETE_SANDBOX_TOKEN;
+try {
+  ({ SUPERFRETE_SANDBOX_TOKEN } = require('../common/secrets'));
+} catch {
+  SUPERFRETE_SANDBOX_TOKEN = { value: () => process.env.SUPERFRETE_SANDBOX_TOKEN || '' };
+}
 
 const SANDBOX_BASE_URL = 'https://sandbox.superfrete.com';
 const USER_AGENT = 'Luisices/1.0.4 (contato@luisices.com.br)';
@@ -137,7 +146,15 @@ async function markLabelAttemptFailed(orderRef, attemptId, reason) {
  * Retorna o token da API SuperFrete.
  */
 function getApiToken() {
-  const token = SUPERFRETE_SANDBOX_TOKEN.value();
+  let token = '';
+  try {
+    token = typeof SUPERFRETE_SANDBOX_TOKEN?.value === 'function' ? SUPERFRETE_SANDBOX_TOKEN.value() : '';
+  } catch {
+    token = '';
+  }
+  if (!token && process.env.SUPERFRETE_SANDBOX_TOKEN) {
+    token = process.env.SUPERFRETE_SANDBOX_TOKEN;
+  }
   if (!token) {
     throw new HttpsError(
       'failed-precondition',
@@ -151,9 +168,7 @@ function getApiToken() {
  * Callable: Cotação de Frete (SuperFrete).
  * Endpoint interno para consulta de valores e prazos em orçamentos e pedidos.
  */
-const calculateSuperfreteShipping = onCall(
-  { maxInstances: 5, secrets: [SUPERFRETE_SANDBOX_TOKEN] },
-  async (request) => {
+async function handleCalculateSuperfreteShipping(request) {
     // 1. RBAC: Garante sessão ativa e válida
     await authorizeSuperfrete(request);
 
@@ -267,16 +282,18 @@ const calculateSuperfreteShipping = onCall(
     } finally {
       clearTimeout(timeout);
     }
-  }
+}
+
+const calculateSuperfreteShipping = onCall(
+  { maxInstances: 5, secrets: [SUPERFRETE_SANDBOX_TOKEN] },
+  handleCalculateSuperfreteShipping
 );
 
 /**
  * Callable: Emissão de Etiqueta (SuperFrete).
  * Executa o fluxo completo: adiciona ao carrinho -> checkout com saldo -> obtém PDF da etiqueta.
  */
-const createSuperfreteLabel = onCall(
-  { maxInstances: 5, secrets: [SUPERFRETE_SANDBOX_TOKEN] },
-  async (request) => {
+async function handleCreateSuperfreteLabel(request) {
     // 1. RBAC: Garante sessão ativa
     const { uid } = await authorizeSuperfrete(request);
 
@@ -470,10 +487,16 @@ const createSuperfreteLabel = onCall(
       labelPdfUrl,
       price: cartJson?.price,
     };
-  }
+}
+
+const createSuperfreteLabel = onCall(
+  { maxInstances: 5, secrets: [SUPERFRETE_SANDBOX_TOKEN] },
+  handleCreateSuperfreteLabel
 );
 
 module.exports = {
   calculateSuperfreteShipping,
   createSuperfreteLabel,
+  handleCalculateSuperfreteShipping,
+  handleCreateSuperfreteLabel,
 };

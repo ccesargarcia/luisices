@@ -1,5 +1,34 @@
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../lib/firebase';
+import { auth, functions } from '../lib/firebase';
+import { getVercelBetaApiUrl } from '../app/utils/betaHost';
+import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
+
+async function callBetaSuperfreteApi<T>(action: string, payload: Record<string, unknown>): Promise<T> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Entre na sua conta para utilizar a SuperFrete.');
+  const idToken = await user.getIdToken();
+  const response = await fetch(getVercelBetaApiUrl('/api/order-tracking'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+    cache: 'no-store',
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    if (response.status >= 500 && !data?.error?.code) {
+      throw new VercelInfraError(`Erro na SuperFrete (${response.status}).`, response.status);
+    }
+    const err = new Error(data?.error?.message || `Erro na SuperFrete (${response.status}).`);
+    if (data?.error?.code) Object.assign(err, { code: data.error.code });
+    if (data?.error?.details !== undefined) Object.assign(err, { details: data.error.details });
+    Object.assign(err, { status: response.status });
+    throw err;
+  }
+  return data as T;
+}
 
 export interface SuperfretePackage {
   weight: number; // kg
@@ -95,24 +124,36 @@ export class SuperfreteService {
    * Calcula cotação de frete diretamente na SuperFrete
    */
   async calculateShipping(payload: CalculateShippingPayload): Promise<CalculateShippingResponse> {
-    const callable = httpsCallable<CalculateShippingPayload, CalculateShippingResponse>(
-      functions,
-      'calculateSuperfreteShipping'
+    return executeWithGcpFallback(
+      'orderTrackingAdmin',
+      () => callBetaSuperfreteApi<CalculateShippingResponse>('calculateSuperfreteShipping', payload as unknown as Record<string, unknown>),
+      async () => {
+        const callable = httpsCallable<CalculateShippingPayload, CalculateShippingResponse>(
+          functions,
+          'calculateSuperfreteShipping'
+        );
+        const result = await callable(payload);
+        return result.data;
+      },
     );
-    const result = await callable(payload);
-    return result.data;
   }
 
   /**
    * Cria e emite a etiqueta no carrinho, paga com saldo e retorna o PDF
    */
   async createLabel(payload: CreateLabelPayload): Promise<CreateLabelResponse> {
-    const callable = httpsCallable<CreateLabelPayload, CreateLabelResponse>(
-      functions,
-      'createSuperfreteLabel'
+    return executeWithGcpFallback(
+      'orderTrackingAdmin',
+      () => callBetaSuperfreteApi<CreateLabelResponse>('createSuperfreteLabel', payload as unknown as Record<string, unknown>),
+      async () => {
+        const callable = httpsCallable<CreateLabelPayload, CreateLabelResponse>(
+          functions,
+          'createSuperfreteLabel'
+        );
+        const result = await callable(payload);
+        return result.data;
+      },
     );
-    const result = await callable(payload);
-    return result.data;
   }
 }
 

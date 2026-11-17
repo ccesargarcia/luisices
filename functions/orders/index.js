@@ -4,9 +4,19 @@
 
 const moduleInitializationStartedAt = process.hrtime.bigint();
 const { Timestamp, FieldValue, getFirestore } = require('firebase-admin/firestore');
-const { HttpsError } = require('firebase-functions/v2/https');
-const { onCall } = require('../common/sentryFunctions');
-const { withFirstInvocationSpan } = require('../common/sentry');
+const { HttpsError } = require('../common/runtimeCompat');
+let onCall;
+try {
+  ({ onCall } = require('../common/sentryFunctions'));
+} catch {
+  onCall = (_opts, handler) => handler;
+}
+let withFirstInvocationSpan;
+try {
+  ({ withFirstInvocationSpan } = require('../common/sentry'));
+} catch {
+  withFirstInvocationSpan = (_name, handler) => handler;
+}
 const crypto = require('crypto');
 const getPublicCatalogOrderLimiter = () => require('../common/rateLimiters').publicCatalogOrderLimiter;
 const { getTrustedClientIp } = require('../originProtection');
