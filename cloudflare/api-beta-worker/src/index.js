@@ -6,12 +6,15 @@ const CORS_HEADERS = {
 };
 const API_BETA_HOST = 'api.beta.luisices.com.br';
 const GALLERY_MEDIA_PATH = '/api/gallery-media';
+const AI_CHAT_PATH = '/api/ai-chat';
+const AI_CHAT_VERCEL_BODY_LIMIT = 4 * 1024 * 1024;
 const GALLERY_CORS_METHODS = 'GET, HEAD, OPTIONS';
 const GALLERY_CORS_HEADERS = 'Authorization, Content-Type, x-origin-secret, x-cf-origin-token';
 
 const ALLOWED_ROUTES = new Map([
   [GALLERY_MEDIA_PATH, new Set(['GET', 'HEAD'])],
   ['/api/alexa', new Set(['POST'])],
+  [AI_CHAT_PATH, new Set(['POST'])],
   ['/api/mcp-admin', new Set(['POST'])],
   ['/api/public-catalog-products', new Set(['GET', 'HEAD'])],
   ['/api/public-catalog-order', new Set(['POST'])],
@@ -53,6 +56,34 @@ function jsonError(status, code, message, corsHeaders = CORS_HEADERS) {
       'Cache-Control': 'no-store',
     },
   });
+}
+
+async function readBodyUpToLimit(request, limit) {
+  if (!request.body) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) {
+        await reader.cancel('Request body exceeds the Vercel AI chat limit.');
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
 }
 
 export default {
@@ -118,7 +149,30 @@ export default {
     if (clientIp !== 'unknown') headers.set('x-forwarded-for', clientIp);
 
     let body;
-    if (!['GET', 'HEAD'].includes(request.method)) body = await request.arrayBuffer();
+    if (!['GET', 'HEAD'].includes(request.method)) {
+      if (url.pathname === AI_CHAT_PATH) {
+        const declaredLength = Number(request.headers.get('content-length'));
+        if (Number.isFinite(declaredLength) && declaredLength > AI_CHAT_VERCEL_BODY_LIMIT) {
+          return jsonError(
+            413,
+            'vercel-payload-too-large',
+            'A solicitação excede o limite de 4 MiB do gateway Vercel.',
+            corsHeaders,
+          );
+        }
+        body = await readBodyUpToLimit(request, AI_CHAT_VERCEL_BODY_LIMIT);
+        if (body === null) {
+          return jsonError(
+            413,
+            'vercel-payload-too-large',
+            'A solicitação excede o limite de 4 MiB do gateway Vercel.',
+            corsHeaders,
+          );
+        }
+      } else {
+        body = await request.arrayBuffer();
+      }
+    }
 
     try {
       const upstream = await fetch(upstreamUrl, {

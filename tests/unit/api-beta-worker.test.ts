@@ -118,6 +118,51 @@ describe('Cloudflare Worker API Beta isolado', () => {
     expect(new TextDecoder().decode(options.body)).toBe(JSON.stringify({ action: 'getStatus' }));
   });
 
+  it('encaminha POST do Copiloto pelo gateway Beta e limita o corpo da Vercel', async () => {
+    const upstreamFetch = vi.fn().mockResolvedValue(Response.json({ success: true }));
+    const limit = vi.fn().mockResolvedValue({ success: true });
+    vi.stubGlobal('fetch', upstreamFetch);
+    const payload = JSON.stringify({ message: 'Olá', history: [], image: null });
+
+    const response = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/api/ai-chat', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer firebase-user-token',
+          'Content-Type': 'application/json',
+          'cf-connecting-ip': '203.0.113.12',
+        },
+        body: payload,
+      }),
+      { BETA_VERCEL_ORIGIN_SECRET: originSecret, BETA_VERCEL_API_LIMITER: { limit } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(limit).toHaveBeenCalledWith({ key: '/api/ai-chat:203.0.113.12' });
+    const [targetUrl, options] = upstreamFetch.mock.calls[0];
+    expect(targetUrl.toString()).toBe('https://beta.luisices.com.br/api/ai-chat');
+    expect(options.headers.get('Authorization')).toBe('Bearer firebase-user-token');
+    expect(options.headers.get('x-beta-edge-secret')).toBe(originSecret);
+    expect(new TextDecoder().decode(options.body)).toBe(payload);
+  });
+
+  it('rejeita incrementalmente corpos do Copiloto acima de 4 MiB com código de fallback específico', async () => {
+    const upstreamFetch = vi.fn();
+    vi.stubGlobal('fetch', upstreamFetch);
+    const response = await betaWorker.fetch(
+      new Request('https://api.beta.luisices.com.br/api/ai-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'x'.repeat(4 * 1024 * 1024) }),
+      }),
+      { BETA_VERCEL_ORIGIN_SECRET: originSecret },
+    );
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ error: { code: 'vercel-payload-too-large' } });
+    expect(upstreamFetch).not.toHaveBeenCalled();
+  });
+
   it('nega métodos diferentes de POST em Alexa sem consultar a origem', async () => {
     const upstreamFetch = vi.fn();
     vi.stubGlobal('fetch', upstreamFetch);
