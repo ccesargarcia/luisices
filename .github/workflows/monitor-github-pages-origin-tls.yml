@@ -1,0 +1,26 @@
+name: Monitorar certificado de origem do GitHub Pages
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: read
+
+jobs:
+  check-origin-certificate:
+    name: Verificar TLS direto na origem Pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verificar certificado do GitHub Pages e notificar Kuma
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+          UPTIME_KUMA_PAGES_CERT_PUSH_URL: ${{ secrets.UPTIME_KUMA_PAGES_CERT_PUSH_URL }}
+        run: node scripts/check-github-pages-origin-tls.mjs
