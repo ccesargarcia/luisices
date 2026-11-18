@@ -12,6 +12,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { isVercelBetaHost } from '../../utils/betaHost';
 import {
   type BackendFallbackEvent,
+  type BackendErrorSummary,
   type BackendProvider,
   type BackendRouteKey,
   type BackendRoutingConfig,
@@ -27,6 +28,15 @@ import {
 
 interface BackendRoutingSettingsSectionProps {
   isAdmin: boolean;
+}
+
+function describeFallbackError(summary?: BackendErrorSummary): string | undefined {
+  if (!summary) return undefined;
+  return [
+    summary.status ? `HTTP ${summary.status}` : undefined,
+    summary.code,
+    summary.name,
+  ].filter(Boolean).join(' · ');
 }
 
 const ROUTE_DEFINITIONS: Array<{
@@ -415,14 +425,16 @@ export function BackendRoutingSettingsSection({ isAdmin }: BackendRoutingSetting
             </p>
           ) : (
             <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
-              {fallbackEvents.slice(0, 10).map((ev) => (
+              {fallbackEvents.map((ev) => (
                 <div
                   key={ev.id}
                   className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 rounded-lg border border-border/60 bg-background/50 px-3 py-2 text-xs"
                 >
                   <div className="min-w-0 space-y-0.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-foreground">{ev.routeKey}</span>
+                      <span className="font-semibold text-foreground">
+                        {ev.routeKey}{ev.operation ? ` · ${ev.operation}` : ''}
+                      </span>
                       {ev.status && (
                         <Badge variant="outline" className="text-[10px]">
                           HTTP {ev.status}
@@ -432,7 +444,11 @@ export function BackendRoutingSettingsSection({ isAdmin }: BackendRoutingSetting
                         {ev.recoveredViaGcp ? 'Recuperado via GCP' : 'Falhou também no GCP'}
                       </Badge>
                     </div>
-                    <p className="truncate text-muted-foreground">{ev.reason}</p>
+                    <p className="truncate text-muted-foreground">
+                      {ev.vercelError || ev.gcpError
+                        ? `Beta: ${describeFallbackError(ev.vercelError) || 'sem código'}${ev.gcpError ? ` · GCP: ${describeFallbackError(ev.gcpError) || 'sem código'}` : ''}${typeof ev.durationMs === 'number' ? ` · ${ev.durationMs} ms` : ''}`
+                        : ev.reason}
+                    </p>
                   </div>
                   <span className="shrink-0 text-[11px] text-muted-foreground">
                     {new Date(ev.timestamp).toLocaleString('pt-BR')}

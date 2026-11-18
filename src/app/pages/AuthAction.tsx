@@ -55,6 +55,7 @@ export function AuthAction() {
                 const completeInvitation = httpsCallable(functions, 'completeUserInvitation');
                 await completeInvitation({ token: inviteToken });
               },
+              'completeUserInvitation',
             );
           }
           setSuccess(true);

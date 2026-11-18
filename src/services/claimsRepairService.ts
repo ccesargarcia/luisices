@@ -31,6 +31,7 @@ export async function repairClaimsIfNeeded(user: User, profile: DesiredClaims): 
         const res = await callable({ uid: user.uid });
         return res.data;
       },
+      'repairUserClaims',
     );
     if (data.synced !== true) return { synced: false, status: data.status || 'pending' };
     // Refresh só propaga claims já gravadas no servidor; não cria privilégios.

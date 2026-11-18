@@ -36,6 +36,7 @@ export function Register() {
         const res = await httpsCallable<{ token: string }, { email: string }>(functions, 'validateUserInvitation')({ token: inviteToken });
         return res.data;
       },
+      'validateUserInvitation',
     )
       .then((data) => {
         setInviteEmail(data.email);

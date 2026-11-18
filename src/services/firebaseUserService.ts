@@ -97,6 +97,7 @@ export class FirebaseUserService {
         const callable = httpsCallable(functions, 'registerDeviceSession');
         await callable({ deviceId, userAgent });
       },
+      'registerDeviceSession',
     );
   }
 
@@ -109,6 +110,7 @@ export class FirebaseUserService {
         const result = await callable({ uid });
         return result.data;
       },
+      'revokeAllSessions',
     );
   }
 
@@ -122,6 +124,7 @@ export class FirebaseUserService {
         const callable = httpsCallable<{ uid: string; deviceId: string }, { success: boolean }>(functions, 'revokeDeviceSession');
         await callable({ uid, deviceId });
       },
+      'revokeDeviceSession',
     );
   }
 
@@ -154,6 +157,7 @@ export class FirebaseUserService {
         const callable = httpsCallable(functions, 'sendAdminPasswordReset');
         await callable({ email });
       },
+      'sendAdminPasswordReset',
     );
   }
 
@@ -176,6 +180,7 @@ export class FirebaseUserService {
         const result = await callable({ email, whatsappPhone });
         return result.data;
       },
+      'createUserInvitation',
     );
   }
   /**
@@ -200,6 +205,7 @@ export class FirebaseUserService {
         const result = await callable({ email, password, displayName, role, permissions });
         return result.data;
       },
+      'createUser',
     );
     return data.profile;
   }
@@ -276,6 +282,7 @@ export class FirebaseUserService {
           const result = await callable({ uids: batch });
           return result.data;
         },
+        'getUserAccountMetadata',
       );
       return data.users;
     }));
@@ -294,6 +301,7 @@ export class FirebaseUserService {
         const result = await callable({ uid, ...data });
         return result.data;
       },
+      'updateUser',
     );
   }
 
@@ -309,6 +317,7 @@ export class FirebaseUserService {
         const result = await callable({ uid, active });
         return result.data;
       },
+      'updateUserActive',
     );
   }
 
@@ -326,6 +335,7 @@ export class FirebaseUserService {
         const callable = httpsCallable<{ uid: string }, { success: boolean }>(functions, 'deleteUser');
         await callable({ uid });
       },
+      'deleteUser',
     );
   }
 

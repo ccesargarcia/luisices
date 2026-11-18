@@ -47,6 +47,7 @@ export class FirebaseAuthService {
         const sendVerification = httpsCallable(functions, 'sendVerificationEmail');
         await sendVerification({ inviteToken });
       },
+      'sendVerificationEmail',
     );
 
     return userCredential.user;
@@ -92,6 +93,7 @@ export class FirebaseAuthService {
           const sendResetEmail = httpsCallable(functions, 'sendPasswordResetEmail');
           await sendResetEmail({ email, idempotencyKey });
         },
+        'sendPasswordResetEmail',
       );
 
     } catch (error) {

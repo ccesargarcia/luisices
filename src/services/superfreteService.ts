@@ -135,6 +135,7 @@ export class SuperfreteService {
         const result = await callable(payload);
         return result.data;
       },
+      'calculateSuperfreteShipping',
     );
   }
 
@@ -153,6 +154,7 @@ export class SuperfreteService {
         const result = await callable(payload);
         return result.data;
       },
+      'createSuperfreteLabel',
     );
   }
 }

@@ -74,11 +74,18 @@ function isValidCnpj(value) {
   return d2 === Number(normalized[13]);
 }
 
+function sanitizeSuperfreteMessage(value) {
+  return String(value || 'Erro na integração SuperFrete.')
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .slice(0, 300);
+}
+
 function formatSuperfreteApiError(json, fallbackMessage) {
-  if (!json || typeof json !== 'object') return fallbackMessage;
+  if (!json || typeof json !== 'object') return sanitizeSuperfreteMessage(fallbackMessage);
   const base = json.message || json.error || fallbackMessage;
   const rawErrors = json.errors;
-  if (!rawErrors) return base;
+  if (!rawErrors) return sanitizeSuperfreteMessage(base);
 
   const details = [];
   if (Array.isArray(rawErrors)) {
@@ -97,7 +104,25 @@ function formatSuperfreteApiError(json, fallbackMessage) {
       }
     }
   }
-  return details.length > 0 ? `${base} (${details.join(' | ')})` : base;
+  const message = details.length > 0 ? `${base} (${details.join(' | ')})` : base;
+  return sanitizeSuperfreteMessage(message);
+}
+
+function getSuperfreteHttpsErrorCode(status) {
+  if (status === 402 || status === 401 || status === 403) return 'failed-precondition';
+  if (status === 408 || status === 504) return 'deadline-exceeded';
+  if (status === 409) return 'aborted';
+  if (status === 429) return 'resource-exhausted';
+  if (status === 400 || status === 422) return 'invalid-argument';
+  if (status >= 500) return 'unavailable';
+  return 'failed-precondition';
+}
+
+function createSuperfreteHttpError(status, message) {
+  return new HttpsError(getSuperfreteHttpsErrorCode(status), message, {
+    provider: 'superfrete',
+    providerStatus: status,
+  });
 }
 
 function assertDevelopmentProject() {
@@ -348,7 +373,7 @@ async function handleCalculateSuperfreteShipping(request) {
           result,
           `Erro HTTP ${response.status} ao cotar frete na SuperFrete.`,
         );
-        throw new HttpsError('invalid-argument', errorMsg);
+        throw createSuperfreteHttpError(response.status, errorMsg);
       }
 
       // Normalização amigável das transportadoras para o frontend
@@ -374,7 +399,7 @@ async function handleCalculateSuperfreteShipping(request) {
         throw new HttpsError('deadline-exceeded', 'Tempo limite excedido ao consultar a SuperFrete.');
       }
       if (err instanceof HttpsError) throw err;
-      throw new HttpsError('internal', `Falha na comunicação com a SuperFrete: ${err.message}`);
+      throw new HttpsError('unavailable', `Falha na comunicação com a SuperFrete: ${err.message}`);
     } finally {
       clearTimeout(timeout);
     }
@@ -540,7 +565,7 @@ async function handleCreateSuperfreteLabel(request) {
         : `Erro ao gerar pedido no carrinho SuperFrete (Status ${cartRes.status})`;
       const errorMsg = formatSuperfreteApiError(cartJson, fallbackMsg);
       await markLabelAttemptFailed(orderRef, attemptId, errorMsg);
-      throw new HttpsError('invalid-argument', errorMsg);
+      throw createSuperfreteHttpError(cartRes.status, errorMsg);
     }
 
     const tagId = cartJson.id;
@@ -572,7 +597,7 @@ async function handleCreateSuperfreteLabel(request) {
         : `Saldo insuficiente ou falha ao debitar etiqueta da SuperFrete (Status ${checkoutRes.status}).`;
       const errorMsg = formatSuperfreteApiError(checkoutJson, fallbackMsg);
       await markLabelAttemptFailed(orderRef, attemptId, errorMsg);
-      throw new HttpsError('failed-precondition', errorMsg);
+      throw createSuperfreteHttpError(checkoutRes.status, errorMsg);
     }
 
     // ── Etapa 3: Obter link do PDF da etiqueta ──────────────────────────────
@@ -650,4 +675,5 @@ module.exports = {
   handleCalculateSuperfreteShipping,
   handleCreateSuperfreteLabel,
   isValidCpfCnpj,
+  getSuperfreteHttpsErrorCode,
 };

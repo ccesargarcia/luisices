@@ -1,4 +1,4 @@
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, runTransaction, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { isVercelBetaHost } from '../app/utils/betaHost';
 
@@ -27,11 +27,21 @@ export interface BackendRoutingConfig {
 export interface BackendFallbackEvent {
   id: string;
   routeKey: BackendRouteKey;
+  operation?: string;
   timestamp: string;
   reason: string;
   status?: number;
+  vercelError?: BackendErrorSummary;
+  gcpError?: BackendErrorSummary;
+  durationMs?: number;
   host: string;
   recoveredViaGcp: boolean;
+}
+
+export interface BackendErrorSummary {
+  name?: string;
+  code?: string;
+  status?: number;
 }
 
 const STORAGE_CACHE_KEY = 'luisices_backend_routing_v1';
@@ -260,6 +270,33 @@ function notifyTelemetrySubscribers(next: BackendFallbackEvent[]) {
   telemetrySubscribers.forEach((cb) => cb(telemetryEvents));
 }
 
+function summarizeBackendError(error: unknown): BackendErrorSummary | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const value = error as { name?: unknown; code?: unknown; status?: unknown };
+  const summary: BackendErrorSummary = {};
+  if (typeof value.name === 'string') {
+    summary.name = value.name.replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 48);
+  }
+  if (typeof value.code === 'string') {
+    summary.code = value.code.replace(/[^a-zA-Z0-9._/-]/g, '').slice(0, 64);
+  } else if (value.name === 'TypeError') {
+    summary.code = 'network-error';
+  }
+  if (typeof value.status === 'number' && Number.isInteger(value.status)) {
+    summary.status = value.status;
+  }
+  return Object.keys(summary).length > 0 ? summary : undefined;
+}
+
+function formatBackendErrorSummary(summary?: BackendErrorSummary): string {
+  if (!summary) return 'sem código';
+  return [
+    summary.status ? `HTTP ${summary.status}` : undefined,
+    summary.code,
+    summary.name,
+  ].filter(Boolean).join(' · ') || 'sem código';
+}
+
 export function ensureTelemetryListener(): void {
   if (telemetryListenerStarted || typeof window === 'undefined') return;
   telemetryListenerStarted = true;
@@ -311,26 +348,41 @@ export async function clearBackendFallbackTelemetry(): Promise<void> {
 
 function recordFallbackEvent(
   routeKey: BackendRouteKey,
-  err: unknown,
+  operation: string | undefined,
+  vercelErr: unknown,
+  gcpErr: unknown,
   recoveredViaGcp: boolean,
+  durationMs: number,
 ): void {
-  const anyErr = err as { message?: string; status?: number } | null;
+  const vercelError = summarizeBackendError(vercelErr);
+  const gcpError = summarizeBackendError(gcpErr);
+  const safeOperation = (operation || routeKey).replace(/[^a-zA-Z0-9._/-]/g, '').slice(0, 64);
   const event: BackendFallbackEvent = {
     id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
     routeKey,
+    operation: safeOperation,
     timestamp: new Date().toISOString(),
-    reason: String(anyErr?.message || 'Erro na Vercel').slice(0, 180),
-    ...(typeof anyErr?.status === 'number' ? { status: anyErr.status } : {}),
+    reason: `Beta: ${formatBackendErrorSummary(vercelError)}${gcpError ? ` · GCP: ${formatBackendErrorSummary(gcpError)}` : ''}`,
+    ...(vercelError?.status ? { status: vercelError.status } : {}),
+    ...(vercelError ? { vercelError } : {}),
+    ...(gcpError ? { gcpError } : {}),
+    durationMs: Math.max(0, Math.round(durationMs)),
     host: typeof window !== 'undefined' ? window.location.hostname : 'unknown',
     recoveredViaGcp,
   };
   const next = mergeTelemetryEvents([event], telemetryEvents);
   notifyTelemetrySubscribers(next);
-  setDoc(
-    doc(db, 'storeSettings', 'backendRoutingTelemetry'),
-    { events: next, updatedAt: new Date().toISOString() },
-    { merge: true },
-  ).catch(() => {
+  const telemetryRef = doc(db, 'storeSettings', 'backendRoutingTelemetry');
+  void runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(telemetryRef);
+    const currentEvents = snapshot.exists() && Array.isArray(snapshot.data()?.events)
+      ? snapshot.data()?.events as BackendFallbackEvent[]
+      : [];
+    transaction.set(telemetryRef, {
+      events: mergeTelemetryEvents(currentEvents, [event]),
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+  }).catch(() => {
     // Visitantes públicos sem permissão de escrita mantêm o registro local sem erro.
   });
 }
@@ -339,22 +391,24 @@ export async function executeWithGcpFallback<T>(
   routeKey: BackendRouteKey,
   vercelCall: () => Promise<T>,
   gcpFallbackCall: () => Promise<T>,
+  operation?: string,
 ): Promise<T> {
   if (!shouldUseVercelForRoute(routeKey)) {
     return gcpFallbackCall();
   }
 
+  const startedAt = Date.now();
   try {
     return await vercelCall();
   } catch (err) {
     if (isAutoFallbackToGcpEnabled() && isFallbackEligibleError(err)) {
-      console.warn(`[BackendRouting] Falha na Vercel em "${routeKey}". Acionando fallback automático para GCP.`, err);
+      console.warn(`[BackendRouting] Falha em "${routeKey}/${operation || 'unknown'}" (${formatBackendErrorSummary(summarizeBackendError(err))}). Acionando fallback GCP.`);
       try {
         const result = await gcpFallbackCall();
-        recordFallbackEvent(routeKey, err, true);
+        recordFallbackEvent(routeKey, operation, err, undefined, true, Date.now() - startedAt);
         return result;
       } catch (gcpErr) {
-        recordFallbackEvent(routeKey, err, false);
+        recordFallbackEvent(routeKey, operation, err, gcpErr, false, Date.now() - startedAt);
         throw gcpErr;
       }
     }
