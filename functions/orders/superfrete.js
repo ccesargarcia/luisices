@@ -426,12 +426,14 @@ async function handleCreateSuperfreteLabel(request) {
         phone: to.phone ? String(to.phone).replace(/\D/g, '').slice(0, 11) : undefined,
       },
       service: Number(service) || 1, // Padrão PAC se não especificado
-      volumes: {
-        height: Number(volume?.height) || 6,
-        width: Number(volume?.width) || 16,
-        length: Number(volume?.length) || 20,
-        weight: Number(volume?.weight) || 0.3,
-      },
+      volumes: [
+        {
+          height: Number(volume?.height) || 6,
+          width: Number(volume?.width) || 16,
+          length: Number(volume?.length) || 20,
+          weight: Number(volume?.weight) || 0.3,
+        },
+      ],
       non_comercial: nonCommercial,
     };
 
@@ -478,12 +480,18 @@ async function handleCreateSuperfreteLabel(request) {
       throw new HttpsError('unavailable', `Falha antes do checkout da etiqueta: ${err.message}`);
     }
 
-    const cartJson = await cartRes.json().catch(() => null);
+    const cartText = await cartRes.text().catch(() => '');
+    let cartJson = null;
+    try {
+      cartJson = cartText ? JSON.parse(cartText) : null;
+    } catch {
+      cartJson = null;
+    }
     if (!cartRes.ok || !cartJson?.id) {
-      const errorMsg = formatSuperfreteApiError(
-        cartJson,
-        `Erro ao gerar pedido no carrinho SuperFrete (Status ${cartRes.status})`,
-      );
+      const fallbackMsg = cartText
+        ? `Erro ao gerar pedido no carrinho SuperFrete (Status ${cartRes.status}): ${cartText.slice(0, 180)}`
+        : `Erro ao gerar pedido no carrinho SuperFrete (Status ${cartRes.status})`;
+      const errorMsg = formatSuperfreteApiError(cartJson, fallbackMsg);
       await markLabelAttemptFailed(orderRef, attemptId, errorMsg);
       throw new HttpsError('invalid-argument', errorMsg);
     }
