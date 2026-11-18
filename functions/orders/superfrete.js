@@ -426,7 +426,7 @@ async function handleCreateSuperfreteLabel(request) {
         phone: to.phone ? String(to.phone).replace(/\D/g, '').slice(0, 11) : undefined,
       },
       service: Number(service) || 1, // Padrão PAC se não especificado
-      volume: {
+      volumes: {
         height: Number(volume?.height) || 6,
         width: Number(volume?.width) || 16,
         length: Number(volume?.length) || 20,
