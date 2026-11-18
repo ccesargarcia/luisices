@@ -1,4 +1,5 @@
 import { RouterProvider } from 'react-router';
+import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { router, isStoreRoute } from './routes';
 import { AuthProvider } from '../contexts/AuthContext';
@@ -7,7 +8,16 @@ import { Toaster } from './components/ui/sonner';
 import { isVercelBetaHost } from './utils/betaHost';
 
 const THEME_OPTIONS = ['light', 'dark', 'system', 'deep-ocean', 'forest-glow', 'sunset-amber'];
-const showSpeedInsights = isVercelBetaHost();
+
+export function VercelBetaTelemetry() {
+  if (!isVercelBetaHost()) return null;
+  return (
+    <>
+      <SpeedInsights />
+      <Analytics />
+    </>
+  );
+}
 
 function App() {
   // A vitrine pública não deve carregar providers administrativos nem listeners de sessão.
@@ -16,7 +26,7 @@ function App() {
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem themes={THEME_OPTIONS}>
         <RouterProvider router={router} />
         <Toaster richColors closeButton position="top-right" />
-        {showSpeedInsights ? <SpeedInsights /> : null}
+        <VercelBetaTelemetry />
       </ThemeProvider>
     );
   }
@@ -27,7 +37,7 @@ function App() {
         <RouterProvider router={router} />
       </AuthProvider>
       <Toaster richColors closeButton position="top-right" />
-      {showSpeedInsights ? <SpeedInsights /> : null}
+      <VercelBetaTelemetry />
     </ThemeProvider>
   );
 }
