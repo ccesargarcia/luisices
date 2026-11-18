@@ -511,7 +511,7 @@ async function handleCreateSuperfreteLabel(request) {
       checkoutRes = await fetch(`${baseUrl}/api/v0/checkout`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ id: tagId }),
+        body: JSON.stringify({ orders: [tagId] }),
       });
     } catch (err) {
       // A resposta pode ter se perdido depois do débito. Mantém a reserva para
@@ -536,8 +536,16 @@ async function handleCreateSuperfreteLabel(request) {
     }
 
     // ── Etapa 3: Obter link do PDF da etiqueta ──────────────────────────────
-    let labelPdfUrl = null;
-    let trackingCode = cartJson?.tracking || null;
+    let labelPdfUrl =
+      checkoutJson?.purchase?.orders?.[0]?.print?.url ||
+      checkoutJson?.orders?.[0]?.print?.url ||
+      null;
+    let trackingCode =
+      checkoutJson?.purchase?.orders?.[0]?.tracking ||
+      checkoutJson?.orders?.[0]?.tracking ||
+      checkoutJson?.tracking ||
+      cartJson?.tracking ||
+      null;
 
     try {
       const linkRes = await fetch(`${baseUrl}/api/v0/tag/link`, {
@@ -547,7 +555,7 @@ async function handleCreateSuperfreteLabel(request) {
       });
       if (linkRes.ok) {
         const linkJson = await linkRes.json().catch(() => null);
-        labelPdfUrl = linkJson?.url || linkJson?.link || null;
+        labelPdfUrl = linkJson?.url || linkJson?.link || labelPdfUrl;
       }
     } catch (linkErr) {
       console.warn('[SuperFrete] Aviso: falha ao buscar URL direta da etiqueta, etiqueta gerada com sucesso:', linkErr);
