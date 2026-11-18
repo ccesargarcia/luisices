@@ -41,7 +41,8 @@ export function OrderShippingSection({
     return null;
   }
 
-  const hasLabel = Boolean(order.shippingTagId || order.shippingLabelUrl || order.shippingTrackingNumber);
+  const isPaymentPending = ['pending_payment', 'payment_unconfirmed'].includes(order.shippingStatus || '');
+  const hasLabel = !isPaymentPending && Boolean(order.shippingTagId || order.shippingLabelUrl || order.shippingTrackingNumber);
   const isProcessing = order.shippingStatus === 'processing';
 
   const handleCopyTracking = () => {
@@ -68,19 +69,25 @@ export function OrderShippingSection({
           Envio & Logística (SuperFrete)
         </h3>
         <Badge
-          variant={hasLabel ? 'default' : isProcessing ? 'secondary' : 'outline'}
+          variant={hasLabel ? 'default' : isProcessing || isPaymentPending ? 'secondary' : 'outline'}
           className={`text-xs ${
             hasLabel
               ? 'bg-emerald-600 text-white'
-            : isProcessing ? 'text-amber-700' : 'text-muted-foreground'
+            : isProcessing || isPaymentPending ? 'text-amber-700' : 'text-muted-foreground'
           }`}
         >
-          {hasLabel ? 'Etiqueta Emitida' : isProcessing ? 'Emissão em andamento' : order.shippingStatus === 'failed' ? 'Falha na emissão' : 'Envio Pendente'}
+          {hasLabel ? 'Etiqueta Emitida' : isPaymentPending ? order.shippingStatus === 'payment_unconfirmed' ? 'Pagamento a confirmar' : 'Pagamento pendente' : isProcessing ? 'Emissão em andamento' : order.shippingStatus === 'failed' ? 'Falha na emissão' : 'Envio Pendente'}
         </Badge>
       </div>
 
       <div className="p-4 rounded-xl border bg-muted/20 space-y-3">
-        {hasLabel ? (
+        {isPaymentPending ? (
+          <div className="space-y-2 text-sm" role="status">
+            <p className="font-medium text-amber-700 dark:text-amber-300">{order.shippingStatus === 'payment_unconfirmed' ? 'Não foi possível confirmar se a SuperFrete liberou a etiqueta.' : 'A etiqueta foi criada, mas aguarda confirmação do pagamento.'}</p>
+            <p className="text-xs text-muted-foreground">{order.shippingStatus === 'payment_unconfirmed' ? 'Confira o status no app ou painel da SuperFrete antes de qualquer nova tentativa.' : 'Conclua o pagamento no app ou painel da SuperFrete.'} Esta tentativa está registrada para evitar gerar uma segunda etiqueta ou cobrança. A confirmação externa ainda precisa ser reconciliada no Luisices.</p>
+            {order.shippingTagId && <p className="text-xs text-muted-foreground">Identificador SuperFrete: <span className="font-mono">{order.shippingTagId}</span></p>}
+          </div>
+        ) : hasLabel ? (
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg bg-card border">
               <div>

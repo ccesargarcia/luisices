@@ -108,6 +108,64 @@ function formatSuperfreteApiError(json, fallbackMessage) {
   return sanitizeSuperfreteMessage(message);
 }
 
+function isSuperfretePaymentPending(json) {
+  if (!json || typeof json !== 'object') return false;
+
+  const messages = [json.message, json.error]
+    .filter((value) => typeof value === 'string')
+    .join(' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (/sem saldo|saldo insuficiente|aguardando confirmacao do pagamento|aguardando pagamento|pagamento pendente/.test(messages)) {
+    return true;
+  }
+
+  const purchase = json.purchase && typeof json.purchase === 'object' ? json.purchase : {};
+  const orders = Array.isArray(purchase.orders)
+    ? purchase.orders
+    : Array.isArray(json.orders) ? json.orders : [];
+  const statuses = [
+    json.status,
+    json.payment_status,
+    json.paymentStatus,
+    purchase.status,
+    purchase.payment_status,
+    purchase.paymentStatus,
+    ...orders.flatMap((order) => [order?.status, order?.payment_status, order?.paymentStatus]),
+  ]
+    .filter((value) => typeof value === 'string')
+    .map((value) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[\s-]+/g, '_'));
+
+  return statuses.some((status) => [
+    'pending', 'pending_payment', 'waiting_payment', 'awaiting_payment',
+    'aguardando_pagamento', 'payment_pending', 'unpaid', 'payment_required',
+  ].includes(status));
+}
+
+function isSuperfretePaymentConfirmed(json) {
+  if (!json || typeof json !== 'object') return false;
+  const purchase = json.purchase && typeof json.purchase === 'object' ? json.purchase : {};
+  const orders = Array.isArray(purchase.orders)
+    ? purchase.orders
+    : Array.isArray(json.orders) ? json.orders : [];
+  const statuses = [
+    json.status,
+    json.payment_status,
+    json.paymentStatus,
+    purchase.status,
+    purchase.payment_status,
+    purchase.paymentStatus,
+    ...orders.flatMap((order) => [order?.status, order?.payment_status, order?.paymentStatus]),
+  ]
+    .filter((value) => typeof value === 'string')
+    .map((value) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[\s-]+/g, '_'));
+
+  return statuses.some((status) => [
+    'processing', 'processando', 'complete', 'completo', 'completed', 'paid', 'pago', 'released', 'posted',
+  ].includes(status));
+}
+
 function getSuperfreteHttpsErrorCode(status) {
   if (status === 402 || status === 401 || status === 403) return 'failed-precondition';
   if (status === 408 || status === 504) return 'deadline-exceeded';
@@ -208,6 +266,7 @@ async function reserveOrderForLabel(orderId, session) {
       order.shippingTagId ||
       order.shippingTrackingNumber ||
       order.shippingLabelUrl ||
+      ['pending_payment', 'payment_unconfirmed'].includes(order.shippingStatus) ||
       ['released', 'posted', 'delivered'].includes(order.shippingStatus)
     ) {
       return {
@@ -251,6 +310,31 @@ async function markLabelAttemptFailed(orderRef, attemptId, reason) {
       shippingError: String(reason || 'Falha antes da confirmação do pagamento.').slice(0, 300),
       shippingAttemptId: null,
       shippingUpdatedAt: Timestamp.now(),
+      version: nextOrderVersion(order),
+      updatedAt: new Date().toISOString(),
+    });
+  });
+}
+
+async function markLabelPaymentPending(orderRef, attemptId, { tagId, service, price, uid, message, status = 'pending_payment' }) {
+  await getFirestore().runTransaction(async (transaction) => {
+    const snap = await transaction.get(orderRef);
+    if (!snap.exists) throw new HttpsError('not-found', 'Pedido não encontrado.');
+    const order = snap.data();
+    if (order.shippingAttemptId !== attemptId || order.shippingStatus !== 'processing') {
+      throw new HttpsError('failed-precondition', 'A tentativa de emissão mudou; consulte o pedido antes de tentar novamente.');
+    }
+    transaction.update(orderRef, {
+      shippingTagId: tagId,
+      shippingStatus: status,
+      shippingTrackingNumber: null,
+      shippingLabelUrl: null,
+      shippingServiceId: service,
+      shippingCost: Number(price) || null,
+      shippingUpdatedAt: Timestamp.now(),
+      shippingGeneratedBy: uid,
+      shippingAttemptId: null,
+      shippingError: sanitizeSuperfreteMessage(message || 'A etiqueta aguarda confirmação do pagamento na SuperFrete.'),
       version: nextOrderVersion(order),
       updatedAt: new Date().toISOString(),
     });
@@ -591,11 +675,31 @@ async function handleCreateSuperfreteLabel(request) {
     } catch {
       checkoutJson = null;
     }
-    if (!checkoutRes.ok) {
+    const paymentPending = isSuperfretePaymentPending(checkoutJson) ||
+      /sem saldo|saldo insuficiente|aguardando pagamento|pagamento pendente/i.test(checkoutText);
+    if (!checkoutRes.ok || paymentPending) {
       const fallbackMsg = checkoutText
         ? `Saldo insuficiente ou falha ao debitar etiqueta da SuperFrete (Status ${checkoutRes.status}): ${checkoutText.slice(0, 180)}`
         : `Saldo insuficiente ou falha ao debitar etiqueta da SuperFrete (Status ${checkoutRes.status}).`;
       const errorMsg = formatSuperfreteApiError(checkoutJson, fallbackMsg);
+      if (paymentPending) {
+        await markLabelPaymentPending(orderRef, attemptId, {
+          tagId,
+          service,
+          price: cartJson?.price,
+          uid: session.uid,
+          message: errorMsg,
+        });
+        return {
+          success: true,
+          tagId,
+          status: 'pending_payment',
+          trackingCode: null,
+          labelPdfUrl: null,
+          price: cartJson?.price,
+          message: errorMsg,
+        };
+      }
       await markLabelAttemptFailed(orderRef, attemptId, errorMsg);
       throw createSuperfreteHttpError(checkoutRes.status, errorMsg);
     }
@@ -623,7 +727,28 @@ async function handleCreateSuperfreteLabel(request) {
         labelPdfUrl = linkJson?.url || linkJson?.link || labelPdfUrl;
       }
     } catch (linkErr) {
-      console.warn('[SuperFrete] Aviso: falha ao buscar URL direta da etiqueta, etiqueta gerada com sucesso:', linkErr);
+      console.warn('[SuperFrete] Aviso: não foi possível obter a URL direta da etiqueta:', linkErr);
+    }
+
+    if (!isSuperfretePaymentConfirmed(checkoutJson) && !labelPdfUrl) {
+      const message = 'A SuperFrete aceitou a solicitação, mas não retornou confirmação de pagamento nem link de impressão. Confira o status no painel antes de qualquer nova tentativa.';
+      await markLabelPaymentPending(orderRef, attemptId, {
+        tagId,
+        service,
+        price: cartJson?.price,
+        uid: session.uid,
+        message,
+        status: 'payment_unconfirmed',
+      });
+      return {
+        success: true,
+        tagId,
+        status: 'payment_unconfirmed',
+        trackingCode: null,
+        labelPdfUrl: null,
+        price: cartJson?.price,
+        message,
+      };
     }
 
     // ── Etapa 4: Persistir o resultado no pedido reservado ──────────────────
@@ -676,4 +801,6 @@ module.exports = {
   handleCreateSuperfreteLabel,
   isValidCpfCnpj,
   getSuperfreteHttpsErrorCode,
+  isSuperfretePaymentPending,
+  isSuperfretePaymentConfirmed,
 };

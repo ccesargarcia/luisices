@@ -121,7 +121,7 @@ export interface Order {
   financialWarning?: string | null;
   // Integração Logística / SuperFrete (opcional)
   shippingTagId?: string | null;
-  shippingStatus?: 'pending' | 'released' | 'posted' | 'delivered' | 'canceled' | string | null;
+  shippingStatus?: 'pending' | 'pending_payment' | 'payment_unconfirmed' | 'released' | 'posted' | 'delivered' | 'canceled' | string | null;
   shippingTrackingNumber?: string | null;
   shippingLabelUrl?: string | null;
   shippingServiceId?: number | string | null;

@@ -86,6 +86,7 @@ export function SuperfreteGenerateLabelDialog({
   const [cepLookupError, setCepLookupError] = useState('');
   const lastFetchedCepRef = React.useRef('');
   const [shippingQuotes, setShippingQuotes] = useState<SuperfreteShippingService[]>([]);
+  const [shippingQuotesKey, setShippingQuotesKey] = useState<string | null>(null);
   const [quotesLoading, setQuotesLoading] = useState(false);
   const [quotesError, setQuotesError] = useState<string | null>(null);
 
@@ -97,6 +98,14 @@ export function SuperfreteGenerateLabelDialog({
     toPackageDimensionInputs(settings?.superfreteDefaultPackage),
   );
   const parsedPkg = parsePackageDimensions(pkgInputs, settings?.superfreteDefaultPackage);
+  const quoteOrigin = (settings?.businessZipCode || '01153000').replace(/\D/g, '') || '01153000';
+  const quoteDestination = normalizeCepDigits(recipientPostalCode);
+  const quoteKey = `${quoteOrigin}:${quoteDestination}:${pkgInputs.weight}:${pkgInputs.height}:${pkgInputs.width}:${pkgInputs.length}`;
+  const selectedShippingQuote = shippingQuotesKey === quoteKey
+    ? shippingQuotes.find(
+      (quote) => quote.id === service && !quote.error && Number.isFinite(quote.price) && quote.price > 0,
+    )
+    : undefined;
 
 
   useEffect(() => {
@@ -106,6 +115,7 @@ export function SuperfreteGenerateLabelDialog({
       setCepLookupError('');
       setCepLookupLoading(false);
       setShippingQuotes([]);
+      setShippingQuotesKey(null);
       setQuotesError(null);
       setQuotesLoading(false);
       setPkgInputs(toPackageDimensionInputs(settings?.superfreteDefaultPackage));
@@ -125,7 +135,7 @@ export function SuperfreteGenerateLabelDialog({
       setRecipientState((customer?.state || 'SP').toUpperCase().slice(0, 2));
 
       // Se o pedido já tiver etiqueta gerada previamente
-      if (order.shippingLabelUrl || order.shippingTrackingNumber) {
+      if (order.shippingLabelUrl || order.shippingTrackingNumber || ['pending_payment', 'payment_unconfirmed'].includes(order.shippingStatus || '')) {
         setResult({
           success: true,
           tagId: order.shippingTagId || '',
@@ -187,23 +197,23 @@ export function SuperfreteGenerateLabelDialog({
     if (!isOpen || result) return;
     const digits = normalizeCepDigits(recipientPostalCode);
     if (digits.length !== 8 || !hasCompletePackageDimensions(pkgInputs)) {
-      if (digits.length !== 8) {
-        setShippingQuotes([]);
-        setQuotesError(null);
-      }
+      setShippingQuotes([]);
+      setShippingQuotesKey(null);
+      setQuotesError(null);
       setQuotesLoading(false);
       return;
     }
 
     let cancelled = false;
+    setShippingQuotes([]);
+    setShippingQuotesKey(null);
     setQuotesLoading(true);
     setQuotesError(null);
 
     const timer = window.setTimeout(async () => {
       try {
-        const cleanFrom = (settings?.businessZipCode || '01153000').replace(/\D/g, '') || '01153000';
         const response = await superfreteService.calculateShipping({
-          fromPostalCode: cleanFrom,
+          fromPostalCode: quoteOrigin,
           toPostalCode: digits,
           packageDimensions: parsedPkg,
         });
@@ -217,6 +227,7 @@ export function SuperfreteGenerateLabelDialog({
           return (a.price || Number.MAX_SAFE_INTEGER) - (b.price || Number.MAX_SAFE_INTEGER);
         });
         setShippingQuotes(sorted);
+        setShippingQuotesKey(quoteKey);
 
         const available = sorted.filter((s) => !s.error && s.price > 0);
         if (available.length > 0) {
@@ -227,6 +238,7 @@ export function SuperfreteGenerateLabelDialog({
       } catch (err: any) {
         if (!cancelled) {
           setShippingQuotes([]);
+          setShippingQuotesKey(null);
           setQuotesError(err?.message || 'Não foi possível comparar os valores de frete para este CEP.');
         }
       } finally {
@@ -266,6 +278,10 @@ export function SuperfreteGenerateLabelDialog({
 
     if (!hasCompletePackageDimensions(pkgInputs)) {
       setError('Informe peso e dimensões válidos (maiores que zero).');
+      return;
+    }
+    if (!selectedShippingQuote) {
+      setError('Calcule e selecione uma opção de frete com valor válido antes de emitir a etiqueta.');
       return;
     }
 
@@ -316,7 +332,13 @@ export function SuperfreteGenerateLabelDialog({
 
       setResult(response);
       onSuccess(response);
-      toast.success('Etiqueta emitida com sucesso!');
+      if (response.status === 'pending_payment' || response.status === 'payment_unconfirmed') {
+        toast.info(response.status === 'pending_payment'
+          ? 'Etiqueta criada, mas o pagamento ainda está pendente na SuperFrete.'
+          : 'Não foi possível confirmar o pagamento; confira o painel da SuperFrete.');
+      } else {
+        toast.success('Etiqueta emitida com sucesso!');
+      }
     } catch (err: any) {
       console.error('[SuperfreteLabel] Erro ao emitir etiqueta:', err);
       setError(err?.message || 'Falha ao emitir etiqueta na SuperFrete.');
@@ -361,11 +383,19 @@ export function SuperfreteGenerateLabelDialog({
         <DialogBody className="space-y-4 py-2">
           {/* Se a etiqueta já foi emitida com sucesso */}
           {result && (
-            <div className="space-y-4 p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-card-foreground animate-in zoom-in-95 duration-200">
-              <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-semibold text-sm">
-                <CheckCircle2 className="size-5" />
-                Etiqueta Emitida e Liberada!
+            <div className={`space-y-4 p-4 rounded-xl border text-card-foreground animate-in zoom-in-95 duration-200 ${['pending_payment', 'payment_unconfirmed'].includes(result.status) ? 'border-amber-500/30 bg-amber-500/10' : 'border-emerald-500/30 bg-emerald-500/10'}`}>
+              <div className={`flex items-center gap-2 font-semibold text-sm ${['pending_payment', 'payment_unconfirmed'].includes(result.status) ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                {['pending_payment', 'payment_unconfirmed'].includes(result.status) ? <AlertCircle className="size-5" /> : <CheckCircle2 className="size-5" />}
+                {result.status === 'pending_payment' ? 'Pagamento pendente na SuperFrete' : result.status === 'payment_unconfirmed' ? 'Pagamento ainda não confirmado' : 'Etiqueta Emitida e Liberada!'}
               </div>
+
+              {['pending_payment', 'payment_unconfirmed'].includes(result.status) && (
+                <p className="text-sm text-muted-foreground" role="status">
+                  {result.status === 'pending_payment'
+                    ? 'A etiqueta foi criada, mas ainda não está liberada para postagem. Conclua o pagamento no app ou painel da SuperFrete.'
+                    : 'A resposta da SuperFrete não confirmou claramente o pagamento. Confira o status no app ou painel antes de qualquer nova tentativa.'} O Luisices manteve esta tentativa registrada para evitar uma nova cobrança; a confirmação externa ainda precisa ser reconciliada no Luisices.
+                </p>
+              )}
 
               {result.trackingCode && (
                 <div className="flex items-center justify-between p-3 rounded-lg bg-background border">
@@ -396,7 +426,7 @@ export function SuperfreteGenerateLabelDialog({
                   </Button>
                 )}
 
-                {recipientPhone && (
+                {recipientPhone && !['pending_payment', 'payment_unconfirmed'].includes(result.status) && (
                   <Button
                     variant="outline"
                     onClick={handleSendWhatsAppTracking}
@@ -451,6 +481,16 @@ export function SuperfreteGenerateLabelDialog({
                 {quotesError && (
                   <p className="text-[11px] text-amber-600 dark:text-amber-400">{quotesError}</p>
                 )}
+
+                {selectedShippingQuote ? (
+                  <p className="text-[11px] text-muted-foreground" role="status">
+                    Frete selecionado: <strong className="text-foreground">{formatCurrency(selectedShippingQuote.price)}</strong>
+                  </p>
+                ) : !quotesLoading ? (
+                  <p className="text-[11px] text-muted-foreground" role="status">
+                    Informe um CEP e aguarde uma cotação válida para habilitar a emissão.
+                  </p>
+                ) : null}
 
                 {shippingQuotes.length > 0 && (() => {
                   const cheapestId = shippingQuotes.find((q) => !q.error && q.price > 0)?.id;
@@ -653,7 +693,11 @@ export function SuperfreteGenerateLabelDialog({
           </Button>
 
           {!result && (
-            <Button onClick={handleGenerate} disabled={loading} className="gap-2">
+            <Button
+              onClick={handleGenerate}
+              disabled={loading || quotesLoading || !selectedShippingQuote}
+              className="gap-2"
+            >
               {loading ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />

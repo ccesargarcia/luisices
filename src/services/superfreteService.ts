@@ -113,10 +113,11 @@ export interface CreateLabelPayload {
 export interface CreateLabelResponse {
   success: boolean;
   tagId: string;
-  status: string;
+  status: 'pending_payment' | 'payment_unconfirmed' | 'released' | 'posted' | 'delivered' | string;
   trackingCode?: string | null;
   labelPdfUrl?: string | null;
   price?: number;
+  message?: string | null;
 }
 
 export class SuperfreteService {
