@@ -28,6 +28,14 @@ import {
   SuperfreteShippingService,
   SuperfretePackage,
 } from '../../../services/superfreteService';
+import {
+  PackageDimensionInputs,
+  hasCompletePackageDimensions,
+  parsePackageDimensions,
+  sanitizeDecimalInput,
+  sanitizeIntegerInput,
+  toPackageDimensionInputs,
+} from '../../utils/packageDimensions';
 import { useUserSettings } from '../../../hooks/useUserSettings';
 
 interface SuperfreteCalculatorDialogProps {
@@ -53,12 +61,13 @@ export function SuperfreteCalculatorDialog({
   const [error, setError] = useState<string | null>(null);
   const [services, setServices] = useState<SuperfreteShippingService[]>([]);
   const [showDimensions, setShowDimensions] = useState(false);
-  const [pkg, setPkg] = useState<SuperfretePackage>({
-    weight: defaultPackage?.weight ?? settings?.superfreteDefaultPackage?.weight ?? 0.3,
-    height: defaultPackage?.height ?? settings?.superfreteDefaultPackage?.height ?? 6,
-    width: defaultPackage?.width ?? settings?.superfreteDefaultPackage?.width ?? 16,
-    length: defaultPackage?.length ?? settings?.superfreteDefaultPackage?.length ?? 20,
-  });
+  const [pkgInputs, setPkgInputs] = useState<PackageDimensionInputs>(() =>
+    toPackageDimensionInputs(defaultPackage ?? settings?.superfreteDefaultPackage),
+  );
+  const parsedPkg = parsePackageDimensions(
+    pkgInputs,
+    defaultPackage ?? settings?.superfreteDefaultPackage,
+  );
 
   const originCep = settings?.businessZipCode || '01153000';
 
@@ -68,6 +77,7 @@ export function SuperfreteCalculatorDialog({
       setCep(clean);
       setServices([]);
       setError(null);
+      setPkgInputs(toPackageDimensionInputs(defaultPackage ?? settings?.superfreteDefaultPackage));
       if (clean.length === 8) {
         handleCalculate(clean);
       }
@@ -82,6 +92,11 @@ export function SuperfreteCalculatorDialog({
       return;
     }
 
+    if (!hasCompletePackageDimensions(pkgInputs)) {
+      setError('Informe peso e dimensões válidos (maiores que zero).');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -90,7 +105,7 @@ export function SuperfreteCalculatorDialog({
       const result = await superfreteService.calculateShipping({
         fromPostalCode: cleanFrom,
         toPostalCode: cleanTo,
-        packageDimensions: pkg,
+        packageDimensions: parsedPkg,
       });
 
       if (result.success && Array.isArray(result.services)) {
@@ -169,7 +184,7 @@ export function SuperfreteCalculatorDialog({
             >
               <span className="flex items-center gap-1.5">
                 <Package className="size-3.5" />
-                Dimensões do Pacote: {pkg.weight}kg ({pkg.height}x{pkg.width}x{pkg.length}cm)
+                Dimensões do Pacote: {parsedPkg.weight}kg ({parsedPkg.height}x{parsedPkg.width}x{parsedPkg.length}cm)
               </span>
               {showDimensions ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
             </button>
@@ -179,38 +194,53 @@ export function SuperfreteCalculatorDialog({
                 <div>
                   <span className="text-[10px] text-muted-foreground">Peso (kg)</span>
                   <Input
-                    type="number"
-                    step="0.05"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Ex: 0.3"
                     className="h-8 text-xs"
-                    value={pkg.weight}
-                    onChange={(e) => setPkg({ ...pkg, weight: Number(e.target.value) })}
+                    value={pkgInputs.weight}
+                    onChange={(e) =>
+                      setPkgInputs({ ...pkgInputs, weight: sanitizeDecimalInput(e.target.value) })
+                    }
                   />
                 </div>
                 <div>
                   <span className="text-[10px] text-muted-foreground">Alt (cm)</span>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Ex: 6"
                     className="h-8 text-xs"
-                    value={pkg.height}
-                    onChange={(e) => setPkg({ ...pkg, height: Number(e.target.value) })}
+                    value={pkgInputs.height}
+                    onChange={(e) =>
+                      setPkgInputs({ ...pkgInputs, height: sanitizeIntegerInput(e.target.value) })
+                    }
                   />
                 </div>
                 <div>
                   <span className="text-[10px] text-muted-foreground">Larg (cm)</span>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Ex: 16"
                     className="h-8 text-xs"
-                    value={pkg.width}
-                    onChange={(e) => setPkg({ ...pkg, width: Number(e.target.value) })}
+                    value={pkgInputs.width}
+                    onChange={(e) =>
+                      setPkgInputs({ ...pkgInputs, width: sanitizeIntegerInput(e.target.value) })
+                    }
                   />
                 </div>
                 <div>
                   <span className="text-[10px] text-muted-foreground">Comp (cm)</span>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Ex: 20"
                     className="h-8 text-xs"
-                    value={pkg.length}
-                    onChange={(e) => setPkg({ ...pkg, length: Number(e.target.value) })}
+                    value={pkgInputs.length}
+                    onChange={(e) =>
+                      setPkgInputs({ ...pkgInputs, length: sanitizeIntegerInput(e.target.value) })
+                    }
                   />
                 </div>
               </div>

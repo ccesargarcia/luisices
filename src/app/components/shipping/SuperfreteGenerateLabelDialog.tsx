@@ -42,6 +42,14 @@ import {
 import { useUserSettings } from '../../../hooks/useUserSettings';
 import { normalizePhoneForWhatsApp } from '../../utils/whatsapp';
 import { fetchAddressByCep, formatCepInput, normalizeCepDigits } from '../../utils/cepLookup';
+import {
+  PackageDimensionInputs,
+  hasCompletePackageDimensions,
+  parsePackageDimensions,
+  sanitizeDecimalInput,
+  sanitizeIntegerInput,
+  toPackageDimensionInputs,
+} from '../../utils/packageDimensions';
 
 interface SuperfreteGenerateLabelDialogProps {
   isOpen: boolean;
@@ -85,12 +93,10 @@ export function SuperfreteGenerateLabelDialog({
   const [service, setService] = useState<number>(order.shippingServiceId ? Number(order.shippingServiceId) : 1);
 
   // Dimensões do pacote
-  const [pkg, setPkg] = useState<SuperfretePackage>({
-    weight: settings?.superfreteDefaultPackage?.weight ?? 0.3,
-    height: settings?.superfreteDefaultPackage?.height ?? 6,
-    width: settings?.superfreteDefaultPackage?.width ?? 16,
-    length: settings?.superfreteDefaultPackage?.length ?? 20,
-  });
+  const [pkgInputs, setPkgInputs] = useState<PackageDimensionInputs>(() =>
+    toPackageDimensionInputs(settings?.superfreteDefaultPackage),
+  );
+  const parsedPkg = parsePackageDimensions(pkgInputs, settings?.superfreteDefaultPackage);
 
 
   useEffect(() => {
@@ -102,6 +108,7 @@ export function SuperfreteGenerateLabelDialog({
       setShippingQuotes([]);
       setQuotesError(null);
       setQuotesLoading(false);
+      setPkgInputs(toPackageDimensionInputs(settings?.superfreteDefaultPackage));
       const initialCep = normalizeCepDigits(customer?.zipCode || '');
       // Se o cliente já tem endereço completo salvo, evita sobrescrever na abertura; caso contrário consulta o CEP.
       const hasSavedAddress = Boolean((customer?.street || customer?.address) && customer?.city && customer?.state);
@@ -179,9 +186,11 @@ export function SuperfreteGenerateLabelDialog({
   useEffect(() => {
     if (!isOpen || result) return;
     const digits = normalizeCepDigits(recipientPostalCode);
-    if (digits.length !== 8) {
-      setShippingQuotes([]);
-      setQuotesError(null);
+    if (digits.length !== 8 || !hasCompletePackageDimensions(pkgInputs)) {
+      if (digits.length !== 8) {
+        setShippingQuotes([]);
+        setQuotesError(null);
+      }
       setQuotesLoading(false);
       return;
     }
@@ -196,7 +205,7 @@ export function SuperfreteGenerateLabelDialog({
         const response = await superfreteService.calculateShipping({
           fromPostalCode: cleanFrom,
           toPostalCode: digits,
-          packageDimensions: pkg,
+          packageDimensions: parsedPkg,
         });
         if (cancelled) return;
 
@@ -231,7 +240,7 @@ export function SuperfreteGenerateLabelDialog({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [isOpen, result, recipientPostalCode, pkg.weight, pkg.height, pkg.width, pkg.length, settings?.businessZipCode]);
+  }, [isOpen, result, recipientPostalCode, pkgInputs.weight, pkgInputs.height, pkgInputs.width, pkgInputs.length, settings?.businessZipCode]);
 
   const handleGenerate = async () => {
     const cleanDoc = recipientDocument.replace(/\D/g, '');
@@ -248,6 +257,11 @@ export function SuperfreteGenerateLabelDialog({
 
     if (!recipientAddress.trim()) {
       setError('O endereço (rua) do destinatário é obrigatório.');
+      return;
+    }
+
+    if (!hasCompletePackageDimensions(pkgInputs)) {
+      setError('Informe peso e dimensões válidos (maiores que zero).');
       return;
     }
 
@@ -285,7 +299,7 @@ export function SuperfreteGenerateLabelDialog({
         from: fromData,
         to: toData,
         service,
-        volume: pkg,
+        volume: parsedPkg,
         products: [
           {
             name: order.productName || 'Produto Artesanal Personalizado',
@@ -595,38 +609,53 @@ export function SuperfreteGenerateLabelDialog({
                   <div>
                     <span className="text-[10px] text-muted-foreground">Peso (kg)</span>
                     <Input
-                      type="number"
-                      step="0.05"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Ex: 0.3"
                       className="h-7 text-xs"
-                      value={pkg.weight}
-                      onChange={(e) => setPkg({ ...pkg, weight: Number(e.target.value) })}
+                      value={pkgInputs.weight}
+                      onChange={(e) =>
+                        setPkgInputs({ ...pkgInputs, weight: sanitizeDecimalInput(e.target.value) })
+                      }
                     />
                   </div>
                   <div>
                     <span className="text-[10px] text-muted-foreground">Alt (cm)</span>
                     <Input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Ex: 6"
                       className="h-7 text-xs"
-                      value={pkg.height}
-                      onChange={(e) => setPkg({ ...pkg, height: Number(e.target.value) })}
+                      value={pkgInputs.height}
+                      onChange={(e) =>
+                        setPkgInputs({ ...pkgInputs, height: sanitizeIntegerInput(e.target.value) })
+                      }
                     />
                   </div>
                   <div>
                     <span className="text-[10px] text-muted-foreground">Larg (cm)</span>
                     <Input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Ex: 16"
                       className="h-7 text-xs"
-                      value={pkg.width}
-                      onChange={(e) => setPkg({ ...pkg, width: Number(e.target.value) })}
+                      value={pkgInputs.width}
+                      onChange={(e) =>
+                        setPkgInputs({ ...pkgInputs, width: sanitizeIntegerInput(e.target.value) })
+                      }
                     />
                   </div>
                   <div>
                     <span className="text-[10px] text-muted-foreground">Comp (cm)</span>
                     <Input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Ex: 20"
                       className="h-7 text-xs"
-                      value={pkg.length}
-                      onChange={(e) => setPkg({ ...pkg, length: Number(e.target.value) })}
+                      value={pkgInputs.length}
+                      onChange={(e) =>
+                        setPkgInputs({ ...pkgInputs, length: sanitizeIntegerInput(e.target.value) })
+                      }
                     />
                   </div>
                 </div>
