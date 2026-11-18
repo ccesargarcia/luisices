@@ -40,6 +40,32 @@ function sanitizeDocument(doc) {
   return String(doc || '').replace(/\D/g, '');
 }
 
+function formatSuperfreteApiError(json, fallbackMessage) {
+  if (!json || typeof json !== 'object') return fallbackMessage;
+  const base = json.message || json.error || fallbackMessage;
+  const rawErrors = json.errors;
+  if (!rawErrors) return base;
+
+  const details = [];
+  if (Array.isArray(rawErrors)) {
+    for (const item of rawErrors) {
+      if (typeof item === 'string' && item.trim()) details.push(item.trim());
+      else if (item && typeof item === 'object') {
+        details.push(item.message || JSON.stringify(item));
+      }
+    }
+  } else if (typeof rawErrors === 'object') {
+    for (const [field, msgs] of Object.entries(rawErrors)) {
+      if (Array.isArray(msgs) && msgs.length > 0) {
+        details.push(`${field}: ${msgs.join(', ')}`);
+      } else if (typeof msgs === 'string' && msgs.trim()) {
+        details.push(`${field}: ${msgs.trim()}`);
+      }
+    }
+  }
+  return details.length > 0 ? `${base} (${details.join(' | ')})` : base;
+}
+
 function assertDevelopmentProject() {
   if (process.env.FUNCTIONS_EMULATOR === 'true') return;
   if (process.env.GCLOUD_PROJECT !== 'luisices-dev') {
@@ -284,7 +310,10 @@ async function handleCalculateSuperfreteShipping(request) {
       }
 
       if (!response.ok) {
-        const errorMsg = result?.message || result?.error || `Erro HTTP ${response.status} ao cotar frete na SuperFrete.`;
+        const errorMsg = formatSuperfreteApiError(
+          result,
+          `Erro HTTP ${response.status} ao cotar frete na SuperFrete.`,
+        );
         throw new HttpsError('invalid-argument', errorMsg);
       }
 
@@ -393,7 +422,7 @@ async function handleCreateSuperfreteLabel(request) {
         state_abbr: String(to.state_abbr).toUpperCase().slice(0, 2),
         postal_code: sanitizePostalCode(to.postal_code),
         document: cleanToDoc,
-        email: to.email || null,
+        ...(typeof to.email === 'string' && to.email.trim() ? { email: to.email.trim() } : {}),
         phone: to.phone ? String(to.phone).replace(/\D/g, '').slice(0, 11) : undefined,
       },
       service: Number(service) || 1, // Padrão PAC se não especificado
@@ -451,7 +480,10 @@ async function handleCreateSuperfreteLabel(request) {
 
     const cartJson = await cartRes.json().catch(() => null);
     if (!cartRes.ok || !cartJson?.id) {
-      const errorMsg = cartJson?.message || cartJson?.error || `Erro ao gerar pedido no carrinho SuperFrete (Status ${cartRes.status})`;
+      const errorMsg = formatSuperfreteApiError(
+        cartJson,
+        `Erro ao gerar pedido no carrinho SuperFrete (Status ${cartRes.status})`,
+      );
       await markLabelAttemptFailed(orderRef, attemptId, errorMsg);
       throw new HttpsError('invalid-argument', errorMsg);
     }
@@ -474,10 +506,10 @@ async function handleCreateSuperfreteLabel(request) {
 
     const checkoutJson = await checkoutRes.json().catch(() => null);
     if (!checkoutRes.ok) {
-      const errorMsg =
-        checkoutJson?.message ||
-        checkoutJson?.error ||
-        `Saldo insuficiente ou falha ao debitar etiqueta da SuperFrete (Status ${checkoutRes.status}).`;
+      const errorMsg = formatSuperfreteApiError(
+        checkoutJson,
+        `Saldo insuficiente ou falha ao debitar etiqueta da SuperFrete (Status ${checkoutRes.status}).`,
+      );
       await markLabelAttemptFailed(orderRef, attemptId, errorMsg);
       throw new HttpsError('payment-required', errorMsg);
     }
