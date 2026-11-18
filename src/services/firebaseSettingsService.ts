@@ -581,6 +581,11 @@ export class FirebaseSettingsService {
       if (settings.storeUnpublishMessage !== undefined) publicData.storeUnpublishMessage = settings.storeUnpublishMessage;
       if (settings.featureFlags !== undefined) publicData.featureFlags = settings.featureFlags;
 
+      // Status e dimensões padrão da SuperFrete (sem dados sensíveis como CPF/CNPJ)
+      // para visibilidade de usuários não-admin com permissão granular.
+      if (settings.superfreteEnabled !== undefined) publicData.superfreteEnabled = settings.superfreteEnabled;
+      if (settings.superfreteDefaultPackage !== undefined) publicData.superfreteDefaultPackage = settings.superfreteDefaultPackage;
+
       if (Object.keys(publicData).length > 1) {
         batch.set(doc(db, 'storeSettings', 'public'), publicData, { merge: true });
       }

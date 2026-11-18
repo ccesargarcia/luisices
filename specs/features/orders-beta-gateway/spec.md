@@ -31,7 +31,7 @@ Como `POST /api/order-tracking` já está publicado na allowlist do Worker `func
 | Ator | Ações permitidas | Restrições/negações |
 |---|---|---|
 | Usuário ativo com permissão em pedidos | `createOrder` e `updateComplexOrder` conforme RBAC e ownership validados nos handlers | Sem sessão ativa recebe 401; sem permissão no módulo/pedido recebe 403 (`permission-denied`) |
-| Administrador ativo em `luisices-dev` | `calculateSuperfreteShipping` e `createSuperfreteLabel` (quando `superfreteEnabled === true`) | Não-admin recebe 403; fora de `luisices-dev` ou com integração desativada recebe 412 (`failed-precondition`) |
+| Administrador ativo ou usuário com permissão granular `superfrete` em `luisices-dev` | `calculateSuperfreteShipping` e `createSuperfreteLabel` (quando `superfreteEnabled === true` nas configurações do admin; emissão respeita ownership/atribuição do pedido) | Sem permissão `superfrete` recebe 403; fora de `luisices-dev` ou com integração desativada recebe 412 (`failed-precondition`) |
 | Worker `functions-beta` | Encaminhar `POST /api/order-tracking` e injetar `x-beta-edge-secret` | Rate limit de 30 req/min por IP/caminho |
 | Chamada direta à Function Vercel | Nenhuma | Sem `x-beta-edge-secret` válido recebe 403 antes de `OPTIONS`, método ou Firebase Admin |
 

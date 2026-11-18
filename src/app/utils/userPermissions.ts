@@ -4,7 +4,7 @@ export function deepClonePermission(p?: Permission | null): Permission {
   const source = p && typeof p === 'object' ? p as unknown as Record<string, any> : {};
   const clone = JSON.parse(JSON.stringify(DEFAULT_USER_PERMISSIONS)) as Record<string, any>;
   const crudKeys = ['orders', 'archivedOrders', 'customers', 'products', 'quotes', 'users', 'emails', 'pricing', 'storeProducts'];
-  const booleanKeys = ['dashboard', 'reports', 'exchanges', 'settings', 'store', 'whatsapp', 'aiCopilot', 'mcpAccess'];
+  const booleanKeys = ['dashboard', 'reports', 'exchanges', 'settings', 'store', 'whatsapp', 'aiCopilot', 'superfrete', 'mcpAccess'];
 
   for (const key of crudKeys) {
     const value = source[key];

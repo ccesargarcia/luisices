@@ -225,6 +225,12 @@ const PERMISSION_CATEGORIES: ModuleCategory[] = [
         type: 'boolean',
       },
       {
+        key: 'superfrete',
+        label: 'Frete & Etiquetas (SuperFrete)',
+        description: 'Cotação de frete em orçamentos e emissão de etiquetas de envio nos pedidos',
+        type: 'boolean',
+      },
+      {
         key: 'exchanges',
         label: 'Permutas & Parcerias',
         description: 'Controle de permutas de produtos e parcerias com influenciadores',
@@ -405,6 +411,7 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
       next.store = false;
       next.whatsapp = false;
       next.aiCopilot = false;
+      next.superfrete = false;
       next.orders = { view: false, create: false, edit: false, delete: false };
       next.archivedOrders = { view: false, create: false, edit: false, delete: false };
       next.customers = { view: false, create: false, edit: false, delete: false };
@@ -424,6 +431,7 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
       next.store = false;
       next.whatsapp = false;
       next.aiCopilot = false;
+      next.superfrete = false;
       next.orders = { view: true, create: false, edit: false, delete: false };
       next.archivedOrders = { view: true, create: false, edit: false, delete: false };
       next.customers = { view: true, create: false, edit: false, delete: false };

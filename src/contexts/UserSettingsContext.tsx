@@ -4,7 +4,7 @@
  * All components read from here instead of creating their own listeners.
  */
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
@@ -43,13 +43,15 @@ const UserSettingsContext = createContext<UserSettingsContextValue | null>(null)
 
 export function UserSettingsProvider({ children }: { children: ReactNode }) {
   const { user, userProfile, loading: authLoading } = useAuth();
-  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
+  const [sharedSuperfrete, setSharedSuperfrete] = useState<Pick<UserSettings, 'superfreteEnabled' | 'superfreteDefaultPackage'> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (!user || !userProfile || authLoading) {
-      setSettings(null);
+      setUserSettings(null);
+      setSharedSuperfrete(null);
       setLoading(false);
       return;
     }
@@ -61,9 +63,9 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       (snap) => {
         if (snap.exists()) {
           const data = snap.data();
-          setSettings(formatUserSettings(data));
+          setUserSettings(formatUserSettings(data));
         } else {
-          setSettings(null);
+          setUserSettings(null);
         }
         setLoading(false);
       },
@@ -72,13 +74,54 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
           console.warn('UserSettingsContext: onSnapshot listener cancelado:', err?.message || err);
         }
         setError(err as Error);
-        setSettings((prev) => prev ?? null);
+        setUserSettings((prev) => prev ?? null);
         setLoading(false);
       }
     );
 
-    return () => unsubscribe();
+    let unsubscribePublic: (() => void) | undefined;
+    if (userProfile.role !== 'admin') {
+      const publicRef = doc(db, 'storeSettings', 'public');
+      unsubscribePublic = onSnapshot(
+        publicRef,
+        (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            setSharedSuperfrete({
+              superfreteEnabled: data.superfreteEnabled,
+              superfreteDefaultPackage: data.superfreteDefaultPackage,
+            });
+          } else {
+            setSharedSuperfrete(null);
+          }
+        },
+        () => {
+          setSharedSuperfrete(null);
+        }
+      );
+    } else {
+      setSharedSuperfrete(null);
+    }
+
+    return () => {
+      unsubscribe();
+      unsubscribePublic?.();
+    };
   }, [user, userProfile, authLoading]);
+
+  const settings = useMemo<UserSettings | null>(() => {
+    if (!userProfile || userProfile.role === 'admin') {
+      return userSettings;
+    }
+    if (!userSettings && !sharedSuperfrete) {
+      return null;
+    }
+    return {
+      ...(userSettings || ({} as UserSettings)),
+      superfreteEnabled: userSettings?.superfreteEnabled ?? sharedSuperfrete?.superfreteEnabled,
+      superfreteDefaultPackage: userSettings?.superfreteDefaultPackage ?? sharedSuperfrete?.superfreteDefaultPackage,
+    };
+  }, [userProfile, userSettings, sharedSuperfrete]);
 
   return (
     <UserSettingsContext.Provider value={{ settings, loading, error }}>

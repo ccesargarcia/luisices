@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUserSettings } from '../../../hooks/useUserSettings';
+import { useAuth } from '../../../contexts/AuthContext';
 import { SuperfreteGenerateLabelDialog } from '../shipping/SuperfreteGenerateLabelDialog';
 import { normalizePhoneForWhatsApp } from '../../utils/whatsapp';
 import { isSuperfreteDevEnvironment } from '../../../lib/firebase';
@@ -30,10 +31,13 @@ export function OrderShippingSection({
   onOrderUpdated,
 }: OrderShippingSectionProps) {
   const { settings } = useUserSettings();
+  const { isAdmin, hasPermission } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  // Se o recurso estiver desativado pelo Admin, não renderiza absolutamente nada
-  if (!isSuperfreteDevEnvironment || !settings?.superfreteEnabled) {
+  const canUseSuperfrete = isAdmin || hasPermission((p) => Boolean(p?.superfrete));
+
+  // Se o recurso estiver desativado pelo Admin ou sem permissão granular, não renderiza
+  if (!isSuperfreteDevEnvironment || !settings?.superfreteEnabled || !canUseSuperfrete) {
     return null;
   }
 

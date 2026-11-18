@@ -5,6 +5,7 @@ const INVITED_USER_PERMISSIONS = {
   customers: { view: true, create: true, edit: false, delete: false },
   whatsapp: true,
   aiCopilot: true,
+  superfrete: false,
   products: { view: true, create: false, edit: false, delete: false },
   storeProducts: { view: true, create: false, edit: false, delete: false },
   store: false,

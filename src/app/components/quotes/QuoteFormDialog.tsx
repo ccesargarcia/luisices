@@ -118,7 +118,8 @@ export function QuoteFormDialog({
   editing,
   onSaved,
 }: QuoteFormDialogProps) {
-  const { user } = useAuth();
+  const { user, isAdmin, hasPermission } = useAuth();
+  const canUseSuperfrete = isAdmin || hasPermission((p) => Boolean(p?.superfrete));
   const { activePartnerId } = useOrders();
   const { settings } = useUserSettings();
   const [form, setForm] = useState<FormState>(editing ? formFromQuote(editing) : emptyForm());
@@ -638,7 +639,7 @@ export function QuoteFormDialog({
                   value={form.deliveryAddress}
                   onChange={(e) => setForm({ ...form, deliveryAddress: e.target.value })}
                 />
-                {isSuperfreteDevEnvironment && settings?.superfreteEnabled && (
+                {isSuperfreteDevEnvironment && settings?.superfreteEnabled && canUseSuperfrete && (
                   <div>
                     <Button
                       type="button"
@@ -732,7 +733,7 @@ export function QuoteFormDialog({
         </DialogFooter>
       </DialogContent>
 
-      {isSuperfreteDevEnvironment && settings?.superfreteEnabled && (
+      {isSuperfreteDevEnvironment && settings?.superfreteEnabled && canUseSuperfrete && (
         <SuperfreteCalculatorDialog
           isOpen={superfreteCalcOpen}
           onClose={() => setSuperfreteCalcOpen(false)}

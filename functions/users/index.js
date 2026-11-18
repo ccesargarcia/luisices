@@ -35,7 +35,7 @@ const {
 
 const VALID_PERMISSION_MODULES = [
   'dashboard', 'orders', 'archivedOrders', 'customers', 'whatsapp',
-  'aiCopilot', 'products', 'storeProducts', 'store', 'quotes',
+  'aiCopilot', 'superfrete', 'products', 'storeProducts', 'store', 'quotes',
   'gallery', 'exchanges', 'reports', 'settings', 'users', 'emails', 'pricing', 'mcpAccess', 'mcpScopes'
 ];
 

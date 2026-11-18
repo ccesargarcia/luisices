@@ -302,6 +302,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     store: data.permissions?.store ?? DEFAULT_USER_PERMISSIONS.store,
                     whatsapp: data.permissions?.whatsapp ?? DEFAULT_USER_PERMISSIONS.whatsapp ?? false,
                     aiCopilot: data.permissions?.aiCopilot ?? DEFAULT_USER_PERMISSIONS.aiCopilot ?? false,
+                    superfrete: data.permissions?.superfrete ?? DEFAULT_USER_PERMISSIONS.superfrete ?? false,
                     mcpAccess: data.permissions?.mcpAccess !== false,
                     orders: {
                       ...DEFAULT_USER_PERMISSIONS.orders,
@@ -317,6 +318,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     pricing: data.permissions?.pricing ?? false,
                     whatsapp: data.permissions?.whatsapp ?? false,
                     aiCopilot: data.permissions?.aiCopilot ?? false,
+                    superfrete: data.permissions?.superfrete ?? false,
                   };
 
             const profile: UserProfile = {

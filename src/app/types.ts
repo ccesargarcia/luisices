@@ -325,6 +325,7 @@ export interface Permission {
   storeProducts?: ModulePermission;
   whatsapp?: boolean;
   aiCopilot?: boolean;
+  superfrete?: boolean;
   mcpAccess?: boolean;
   mcpScopes?: string[];
 }
@@ -641,6 +642,7 @@ export const ADMIN_PERMISSIONS: Permission = {
   storeProducts: { view: true, create: true, edit: true, delete: true },
   whatsapp:  true,
   aiCopilot: true,
+  superfrete: true,
   mcpAccess: true,
 };
 
@@ -662,6 +664,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   storeProducts: { view: true, create: true, edit: true, delete: false },
   whatsapp:  true,
   aiCopilot: true,
+  superfrete: false,
   mcpAccess: true,
   mcpScopes: ['orders:read', 'orders:draft', 'orders:create', 'customers:read', 'pricing:estimate', 'whatsapp:compose', 'gallery:read'],
 };
@@ -684,6 +687,7 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   storeProducts: { view: false, create: false, edit: false, delete: false },
   whatsapp:  false,
   aiCopilot: false,
+  superfrete: false,
   mcpAccess: true,
   mcpScopes: ['orders:read', 'orders:draft', 'customers:read', 'gallery:read'],
 };

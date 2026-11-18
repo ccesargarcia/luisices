@@ -47,21 +47,47 @@ function assertDevelopmentProject() {
   }
 }
 
+async function resolveSuperfreteSettings(db, session) {
+  if (session.profile.role === 'admin') {
+    const ownSnap = await db.doc(`users/${session.uid}/settings/profile`).get();
+    if (ownSnap.exists && ownSnap.data()?.superfreteEnabled === true) {
+      return ownSnap.data();
+    }
+  }
+
+  const adminsSnap = await db
+    .collection('userProfiles')
+    .where('role', '==', 'admin')
+    .where('active', '==', true)
+    .limit(10)
+    .get();
+
+  if (!adminsSnap.empty) {
+    const settingsSnaps = await Promise.all(
+      adminsSnap.docs.map((adminDoc) => db.doc(`users/${adminDoc.id}/settings/profile`).get())
+    );
+    const enabledSnap = settingsSnaps.find(
+      (snap) => snap.exists && snap.data()?.superfreteEnabled === true
+    );
+    if (enabledSnap) {
+      return enabledSnap.data();
+    }
+  }
+
+  throw new HttpsError('failed-precondition', 'A integração SuperFrete está desativada nas configurações do administrador.');
+}
+
 async function authorizeSuperfrete(request) {
   assertDevelopmentProject();
   const session = await assertActiveSession(request);
-  if (session.profile.role !== 'admin') {
-    throw new HttpsError('permission-denied', 'A integração SuperFrete está disponível somente para administradores.');
+  const isAdmin = session.profile.role === 'admin';
+  const hasSuperfretePermission = session.profile.permissions?.superfrete === true;
+  if (!isAdmin && !hasSuperfretePermission) {
+    throw new HttpsError('permission-denied', 'Você não tem permissão para acessar a integração SuperFrete.');
   }
 
-  const settingsSnap = await getFirestore()
-    .doc(`users/${session.uid}/settings/profile`)
-    .get();
-  if (!settingsSnap.exists || settingsSnap.data()?.superfreteEnabled !== true) {
-    throw new HttpsError('failed-precondition', 'A integração SuperFrete está desativada nas configurações do administrador.');
-  }
-
-  return session;
+  const superfreteSettings = await resolveSuperfreteSettings(getFirestore(), session);
+  return { ...session, superfreteSettings };
 }
 
 // Keep the exports in sync with the selective Functions target in deploy-dev.yml.
@@ -72,11 +98,12 @@ function nextOrderVersion(order) {
   return currentVersion + 1;
 }
 
-async function reserveOrderForLabel(orderId, uid) {
+async function reserveOrderForLabel(orderId, session) {
   if (typeof orderId !== 'string' || !/^[A-Za-z0-9_-]{1,150}$/.test(orderId)) {
     throw new HttpsError('invalid-argument', 'Um identificador de pedido válido é obrigatório para emitir a etiqueta.');
   }
 
+  const { uid, profile } = session;
   const db = getFirestore();
   const orderRef = db.collection('orders').doc(orderId);
   const attemptId = crypto.randomUUID();
@@ -85,7 +112,10 @@ async function reserveOrderForLabel(orderId, uid) {
     if (!orderSnap.exists) throw new HttpsError('not-found', 'Pedido não encontrado.');
 
     const order = orderSnap.data();
-    if (order.userId !== uid) {
+    const isAdmin = profile.role === 'admin';
+    const isOwner = order.userId === uid;
+    const isAssignedEmployee = profile.role === 'funcionario' && order.assignedTo === uid;
+    if (!isAdmin && !isOwner && !isAssignedEmployee) {
       throw new HttpsError('permission-denied', 'Você não tem permissão para emitir etiqueta para este pedido.');
     }
 
@@ -169,8 +199,8 @@ function getApiToken() {
  * Endpoint interno para consulta de valores e prazos em orçamentos e pedidos.
  */
 async function handleCalculateSuperfreteShipping(request) {
-    // 1. RBAC: Garante sessão ativa e válida
-    await authorizeSuperfrete(request);
+    // 1. RBAC: Garante sessão ativa e permissão granular SuperFrete (ou admin)
+    const { superfreteSettings } = await authorizeSuperfrete(request);
 
     const data = request.data || {};
     const { fromPostalCode, toPostalCode, packageDimensions, products, services, options } = data;
@@ -180,7 +210,10 @@ async function handleCalculateSuperfreteShipping(request) {
     }
 
     const cleanTo = sanitizePostalCode(toPostalCode);
-    const cleanFrom = sanitizePostalCode(fromPostalCode || '01153000'); // Fallback seguro para testes se não informado
+    const resolvedFrom = (fromPostalCode && fromPostalCode !== '01153000' ? fromPostalCode : superfreteSettings?.businessZipCode)
+      || fromPostalCode
+      || '01153000';
+    const cleanFrom = sanitizePostalCode(resolvedFrom); // Fallback seguro para testes se não informado
 
     // Dimensões padrão caso não venha informado nem pacote nem lista de produtos
     const defaultPackage = {
@@ -294,8 +327,9 @@ const calculateSuperfreteShipping = onCall(
  * Executa o fluxo completo: adiciona ao carrinho -> checkout com saldo -> obtém PDF da etiqueta.
  */
 async function handleCreateSuperfreteLabel(request) {
-    // 1. RBAC: Garante sessão ativa
-    const { uid } = await authorizeSuperfrete(request);
+    // 1. RBAC: Garante sessão ativa e permissão granular SuperFrete (ou admin)
+    const session = await authorizeSuperfrete(request);
+    const { profile, superfreteSettings } = session;
 
     const data = request.data || {};
     const { orderId, from, to, service, volume, products, nonCommercial = true } = data;
@@ -308,15 +342,30 @@ async function handleCreateSuperfreteLabel(request) {
       throw new HttpsError('invalid-argument', 'Dados obrigatórios do remetente incompletos (nome, endereço e CEP).');
     }
 
+    const isAdmin = profile.role === 'admin';
+    const effectiveFrom = isAdmin
+      ? from
+      : {
+          name: superfreteSettings?.businessName || from.name,
+          address: superfreteSettings?.businessAddress || from.address,
+          number: superfreteSettings?.businessNumber || from.number,
+          complement: superfreteSettings?.businessComplement ?? from.complement,
+          district: from.district || 'Centro',
+          city: superfreteSettings?.businessCity || from.city,
+          state_abbr: superfreteSettings?.businessState || from.state_abbr,
+          postal_code: superfreteSettings?.businessZipCode || from.postal_code,
+          document: superfreteSettings?.superfreteSenderDocument || from.document,
+        };
+
     const cleanToDoc = sanitizeDocument(to.document);
     if (!cleanToDoc || (cleanToDoc.length !== 11 && cleanToDoc.length !== 14)) {
       throw new HttpsError('invalid-argument', 'O CPF ou CNPJ do destinatário é obrigatório para emissão da etiqueta (11 ou 14 dígitos).');
     }
 
-    const cleanFromDoc = sanitizeDocument(from.document);
+    const cleanFromDoc = sanitizeDocument(effectiveFrom.document);
 
     // Garante nome com pelo menos 2 palavras para o remetente (exigência da SuperFrete)
-    let senderName = String(from.name || '').trim();
+    let senderName = String(effectiveFrom.name || '').trim();
     if (!senderName.includes(' ')) {
       senderName = `Ateliê ${senderName}`;
     }
@@ -325,13 +374,13 @@ async function handleCreateSuperfreteLabel(request) {
     const cartPayload = {
       from: {
         name: senderName.slice(0, 50),
-        address: String(from.address).slice(0, 50),
-        complement: String(from.complement || '').slice(0, 20),
-        number: String(from.number || ''),
-        district: String(from.district || 'Centro').slice(0, 60),
-        city: String(from.city).slice(0, 50),
-        state_abbr: String(from.state_abbr || 'SP').toUpperCase().slice(0, 2),
-        postal_code: sanitizePostalCode(from.postal_code),
+        address: String(effectiveFrom.address).slice(0, 50),
+        complement: String(effectiveFrom.complement || '').slice(0, 20),
+        number: String(effectiveFrom.number || ''),
+        district: String(effectiveFrom.district || 'Centro').slice(0, 60),
+        city: String(effectiveFrom.city).slice(0, 50),
+        state_abbr: String(effectiveFrom.state_abbr || 'SP').toUpperCase().slice(0, 2),
+        postal_code: sanitizePostalCode(effectiveFrom.postal_code),
         ...(cleanFromDoc ? { document: cleanFromDoc } : {}),
       },
       to: {
@@ -384,7 +433,7 @@ async function handleCreateSuperfreteLabel(request) {
     };
 
     // ── Etapa 1: Adicionar frete ao carrinho SuperFrete ──────────────────────
-    const reservation = await reserveOrderForLabel(orderId, uid);
+    const reservation = await reserveOrderForLabel(orderId, session);
     if (reservation.existing) return reservation.existing;
     const { orderRef, attemptId } = reservation;
 
