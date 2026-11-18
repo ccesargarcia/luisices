@@ -519,14 +519,20 @@ async function handleCreateSuperfreteLabel(request) {
       throw new HttpsError('unavailable', 'Não foi possível confirmar o checkout. A emissão ficou bloqueada para evitar cobrança duplicada; confira a SuperFrete antes de liberar uma nova tentativa.');
     }
 
-    const checkoutJson = await checkoutRes.json().catch(() => null);
+    const checkoutText = await checkoutRes.text().catch(() => '');
+    let checkoutJson = null;
+    try {
+      checkoutJson = checkoutText ? JSON.parse(checkoutText) : null;
+    } catch {
+      checkoutJson = null;
+    }
     if (!checkoutRes.ok) {
-      const errorMsg = formatSuperfreteApiError(
-        checkoutJson,
-        `Saldo insuficiente ou falha ao debitar etiqueta da SuperFrete (Status ${checkoutRes.status}).`,
-      );
+      const fallbackMsg = checkoutText
+        ? `Saldo insuficiente ou falha ao debitar etiqueta da SuperFrete (Status ${checkoutRes.status}): ${checkoutText.slice(0, 180)}`
+        : `Saldo insuficiente ou falha ao debitar etiqueta da SuperFrete (Status ${checkoutRes.status}).`;
+      const errorMsg = formatSuperfreteApiError(checkoutJson, fallbackMsg);
       await markLabelAttemptFailed(orderRef, attemptId, errorMsg);
-      throw new HttpsError('payment-required', errorMsg);
+      throw new HttpsError('failed-precondition', errorMsg);
     }
 
     // ── Etapa 3: Obter link do PDF da etiqueta ──────────────────────────────
