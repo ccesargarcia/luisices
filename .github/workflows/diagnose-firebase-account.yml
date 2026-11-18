@@ -1,4 +1,4 @@
-name: Diagnosticar conta Firebase Dev
+name: Diagnosticar contas Firebase (Dev e Prod)
 
 on:
   workflow_dispatch:
@@ -7,27 +7,41 @@ permissions: {}
 
 jobs:
   identificar-conta:
-    name: Identificar conta de deploy
+    name: Identificar contas de deploy
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Identificar conta de deploy
+      - name: Identificar contas de deploy (Dev e Prod)
         env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+          FIREBASE_SERVICE_ACCOUNT_DEV: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+          FIREBASE_SERVICE_ACCOUNT_PROD: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.PROD_FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           node <<'NODE'
-          let credentials;
-          try {
-            credentials = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '');
-          } catch {
-            console.error('FIREBASE_SERVICE_ACCOUNT_DEV ausente ou com JSON inválido.');
-            process.exit(1);
+          function inspectAccount(label, raw) {
+            if (!raw) {
+              console.error(`❌ [${label}] Secret ausente.`);
+              return false;
+            }
+            let credentials;
+            try {
+              credentials = JSON.parse(raw);
+            } catch {
+              console.error(`❌ [${label}] JSON inválido.`);
+              return false;
+            }
+            const email = credentials?.client_email;
+            const projectId = credentials?.project_id || '(não informado)';
+            if (typeof email !== 'string' || !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.gserviceaccount\.com$/.test(email)) {
+              console.error(`❌ [${label}] client_email inválido.`);
+              return false;
+            }
+            console.log(`✅ [${label}] projeto=${projectId} | client_email=${email}`);
+            return true;
           }
-          const serviceAccountEmail = credentials?.client_email;
-          if (typeof serviceAccountEmail !== 'string' || !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.gserviceaccount\.com$/.test(serviceAccountEmail)) {
-            console.error('O secret não contém um client_email válido de conta de serviço.');
-            process.exit(1);
-          }
-          console.log('Conta de serviço validada.');
-          NODE
 
+          const okDev = inspectAccount('Dev', process.env.FIREBASE_SERVICE_ACCOUNT_DEV || '');
+          const okProd = inspectAccount('Prod', process.env.FIREBASE_SERVICE_ACCOUNT_PROD || '');
+          if (!okDev || !okProd) {
+            process.exit(1);
+          }
+          NODE
