@@ -57,6 +57,12 @@ O autoarquivamento atual é acionado pela interface do dashboard conforme dados 
 
 Fontes: [Dashboard](../src/app/pages/Dashboard.tsx), [serviço de pedidos](../src/services/firebaseOrderService.ts), [agenda](../src/app/pages/WeeklyCalendar.tsx).
 
+## Frete e etiquetas SuperFrete
+
+No ambiente de desenvolvimento, administradores e usuários com permissão explícita podem cotar fretes e emitir etiquetas para pedidos permitidos. O recurso usa credencial Sandbox e permanece restrito a `luisices-dev`/emulador. CPF e CNPJ são validados no formulário e no servidor; CNPJs numéricos antigos e alfanuméricos novos são aceitos com verificação dos dígitos verificadores. O CNPJ alfanumérico tem 14 posições, com dois dígitos verificadores numéricos. Copiloto (Gemini) e MCP/ChatGPT não usam essa interface nem têm alteração de contrato por esta validação.
+
+Fontes: [configurações SuperFrete](../src/app/components/settings/SuperfreteSettingsSection.tsx), [emissão de etiqueta](../src/app/components/shipping/SuperfreteGenerateLabelDialog.tsx), [validação compartilhada do frontend](../src/app/utils/documentFormat.ts), [validação backend](../functions/orders/superfrete.js).
+
 ## Clientes e histórico
 
 Cadastro com contatos, classificação, endereço e aniversário. A interface oferece consulta de endereço por CEP e preenchimento manual.

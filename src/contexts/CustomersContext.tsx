@@ -15,24 +15,35 @@ interface CustomersContextValue {
   loading: boolean;
 }
 
+interface CustomersState {
+  sessionKey: string | null;
+  customers: Customer[];
+  loading: boolean;
+}
+
 const CustomersContext = createContext<CustomersContextValue | null>(null);
 
 export function CustomersProvider({ children }: { children: ReactNode }) {
   const { user, userProfile, loading: authLoading } = useAuth();
-  const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const profileMatchesUser = Boolean(user && userProfile?.uid === user.uid);
+  const sessionKey = user
+    ? `${user.uid}:${profileMatchesUser ? userProfile?.role ?? 'unknown' : 'pending-profile'}`
+    : null;
+  const [state, setState] = useState<CustomersState>({ sessionKey: null, customers: [], loading: true });
 
   useEffect(() => {
     if (!user) {
-      setAllCustomers([]);
-      setLoading(false);
+      setState({ sessionKey: null, customers: [], loading: authLoading });
       return;
     }
 
-    if (authLoading && !userProfile) {
-      setLoading(true);
+    if (!profileMatchesUser) {
+      setState({ sessionKey, customers: [], loading: authLoading });
       return;
     }
+
+    let active = true;
+    setState({ sessionKey, customers: [], loading: true });
 
     const isAdmin = userProfile?.role === 'admin';
     const q = isAdmin
@@ -51,8 +62,11 @@ export function CustomersProvider({ children }: { children: ReactNode }) {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        setAllCustomers(
-          snap.docs.map((d) => {
+        if (!active) return;
+        setState({
+          sessionKey,
+          loading: false,
+          customers: snap.docs.map((d) => {
             const raw = d.data();
             return {
               ...(raw as Customer),
@@ -62,17 +76,24 @@ export function CustomersProvider({ children }: { children: ReactNode }) {
                 (typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString()),
             };
           }),
-        );
-        setLoading(false);
+        });
       },
       (err) => {
+        if (!active) return;
         console.error('CustomersContext: erro ao carregar clientes:', err);
-        setLoading(false);
+        setState({ sessionKey, customers: [], loading: false });
       },
     );
 
-    return () => unsub();
-  }, [user, userProfile?.role, authLoading]);
+    return () => {
+      active = false;
+      unsub();
+    };
+  }, [user, userProfile?.uid, userProfile?.role, authLoading, profileMatchesUser, sessionKey]);
+
+  const sessionMatches = state.sessionKey === sessionKey;
+  const allCustomers = sessionMatches ? state.customers : [];
+  const loading = !sessionMatches || state.loading;
 
   return (
     <CustomersContext.Provider value={{ allCustomers, loading }}>

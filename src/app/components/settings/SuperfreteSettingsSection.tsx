@@ -7,7 +7,7 @@ import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { Truck, ShieldCheck, AlertCircle, Package, Lock, CheckCircle2, Loader2 } from 'lucide-react';
 import { UserSettings } from '../../../services/firebaseSettingsService';
-import { formatCpfCnpjInput, isValidCpfCnpj } from '../../utils/documentFormat';
+import { formatCpfCnpjInput, isValidCpfCnpj, normalizeCpfCnpj } from '../../utils/documentFormat';
 
 interface SuperfreteSettingsSectionProps {
   isAdmin: boolean;
@@ -30,6 +30,7 @@ export function SuperfreteSettingsSection({
     width: 16,
     length: 20,
   });
+  const [docError, setDocError] = useState<string | null>(null);
 
   useEffect(() => {
     if (settings) {
@@ -68,21 +69,19 @@ export function SuperfreteSettingsSection({
     );
   }
 
-  const [docError, setDocError] = useState<string | null>(null);
-
   const handleToggle = (checked: boolean) => {
     setEnabled(checked);
   };
 
   const handleSaveSettings = async () => {
-    const cleanDoc = senderDocument.replace(/\D/g, '');
+    const cleanDoc = normalizeCpfCnpj(senderDocument);
     if (cleanDoc.length > 0 && !isValidCpfCnpj(cleanDoc)) {
       setDocError(
         cleanDoc.length === 11
           ? 'CPF do remetente inválido.'
           : cleanDoc.length === 14
             ? 'CNPJ do remetente inválido.'
-            : 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.',
+            : 'Informe um CPF (11 dígitos) ou CNPJ (14 posições) válido.',
       );
       return;
     }

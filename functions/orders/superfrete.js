@@ -37,11 +37,13 @@ function sanitizePostalCode(cep) {
  * Sanitiza documento (CPF ou CNPJ).
  */
 function sanitizeDocument(doc) {
-  return String(doc || '').replace(/\D/g, '');
+  return String(doc || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
 function isValidCpfCnpj(doc) {
-  const digits = sanitizeDocument(doc);
+  const normalized = sanitizeDocument(doc);
+  if (/[A-Z]/.test(normalized)) return isValidCnpj(normalized);
+  const digits = normalized;
   if (digits.length === 11) {
     if (/^(\d)\1{10}$/.test(digits)) return false;
     let sum = 0;
@@ -55,18 +57,21 @@ function isValidCpfCnpj(doc) {
     if (c2 === 10) c2 = 0;
     return c2 === Number(digits[10]);
   }
-  if (digits.length === 14) {
-    if (/^(\d)\1{13}$/.test(digits)) return false;
-    const calc = (base, weights) => {
-      const rem = base.split('').reduce((acc, ch, i) => acc + Number(ch) * weights[i], 0) % 11;
-      return rem < 2 ? 0 : 11 - rem;
-    };
-    const d1 = calc(digits.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
-    if (d1 !== Number(digits[12])) return false;
-    const d2 = calc(digits.slice(0, 13), [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
-    return d2 === Number(digits[13]);
-  }
+  if (digits.length === 14) return isValidCnpj(digits);
   return false;
+}
+
+function isValidCnpj(value) {
+  const normalized = sanitizeDocument(value);
+  if (!/^[A-Z0-9]{12}\d{2}$/.test(normalized) || /^(.)\1{13}$/.test(normalized)) return false;
+  const calc = (base, weights) => {
+    const rem = base.split('').reduce((acc, ch, i) => acc + (ch.charCodeAt(0) - 48) * weights[i], 0) % 11;
+    return rem < 2 ? 0 : 11 - rem;
+  };
+  const d1 = calc(normalized.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  if (d1 !== Number(normalized[12])) return false;
+  const d2 = calc(normalized.slice(0, 13), [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  return d2 === Number(normalized[13]);
 }
 
 function formatSuperfreteApiError(json, fallbackMessage) {
@@ -417,7 +422,7 @@ async function handleCreateSuperfreteLabel(request) {
 
     const cleanToDoc = sanitizeDocument(to.document);
     if (!cleanToDoc || (cleanToDoc.length !== 11 && cleanToDoc.length !== 14)) {
-      throw new HttpsError('invalid-argument', 'O CPF ou CNPJ do destinatário é obrigatório para emissão da etiqueta (11 ou 14 dígitos).');
+      throw new HttpsError('invalid-argument', 'O CPF ou CNPJ do destinatário é obrigatório para emissão da etiqueta (11 ou 14 posições).');
     }
     if (!isValidCpfCnpj(cleanToDoc)) {
       throw new HttpsError('invalid-argument', 'O CPF ou CNPJ do destinatário é inválido.');
@@ -644,4 +649,5 @@ module.exports = {
   createSuperfreteLabel,
   handleCalculateSuperfreteShipping,
   handleCreateSuperfreteLabel,
+  isValidCpfCnpj,
 };

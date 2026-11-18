@@ -42,7 +42,7 @@ import {
 import { useUserSettings } from '../../../hooks/useUserSettings';
 import { normalizePhoneForWhatsApp } from '../../utils/whatsapp';
 import { fetchAddressByCep, formatCepInput, normalizeCepDigits } from '../../utils/cepLookup';
-import { formatCpfCnpjInput, isValidCpfCnpj } from '../../utils/documentFormat';
+import { formatCpfCnpjInput, isValidCpfCnpj, normalizeCpfCnpj } from '../../utils/documentFormat';
 import {
   PackageDimensionInputs,
   hasCompletePackageDimensions,
@@ -243,9 +243,9 @@ export function SuperfreteGenerateLabelDialog({
   }, [isOpen, result, recipientPostalCode, pkgInputs.weight, pkgInputs.height, pkgInputs.width, pkgInputs.length, settings?.businessZipCode]);
 
   const handleGenerate = async () => {
-    const cleanDoc = recipientDocument.replace(/\D/g, '');
+    const cleanDoc = normalizeCpfCnpj(recipientDocument);
     if (cleanDoc.length !== 11 && cleanDoc.length !== 14) {
-      setError('O CPF ou CNPJ do destinatário é obrigatório para emitir a etiqueta (11 ou 14 dígitos).');
+      setError('O CPF ou CNPJ do destinatário é obrigatório para emitir a etiqueta (11 ou 14 posições).');
       return;
     }
     if (!isValidCpfCnpj(cleanDoc)) {
@@ -531,13 +531,13 @@ export function SuperfreteGenerateLabelDialog({
                     </span>
                     <Input
                       className="h-8 text-xs"
-                      placeholder="000.000.000-00"
+                      placeholder="CPF ou CNPJ"
                       maxLength={18}
                       value={recipientDocument}
                       onChange={(e) => setRecipientDocument(formatCpfCnpjInput(e.target.value))}
                     />
                     {(() => {
-                      const d = recipientDocument.replace(/\D/g, '');
+                      const d = normalizeCpfCnpj(recipientDocument);
                       if ((d.length === 11 || d.length === 14) && !isValidCpfCnpj(d)) {
                         return (
                           <p className="text-[10px] text-destructive leading-tight">
