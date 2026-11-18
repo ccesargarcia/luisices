@@ -596,6 +596,19 @@ export function SuperfreteGenerateLabelDialog({
                     />
                   </div>
                 </div>
+
+                <div className="space-y-1">
+                  <span className="text-[11px] text-muted-foreground">
+                    Complemento / Observação <span className="text-[10px]">(máx. 20 caracteres)</span>
+                  </span>
+                  <Input
+                    className="h-8 text-xs"
+                    placeholder="Ex: Apto 12, Bloco B"
+                    maxLength={20}
+                    value={recipientComplement}
+                    onChange={(e) => setRecipientComplement(e.target.value)}
+                  />
+                </div>
               </div>
 
               {/* Dimensões do Pacote */}
