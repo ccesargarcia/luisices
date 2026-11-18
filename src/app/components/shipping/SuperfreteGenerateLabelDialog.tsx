@@ -37,6 +37,7 @@ import {
   superfreteService,
   CreateLabelResponse,
   SuperfretePackage,
+  SuperfreteShippingService,
 } from '../../../services/superfreteService';
 import { useUserSettings } from '../../../hooks/useUserSettings';
 import { normalizePhoneForWhatsApp } from '../../utils/whatsapp';
@@ -76,6 +77,9 @@ export function SuperfreteGenerateLabelDialog({
   const [cepLookupLoading, setCepLookupLoading] = useState(false);
   const [cepLookupError, setCepLookupError] = useState('');
   const lastFetchedCepRef = React.useRef('');
+  const [shippingQuotes, setShippingQuotes] = useState<SuperfreteShippingService[]>([]);
+  const [quotesLoading, setQuotesLoading] = useState(false);
+  const [quotesError, setQuotesError] = useState<string | null>(null);
 
   // Serviço escolhido
   const [service, setService] = useState<number>(order.shippingServiceId ? Number(order.shippingServiceId) : 1);
@@ -95,6 +99,9 @@ export function SuperfreteGenerateLabelDialog({
       setError(null);
       setCepLookupError('');
       setCepLookupLoading(false);
+      setShippingQuotes([]);
+      setQuotesError(null);
+      setQuotesLoading(false);
       const initialCep = normalizeCepDigits(customer?.zipCode || '');
       // Se o cliente já tem endereço completo salvo, evita sobrescrever na abertura; caso contrário consulta o CEP.
       const hasSavedAddress = Boolean((customer?.street || customer?.address) && customer?.city && customer?.state);
@@ -168,6 +175,63 @@ export function SuperfreteGenerateLabelDialog({
     void runLookup();
     return () => controller.abort();
   }, [isOpen, result, recipientPostalCode]);
+
+  useEffect(() => {
+    if (!isOpen || result) return;
+    const digits = normalizeCepDigits(recipientPostalCode);
+    if (digits.length !== 8) {
+      setShippingQuotes([]);
+      setQuotesError(null);
+      setQuotesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setQuotesLoading(true);
+    setQuotesError(null);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const cleanFrom = (settings?.businessZipCode || '01153000').replace(/\D/g, '') || '01153000';
+        const response = await superfreteService.calculateShipping({
+          fromPostalCode: cleanFrom,
+          toPostalCode: digits,
+          packageDimensions: pkg,
+        });
+        if (cancelled) return;
+
+        const list = Array.isArray(response?.services) ? response.services : [];
+        const sorted = [...list].sort((a, b) => {
+          const aAvailable = !a.error && a.price > 0;
+          const bAvailable = !b.error && b.price > 0;
+          if (aAvailable !== bAvailable) return aAvailable ? -1 : 1;
+          return (a.price || Number.MAX_SAFE_INTEGER) - (b.price || Number.MAX_SAFE_INTEGER);
+        });
+        setShippingQuotes(sorted);
+
+        const available = sorted.filter((s) => !s.error && s.price > 0);
+        if (available.length > 0) {
+          setService((current) =>
+            available.some((s) => s.id === current) ? current : available[0].id
+          );
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setShippingQuotes([]);
+          setQuotesError(err?.message || 'Não foi possível comparar os valores de frete para este CEP.');
+        }
+      } finally {
+        if (!cancelled) {
+          setQuotesLoading(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isOpen, result, recipientPostalCode, pkg.weight, pkg.height, pkg.width, pkg.length, settings?.businessZipCode]);
 
   const handleGenerate = async () => {
     const cleanDoc = recipientDocument.replace(/\D/g, '');
@@ -330,22 +394,105 @@ export function SuperfreteGenerateLabelDialog({
 
           {!result && (
             <div className="space-y-4">
-              {/* Seleção do Serviço */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Serviço de Envio</Label>
+              {/* Seleção e Comparação de Serviço */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs font-semibold">Serviço de Envio</Label>
+                  {quotesLoading && (
+                    <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                      <Loader2 className="size-3 animate-spin text-primary" />
+                      Comparando valores...
+                    </span>
+                  )}
+                </div>
                 <Select value={String(service)} onValueChange={(val) => setService(Number(val))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o serviço" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">Correios PAC</SelectItem>
-                    <SelectItem value="2">Correios SEDEX</SelectItem>
-                    <SelectItem value="17">Correios Mini Envios</SelectItem>
-                    <SelectItem value="3">Jadlog (.Package)</SelectItem>
-                    <SelectItem value="31">Loggi Express</SelectItem>
-                    <SelectItem value="33">J&T Express</SelectItem>
+                    {[
+                      { id: 1, label: 'Correios PAC' },
+                      { id: 2, label: 'Correios SEDEX' },
+                      { id: 17, label: 'Correios Mini Envios' },
+                      { id: 3, label: 'Jadlog (.Package)' },
+                      { id: 31, label: 'Loggi Express' },
+                      { id: 33, label: 'J&T Express' },
+                    ].map((opt) => {
+                      const quoted = shippingQuotes.find((q) => q.id === opt.id && !q.error && q.price > 0);
+                      return (
+                        <SelectItem key={opt.id} value={String(opt.id)}>
+                          {quoted
+                            ? `${opt.label} — ${formatCurrency(quoted.price)}${quoted.deliveryTime ? ` (${quoted.deliveryTime}d úteis)` : ''}`
+                            : opt.label}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
+
+                {quotesError && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400">{quotesError}</p>
+                )}
+
+                {shippingQuotes.length > 0 && (() => {
+                  const cheapestId = shippingQuotes.find((q) => !q.error && q.price > 0)?.id;
+                  return (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="text-[11px] font-medium text-muted-foreground">
+                        Comparação para o CEP {recipientPostalCode}:
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        {shippingQuotes.map((svc) => {
+                          const available = !svc.error && svc.price > 0;
+                          const isSelected = service === svc.id;
+                          const isCheapest = available && svc.id === cheapestId;
+                          return (
+                            <button
+                              key={svc.id}
+                              type="button"
+                              disabled={!available}
+                              onClick={() => available && setService(svc.id)}
+                              className={`text-left p-2 rounded-lg border transition-colors ${
+                                !available
+                                  ? 'opacity-55 bg-muted/20 border-border cursor-not-allowed'
+                                  : isSelected
+                                    ? 'border-primary bg-primary/10'
+                                    : 'border-border bg-card hover:border-primary/50 hover:bg-muted/30'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-1.5">
+                                <span className="text-xs font-semibold truncate">
+                                  {svc.name}
+                                </span>
+                                {available ? (
+                                  <span className="text-xs font-bold text-primary shrink-0">
+                                    {formatCurrency(svc.price)}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-muted-foreground shrink-0">
+                                    Indisponível
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center justify-between gap-1 mt-0.5 text-[10px] text-muted-foreground">
+                                <span className="truncate">
+                                  {svc.company}
+                                  {available && svc.deliveryTime ? ` • ${svc.deliveryTime} dia(s) úteis` : ''}
+                                  {!available && svc.error ? ` • ${svc.error}` : ''}
+                                </span>
+                                {isCheapest && (
+                                  <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 shrink-0">
+                                    Mais barato
+                                  </Badge>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Dados do Destinatário */}
