@@ -12,6 +12,14 @@ const userSyncService = require('./userSyncService');
 const { validateProfileMcpScopes } = require('../mcp/profilePermissions');
 const consumeAdminUserAction = (uid) => require('./userAdminActions').consumeAdminUserAction(uid);
 const { writeUserAudit } = require('./userAudit');
+const {
+  acquirePasswordReset,
+  completePasswordReset,
+  createPasswordResetContext,
+  markPasswordResetProviderAttempt,
+  releasePasswordReset,
+  sendWithPasswordResetIdempotency,
+} = require('./passwordResetIdempotency');
 const helpers = require('../common/helpers');
 const {
   getResend,
@@ -121,9 +129,9 @@ const sendAdminPasswordReset = onCall(
 const sendPasswordResetEmail = onCall(
   { maxInstances: 5, secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] },
   async (request) => {
-    const { email } = request.data || {};
+    const { email, idempotencyKey } = request.data || {};
 
-    if (!email) {
+    if (typeof email !== 'string' || !email.trim()) {
       throw new HttpsError('invalid-argument', 'Email é obrigatório');
     }
 
@@ -131,15 +139,34 @@ const sendPasswordResetEmail = onCall(
       await getPasswordResetLimiter().consume(email.toLowerCase());
     } catch (rateLimiterRes) {
       const retryAfter = Math.ceil(rateLimiterRes.msBeforeNext / 1000 / 60);
-      console.warn(`[sendPasswordResetEmail] Rate limit excedido para: ${email}`);
+      console.warn('[sendPasswordResetEmail] Rate limit excedido.');
       throw new HttpsError(
         'resource-exhausted',
         `Muitas tentativas. Tente novamente em ${retryAfter} minuto(s).`
       );
     }
 
+    let resetContext = null;
+    let resetOwner = null;
+    if (idempotencyKey != null) {
+      const db = getFirestore();
+      resetContext = createPasswordResetContext(db, email, idempotencyKey);
+      const decision = await acquirePasswordReset({ db, context: resetContext });
+      if (decision.completed) {
+        return {
+          success: true,
+          message: decision.completed.message || 'Se o e-mail estiver cadastrado, você receberá instruções de recuperação.',
+          ...(decision.completed.emailId ? { emailId: decision.completed.emailId } : {}),
+        };
+      }
+      resetOwner = decision.owner;
+    }
+
     const resend = getResend(RESEND_API_KEY.value());
     if (!resend) {
+      if (resetContext) {
+        await releasePasswordReset({ db: getFirestore(), context: resetContext, owner: resetOwner }).catch(() => {});
+      }
       throw new HttpsError('failed-precondition', 'Resend não configurado');
     }
 
@@ -156,7 +183,15 @@ const sendPasswordResetEmail = onCall(
         .where('email', '==', email.trim().toLowerCase()).limit(1).get();
       const phone = profileQuery.empty ? null : profileQuery.docs[0].data().whatsappPhone;
 
-      const { data: emailData, error } = await resend.emails.send({
+      if (resetContext) {
+        await markPasswordResetProviderAttempt({
+          db: getFirestore(),
+          context: resetContext,
+          owner: resetOwner,
+        });
+      }
+
+      const { data: emailData, error } = await sendWithPasswordResetIdempotency(resend, {
         from: getNoReplySender(),
         to: [email],
         subject: 'Recuperação de Senha - Luisices',
@@ -206,16 +241,26 @@ const sendPasswordResetEmail = onCall(
           </body>
           </html>
         `,
-      });
+      }, resetContext);
+
+      if (error) {
+        console.error('[sendPasswordResetEmail] Erro ao enviar email via Resend:', JSON.stringify(error));
+        throw new HttpsError('internal', `Erro Resend: ${error.message || JSON.stringify(error)}`);
+      }
 
       if (phone) {
         await sendWhatsAppMessage(phone, `Recuperação de senha Luisices\n\nAcesse o link:\n${resetLink}\n\nO link expira em 1 hora.`)
           .catch((err) => console.error('[sendPasswordResetEmail] Evolution API:', err));
       }
 
-      if (error) {
-        console.error('[sendPasswordResetEmail] Erro ao enviar email via Resend:', JSON.stringify(error));
-        throw new HttpsError('internal', `Erro Resend: ${error.message || JSON.stringify(error)}`);
+      if (resetContext) {
+        await completePasswordReset({
+          db: getFirestore(),
+          context: resetContext,
+          owner: resetOwner,
+          emailId: emailData?.id,
+          message: 'Email de recuperação enviado com sucesso!',
+        });
       }
 
       return {
@@ -225,10 +270,25 @@ const sendPasswordResetEmail = onCall(
       };
     } catch (error) {
       if (error.code === 'auth/user-not-found') {
+        if (resetContext) {
+          await completePasswordReset({
+            db: getFirestore(),
+            context: resetContext,
+            owner: resetOwner,
+            message: 'Se o email estiver cadastrado, você receberá instruções de recuperação.',
+          }).catch(() => {});
+        }
         return {
           success: true,
           message: 'Se o email estiver cadastrado, você receberá instruções de recuperação.',
         };
+      }
+      if (resetContext) {
+        await releasePasswordReset({
+          db: getFirestore(),
+          context: resetContext,
+          owner: resetOwner,
+        }).catch(() => {});
       }
       throw new HttpsError('internal', 'Erro ao enviar email de recuperação');
     }

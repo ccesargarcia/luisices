@@ -79,6 +79,15 @@ describe('Users Beta gateway routing & GCP fallback', () => {
 
     await firebaseAuthService.resetPassword('teste@luisices.com.br');
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(callableMock).toHaveBeenCalledWith({ email: 'teste@luisices.com.br' });
+    const betaPayload = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(betaPayload).toMatchObject({
+      action: 'sendPasswordResetEmail',
+      email: 'teste@luisices.com.br',
+    });
+    expect(betaPayload.idempotencyKey).toMatch(/^[a-f0-9-]{36}$/);
+    expect(callableMock).toHaveBeenCalledWith({
+      email: 'teste@luisices.com.br',
+      idempotencyKey: betaPayload.idempotencyKey,
+    });
   });
 });

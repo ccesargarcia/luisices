@@ -82,14 +82,15 @@ export class FirebaseAuthService {
    */
   async resetPassword(email: string): Promise<void> {
     try {
+      const idempotencyKey = globalThis.crypto.randomUUID();
       await executeWithGcpFallback<void>(
         'usersAdmin',
         async () => {
-          await callBetaUsersApi('sendPasswordResetEmail', { email }, { optionalAuth: true });
+          await callBetaUsersApi('sendPasswordResetEmail', { email, idempotencyKey }, { optionalAuth: true });
         },
         async () => {
           const sendResetEmail = httpsCallable(functions, 'sendPasswordResetEmail');
-          await sendResetEmail({ email });
+          await sendResetEmail({ email, idempotencyKey });
         },
       );
 
