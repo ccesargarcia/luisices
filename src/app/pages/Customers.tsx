@@ -1,6 +1,4 @@
 import { useState, useMemo, useEffect } from 'react';
-import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
 import { exportCustomersToExcel } from '../utils/exportData';
 import { getDaysUntilBirthday, isBirthdayThisMonth, isBirthdayUpcoming } from '../utils/date';
 import { Customer } from '../types';
@@ -45,6 +43,7 @@ import {
 import { CustomerStatsCards } from '../components/customers/CustomerStatsCards';
 import { countOpenOrdersByCustomer, groupCustomerLedgerHistory, ledgerSaleToOrder } from '../utils/customerLedgerHistory';
 import { useSalesLedger } from '../../hooks/useSalesLedger';
+import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
 import { PaginationControls } from '../components/common/PaginationControls';
 import { toast } from 'sonner';
 
@@ -58,9 +57,7 @@ export function Customers() {
     clearUserFilter,
   } = useOrders();
   const { allTimeStats, sales: ledgerSales, loading: ledgerLoading, error: ledgerError } = useSalesLedger({ teamUserIds: selectedUserIds });
-
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { customers: partnerScopedCustomers, allCustomers: customers, loading } = useFirebaseCustomers();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | 'all'>(12);
@@ -99,61 +96,9 @@ export function Customers() {
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
   const [newOrderCustomer, setNewOrderCustomer] = useState<Customer | null>(null);
 
-  // Assinar clientes em tempo real para refletir criações/edições/exclusões
   useEffect(() => {
-    if (!user) {
-      setCustomers([]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-
-    const isAdmin = userProfile?.role === 'admin';
-    const q = isAdmin
-      ? query(
-          collection(db, 'customers'),
-          orderBy('createdAt', 'desc'),
-          limit(1000),
-        )
-      : query(
-          collection(db, 'customers'),
-          where('userId', '==', user.uid),
-          orderBy('createdAt', 'desc'),
-          limit(1000),
-        );
-
-    const unsub = onSnapshot(
-      q,
-      (snapshot) => {
-        const data = snapshot.docs.map((doc) => {
-          const raw = doc.data() as any;
-          return {
-            id: doc.id,
-            ...raw,
-            createdAt: raw.createdAt?.toDate?.()?.toISOString() ?? (typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString()),
-          } as Customer;
-        });
-        setCustomers(data);
-        setSelectedCustomerIds((prev) => prev.filter((id) => data.some((c) => c.id === id)));
-        setLoading(false);
-      },
-      (err) => {
-        console.error('Erro ao carregar clientes:', err);
-        setLoading(false);
-      },
-    );
-
-    return unsub;
-  }, [user, userProfile?.role]);
-
-  // Escopo de clientes pelo parceiro selecionado pelo Admin (ou todos se não filtrado)
-  const partnerScopedCustomers = useMemo(() => {
-    if (!isFilterActive || !selectedUserIds || selectedUserIds.length === 0) {
-      return customers;
-    }
-    return customers.filter((c) => c.userId && selectedUserIds.includes(c.userId));
-  }, [customers, isFilterActive, selectedUserIds]);
+    setSelectedCustomerIds((prev) => prev.filter((id) => customers.some((c) => c.id === id)));
+  }, [customers]);
 
   // Reutiliza o ledger histórico no escopo selecionado, sem truncar pelos pedidos operacionais.
   const relevantOrders = useMemo(() => ledgerSales.map(ledgerSaleToOrder), [ledgerSales]);

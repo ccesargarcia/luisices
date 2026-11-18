@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDocs,
+  limit,
   query,
   updateDoc,
   deleteDoc,
@@ -46,8 +47,8 @@ export class EmailService {
   async getAllTrashedEmailIds(): Promise<{ received: string[]; sent: string[] }> {
     const readTrashedIds = async (collectionName: 'receivedEmails' | 'sentEmails') => {
       const snapshots = await Promise.all([
-        getDocs(query(collection(db, collectionName), where('trashed', '==', true))),
-        getDocs(query(collection(db, collectionName), where('deleted', '==', true))),
+        getDocs(query(collection(db, collectionName), where('trashed', '==', true), limit(500))),
+        getDocs(query(collection(db, collectionName), where('deleted', '==', true), limit(500))),
       ]);
       return [...new Set(snapshots.flatMap(snapshot => snapshot.docs.map(email => email.id)))];
     };

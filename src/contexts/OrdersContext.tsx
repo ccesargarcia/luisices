@@ -350,7 +350,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         collection(db, 'orders'),
         where('assignedTo', '==', user.uid),
         where('deletedAt', '==', null),
-        orderBy('createdAt', 'desc')
+        orderBy('createdAt', 'desc'),
+        limit(500)
       );
       unsubscribers.push(onSnapshot(
         assignedQuery,
