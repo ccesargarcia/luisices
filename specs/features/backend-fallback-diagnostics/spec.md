@@ -40,7 +40,11 @@ Melhorar a classificação de falhas do provedor SuperFrete e tornar a telemetri
 
 ## Status e evidências
 
-- Implementada e validada localmente; não publicada.
+- Implementada, validada e publicada em `develop` nos ambientes Vercel Dev e Firebase Dev; produção não publicada.
 - Typecheck aprovado; 66 testes focados em 7 arquivos aprovados; lint verificou 108 arquivos JavaScript das Functions; `git diff --check` aprovado.
 - Nenhum teste de emissão/checkout de etiqueta foi executado. Nenhuma operação real foi enviada à SuperFrete.
-- `api.dev`, Workers Cloudflare e produção não foram alterados nem publicados.
+- O Worker/configuração Cloudflare de `api.dev` não foi alterado nem publicado. As Cloud Functions Dev `calculateSuperfreteShipping` e `createSuperfreteLabel`, chamadas através desse Worker ou do Beta, foram atualizadas.
+- Workflow Firebase Dev: [run 44421112428](https://github.com/ccesargarcia/luisices/actions/runs/44421112428) concluído com sucesso; atualização seletiva das duas Functions. O workflow de validação Cloudflare e o job de deploy Cloudflare ficaram `skipped`.
+- Workflow Vercel Dev: [run 44421112396](https://github.com/ccesargarcia/luisices/actions/runs/44421112396) concluído com sucesso; Firebase Hosting Dev publicado no mesmo fluxo Firebase.
+- CodeQL: [run 44421112538](https://github.com/ccesargarcia/luisices/actions/runs/44421112538) concluído com sucesso.
+- O workflow encontrou todos os Secrets em uso; não removeu versões de secrets. A limpeza já configurada no workflow removeu uma versão antiga de imagem de `calculate_superfrete_shipping`, mantendo duas versões; 120 pacotes verificados, zero falhas.
