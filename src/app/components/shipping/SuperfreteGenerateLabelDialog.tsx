@@ -40,6 +40,7 @@ import {
 } from '../../../services/superfreteService';
 import { useUserSettings } from '../../../hooks/useUserSettings';
 import { normalizePhoneForWhatsApp } from '../../utils/whatsapp';
+import { fetchAddressByCep, formatCepInput, normalizeCepDigits } from '../../utils/cepLookup';
 
 interface SuperfreteGenerateLabelDialogProps {
   isOpen: boolean;
@@ -72,6 +73,9 @@ export function SuperfreteGenerateLabelDialog({
   const [recipientDistrict, setRecipientDistrict] = useState('Centro');
   const [recipientCity, setRecipientCity] = useState('');
   const [recipientState, setRecipientState] = useState('SP');
+  const [cepLookupLoading, setCepLookupLoading] = useState(false);
+  const [cepLookupError, setCepLookupError] = useState('');
+  const lastFetchedCepRef = React.useRef('');
 
   // Serviço escolhido
   const [service, setService] = useState<number>(order.shippingServiceId ? Number(order.shippingServiceId) : 1);
@@ -89,9 +93,16 @@ export function SuperfreteGenerateLabelDialog({
     if (isOpen) {
       setResult(null);
       setError(null);
+      setCepLookupError('');
+      setCepLookupLoading(false);
+      const initialCep = normalizeCepDigits(customer?.zipCode || '');
+      // Se o cliente já tem endereço completo salvo, evita sobrescrever na abertura; caso contrário consulta o CEP.
+      const hasSavedAddress = Boolean((customer?.street || customer?.address) && customer?.city && customer?.state);
+      lastFetchedCepRef.current = hasSavedAddress && initialCep.length === 8 ? initialCep : '';
+
       setRecipientName(customer?.name || order.customerName || '');
       setRecipientPhone(customer?.phone || order.customerPhone || '');
-      setRecipientPostalCode(customer?.zipCode || '');
+      setRecipientPostalCode(customer?.zipCode ? formatCepInput(customer.zipCode) : '');
       setRecipientAddress(customer?.street || customer?.address || '');
       setRecipientNumber(customer?.number || '');
       setRecipientComplement(customer?.complement || '');
@@ -111,6 +122,52 @@ export function SuperfreteGenerateLabelDialog({
       }
     }
   }, [isOpen, order, customer]);
+
+  useEffect(() => {
+    if (!isOpen || result) return;
+    const digits = normalizeCepDigits(recipientPostalCode);
+    if (digits.length !== 8) {
+      setCepLookupLoading(false);
+      setCepLookupError('');
+      if (digits.length < 8) {
+        lastFetchedCepRef.current = '';
+      }
+      return;
+    }
+    if (lastFetchedCepRef.current === digits) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const runLookup = async () => {
+      setCepLookupLoading(true);
+      setCepLookupError('');
+      try {
+        const address = await fetchAddressByCep(digits, controller.signal);
+        if (controller.signal.aborted) return;
+        lastFetchedCepRef.current = digits;
+        if (!address) {
+          setCepLookupError('CEP não encontrado. Preencha o endereço manualmente.');
+          return;
+        }
+        setRecipientAddress((prev) => address.street || prev);
+        setRecipientDistrict((prev) => address.district || prev);
+        setRecipientCity((prev) => address.city || prev);
+        setRecipientState((prev) => address.state || prev);
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          setCepLookupError('Não foi possível consultar o CEP. Preencha manualmente.');
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setCepLookupLoading(false);
+        }
+      }
+    };
+
+    void runLookup();
+    return () => controller.abort();
+  }, [isOpen, result, recipientPostalCode]);
 
   const handleGenerate = async () => {
     const cleanDoc = recipientDocument.replace(/\D/g, '');
@@ -318,13 +375,20 @@ export function SuperfreteGenerateLabelDialog({
 
                 <div className="grid grid-cols-3 gap-2">
                   <div className="col-span-1 space-y-1">
-                    <span className="text-[11px] text-muted-foreground">CEP</span>
+                    <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                      CEP
+                      {cepLookupLoading && <Loader2 className="size-3 animate-spin text-primary" />}
+                    </span>
                     <Input
                       className="h-8 text-xs"
                       placeholder="00000-000"
+                      maxLength={9}
                       value={recipientPostalCode}
-                      onChange={(e) => setRecipientPostalCode(e.target.value)}
+                      onChange={(e) => setRecipientPostalCode(formatCepInput(e.target.value))}
                     />
+                    {cepLookupError && (
+                      <p className="text-[10px] text-destructive leading-tight">{cepLookupError}</p>
+                    )}
                   </div>
                   <div className="col-span-2 space-y-1">
                     <span className="text-[11px] text-muted-foreground">Endereço (Rua)</span>
