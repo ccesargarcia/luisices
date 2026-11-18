@@ -141,6 +141,7 @@ const ResetPassword       = lazyWithRetry(() => import('./pages/ResetPassword'),
 const AuthAction          = lazyWithRetry(() => import('./pages/AuthAction'), 'AuthAction');
 const OAuthConsent        = lazyWithRetry(() => import('./pages/OAuthConsent'), 'OAuthConsent');
 const OrdersProvider      = lazyWithRetry(() => import('../contexts/OrdersContext'), 'OrdersProvider');
+const CustomersProvider   = lazyWithRetry(() => import('../contexts/CustomersContext'), 'CustomersProvider');
 const UserSettingsProvider = lazyWithRetry(() => import('../contexts/UserSettingsContext'), 'UserSettingsProvider');
 
 function PageLoader() {
@@ -266,7 +267,9 @@ export const router = isCatalogSubdomain
             <Lazy>
               <UserSettingsProvider>
                 <OrdersProvider>
-                  <Layout />
+                  <CustomersProvider>
+                    <Layout />
+                  </CustomersProvider>
                 </OrdersProvider>
               </UserSettingsProvider>
             </Lazy>

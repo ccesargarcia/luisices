@@ -771,6 +771,9 @@ jobs:
           echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Dev)..."
           npx --yes firebase-tools@15.32.1 functions:secrets:prune --project luisices-dev --force --non-interactive
 
+          echo "🧹 Limpando imagens Docker antigas no Artifact Registry (Dev)..."
+          node scripts/cleanup-artifact-registry.mjs --project=luisices-dev --destroy --keep=2
+
   deploy-cloudflare:
     name: ☁️ Deploy Cloudflare Workers (Dev)
     needs: [detect-changes, cloudflare-validation]

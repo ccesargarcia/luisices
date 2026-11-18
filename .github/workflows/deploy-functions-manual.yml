@@ -236,6 +236,9 @@ jobs:
           echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Dev)..."
           firebase functions:secrets:prune --project luisices-dev -f --non-interactive
 
+          echo "🧹 Limpando imagens Docker antigas no Artifact Registry (Dev)..."
+          node scripts/cleanup-artifact-registry.mjs --project=luisices-dev --destroy --keep=2
+
 
       - name: Deploy Firebase Functions & Rules (Production)
         if: steps.env.outputs.target == 'prod'
@@ -446,4 +449,7 @@ jobs:
           else
             echo "ℹ️ Deploy automático: preservando versões antigas de secrets para permitir rollback."
           fi
+
+          echo "🧹 Limpando imagens Docker antigas no Artifact Registry (Prod)..."
+          node scripts/cleanup-artifact-registry.mjs --project=papelaria-dashboard --destroy --keep=2
 
