@@ -7,7 +7,7 @@ import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { Truck, ShieldCheck, AlertCircle, Package, Lock, CheckCircle2, Loader2 } from 'lucide-react';
 import { UserSettings } from '../../../services/firebaseSettingsService';
-import { formatCpfCnpjInput } from '../../utils/documentFormat';
+import { formatCpfCnpjInput, isValidCpfCnpj } from '../../utils/documentFormat';
 
 interface SuperfreteSettingsSectionProps {
   isAdmin: boolean;
@@ -68,11 +68,25 @@ export function SuperfreteSettingsSection({
     );
   }
 
+  const [docError, setDocError] = useState<string | null>(null);
+
   const handleToggle = (checked: boolean) => {
     setEnabled(checked);
   };
 
   const handleSaveSettings = async () => {
+    const cleanDoc = senderDocument.replace(/\D/g, '');
+    if (cleanDoc.length > 0 && !isValidCpfCnpj(cleanDoc)) {
+      setDocError(
+        cleanDoc.length === 11
+          ? 'CPF do remetente inválido.'
+          : cleanDoc.length === 14
+            ? 'CNPJ do remetente inválido.'
+            : 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.',
+      );
+      return;
+    }
+    setDocError(null);
     await onSave({
       superfreteEnabled: enabled,
       superfreteSenderDocument: senderDocument.trim(),
@@ -149,8 +163,14 @@ export function SuperfreteSettingsSection({
                   placeholder="Ex: 00.000.000/0001-00 ou 000.000.000-00"
                   maxLength={18}
                   value={senderDocument}
-                  onChange={(e) => setSenderDocument(formatCpfCnpjInput(e.target.value))}
+                  onChange={(e) => {
+                    setDocError(null);
+                    setSenderDocument(formatCpfCnpjInput(e.target.value));
+                  }}
                 />
+                {docError && (
+                  <p className="text-[11px] text-destructive">{docError}</p>
+                )}
                 <p className="text-[11px] text-muted-foreground">
                   Obrigatório para a emissão da Declaração de Conteúdo na SuperFrete.
                 </p>

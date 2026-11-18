@@ -40,6 +40,35 @@ function sanitizeDocument(doc) {
   return String(doc || '').replace(/\D/g, '');
 }
 
+function isValidCpfCnpj(doc) {
+  const digits = sanitizeDocument(doc);
+  if (digits.length === 11) {
+    if (/^(\d)\1{10}$/.test(digits)) return false;
+    let sum = 0;
+    for (let i = 0; i < 9; i++) sum += Number(digits[i]) * (10 - i);
+    let c1 = (sum * 10) % 11;
+    if (c1 === 10) c1 = 0;
+    if (c1 !== Number(digits[9])) return false;
+    sum = 0;
+    for (let i = 0; i < 10; i++) sum += Number(digits[i]) * (11 - i);
+    let c2 = (sum * 10) % 11;
+    if (c2 === 10) c2 = 0;
+    return c2 === Number(digits[10]);
+  }
+  if (digits.length === 14) {
+    if (/^(\d)\1{13}$/.test(digits)) return false;
+    const calc = (base, weights) => {
+      const rem = base.split('').reduce((acc, ch, i) => acc + Number(ch) * weights[i], 0) % 11;
+      return rem < 2 ? 0 : 11 - rem;
+    };
+    const d1 = calc(digits.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+    if (d1 !== Number(digits[12])) return false;
+    const d2 = calc(digits.slice(0, 13), [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+    return d2 === Number(digits[13]);
+  }
+  return false;
+}
+
 function formatSuperfreteApiError(json, fallbackMessage) {
   if (!json || typeof json !== 'object') return fallbackMessage;
   const base = json.message || json.error || fallbackMessage;
@@ -390,8 +419,14 @@ async function handleCreateSuperfreteLabel(request) {
     if (!cleanToDoc || (cleanToDoc.length !== 11 && cleanToDoc.length !== 14)) {
       throw new HttpsError('invalid-argument', 'O CPF ou CNPJ do destinatário é obrigatório para emissão da etiqueta (11 ou 14 dígitos).');
     }
+    if (!isValidCpfCnpj(cleanToDoc)) {
+      throw new HttpsError('invalid-argument', 'O CPF ou CNPJ do destinatário é inválido.');
+    }
 
     const cleanFromDoc = sanitizeDocument(effectiveFrom.document);
+    if (cleanFromDoc && !isValidCpfCnpj(cleanFromDoc)) {
+      throw new HttpsError('invalid-argument', 'O CPF ou CNPJ do remetente nas configurações do ateliê é inválido.');
+    }
 
     // Garante nome com pelo menos 2 palavras para o remetente (exigência da SuperFrete)
     let senderName = String(effectiveFrom.name || '').trim();

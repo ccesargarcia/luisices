@@ -42,7 +42,7 @@ import {
 import { useUserSettings } from '../../../hooks/useUserSettings';
 import { normalizePhoneForWhatsApp } from '../../utils/whatsapp';
 import { fetchAddressByCep, formatCepInput, normalizeCepDigits } from '../../utils/cepLookup';
-import { formatCpfCnpjInput } from '../../utils/documentFormat';
+import { formatCpfCnpjInput, isValidCpfCnpj } from '../../utils/documentFormat';
 import {
   PackageDimensionInputs,
   hasCompletePackageDimensions,
@@ -246,6 +246,10 @@ export function SuperfreteGenerateLabelDialog({
     const cleanDoc = recipientDocument.replace(/\D/g, '');
     if (cleanDoc.length !== 11 && cleanDoc.length !== 14) {
       setError('O CPF ou CNPJ do destinatário é obrigatório para emitir a etiqueta (11 ou 14 dígitos).');
+      return;
+    }
+    if (!isValidCpfCnpj(cleanDoc)) {
+      setError(cleanDoc.length === 11 ? 'O CPF do destinatário é inválido.' : 'O CNPJ do destinatário é inválido.');
       return;
     }
 
@@ -532,6 +536,17 @@ export function SuperfreteGenerateLabelDialog({
                       value={recipientDocument}
                       onChange={(e) => setRecipientDocument(formatCpfCnpjInput(e.target.value))}
                     />
+                    {(() => {
+                      const d = recipientDocument.replace(/\D/g, '');
+                      if ((d.length === 11 || d.length === 14) && !isValidCpfCnpj(d)) {
+                        return (
+                          <p className="text-[10px] text-destructive leading-tight">
+                            {d.length === 11 ? 'CPF inválido.' : 'CNPJ inválido.'}
+                          </p>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 </div>
 
