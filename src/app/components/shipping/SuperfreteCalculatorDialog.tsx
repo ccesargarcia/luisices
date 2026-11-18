@@ -32,10 +32,9 @@ import {
   PackageDimensionInputs,
   hasCompletePackageDimensions,
   parsePackageDimensions,
-  sanitizeDecimalInput,
-  sanitizeIntegerInput,
   toPackageDimensionInputs,
 } from '../../utils/packageDimensions';
+import { PackageDimensionsFields } from './PackageDimensionsFields';
 import { useUserSettings } from '../../../hooks/useUserSettings';
 
 interface SuperfreteCalculatorDialogProps {
@@ -190,59 +189,8 @@ export function SuperfreteCalculatorDialog({
             </button>
 
             {showDimensions && (
-              <div className="grid grid-cols-4 gap-2 pt-3 animate-in fade-in-50 duration-150">
-                <div>
-                  <span className="text-[10px] text-muted-foreground">Peso (kg)</span>
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="Ex: 0.3"
-                    className="h-8 text-xs"
-                    value={pkgInputs.weight}
-                    onChange={(e) =>
-                      setPkgInputs({ ...pkgInputs, weight: sanitizeDecimalInput(e.target.value) })
-                    }
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] text-muted-foreground">Alt (cm)</span>
-                  <Input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="Ex: 6"
-                    className="h-8 text-xs"
-                    value={pkgInputs.height}
-                    onChange={(e) =>
-                      setPkgInputs({ ...pkgInputs, height: sanitizeIntegerInput(e.target.value) })
-                    }
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] text-muted-foreground">Larg (cm)</span>
-                  <Input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="Ex: 16"
-                    className="h-8 text-xs"
-                    value={pkgInputs.width}
-                    onChange={(e) =>
-                      setPkgInputs({ ...pkgInputs, width: sanitizeIntegerInput(e.target.value) })
-                    }
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] text-muted-foreground">Comp (cm)</span>
-                  <Input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="Ex: 20"
-                    className="h-8 text-xs"
-                    value={pkgInputs.length}
-                    onChange={(e) =>
-                      setPkgInputs({ ...pkgInputs, length: sanitizeIntegerInput(e.target.value) })
-                    }
-                  />
-                </div>
+              <div className="pt-3 animate-in fade-in-50 duration-150">
+                <PackageDimensionsFields values={pkgInputs} onChange={setPkgInputs} />
               </div>
             )}
           </div>
