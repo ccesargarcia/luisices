@@ -5,7 +5,7 @@
  */
 
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { UserSettings } from '../services/firebaseSettingsService';
@@ -108,6 +108,46 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       unsubscribePublic?.();
     };
   }, [user, userProfile, authLoading]);
+
+  // Garante que storeSettings/public reflita superfreteEnabled do admin mesmo sem re-salvar manualmente em Configurações
+  useEffect(() => {
+    if (!user || userProfile?.role !== 'admin' || userSettings?.superfreteEnabled === undefined) {
+      return;
+    }
+
+    let cancelled = false;
+    const publicRef = doc(db, 'storeSettings', 'public');
+    getDoc(publicRef)
+      .then((snap) => {
+        if (cancelled) return;
+        const current = snap.exists() ? snap.data() : {};
+        const needsSync =
+          current.superfreteEnabled !== userSettings.superfreteEnabled ||
+          (userSettings.superfreteDefaultPackage !== undefined &&
+            JSON.stringify(current.superfreteDefaultPackage ?? null) !==
+              JSON.stringify(userSettings.superfreteDefaultPackage ?? null));
+        if (needsSync) {
+          return setDoc(
+            publicRef,
+            {
+              superfreteEnabled: userSettings.superfreteEnabled,
+              ...(userSettings.superfreteDefaultPackage !== undefined
+                ? { superfreteDefaultPackage: userSettings.superfreteDefaultPackage }
+                : {}),
+              updatedAt: new Date(),
+            },
+            { merge: true }
+          );
+        }
+      })
+      .catch(() => {
+        // Falha silenciosa para não impactar carregamento das configurações
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, userProfile?.role, userSettings?.superfreteEnabled, userSettings?.superfreteDefaultPackage]);
 
   const settings = useMemo<UserSettings | null>(() => {
     if (!userProfile || userProfile.role === 'admin') {
