@@ -434,6 +434,13 @@ async function handleCreateSuperfreteLabel(request) {
           weight: Number(volume?.weight) || 0.3,
         },
       ],
+      options: {
+        insurance_value: 0,
+        receipt: false,
+        own_hand: false,
+        non_commercial: Boolean(nonCommercial),
+        platform: 'Luisices',
+      },
       non_comercial: nonCommercial,
     };
 
