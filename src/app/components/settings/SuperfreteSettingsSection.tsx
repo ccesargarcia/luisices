@@ -7,6 +7,7 @@ import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { Truck, ShieldCheck, AlertCircle, Package, Lock, CheckCircle2, Loader2 } from 'lucide-react';
 import { UserSettings } from '../../../services/firebaseSettingsService';
+import { formatCpfCnpjInput } from '../../utils/documentFormat';
 
 interface SuperfreteSettingsSectionProps {
   isAdmin: boolean;
@@ -33,7 +34,7 @@ export function SuperfreteSettingsSection({
   useEffect(() => {
     if (settings) {
       setEnabled(settings.superfreteEnabled ?? false);
-      setSenderDocument(settings.superfreteSenderDocument ?? '');
+      setSenderDocument(formatCpfCnpjInput(settings.superfreteSenderDocument ?? ''));
       if (settings.superfreteDefaultPackage) {
         setDefaultPackage({
           weight: settings.superfreteDefaultPackage.weight ?? 0.3,
@@ -145,9 +146,10 @@ export function SuperfreteSettingsSection({
                 </Label>
                 <Input
                   id="sender-doc"
-                  placeholder="Ex: 00.000.000/0001-00 ou CPF"
+                  placeholder="Ex: 00.000.000/0001-00 ou 000.000.000-00"
+                  maxLength={18}
                   value={senderDocument}
-                  onChange={(e) => setSenderDocument(e.target.value)}
+                  onChange={(e) => setSenderDocument(formatCpfCnpjInput(e.target.value))}
                 />
                 <p className="text-[11px] text-muted-foreground">
                   Obrigatório para a emissão da Declaração de Conteúdo na SuperFrete.

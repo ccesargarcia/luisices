@@ -42,6 +42,7 @@ import {
 import { useUserSettings } from '../../../hooks/useUserSettings';
 import { normalizePhoneForWhatsApp } from '../../utils/whatsapp';
 import { fetchAddressByCep, formatCepInput, normalizeCepDigits } from '../../utils/cepLookup';
+import { formatCpfCnpjInput } from '../../utils/documentFormat';
 import {
   PackageDimensionInputs,
   hasCompletePackageDimensions,
@@ -527,8 +528,9 @@ export function SuperfreteGenerateLabelDialog({
                     <Input
                       className="h-8 text-xs"
                       placeholder="000.000.000-00"
+                      maxLength={18}
                       value={recipientDocument}
-                      onChange={(e) => setRecipientDocument(e.target.value)}
+                      onChange={(e) => setRecipientDocument(formatCpfCnpjInput(e.target.value))}
                     />
                   </div>
                 </div>
