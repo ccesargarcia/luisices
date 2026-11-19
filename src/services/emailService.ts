@@ -17,7 +17,14 @@ import { auth, db, functions, storage } from '../lib/firebase';
 import { SendEmailPayload, EmailUsage } from '../app/types';
 import { getVercelBetaApiUrl } from '../app/utils/betaHost';
 import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
-import { cacheReceivedEmailBody, getCachedReceivedEmailBody } from './emailBodyCache';
+import {
+  cacheReceivedEmailBody,
+  getCachedReceivedEmailBody,
+  getInMemoryReceivedEmailBody,
+  type ReceivedEmailBody,
+} from './emailBodyCache';
+
+const inFlightBodyLoads = new Map<string, Promise<ReceivedEmailBody>>();
 
 function getStorageErrorCode(error: unknown): string {
   if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string') {
@@ -106,31 +113,27 @@ export class EmailService {
     return { deleted, failed };
   }
 
+  prefetchReceivedEmailBody(
+    paths: { html?: string; text?: string },
+    options: { uid: string; emailId: string; fallbackText?: string },
+  ): void {
+    if (!options.uid || !options.emailId || (!paths.html && !paths.text)) return;
+    if (getInMemoryReceivedEmailBody(options.uid, options.emailId, paths)) return;
+    void this.loadReceivedEmailBody(paths, {
+      fallbackText: options.fallbackText,
+      cacheIdentity: { uid: options.uid, emailId: options.emailId },
+    }).catch(() => {});
+  }
+
   async loadReceivedEmailBody(
     paths: { html?: string; text?: string },
     options: {
       fallbackText?: string;
       timeoutMs?: number;
       cacheIdentity?: { uid: string; emailId: string };
-      onProgress?: (body: {
-        html: string;
-        text: string;
-        htmlLoading: boolean;
-        htmlUnavailable: boolean;
-        textUnavailable: boolean;
-        htmlErrorCode: string | null;
-        textErrorCode: string | null;
-      }) => void;
+      onProgress?: (body: ReceivedEmailBody) => void;
     } = {},
-  ): Promise<{
-    html: string;
-    text: string;
-    htmlLoading: boolean;
-    htmlUnavailable: boolean;
-    textUnavailable: boolean;
-    htmlErrorCode: string | null;
-    textErrorCode: string | null;
-  }> {
+  ): Promise<ReceivedEmailBody> {
     if (options.cacheIdentity) {
       const cached = await getCachedReceivedEmailBody(
         options.cacheIdentity.uid,
@@ -142,6 +145,20 @@ export class EmailService {
         return cached;
       }
     }
+
+    const inFlightKey = options.cacheIdentity
+      ? JSON.stringify([options.cacheIdentity.uid, options.cacheIdentity.emailId, paths.html || '', paths.text || ''])
+      : '';
+    if (inFlightKey) {
+      const existing = inFlightBodyLoads.get(inFlightKey);
+      if (existing) {
+        const res = await existing;
+        options.onProgress?.(res);
+        return res;
+      }
+    }
+
+    const runLoad = async (): Promise<ReceivedEmailBody> => {
 
     const timeoutMs = Number.isFinite(options.timeoutMs) && (options.timeoutMs || 0) > 0
       ? options.timeoutMs as number
@@ -223,6 +240,16 @@ export class EmailService {
     }
     options.onProgress?.(result);
     return result;
+    };
+
+    if (!inFlightKey) {
+      return runLoad();
+    }
+    const promise = runLoad().finally(() => {
+      inFlightBodyLoads.delete(inFlightKey);
+    });
+    inFlightBodyLoads.set(inFlightKey, promise);
+    return promise;
   }
 
   /**

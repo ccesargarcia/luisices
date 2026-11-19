@@ -5,7 +5,7 @@ import {
   extractEmailDomain,
   normalizeSenderIdentifier,
 } from '../utils/emailSpamFilter';
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { useAuth } from '../../contexts/AuthContext';
 import { useEmails } from '../../hooks/useEmails';
@@ -592,6 +592,38 @@ export function Emails() {
 
     return () => { cancelled = true; };
   }, [currentReceivedEmail?.id, currentReceivedEmail?.bodyPreview, receivedHtmlPath, receivedTextPath, user?.uid]);
+
+  const handlePrefetchEmail = useCallback((email: (typeof receivedEmails)[number] | { _type?: string; id: string; bodyStoragePaths?: { html?: string; text?: string }; bodyPreview?: string }) => {
+    if (!user?.uid || !email.bodyStoragePaths || ('_type' in email && email._type === 'sent')) return;
+    emailService.prefetchReceivedEmailBody(email.bodyStoragePaths, {
+      uid: user.uid,
+      emailId: email.id,
+      fallbackText: email.bodyPreview || '',
+    });
+  }, [user?.uid]);
+
+  // Pré-carrega em segundo plano os 5 primeiros e-mails pesados da lista (respeitando cache criptografado por UID)
+  useEffect(() => {
+    if (!user?.uid || receivedEmails.length === 0) return;
+    const candidates = receivedEmails
+      .filter((e) => !e.trashed && e.bodyStoragePaths)
+      .slice(0, 5);
+    if (candidates.length === 0) return;
+
+    const timers = candidates.map((email, index) =>
+      window.setTimeout(() => {
+        emailService.prefetchReceivedEmailBody(email.bodyStoragePaths!, {
+          uid: user.uid,
+          emailId: email.id,
+          fallbackText: email.bodyPreview || '',
+        });
+      }, 150 * (index + 1)),
+    );
+
+    return () => {
+      timers.forEach((id) => window.clearTimeout(id));
+    };
+  }, [receivedEmails, user?.uid]);
 
   const currentSentEmail = useMemo(() => {
     if (selectedEmailType !== 'sent' || !selectedEmailId) return null;
@@ -1867,6 +1899,7 @@ export function Emails() {
                     <ContextMenuTrigger asChild>
                       <div
                         onClick={() => handleSelectEmail(email.id, email._type)}
+                        onMouseEnter={() => handlePrefetchEmail(email)}
                         className={`group p-3 sm:p-3.5 cursor-pointer transition-all relative border-b border-border/80 dark:border-zinc-800/90 select-none ${
                           isSelected
                             ? 'bg-primary/10 dark:bg-primary/20 border-l-4 border-l-primary shadow-xs'

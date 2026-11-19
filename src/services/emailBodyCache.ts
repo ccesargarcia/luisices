@@ -26,8 +26,41 @@ const KEY_STORE_NAME = 'encryption-keys';
 const DB_VERSION = 1;
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_ENTRIES = 8;
+const MAX_MEMORY_ENTRIES = 8;
 const MAX_TOTAL_BYTES = 25 * 1024 * 1024;
 const MAX_ENTRY_BYTES = 15 * 1024 * 1024;
+
+// Cache volátil em memória (LRU por sessão) para abertura instantânea (0 ms) sem
+// repetir descriptografia do IndexedDB; limpo imediatamente no logout/troca de conta.
+const memoryCache = new Map<string, { uid: string; body: ReceivedEmailBody }>();
+
+function setMemoryCacheEntry(key: string, uid: string, body: ReceivedEmailBody): void {
+  if (!uid) return;
+  if (memoryCache.has(key)) {
+    memoryCache.delete(key);
+  }
+  memoryCache.set(key, { uid, body });
+  while (memoryCache.size > MAX_MEMORY_ENTRIES) {
+    const oldestKey = memoryCache.keys().next().value;
+    if (!oldestKey) break;
+    memoryCache.delete(oldestKey);
+  }
+}
+
+export function getInMemoryReceivedEmailBody(
+  uid: string,
+  emailId: string,
+  paths: { html?: string; text?: string },
+): ReceivedEmailBody | null {
+  if (!uid || !emailId) return null;
+  const { key } = makeKey(uid, emailId, paths);
+  const hit = memoryCache.get(key);
+  if (!hit || hit.uid !== uid) return null;
+  // Atualiza ordem LRU
+  memoryCache.delete(key);
+  memoryCache.set(key, hit);
+  return hit.body;
+}
 
 function openDatabase(): Promise<IDBDatabase> {
   if (typeof indexedDB === 'undefined') return Promise.reject(new Error('IndexedDB indisponível'));
@@ -117,6 +150,9 @@ export async function getCachedReceivedEmailBody(
   emailId: string,
   paths: { html?: string; text?: string },
 ): Promise<ReceivedEmailBody | null> {
+  const memoryHit = getInMemoryReceivedEmailBody(uid, emailId, paths);
+  if (memoryHit) return memoryHit;
+
   try {
     const { key } = makeKey(uid, emailId, paths);
     const db = await openDatabase();
@@ -132,7 +168,9 @@ export async function getCachedReceivedEmailBody(
         return null;
       }
       try {
-        return toResult(await decryptBody(db, entry));
+        const decrypted = toResult(await decryptBody(db, entry));
+        setMemoryCacheEntry(key, uid, decrypted);
+        return decrypted;
       } catch {
         await deleteEntry(db, key);
         return null;
@@ -162,6 +200,7 @@ export async function cacheReceivedEmailBody(
 ): Promise<void> {
   if (!uid || !emailId || body.htmlUnavailable || body.textUnavailable || body.htmlLoading) return;
   const { key, pathKey } = makeKey(uid, emailId, paths);
+  setMemoryCacheEntry(key, uid, body);
   const estimatedSize = (body.html.length + body.text.length) * 3;
   if (estimatedSize > MAX_ENTRY_BYTES || (!body.html && !body.text)) return;
 
@@ -208,6 +247,11 @@ export async function cacheReceivedEmailBody(
 
 /** Remove dados de contas anteriores; mantém o cache da conta autenticada. */
 export async function retainOnlyUserEmailCache(uid: string | null): Promise<void> {
+  for (const [key, entry] of memoryCache.entries()) {
+    if (!uid || entry.uid !== uid) {
+      memoryCache.delete(key);
+    }
+  }
   try {
     const db = await openDatabase();
     try {
