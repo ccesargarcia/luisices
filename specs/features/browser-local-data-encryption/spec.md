@@ -67,4 +67,8 @@ O frontend usava cache persistente nativo do Firestore e persistência local do 
 
 ## Evidências de conclusão
 
-- Preencher após validação local; sem commit ou deploy declarado.
+- `npm run typecheck` passou localmente; `git diff --check` passou.
+- Commit `ba9fbb0` publicado na branch `develop`.
+- Firebase DEV concluiu Hosting (`44457575451`); Vercel DEV/Beta concluiu (`44457575322`); CodeQL concluiu (`44457575318`). Functions, Rules, Indexes e Cloudflare Worker foram ignorados pelo filtro de alterações.
+- Verificações HTTP responderam 200 para `dev.luisices.com.br`, `beta.luisices.com.br` e `api.dev.luisices.com.br/health` após o deploy.
+- Validação autenticada da persistência no navegador segue pendente: o navegador Playwright do ambiente não tem Chromium instalado. Nenhum teste E2E foi executado.

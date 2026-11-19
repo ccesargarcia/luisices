@@ -9,4 +9,4 @@
 - [x] **T4 — Validação/documentação:** Executar typecheck; conferir docs e links, além do impacto de Copiloto/MCP.
   - Evidência: `npm run typecheck` passou; documentação e skill registram AES-GCM, gestão de chave, limites e ameaça residual; Copiloto/MCP não afetados.
 - [x] **T5 — Fechamento local:** Registrar limites, sem afirmar deploy.
-  - Evidência: implementação estática concluída; validação funcional no navegador e publicação permanecem pendentes.
+  - Evidência: corrigido após solicitação da pessoa usuária: commit `ba9fbb0` foi publicado em `develop`; Firebase DEV e Vercel DEV/Beta passaram (`44457575451`, `44457575322`). Validação autenticada no navegador permanece pendente, pois Chromium não está instalado no navegador Playwright deste ambiente.

@@ -82,4 +82,6 @@ Corpos completos recebidos são baixados sob demanda do Firebase Storage. Reabri
 
 ## Evidências de conclusão
 
-- A preencher após validação local. Sem deploy nesta etapa.
+- `npm run typecheck` passou e `git diff --check` passou.
+- Commit `ba9fbb0` publicado em `develop`; Firebase DEV (`44457575451`) e Vercel DEV/Beta (`44457575322`) concluíram com sucesso.
+- Validação funcional autenticada do cache no navegador segue pendente porque o Chromium não está instalado no navegador Playwright deste ambiente; nenhum teste E2E foi executado.

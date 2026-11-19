@@ -8,5 +8,5 @@
   - Evidência: `tests/e2e/auth.setup.ts`, `tests/e2e/utils/auth.util.ts`.
 - [x] **T4 — RF-7:** Atualizar specs, documentação viva e índices; avaliar Copiloto/MCP.
   - Evidência: arquivos desta pasta, `docs/FUNCIONALIDADES.md`, `docs/DEPENDENCIAS_E_ARQUITETURA.md`, README e índice de specs.
-- [x] **T5 — Validação estática e fechamento local:** executar typecheck e registrar resultado; validação funcional no navegador permanece pendente.
-  - Evidência: `npm run typecheck` passou; `git diff --check` passou; busca estática confirmou que o único IndexedDB de produto restante é `emailBodyCache`, que cifra conteúdo antes da gravação. Nenhum teste E2E ou deploy executado.
+- [x] **T5 — Validação estática e deploy DEV/Beta:** executar typecheck, publicar conforme solicitação e registrar resultado; validação funcional autenticada no navegador permanece pendente.
+  - Evidência: `npm run typecheck` e `git diff --check` passaram; busca estática confirmou que o único IndexedDB próprio restante cifra conteúdo antes da gravação. Deploy Firebase DEV `44457575451`, Vercel DEV/Beta `44457575322` e CodeQL `44457575318` passaram. Sem Functions/Cloudflare e sem E2E. Playwright não abriu porque Chromium não está instalado.
