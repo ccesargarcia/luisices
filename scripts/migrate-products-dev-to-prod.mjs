@@ -62,11 +62,20 @@ const prodApp = initializeApp(
 const devDb = getFirestore(devApp);
 const prodDb = getFirestore(prodApp);
 
+function sanitizeBucketName(raw, fallback) {
+  const candidate = typeof raw === 'string' ? raw.trim() : '';
+  return /^[a-z0-9][a-z0-9._-]{1,126}$/i.test(candidate) ? candidate : fallback;
+}
+
 // Detectar buckets de Storage
-const devBucketName =
-  process.env.DEV_STORAGE_BUCKET || `${devSa.project_id || 'luisices-dev'}.firebasestorage.app`;
-const prodBucketName =
-  process.env.PROD_STORAGE_BUCKET || `${prodSa.project_id || 'papelaria-dashboard'}.firebasestorage.app`;
+const devBucketName = sanitizeBucketName(
+  process.env.DEV_STORAGE_BUCKET || `${devSa.project_id || 'luisices-dev'}.firebasestorage.app`,
+  'luisices-dev.firebasestorage.app'
+);
+const prodBucketName = sanitizeBucketName(
+  process.env.PROD_STORAGE_BUCKET || `${prodSa.project_id || 'papelaria-dashboard'}.firebasestorage.app`,
+  'papelaria-dashboard.firebasestorage.app'
+);
 
 const devStorage = getStorage(devApp);
 const prodStorage = getStorage(prodApp);

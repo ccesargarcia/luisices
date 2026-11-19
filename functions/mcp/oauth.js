@@ -171,6 +171,16 @@ async function applyEndpointRateLimit(req, res, db, bucket, limit) {
   return false;
 }
 
+function isInternalGoogleHost(hostname) {
+  const normalized = String(hostname || '').toLowerCase();
+  return (
+    normalized === 'cloudfunctions.net' ||
+    normalized.endsWith('.cloudfunctions.net') ||
+    normalized === 'run.app' ||
+    normalized.endsWith('.run.app')
+  );
+}
+
 /**
  * Metadata do Recurso Protegido (RFC 9728)
  */
@@ -180,9 +190,9 @@ function getOauthProtectedResourceMetadata(baseUrl, options = {}) {
   let origin = defaultDomain;
   try {
     if (baseUrl && (baseUrl.startsWith('http://') || baseUrl.startsWith('https://'))) {
-      const parsedOrigin = new URL(baseUrl).origin;
-      if (!parsedOrigin.includes('cloudfunctions.net') && !parsedOrigin.includes('run.app')) {
-        origin = parsedOrigin;
+      const parsed = new URL(baseUrl);
+      if (!isInternalGoogleHost(parsed.hostname)) {
+        origin = parsed.origin;
       }
     }
   } catch (_e) {
@@ -211,9 +221,9 @@ function getOauthAuthorizationServerMetadata(baseUrl) {
   let origin = defaultDomain;
   try {
     if (baseUrl && (baseUrl.startsWith('http://') || baseUrl.startsWith('https://'))) {
-      const parsedOrigin = new URL(baseUrl).origin;
-      if (!parsedOrigin.includes('cloudfunctions.net') && !parsedOrigin.includes('run.app')) {
-        origin = parsedOrigin;
+      const parsed = new URL(baseUrl);
+      if (!isInternalGoogleHost(parsed.hostname)) {
+        origin = parsed.origin;
       }
     }
   } catch (_e) {

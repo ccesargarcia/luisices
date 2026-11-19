@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { sanitizeImagePreviewUrl } from '../../utils/safeMediaUrl';
 import { GalleryItem, Customer, Tag } from '../../types';
 import {
   Dialog,
@@ -188,10 +189,10 @@ export function GalleryUploadDialog({
             onDragLeave={() => setDragging(false)}
             onDrop={handleDrop}
           >
-            {preview ? (
+            {sanitizeImagePreviewUrl(preview) ? (
               <>
                 <img
-                  src={preview}
+                  src={sanitizeImagePreviewUrl(preview) ?? undefined}
                   alt="preview"
                   className="w-full max-h-48 sm:max-h-56 object-contain rounded"
                   loading="lazy"

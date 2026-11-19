@@ -26,16 +26,15 @@ export function secureRandomNumber(min: number, max: number): number {
   if (range <= 0) return min;
 
   const cryptoInstance = getCrypto();
-  if (cryptoInstance && typeof cryptoInstance.getRandomValues === 'function') {
-    const randomBuffer = new Uint32Array(1);
-    cryptoInstance.getRandomValues(randomBuffer);
-    // Divisão pelo valor máximo do Uint32 (0x100000000) garante distribuição uniforme sem viés de módulo
-    const fraction = randomBuffer[0] / 0x100000000;
-    return min + Math.floor(fraction * range);
+  if (!cryptoInstance || typeof cryptoInstance.getRandomValues !== 'function') {
+    throw new Error('Web Crypto API indisponível para geração segura de números aleatórios.');
   }
 
-  // Fallback seguro em ambientes legados sem Web Crypto
-  return min + Math.floor(Math.random() * range);
+  const randomBuffer = new Uint32Array(1);
+  cryptoInstance.getRandomValues(randomBuffer);
+  // Divisão pelo valor máximo do Uint32 (0x100000000) garante distribuição uniforme sem viés de módulo
+  const fraction = randomBuffer[0] / 0x100000000;
+  return min + Math.floor(fraction * range);
 }
 
 /**
@@ -46,7 +45,7 @@ export function secureRandomId(length = 8): string {
   const cryptoInstance = getCrypto();
 
   if (cryptoInstance) {
-    if (typeof cryptoInstance.randomUUID === 'function') {
+    if (typeof cryptoInstance.randomUUID === 'function' && length <= 32) {
       return cryptoInstance.randomUUID().replace(/-/g, '').slice(0, length);
     }
     if (typeof cryptoInstance.getRandomValues === 'function') {
@@ -59,6 +58,5 @@ export function secureRandomId(length = 8): string {
     }
   }
 
-  // Fallback seguro
-  return Math.random().toString(36).substring(2, 2 + length);
+  throw new Error('Web Crypto API indisponível para geração segura de identificadores.');
 }

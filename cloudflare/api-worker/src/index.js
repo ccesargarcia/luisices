@@ -272,10 +272,20 @@ const handler = {
       // reescreve domínios internos para o domínio público da API caso necessário,
       // preservando destinos externos (ex: callback do ChatGPT).
       if (responseHeaders.has('location')) {
-        let loc = responseHeaders.get('location');
-        if (loc.includes('cloudfunctions.net') || loc.includes('run.app')) {
-          loc = loc.replace(/^https?:\/\/[^\/]+(\/chatGptToolsEndpoint)?/, `https://${url.hostname}`);
-          responseHeaders.set('location', loc);
+        const loc = responseHeaders.get('location');
+        try {
+          const locUrl = new URL(loc);
+          const isInternalOrigin =
+            locUrl.hostname === 'cloudfunctions.net' ||
+            locUrl.hostname.endsWith('.cloudfunctions.net') ||
+            locUrl.hostname === 'run.app' ||
+            locUrl.hostname.endsWith('.run.app');
+          if (isInternalOrigin) {
+            const rewrittenPath = locUrl.pathname.replace(/^\/chatGptToolsEndpoint(?=\/|$)/, '') || '/';
+            responseHeaders.set('location', `https://${url.hostname}${rewrittenPath}${locUrl.search}${locUrl.hash}`);
+          }
+        } catch {
+          // Location relativo ou inválido: preserva como recebido
         }
       }
 

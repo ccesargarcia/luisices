@@ -1888,8 +1888,17 @@ export function Emails() {
                 const isUnread = email._type === 'received' && !email.read;
                 const isStarred = email._type === 'received' && email.starred;
                 const rawSender = email._type === 'received' ? email.from : '';
-                const senderAddress = rawSender.match(/<([^>]+)>/)?.[1] || rawSender.trim();
-                const senderDisplayName = rawSender.replace(/<.*?>/, '').trim() || rawSender;
+                const angleStart = rawSender.indexOf('<');
+                const angleEnd = angleStart >= 0 ? rawSender.indexOf('>', angleStart + 1) : -1;
+                const senderAddress =
+                  angleStart >= 0 && angleEnd > angleStart + 1
+                    ? rawSender.slice(angleStart + 1, angleEnd).trim()
+                    : rawSender.trim();
+                const senderDisplayName =
+                  (angleStart >= 0 ? rawSender.slice(0, angleStart) : rawSender)
+                    .trim()
+                    .replace(/^["']|["']$/g, '')
+                    .trim() || rawSender;
 
                 return (
                   <ContextMenu key={email.id}>

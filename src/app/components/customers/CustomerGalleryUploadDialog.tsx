@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { sanitizeImagePreviewUrl } from '../../utils/safeMediaUrl';
 import { Customer, GalleryItem, Tag } from '../../types';
 import {
   Dialog,
@@ -133,10 +134,10 @@ export function CustomerGalleryUploadDialog({
               if (f) handleFilePick(f);
             }}
           >
-            {preview ? (
+            {sanitizeImagePreviewUrl(preview) ? (
               <>
                 <img
-                  src={preview}
+                  src={sanitizeImagePreviewUrl(preview) ?? undefined}
                   alt="preview"
                   className="w-full max-h-56 object-contain rounded"
                 />

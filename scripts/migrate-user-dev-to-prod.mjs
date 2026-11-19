@@ -743,17 +743,28 @@ export async function runUserMigration(options = {}) {
         console.log(`🖼️ Avatar localizado em Dev: ${devAvatarUrl}`);
 
         // Caso seja URL do Storage de Dev ou CDN Dev
-        if (
-          devAvatarUrl.includes('firebasestorage.googleapis.com') ||
-          devAvatarUrl.includes('cdn-dev.luisices.com.br') ||
-          devAvatarUrl.includes(devBucket.name)
-        ) {
+        let parsedAvatarUrl = null;
+        try {
+          parsedAvatarUrl = new URL(devAvatarUrl);
+        } catch {
+          parsedAvatarUrl = null;
+        }
+        const isDevStorageUrl = Boolean(
+          parsedAvatarUrl && (
+            parsedAvatarUrl.hostname === 'firebasestorage.googleapis.com' ||
+            parsedAvatarUrl.hostname === 'cdn-dev.luisices.com.br' ||
+            parsedAvatarUrl.hostname === 'storage.googleapis.com'
+          )
+        );
+        if (isDevStorageUrl) {
           let storageRelPath = null;
-          if (devAvatarUrl.includes('/o/')) {
-            const match = devAvatarUrl.match(/\/o\/(.+?)(\?.*)?$/);
+          if (parsedAvatarUrl.hostname === 'firebasestorage.googleapis.com') {
+            const match = parsedAvatarUrl.pathname.match(/\/o\/(.+)$/);
             if (match && match[1]) storageRelPath = decodeURIComponent(match[1]);
-          } else if (devAvatarUrl.includes('cdn-dev.luisices.com.br/')) {
-            storageRelPath = devAvatarUrl.split('cdn-dev.luisices.com.br/')[1]?.split('?')[0];
+          } else if (parsedAvatarUrl.hostname === 'cdn-dev.luisices.com.br') {
+            storageRelPath = decodeURIComponent(parsedAvatarUrl.pathname.replace(/^\/+/, ''));
+          } else if (parsedAvatarUrl.hostname === 'storage.googleapis.com' && parsedAvatarUrl.pathname.startsWith(`/${devBucket.name}/`)) {
+            storageRelPath = decodeURIComponent(parsedAvatarUrl.pathname.slice(devBucket.name.length + 2));
           }
 
           if (storageRelPath) {

@@ -18,6 +18,9 @@ on:
           - dev
           - prod
 
+permissions:
+  contents: read
+
 concurrency:
   group: "alexa-skill-deploy-${{ github.ref }}"
   cancel-in-progress: false

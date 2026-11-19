@@ -3,26 +3,50 @@ const LATEST_RAW_KEY = 'mcp_latest_raw_key';
 const KEY_PREFIX = 'mcp_raw_key_';
 const FULL_API_KEY = /^lui_(?:dev|live)_[a-f0-9]{48}$/;
 
+// Mantém segredos one-time exclusivamente na memória volátil da aba atual,
+// evitando persistência em texto claro no Web Storage (sessionStorage/localStorage).
+const memoryRawKeys = new Map<string, string>();
+let memoryLatestRawKey: string | null = null;
+
 export function normalizeMcpRawKey(value: string): string | null {
   const normalized = value.trim().replace(/^Bearer\s+/i, '');
   return FULL_API_KEY.test(normalized) ? normalized : null;
 }
 
-/** Keep one-time API credentials only for the lifetime of the current tab. */
+/** Keep one-time API credentials only in volatile memory for the lifetime of the current tab. */
 export function getMcpRawKey(keyId: string): string | null {
-  const rawKey = sessionStorage.getItem(`${KEY_PREFIX}${keyId}`);
-  return rawKey ? normalizeMcpRawKey(rawKey) : null;
+  const inMemory = memoryRawKeys.get(keyId);
+  if (inMemory) return normalizeMcpRawKey(inMemory);
+  // Migra e remove qualquer resíduo legado do sessionStorage
+  const legacyKey = `${KEY_PREFIX}${keyId}`;
+  const rawKey = sessionStorage.getItem(legacyKey);
+  if (rawKey) {
+    sessionStorage.removeItem(legacyKey);
+    const normalized = normalizeMcpRawKey(rawKey);
+    if (normalized) {
+      memoryRawKeys.set(keyId, normalized);
+      return normalized;
+    }
+  }
+  return null;
 }
 
 export function saveMcpRawKey(keyId: string, rawKey: string): void {
-  sessionStorage.setItem(`${KEY_PREFIX}${keyId}`, rawKey);
-  sessionStorage.setItem(LATEST_RAW_KEY, rawKey);
+  const normalized = normalizeMcpRawKey(rawKey);
+  if (normalized) {
+    memoryRawKeys.set(keyId, normalized);
+    memoryLatestRawKey = normalized;
+  }
   sessionStorage.setItem(LATEST_KEY_ID, keyId);
+  sessionStorage.removeItem(`${KEY_PREFIX}${keyId}`);
+  sessionStorage.removeItem(LATEST_RAW_KEY);
 }
 
 export function removeMcpRawKey(keyId: string): void {
+  memoryRawKeys.delete(keyId);
   sessionStorage.removeItem(`${KEY_PREFIX}${keyId}`);
   if (sessionStorage.getItem(LATEST_KEY_ID) === keyId) {
+    memoryLatestRawKey = null;
     sessionStorage.removeItem(LATEST_KEY_ID);
     sessionStorage.removeItem(LATEST_RAW_KEY);
   }
@@ -49,10 +73,10 @@ export function migrateLegacyMcpRawKeys(): void {
       sessionStorage.setItem(key, value);
     } else if (key.startsWith(KEY_PREFIX)) {
       const normalizedKey = normalizeMcpRawKey(value);
-      if (normalizedKey) sessionStorage.setItem(key, normalizedKey);
+      if (normalizedKey) memoryRawKeys.set(key.slice(KEY_PREFIX.length), normalizedKey);
     } else if (key === LATEST_RAW_KEY) {
       const normalizedKey = normalizeMcpRawKey(value);
-      if (normalizedKey) sessionStorage.setItem(key, normalizedKey);
+      if (normalizedKey) memoryLatestRawKey = normalizedKey;
     }
     localStorage.removeItem(key);
   });
@@ -60,6 +84,8 @@ export function migrateLegacyMcpRawKeys(): void {
 
 export function clearMcpRawKeys(): void {
   migrateLegacyMcpRawKeys();
+  memoryRawKeys.clear();
+  memoryLatestRawKey = null;
   const keysToRemove: string[] = [];
   for (let index = 0; index < sessionStorage.length; index += 1) {
     const key = sessionStorage.key(index);
@@ -68,4 +94,8 @@ export function clearMcpRawKeys(): void {
     }
   }
   keysToRemove.forEach((key) => sessionStorage.removeItem(key));
+}
+
+export function getLatestMcpRawKey(): string | null {
+  return memoryLatestRawKey;
 }

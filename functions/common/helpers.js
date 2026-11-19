@@ -96,14 +96,15 @@ const getContactEmail = () => {
 
 const toCdnUrl = (url) => {
   if (!url || typeof url !== 'string') return '';
-  if (url.includes('cdn.luisices.com.br') || url.includes('cdn-dev.luisices.com.br')) {
-    return url.split('?')[0];
-  }
-  if (!url.includes('firebasestorage.googleapis.com')) {
-    return url;
-  }
   try {
-    const match = url.match(/\/o\/(.+?)(\?.*)?$/);
+    const parsed = new URL(url);
+    if (parsed.hostname === 'cdn.luisices.com.br' || parsed.hostname === 'cdn-dev.luisices.com.br') {
+      return `${parsed.origin}${parsed.pathname}`;
+    }
+    if (parsed.hostname !== 'firebasestorage.googleapis.com') {
+      return url;
+    }
+    const match = parsed.pathname.match(/\/o\/(.+)$/);
     if (!match || !match[1]) return url;
     const rawPath = decodeURIComponent(match[1]);
     const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;

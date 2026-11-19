@@ -316,8 +316,11 @@ async function main() {
         }
       }
     } catch (err) {
-      console.error(`Erro ao listar scripts de Workers: ${err.message}`);
-      markdownReport += `*Erro ao listar Workers: ${err.message}*\n\n`;
+      const safeMsg = String(err?.message || 'Erro desconhecido')
+        .replace(API_TOKEN || '__NO_TOKEN__', '[REDACTED]')
+        .replace(ACCOUNT_ID_ENV || '__NO_ACCOUNT__', '[REDACTED]');
+      console.error('Erro ao listar scripts de Workers:', safeMsg);
+      markdownReport += `*Erro ao listar Workers: ${safeMsg}*\n\n`;
     }
 
     // Listar Custom Domains de Workers
@@ -353,6 +356,9 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('\n❌ Erro fatal durante a auditoria:', err);
+  const safeMsg = String(err?.message || 'Erro desconhecido')
+    .replace(API_TOKEN || '__NO_TOKEN__', '[REDACTED]')
+    .replace(ACCOUNT_ID_ENV || '__NO_ACCOUNT__', '[REDACTED]');
+  console.error('\n❌ Erro fatal durante a auditoria:', safeMsg);
   process.exit(1);
 });

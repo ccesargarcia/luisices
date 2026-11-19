@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { sanitizeImagePreviewUrl } from '../../utils/safeMediaUrl';
 import {
   Dialog,
   DialogContent,
@@ -332,9 +333,9 @@ export function StoreProductDialog({ open, onOpenChange, editing, existingCatego
                 onClick={() => fileInputRef.current?.click()}
                 className="relative size-24 rounded-2xl border-2 border-dashed border-primary/40 bg-muted/30 hover:bg-primary/5 flex flex-col items-center justify-center cursor-pointer overflow-hidden transition-colors shrink-0 shadow-xs"
               >
-                {photoPreview ? (
+                {sanitizeImagePreviewUrl(photoPreview) ? (
                   <>
-                    <img src={photoPreview} alt="Prévia" className="w-full h-full object-cover" />
+                    <img src={sanitizeImagePreviewUrl(photoPreview) ?? undefined} alt="Prévia" className="w-full h-full object-cover" />
                     <button
                       type="button"
                       onClick={(e) => {

@@ -12,6 +12,9 @@ on:
           - consultar
           - sincronizar_prod_igual_dev
 
+permissions:
+  contents: read
+
 concurrency:
   group: "alexa-skill-diagnose-${{ github.ref }}"
   cancel-in-progress: false

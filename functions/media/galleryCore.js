@@ -26,20 +26,27 @@ function canReadGalleryItem(uid, profile, item) {
   return canViewGallery && (item.userId === uid || profile.role === 'funcionario');
 }
 
-function setCorsHeaders(req, res) {
-  const origin = req.headers.origin;
-  const allowed = typeof origin === 'string' && (() => {
-    try {
-      const url = new URL(origin);
-      return (url.protocol === 'https:' && (
+function resolveAllowedCorsOrigin(origin) {
+  if (typeof origin !== 'string' || !origin) return null;
+  try {
+    const url = new URL(origin);
+    const isAllowedHttps =
+      url.protocol === 'https:' && (
         url.hostname === 'luisices.com.br'
         || url.hostname.endsWith('.luisices.com.br')
         || /^luisices(-[a-z0-9-]+)?\.vercel\.app$/i.test(url.hostname)
-      ))
-        || (url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname));
-    } catch { return false; }
-  })();
-  if (allowed) res.setHeader('Access-Control-Allow-Origin', origin);
+      );
+    const isAllowedLocal =
+      url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
+    return (isAllowedHttps || isAllowedLocal) ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+function setCorsHeaders(req, res) {
+  const allowedOrigin = resolveAllowedCorsOrigin(req.headers.origin);
+  if (allowedOrigin) res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, x-origin-secret, x-cf-origin-token');

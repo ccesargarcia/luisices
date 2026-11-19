@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { sanitizeExternalHttpUrl } from '../utils/safeMediaUrl';
 
 interface FormattedDescriptionProps {
   text?: string | null;
@@ -165,17 +166,20 @@ function renderInlineFormatting(str: string): React.ReactNode[] {
 
     // Link URL
     if (/^https?:\/\/[^\s]+$/.test(token)) {
-      return (
-        <a
-          key={index}
-          href={token}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary underline hover:opacity-80 break-all"
-        >
-          {token}
-        </a>
-      );
+      const safeHref = sanitizeExternalHttpUrl(token);
+      if (safeHref) {
+        return (
+          <a
+            key={index}
+            href={safeHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline hover:opacity-80 break-all"
+          >
+            {token}
+          </a>
+        );
+      }
     }
 
     return <React.Fragment key={index}>{token}</React.Fragment>;

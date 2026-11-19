@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { sanitizeImagePreviewUrl } from '../../utils/safeMediaUrl';
 import { GalleryItem, Tag } from '../../types';
 import {
   Dialog,
@@ -116,8 +117,8 @@ export function EditFolderDialog({
 
             {displayCover ? (
               <div className="relative rounded-xl overflow-hidden border aspect-video">
-                {uploadPreview ? <img
-                  src={uploadPreview}
+                {sanitizeImagePreviewUrl(uploadPreview) ? <img
+                  src={sanitizeImagePreviewUrl(uploadPreview) ?? undefined}
                   alt="capa"
                   className="w-full h-full object-cover"
                   loading="lazy"

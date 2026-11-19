@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { sanitizeImagePreviewUrl } from '../../utils/safeMediaUrl';
 import { GalleryItem } from '../../types';
 import { GalleryImage } from '../gallery/GalleryImage';
 import { Images, Plus, ZoomIn, X, Loader2 } from 'lucide-react';
@@ -167,9 +168,9 @@ export function OrderGallerySection({
             <DialogTitle>Adicionar Arte</DialogTitle>
           </DialogHeader>
           <DialogBody className="p-4 sm:p-6 space-y-3">
-            {galleryUploadPreview && (
+            {sanitizeImagePreviewUrl(galleryUploadPreview) && (
               <img
-                src={galleryUploadPreview}
+                src={sanitizeImagePreviewUrl(galleryUploadPreview) ?? undefined}
                 alt="preview"
                 className="w-full max-h-44 object-contain rounded-lg border bg-muted/30"
               />
