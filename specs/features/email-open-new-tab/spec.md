@@ -75,7 +75,12 @@ Atualmente, clicar numa mensagem seleciona-a no painel de leitura da Central de 
 
 - `npm run typecheck` obrigatório.
 - Conferência de diff, rota, proteção de acesso e compatibilidade dos caminhos de leitura de texto/HTML/anexos.
+- Após publicação, conferir HTTP 200 e presença da rota nos bundles de DEV/Beta; ainda é necessário validar o clique e o carregamento autenticado no navegador.
 
 ## Evidências de conclusão
 
-- A preencher após validação.
+- Commit `206003d` publicado em `develop`.
+- Firebase Hosting DEV: workflow [44449842694](https://github.com/ccesargarcia/luisices/actions/runs/44449842694) passou; apenas o job de frontend executou. Functions, regras, índices e Cloudflare Workers foram ignorados.
+- Vercel Dev/Beta: workflow [44449842592](https://github.com/ccesargarcia/luisices/actions/runs/44449842592) passou; alias Beta associado ao deploy `https://luisices-4tus3mtdn-luisices.vercel.app`.
+- CodeQL [44449842604](https://github.com/ccesargarcia/luisices/actions/runs/44449842604) passou. `dev.luisices.com.br` e `beta.luisices.com.br` responderam HTTP 200 na raiz e na rota profunda; bundles de entrada incluem `/emails/mensagem/:type/:id`.
+- Falta validação visual autenticada por uma pessoa usuária; por isso a spec permanece Em andamento.
