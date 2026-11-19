@@ -2,6 +2,51 @@ name: Deploy to GitHub Pages (Production)
 
 on:
   workflow_call:
+    secrets:
+      PROD_VITE_FIREBASE_API_KEY:
+        required: false
+      PROD_VITE_FIREBASE_APP_ID:
+        required: false
+      PROD_VITE_FIREBASE_AUTH_DOMAIN:
+        required: false
+      PROD_VITE_FIREBASE_DATABASE_URL:
+        required: false
+      PROD_VITE_FIREBASE_MEASUREMENT_ID:
+        required: false
+      PROD_VITE_FIREBASE_MESSAGING_SENDER_ID:
+        required: false
+      PROD_VITE_FIREBASE_PROJECT_ID:
+        required: false
+      PROD_VITE_FIREBASE_STORAGE_BUCKET:
+        required: false
+      PROD_VITE_FUNCTIONS_CUSTOM_DOMAIN:
+        required: false
+      PROD_VITE_SENTRY_DSN:
+        required: false
+      PROD_VITE_STORAGE_CDN_URL:
+        required: false
+      VITE_FIREBASE_API_KEY:
+        required: false
+      VITE_FIREBASE_APP_ID:
+        required: false
+      VITE_FIREBASE_AUTH_DOMAIN:
+        required: false
+      VITE_FIREBASE_DATABASE_URL:
+        required: false
+      VITE_FIREBASE_MEASUREMENT_ID:
+        required: false
+      VITE_FIREBASE_MESSAGING_SENDER_ID:
+        required: false
+      VITE_FIREBASE_PROJECT_ID:
+        required: false
+      VITE_FIREBASE_STORAGE_BUCKET:
+        required: false
+      VITE_FUNCTIONS_CUSTOM_DOMAIN:
+        required: false
+      VITE_SENTRY_DSN:
+        required: false
+      VITE_STORAGE_CDN_URL:
+        required: false
 
 # Define permissões necessárias
 permissions:

@@ -8,6 +8,31 @@ on:
         required: false
         type: string
         default: 'all'
+    secrets:
+      DEV_VITE_FIREBASE_API_KEY:
+        required: false
+      DEV_VITE_FIREBASE_APP_ID:
+        required: false
+      DEV_VITE_FIREBASE_AUTH_DOMAIN:
+        required: false
+      DEV_VITE_FIREBASE_MEASUREMENT_ID:
+        required: false
+      DEV_VITE_FIREBASE_MESSAGING_SENDER_ID:
+        required: false
+      DEV_VITE_FIREBASE_PROJECT_ID:
+        required: false
+      DEV_VITE_FIREBASE_STORAGE_BUCKET:
+        required: false
+      DEV_VITE_SENTRY_DSN:
+        required: false
+      DEV_VITE_STORAGE_CDN_URL:
+        required: false
+      TEST_USER_EMAIL:
+        required: false
+      TEST_USER_PASSWORD:
+        required: false
+      VITE_SENTRY_DSN:
+        required: false
   workflow_dispatch:
     inputs:
       test_target:

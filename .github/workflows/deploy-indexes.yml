@@ -6,6 +6,13 @@ on:
       environment:
         required: true
         type: string
+    secrets:
+      FIREBASE_SERVICE_ACCOUNT_DEV:
+        required: false
+      FIREBASE_SERVICE_ACCOUNT_PROD:
+        required: false
+      FIREBASE_SERVICE_ACCOUNT:
+        required: false
   workflow_dispatch:
     inputs:
       environment:

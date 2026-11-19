@@ -103,8 +103,9 @@ jobs:
           CI: true
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL || 'test-user@example.invalid' }}
           PLAYWRIGHT_BASE_URL: http://localhost:4173
+          VIEWPORT_MODE: ${{ github.event.inputs.viewport_mode }}
         run: |
-          if [ "${{ github.event.inputs.viewport_mode }}" = "Apenas Mobile e Modais" ]; then
+          if [ "$VIEWPORT_MODE" = "Apenas Mobile e Modais" ]; then
             echo "📱 Executando auditoria focada em Mobile e Modais..."
             npx firebase emulators:exec --only auth,firestore,storage "node scripts/seed-emulator.mjs && npx playwright test tests/e2e/screen-audit.spec.ts -g \"\\[Mobile\\]|Modal\" --project=chromium --reporter=list,html"
           else

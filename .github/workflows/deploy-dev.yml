@@ -459,7 +459,19 @@ jobs:
       contents: read
       pull-requests: read
     uses: ./.github/workflows/test-actions.yml
-    secrets: inherit
+    secrets:
+      DEV_VITE_FIREBASE_API_KEY: ${{ secrets.DEV_VITE_FIREBASE_API_KEY }}
+      DEV_VITE_FIREBASE_APP_ID: ${{ secrets.DEV_VITE_FIREBASE_APP_ID }}
+      DEV_VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.DEV_VITE_FIREBASE_AUTH_DOMAIN }}
+      DEV_VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.DEV_VITE_FIREBASE_MEASUREMENT_ID }}
+      DEV_VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.DEV_VITE_FIREBASE_MESSAGING_SENDER_ID }}
+      DEV_VITE_FIREBASE_PROJECT_ID: ${{ secrets.DEV_VITE_FIREBASE_PROJECT_ID }}
+      DEV_VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.DEV_VITE_FIREBASE_STORAGE_BUCKET }}
+      DEV_VITE_SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN }}
+      DEV_VITE_STORAGE_CDN_URL: ${{ secrets.DEV_VITE_STORAGE_CDN_URL }}
+      TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+      TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+      VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
 
   cloudflare-validation:
     name: 🧪 Validar Cloudflare Workers
@@ -496,7 +508,8 @@ jobs:
     uses: ./.github/workflows/deploy-indexes.yml
     with:
       environment: dev
-    secrets: inherit
+    secrets:
+      FIREBASE_SERVICE_ACCOUNT_DEV: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
 
   deploy-frontend:
     name: 🎨 Build e Deploy Frontend (Dev)
@@ -789,7 +802,17 @@ jobs:
     with:
       target_environment: dev
       target_worker: ${{ needs.detect-changes.outputs.cloudflare_target }}
-    secrets: inherit
+    secrets:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      DEV_CLOUDFLARE_SENTRY_DSN: ${{ secrets.DEV_CLOUDFLARE_SENTRY_DSN }}
+      DEV_FUNCTIONS_SENTRY_DSN: ${{ secrets.DEV_FUNCTIONS_SENTRY_DSN }}
+      DEV_ORIGIN_SECRET: ${{ secrets.DEV_ORIGIN_SECRET }}
+      DEV_SENTRY_DSN: ${{ secrets.DEV_SENTRY_DSN }}
+      DEV_VITE_SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN }}
+      ORIGIN_SECRET: ${{ secrets.ORIGIN_SECRET }}
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
 
   purge-mcp-cache:
     name: 🧹 Purge MCP Metadata Cache (Dev)
@@ -806,7 +829,9 @@ jobs:
     with:
       target_environment: dev
       target_worker: cache
-    secrets: inherit
+    secrets:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
   deploy-rules:
     name: 🔐 Deploy Firestore e Storage Rules (Dev)

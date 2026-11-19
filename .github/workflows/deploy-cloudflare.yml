@@ -10,6 +10,37 @@ on:
         required: false
         default: all
         type: string
+    secrets:
+      CLOUDFLARE_ACCOUNT_ID:
+        required: false
+      CLOUDFLARE_API_TOKEN:
+        required: false
+      DEV_CLOUDFLARE_SENTRY_DSN:
+        required: false
+      DEV_FUNCTIONS_SENTRY_DSN:
+        required: false
+      DEV_ORIGIN_SECRET:
+        required: false
+      DEV_SENTRY_DSN:
+        required: false
+      DEV_VITE_SENTRY_DSN:
+        required: false
+      ORIGIN_SECRET:
+        required: false
+      PROD_CLOUDFLARE_SENTRY_DSN:
+        required: false
+      PROD_FUNCTIONS_SENTRY_DSN:
+        required: false
+      PROD_ORIGIN_SECRET:
+        required: false
+      PROD_SENTRY_DSN:
+        required: false
+      PROD_VITE_SENTRY_DSN:
+        required: false
+      SENTRY_DSN:
+        required: false
+      VITE_SENTRY_DSN:
+        required: false
   workflow_dispatch:
     inputs:
       target_environment:

@@ -25,6 +25,83 @@ on:
         required: false
         default: false
         type: boolean
+    secrets:
+      ALEXA_IDENTITY_HMAC_KEY:
+        required: false
+      ALEXA_IDENTITY_HMAC_KEY_DEV:
+        required: false
+      ALEXA_PROD_SKILL_ID:
+        required: false
+      ALEXA_SKILL_ID:
+        required: false
+      DEV_ALEXA_IDENTITY_HMAC_KEY:
+        required: false
+      DEV_EVOLUTION_API_KEY:
+        required: false
+      DEV_FUNCTIONS_SENTRY_DSN:
+        required: false
+      DEV_GEMINI:
+        required: false
+      DEV_GEMINI_API_KEY:
+        required: false
+      DEV_ORDER_TRACKING_ENCRYPTION_KEY:
+        required: false
+      DEV_ORIGIN_SECRET:
+        required: false
+      DEV_RESEND_API_KEY:
+        required: false
+      DEV_RESEND_WEBHOOK_SECRET:
+        required: false
+      DEV_SENTRY_DSN:
+        required: false
+      DEV_VITE_SENTRY_DSN:
+        required: false
+      EVOLUTION_API_KEY:
+        required: false
+      FIREBASE_SERVICE_ACCOUNT:
+        required: false
+      FIREBASE_SERVICE_ACCOUNT_DEV:
+        required: false
+      FIREBASE_SERVICE_ACCOUNT_PROD:
+        required: false
+      GEMINI_API_KEY:
+        required: false
+      ORIGIN_SECRET:
+        required: false
+      PROD_ALEXA_IDENTITY_HMAC_KEY:
+        required: false
+      PROD_ALEXA_SKILL_ID:
+        required: false
+      PROD_EVOLUTION_API_KEY:
+        required: false
+      PROD_FIREBASE_SERVICE_ACCOUNT:
+        required: false
+      PROD_FUNCTIONS_SENTRY_DSN:
+        required: false
+      PROD_GEMINI:
+        required: false
+      PROD_GEMINI_API_KEY:
+        required: false
+      PROD_ORDER_TRACKING_ENCRYPTION_KEY:
+        required: false
+      PROD_ORIGIN_SECRET:
+        required: false
+      PROD_RESEND_API_KEY:
+        required: false
+      PROD_RESEND_WEBHOOK_SECRET:
+        required: false
+      PROD_SENTRY_DSN:
+        required: false
+      PROD_VITE_SENTRY_DSN:
+        required: false
+      RESEND_API_KEY:
+        required: false
+      RESEND_WEBHOOK_SECRET:
+        required: false
+      SUPERFRETE_SANDBOX_TOKEN:
+        required: false
+      VITE_SENTRY_DSN:
+        required: false
   workflow_dispatch:
     inputs:
       environment:
@@ -103,12 +180,10 @@ jobs:
 
       - name: Determine Target Environment
         id: env
+        env:
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TARGET="${{ inputs.environment }}"
-          else
-            TARGET="${{ inputs.environment }}"
-          fi
+          TARGET="$INPUT_ENVIRONMENT"
           case "$TARGET" in
             dev|prod) ;;
             *) echo "Ambiente de deploy inválido: $TARGET"; exit 1 ;;
@@ -123,10 +198,14 @@ jobs:
           RESEND_API_KEY: ${{ secrets.DEV_RESEND_API_KEY || secrets.RESEND_API_KEY }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.DEV_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.DEV_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.dev_gemini || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
           ORIGIN_SECRET: ${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
           SUPERFRETE_SANDBOX_TOKEN: ${{ secrets.SUPERFRETE_SANDBOX_TOKEN }}
           ORDER_TRACKING_ENCRYPTION_KEY: ${{ secrets.DEV_ORDER_TRACKING_ENCRYPTION_KEY }}
+          ALEXA_HMAC: ${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}
+          UPDATE_SECRETS: ${{ inputs.update_secrets }}
+          DEPLOY_RULES_AND_INDEXES: ${{ inputs.deploy_rules_and_indexes }}
+          INPUT_FN: ${{ inputs.functions_target }}
           GCLOUD_PROJECT: luisices-dev
         run: |
           trap 'rm -f functions/.env.luisices-dev "$HOME/order_tracking_encryption_key.txt" "$HOME/origin_secret.txt"' EXIT
@@ -154,7 +233,7 @@ jobs:
           }
 
           # Atualiza segredos no Secret Manager apenas se explicitamente solicitado
-          if [ "${{ inputs.update_secrets }}" = "true" ]; then
+          if [ "$UPDATE_SECRETS" = "true" ]; then
             echo "🔐 Atualizando secrets no Google Secret Manager (Dev)..."
             echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
             echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
@@ -178,8 +257,8 @@ jobs:
               printf '%s' "$ORDER_TRACKING_ENCRYPTION_KEY" > "$HOME/order_tracking_encryption_key.txt"
               firebase functions:secrets:set ORDER_TRACKING_ENCRYPTION_KEY --project luisices-dev --data-file "$HOME/order_tracking_encryption_key.txt" --non-interactive --force
             fi
-            if [ -n "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" ]; then
-              echo "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" > "$HOME/alexa_hmac.txt"
+            if [ -n "$ALEXA_HMAC" ]; then
+              echo "$ALEXA_HMAC" > "$HOME/alexa_hmac.txt"
               firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
             fi
             printf '%s' "$ORIGIN_SECRET" > "$HOME/origin_secret.txt"
@@ -195,9 +274,9 @@ jobs:
             firebase functions:secrets:set ORDER_TRACKING_ENCRYPTION_KEY --project luisices-dev --data-file "$HOME/order_tracking_encryption_key.txt" --non-interactive --force
           fi
 
-          if [ -n "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" ] && ! firebase functions:secrets:get ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --non-interactive > /dev/null 2>&1; then
+          if [ -n "$ALEXA_HMAC" ] && ! firebase functions:secrets:get ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --non-interactive > /dev/null 2>&1; then
             echo "🔐 Inicializando ALEXA_IDENTITY_HMAC_KEY no Secret Manager (Dev)..."
-            echo "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" > "$HOME/alexa_hmac.txt"
+            echo "$ALEXA_HMAC" > "$HOME/alexa_hmac.txt"
             firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
           fi
 
@@ -207,12 +286,11 @@ jobs:
             firebase functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force
           fi
 
-          if [ "${{ inputs.deploy_rules_and_indexes }}" = "true" ]; then
+          if [ "$DEPLOY_RULES_AND_INDEXES" = "true" ]; then
             echo "📄 Publicando regras e índices do Firestore..."
             firebase deploy --only firestore:rules,firestore:indexes,database --project luisices-dev --non-interactive --force
           fi
 
-          INPUT_FN="${{ inputs.functions_target }}"
           if [ -n "$INPUT_FN" ] && [ "$INPUT_FN" != "all" ] && [ "$INPUT_FN" != "auto" ]; then
             echo "🎯 Deploy seletivo de Functions (Dev) para escopo(s): $INPUT_FN"
             CHUNKS=$(node scripts/functions-deploy-map.mjs --print-chunks --env=dev --scope="$INPUT_FN")
@@ -249,11 +327,15 @@ jobs:
           RESEND_API_KEY: ${{ secrets.PROD_RESEND_API_KEY || secrets.RESEND_API_KEY }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.PROD_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.PROD_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.PROD_GEMINI || secrets.prod_gemini || secrets.PROD_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.PROD_GEMINI || secrets.PROD_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
           ORIGIN_SECRET: ${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
           ALEXA_HMAC: ${{ secrets.PROD_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY }}
           ALEXA_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID || secrets.ALEXA_PROD_SKILL_ID || secrets.ALEXA_SKILL_ID }}
           ORDER_TRACKING_ENCRYPTION_KEY: ${{ secrets.PROD_ORDER_TRACKING_ENCRYPTION_KEY }}
+          UPDATE_SECRETS: ${{ inputs.update_secrets }}
+          DEPLOY_RULES_AND_INDEXES: ${{ inputs.deploy_rules_and_indexes }}
+          INPUT_FN: ${{ inputs.functions_target }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           trap 'rm -f functions/.env.papelaria-dashboard "$HOME/order_tracking_encryption_key.txt" "$HOME/origin_secret_prod.txt"' EXIT
           if [ -n "$SENTRY_DSN" ]; then
@@ -320,7 +402,7 @@ jobs:
 
           # Em workflow_dispatch, atualiza segredos somente se selecionado.
           # No deploy automático por merge, mantém os valores do Secret Manager como estão.
-          if [ "${{ inputs.update_secrets }}" = "true" ]; then
+          if [ "$UPDATE_SECRETS" = "true" ]; then
             echo "🔐 Atualizando secrets no Google Secret Manager (Prod)..."
             if [ -n "$RESEND_API_KEY" ]; then
               echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
@@ -410,12 +492,11 @@ jobs:
             ' || true
           fi
 
-          if [ "${{ inputs.deploy_rules_and_indexes }}" = "true" ]; then
+          if [ "$DEPLOY_RULES_AND_INDEXES" = "true" ]; then
             echo "📄 Publicando regras, índices e storage..."
             firebase deploy --only firestore:rules,firestore:indexes,database,storage --project papelaria-dashboard --non-interactive --force
           fi
 
-          INPUT_FN="${{ inputs.functions_target }}"
           case "$INPUT_FN" in
             *calculateSuperfreteShipping*|*createSuperfreteLabel*|*superfrete*)
               echo "❌ A integração SuperFrete Sandbox só pode ser publicada no ambiente dev."
@@ -443,7 +524,7 @@ jobs:
             fi
           fi
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "🧹 Removendo versões de secrets sem funções vinculadas no Secret Manager (Prod)..."
             firebase functions:secrets:prune --project papelaria-dashboard -f --non-interactive
           else

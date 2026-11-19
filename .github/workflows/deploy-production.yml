@@ -127,7 +127,9 @@ jobs:
     uses: ./.github/workflows/deploy-indexes.yml
     with:
       environment: prod
-    secrets: inherit
+    secrets:
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      FIREBASE_SERVICE_ACCOUNT_PROD: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD }}
 
   functions:
     name: Functions (Production)
@@ -143,7 +145,31 @@ jobs:
       functions_target: ${{ needs.plan.outputs.functions_scope }}
       deploy_rules_and_indexes: false
       update_secrets: false
-    secrets: inherit
+    secrets:
+      ALEXA_IDENTITY_HMAC_KEY: ${{ secrets.ALEXA_IDENTITY_HMAC_KEY }}
+      ALEXA_PROD_SKILL_ID: ${{ secrets.ALEXA_PROD_SKILL_ID }}
+      ALEXA_SKILL_ID: ${{ secrets.ALEXA_SKILL_ID }}
+      EVOLUTION_API_KEY: ${{ secrets.EVOLUTION_API_KEY }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      FIREBASE_SERVICE_ACCOUNT_PROD: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ORIGIN_SECRET: ${{ secrets.ORIGIN_SECRET }}
+      PROD_ALEXA_IDENTITY_HMAC_KEY: ${{ secrets.PROD_ALEXA_IDENTITY_HMAC_KEY }}
+      PROD_ALEXA_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID }}
+      PROD_EVOLUTION_API_KEY: ${{ secrets.PROD_EVOLUTION_API_KEY }}
+      PROD_FIREBASE_SERVICE_ACCOUNT: ${{ secrets.PROD_FIREBASE_SERVICE_ACCOUNT }}
+      PROD_FUNCTIONS_SENTRY_DSN: ${{ secrets.PROD_FUNCTIONS_SENTRY_DSN }}
+      PROD_GEMINI: ${{ secrets.PROD_GEMINI }}
+      PROD_GEMINI_API_KEY: ${{ secrets.PROD_GEMINI_API_KEY }}
+      PROD_ORDER_TRACKING_ENCRYPTION_KEY: ${{ secrets.PROD_ORDER_TRACKING_ENCRYPTION_KEY }}
+      PROD_ORIGIN_SECRET: ${{ secrets.PROD_ORIGIN_SECRET }}
+      PROD_RESEND_API_KEY: ${{ secrets.PROD_RESEND_API_KEY }}
+      PROD_RESEND_WEBHOOK_SECRET: ${{ secrets.PROD_RESEND_WEBHOOK_SECRET }}
+      PROD_SENTRY_DSN: ${{ secrets.PROD_SENTRY_DSN }}
+      PROD_VITE_SENTRY_DSN: ${{ secrets.PROD_VITE_SENTRY_DSN }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
+      VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
 
   cloudflare:
     name: Cloudflare Workers (Production)
@@ -158,7 +184,17 @@ jobs:
     with:
       target_environment: production
       target_worker: ${{ needs.plan.outputs.cloudflare_target }}
-    secrets: inherit
+    secrets:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ORIGIN_SECRET: ${{ secrets.ORIGIN_SECRET }}
+      PROD_CLOUDFLARE_SENTRY_DSN: ${{ secrets.PROD_CLOUDFLARE_SENTRY_DSN }}
+      PROD_FUNCTIONS_SENTRY_DSN: ${{ secrets.PROD_FUNCTIONS_SENTRY_DSN }}
+      PROD_ORIGIN_SECRET: ${{ secrets.PROD_ORIGIN_SECRET }}
+      PROD_SENTRY_DSN: ${{ secrets.PROD_SENTRY_DSN }}
+      PROD_VITE_SENTRY_DSN: ${{ secrets.PROD_VITE_SENTRY_DSN }}
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
 
   purge-mcp-cache:
     name: Purge MCP metadata cache (Production)
@@ -174,7 +210,9 @@ jobs:
     with:
       target_environment: production
       target_worker: cache
-    secrets: inherit
+    secrets:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
   frontend:
     name: Frontend (Production)
@@ -187,7 +225,29 @@ jobs:
       (needs.cloudflare.result == 'success' || needs.cloudflare.result == 'skipped') &&
       needs.plan.outputs.frontend == 'true'
     uses: ./.github/workflows/deploy.yml
-    secrets: inherit
+    secrets:
+      PROD_VITE_FIREBASE_API_KEY: ${{ secrets.PROD_VITE_FIREBASE_API_KEY }}
+      PROD_VITE_FIREBASE_APP_ID: ${{ secrets.PROD_VITE_FIREBASE_APP_ID }}
+      PROD_VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.PROD_VITE_FIREBASE_AUTH_DOMAIN }}
+      PROD_VITE_FIREBASE_DATABASE_URL: ${{ secrets.PROD_VITE_FIREBASE_DATABASE_URL }}
+      PROD_VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.PROD_VITE_FIREBASE_MEASUREMENT_ID }}
+      PROD_VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.PROD_VITE_FIREBASE_MESSAGING_SENDER_ID }}
+      PROD_VITE_FIREBASE_PROJECT_ID: ${{ secrets.PROD_VITE_FIREBASE_PROJECT_ID }}
+      PROD_VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.PROD_VITE_FIREBASE_STORAGE_BUCKET }}
+      PROD_VITE_FUNCTIONS_CUSTOM_DOMAIN: ${{ secrets.PROD_VITE_FUNCTIONS_CUSTOM_DOMAIN }}
+      PROD_VITE_SENTRY_DSN: ${{ secrets.PROD_VITE_SENTRY_DSN }}
+      PROD_VITE_STORAGE_CDN_URL: ${{ secrets.PROD_VITE_STORAGE_CDN_URL }}
+      VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+      VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+      VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+      VITE_FIREBASE_DATABASE_URL: ${{ secrets.VITE_FIREBASE_DATABASE_URL }}
+      VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
+      VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+      VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+      VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+      VITE_FUNCTIONS_CUSTOM_DOMAIN: ${{ secrets.VITE_FUNCTIONS_CUSTOM_DOMAIN }}
+      VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+      VITE_STORAGE_CDN_URL: ${{ secrets.VITE_STORAGE_CDN_URL }}
 
   rules:
     name: Firebase Rules (Production, last)
@@ -202,7 +262,10 @@ jobs:
       (needs.frontend.result == 'success' || needs.frontend.result == 'skipped') &&
       needs.plan.outputs.rules == 'true'
     uses: ./.github/workflows/deploy-firebase-rules-production.yml
-    secrets: inherit
+    secrets:
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      FIREBASE_SERVICE_ACCOUNT_PROD: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD }}
+      PROD_FIREBASE_SERVICE_ACCOUNT: ${{ secrets.PROD_FIREBASE_SERVICE_ACCOUNT }}
 
   release-summary:
     name: Release result

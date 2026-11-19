@@ -39,10 +39,14 @@ jobs:
 
       - name: Determine Target Environment
         id: env
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          GITHUB_REF_VALUE: ${{ github.ref }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TARGET="${{ inputs.environment }}"
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TARGET="$INPUT_ENVIRONMENT"
+          elif [ "$GITHUB_REF_VALUE" = "refs/heads/main" ]; then
             TARGET="prod"
           else
             TARGET="dev"

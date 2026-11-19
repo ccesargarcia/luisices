@@ -2,6 +2,13 @@ name: Deploy Firebase Security Rules (Production)
 
 on:
   workflow_call:
+    secrets:
+      FIREBASE_SERVICE_ACCOUNT:
+        required: false
+      FIREBASE_SERVICE_ACCOUNT_PROD:
+        required: false
+      PROD_FIREBASE_SERVICE_ACCOUNT:
+        required: false
 
 permissions:
   contents: read

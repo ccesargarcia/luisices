@@ -55,11 +55,15 @@ jobs:
           sudo apt-get install -y k6
 
       - name: Run load test
+        env:
+          BASE_URL: ${{ inputs.target_url }}
+          VUS: ${{ inputs.virtual_users }}
+          DURATION: ${{ inputs.duration }}
         run: |
           k6 run tests/load/load-test.js \
-            --env BASE_URL=${{ inputs.target_url }} \
-            --env VUS=${{ inputs.virtual_users }} \
-            --env DURATION=${{ inputs.duration }}
+            --env "BASE_URL=$BASE_URL" \
+            --env "VUS=$VUS" \
+            --env "DURATION=$DURATION"
 
       - name: Upload summary
         if: always()
