@@ -12,7 +12,7 @@ rules:
       cwe: "CWE-95"
 
   - id: luisices-no-dangerously-set-innerhtml
-    pattern: dangerouslySetInnerHTML={{ __html: $HTML }}
+    pattern: "dangerouslySetInnerHTML={{ __html: $HTML }}"
     message: Uso de dangerouslySetInnerHTML detectado; prefira renderização declarativa ou iframe sandboxed com DOMPurify.
     languages: [typescript, javascript]
     severity: WARNING
@@ -34,9 +34,9 @@ rules:
 
   - id: luisices-no-secret-console-log
     pattern-either:
-      - pattern: console.log(..., $SECRET, ...)
-      - pattern: console.error(..., $SECRET, ...)
-      - pattern: console.warn(..., $SECRET, ...)
+      - pattern: "console.log(..., $SECRET, ...)"
+      - pattern: "console.error(..., $SECRET, ...)"
+      - pattern: "console.warn(..., $SECRET, ...)"
     metavariable-regex:
       metavariable: $SECRET
       regex: "(?i).*(secret|apiKey|privateKey|private_key|password|accessToken|refreshToken).*"
@@ -49,9 +49,9 @@ rules:
 
   - id: luisices-no-client-write-restricted-collections
     pattern-either:
-      - pattern: setDoc(doc($DB, "salesLedger", ...), ...)
-      - pattern: updateDoc(doc($DB, "salesLedger", ...), ...)
-      - pattern: deleteDoc(doc($DB, "salesLedger", ...))
+      - pattern: 'setDoc(doc($DB, "salesLedger", ...), ...)'
+      - pattern: 'updateDoc(doc($DB, "salesLedger", ...), ...)'
+      - pattern: 'deleteDoc(doc($DB, "salesLedger", ...))'
     message: Escrita direta do cliente em salesLedger deve ser evitada; utilize Cloud Functions transacionais.
     languages: [typescript, javascript]
     severity: ERROR
