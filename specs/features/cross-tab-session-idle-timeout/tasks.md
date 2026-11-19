@@ -10,5 +10,5 @@
   - Evidência: `npm run typecheck` e `git diff --check` passaram; revisão de código cobre valor 0, opções válidas, fallback 30, atividade por BroadcastChannel/storage e atualização do setting em tempo real. Navegador autenticado ainda não foi validado.
 - [x] **T5 — Revisão documental e impacto de IA:** corrigir documentação divergente, registrar riscos e conferir links; Copiloto/MCP sem impacto.
   - Evidência: `spec.md`, `plan.md`, spec `browser-local-data-encryption`, skill de segurança, docs de arquitetura/funcionalidades e `README.md` revisados.
-- [ ] **T6 — Fechamento:** registrar estado final; deploy/validação autenticada depende de etapa posterior autorizada.
-  - Evidência: preencher após validação e eventual publicação.
+- [x] **T6 — Fechamento:** registrar estado e evidências de publicação; a validação autenticada continua pendente.
+  - Evidência: commit `73152d1` em `develop`; Firebase DEV `44459828519`, Vercel Beta `44459827732` e CodeQL `44459827638` passaram; DEV e Beta retornaram HTTP 200. Nenhum deploy de Worker Cloudflare ou produção foi executado.

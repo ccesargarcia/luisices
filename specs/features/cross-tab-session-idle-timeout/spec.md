@@ -87,5 +87,6 @@
 
 ## Evidências de conclusão
 
-- Implementação local concluída; `npm run typecheck` e `git diff --check` passaram.
-- Validação autenticada em navegador e deploy continuam pendentes; não houve commit/publicação nesta etapa.
+- Implementação publicada em DEV/Beta no commit `73152d1`; `npm run typecheck` e `git diff --check` passaram.
+- Workflows concluídos: Firebase DEV `44459828519`, Vercel Beta `44459827732` e CodeQL `44459827638`; os domínios `dev.luisices.com.br` e `beta.luisices.com.br` responderam HTTP 200.
+- Não houve deploy do Worker Cloudflare ou produção. Validação autenticada de uso entre abas permanece pendente.
