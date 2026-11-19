@@ -151,7 +151,7 @@ export function OrderCard({ order, trackingUrl, onLoadTrackingUrl, onClick, isSe
   };
 
   const trackingControl = canShareTracking && !order.isArchived && ['pending', 'in-progress'].includes(order.status) ? (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5" onClick={event => event.stopPropagation()}>
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
       {trackingLinkActive ? (
         <Button
           type="button"
@@ -159,7 +159,10 @@ export function OrderCard({ order, trackingUrl, onLoadTrackingUrl, onClick, isSe
           variant="secondary"
           disabled={creatingTrackingLink || loadingTrackingUrl}
           title={currentTrackingUrl ? 'Copiar o link de acompanhamento já criado' : 'Buscar e copiar o link de acompanhamento'}
-          onClick={() => void copyTrackingUrl()}
+          onClick={event => {
+            event.stopPropagation();
+            void copyTrackingUrl();
+          }}
           className="h-7 gap-1 px-2 text-[11px]"
         >
           {creatingTrackingLink || loadingTrackingUrl ? <Loader2 className="size-3.5 animate-spin" /> : <Copy className="size-3.5" />}
@@ -168,7 +171,14 @@ export function OrderCard({ order, trackingUrl, onLoadTrackingUrl, onClick, isSe
       ) : (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" size="sm" variant="outline" disabled={creatingTrackingLink} className="h-7 gap-1 px-2 text-[11px]">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={creatingTrackingLink}
+              onClick={event => event.stopPropagation()}
+              className="h-7 gap-1 px-2 text-[11px]"
+            >
               {creatingTrackingLink ? <Loader2 className="size-3.5 animate-spin" /> : <Link2 className="size-3.5" />}
               Compartilhar link
             </Button>
