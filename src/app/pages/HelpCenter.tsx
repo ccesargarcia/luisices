@@ -437,6 +437,10 @@ const MODULE_GUIDES: GuideSection[] = [
         desc: 'Navegue entre Caixa de Entrada, Enviados, Favoritos (estrelas), Arquivados, Lixeira e Spam com atualização em tempo real.',
       },
       {
+        title: 'Leitura em nova janela',
+        desc: 'Clique em uma mensagem para abri-la em uma nova aba do navegador. O conteúdo completo e os anexos disponíveis são carregados em uma tela própria, protegida pela permissão de leitura de e-mails.',
+      },
+      {
         title: 'Composição com Modelos Prontos (Templates)',
         desc: 'Crie mensagens do zero ou use modelos instantâneos de "Aprovação de Orçamento", "Confirmação de Pagamento" e "Aviso de Encomenda Pronta" com saudação personalizada.',
       },

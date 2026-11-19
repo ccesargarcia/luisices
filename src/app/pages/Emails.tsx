@@ -630,6 +630,11 @@ export function Emails() {
     }
   };
 
+  const openEmailWindow = (id: string, type: 'received' | 'sent') => {
+    const routeType = type === 'received' ? 'recebidos' : 'enviados';
+    window.open(`/emails/mensagem/${routeType}/${encodeURIComponent(id)}`, '_blank', 'noopener,noreferrer');
+  };
+
   // Alternar explicitamente status de lido / não lido
   const handleStatusChange = async (action: () => Promise<void>) => {
     if (!canEdit) return;
@@ -1862,7 +1867,7 @@ export function Emails() {
                   <ContextMenu key={email.id}>
                     <ContextMenuTrigger asChild>
                       <div
-                        onClick={() => handleSelectEmail(email.id, email._type)}
+                        onClick={() => openEmailWindow(email.id, email._type)}
                         className={`group p-3 sm:p-3.5 cursor-pointer transition-all relative border-b border-border/80 dark:border-zinc-800/90 select-none ${
                           isSelected
                             ? 'bg-primary/10 dark:bg-primary/20 border-l-4 border-l-primary shadow-xs'

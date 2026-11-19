@@ -122,6 +122,7 @@ const Exchanges          = lazyWithRetry(() => import('./pages/Exchanges'), 'Exc
 const Users              = lazyWithRetry(() => import('./pages/Users'), 'Users');
 const HelpCenter         = lazyWithRetry(() => import('./pages/HelpCenter'), 'HelpCenter');
 const Emails             = lazyWithRetry(() => import('./pages/Emails'), 'Emails');
+const EmailMessageWindow = lazyWithRetry(() => import('./pages/EmailMessageWindow'), 'EmailMessageWindow');
 const PublicTrackingLinks = lazyWithRetry(() => import('./pages/PublicTrackingLinks'), 'PublicTrackingLinks');
 const Pricing            = lazyWithRetry(() => import('./pages/Pricing'), 'Pricing');
 const FixNegativeValues  = lazyWithRetry(() => import('./pages/FixNegativeValues'));
@@ -240,6 +241,17 @@ export const router = isCatalogSubdomain
       {
         path: '/oauth-consent',
         element: <Lazy><OAuthConsent /></Lazy>,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/emails/mensagem/:type/:id',
+        element: (
+          <ProtectedRoute>
+            <PermissionRoute check={p => canAccessEmails(p, 'view')}>
+              <Lazy><EmailMessageWindow /></Lazy>
+            </PermissionRoute>
+          </ProtectedRoute>
+        ),
         errorElement: <ErrorBoundary />,
       },
       {
