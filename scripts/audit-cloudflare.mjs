@@ -37,7 +37,9 @@ async function cfFetch(endpoint) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.success) {
     const errorMsg = data.errors?.[0]?.message || `HTTP ${res.status}: ${res.statusText}`;
-    throw new Error(`[Cloudflare API Error] ${endpoint} -> ${errorMsg}`);
+    const apiErr = new Error(`[Cloudflare API Error] ${endpoint} -> ${errorMsg}`);
+    apiErr.statusCode = res.status;
+    throw apiErr;
   }
 
   return data.result;
@@ -316,11 +318,9 @@ async function main() {
         }
       }
     } catch (err) {
-      const safeMsg = String(err?.message || 'Erro desconhecido')
-        .replace(API_TOKEN || '__NO_TOKEN__', '[REDACTED]')
-        .replace(ACCOUNT_ID_ENV || '__NO_ACCOUNT__', '[REDACTED]');
-      console.error('Erro ao listar scripts de Workers:', safeMsg);
-      markdownReport += `*Erro ao listar Workers: ${safeMsg}*\n\n`;
+      const statusLabel = Number.isInteger(err?.statusCode) ? `HTTP ${err.statusCode}` : 'erro de comunicação';
+      console.error('Erro ao listar scripts de Workers:', statusLabel);
+      markdownReport += `*Erro ao listar Workers (${statusLabel})*\n\n`;
     }
 
     // Listar Custom Domains de Workers
@@ -356,9 +356,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  const safeMsg = String(err?.message || 'Erro desconhecido')
-    .replace(API_TOKEN || '__NO_TOKEN__', '[REDACTED]')
-    .replace(ACCOUNT_ID_ENV || '__NO_ACCOUNT__', '[REDACTED]');
-  console.error('\n❌ Erro fatal durante a auditoria:', safeMsg);
+  const statusLabel = Number.isInteger(err?.statusCode) ? `HTTP ${err.statusCode}` : 'erro de execução';
+  console.error('\n❌ Erro fatal durante a auditoria:', statusLabel);
   process.exit(1);
 });

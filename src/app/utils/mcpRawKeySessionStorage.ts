@@ -7,6 +7,7 @@ const FULL_API_KEY = /^lui_(?:dev|live)_[a-f0-9]{48}$/;
 // evitando persistência em texto claro no Web Storage (sessionStorage/localStorage).
 const memoryRawKeys = new Map<string, string>();
 let memoryLatestRawKey: string | null = null;
+let memoryLatestKeyId: string | null = null;
 
 export function normalizeMcpRawKey(value: string): string | null {
   const normalized = value.trim().replace(/^Bearer\s+/i, '');
@@ -36,14 +37,19 @@ export function saveMcpRawKey(keyId: string, rawKey: string): void {
   if (normalized) {
     memoryRawKeys.set(keyId, normalized);
     memoryLatestRawKey = normalized;
+    memoryLatestKeyId = keyId;
   }
-  sessionStorage.setItem(LATEST_KEY_ID, keyId);
   sessionStorage.removeItem(`${KEY_PREFIX}${keyId}`);
   sessionStorage.removeItem(LATEST_RAW_KEY);
+  sessionStorage.removeItem(LATEST_KEY_ID);
 }
 
 export function removeMcpRawKey(keyId: string): void {
   memoryRawKeys.delete(keyId);
+  if (memoryLatestKeyId === keyId) {
+    memoryLatestKeyId = null;
+    memoryLatestRawKey = null;
+  }
   sessionStorage.removeItem(`${KEY_PREFIX}${keyId}`);
   if (sessionStorage.getItem(LATEST_KEY_ID) === keyId) {
     memoryLatestRawKey = null;

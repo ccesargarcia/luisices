@@ -46,7 +46,10 @@ function resolveAllowedCorsOrigin(origin) {
 
 function setCorsHeaders(req, res) {
   const allowedOrigin = resolveAllowedCorsOrigin(req.headers.origin);
-  if (allowedOrigin) res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  if (allowedOrigin) {
+    // nosemgrep: javascript.express.security.cors-misconfiguration.cors-misconfiguration -- origem validada por allowlist estrita em resolveAllowedCorsOrigin
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  }
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, x-origin-secret, x-cf-origin-token');
