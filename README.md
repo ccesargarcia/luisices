@@ -86,7 +86,7 @@ Os índices são definidos em [firestore.indexes.json](firestore.indexes.json), 
 - O histórico financeiro de clientes usa o ledger; as consultas financeiras do Copiloto ainda usam pedidos. As bases podem divergir após exclusões ou mudanças históricas.
 - O modelo atual de chat WhatsApp associa um telefone a um proprietário. Contatos compartilhados entre parceiros exigem evolução desse modelo.
 - Manifest e ícones estão presentes; o entrypoint desregistra service workers. Não há promessa de funcionamento offline completo.
-- Dados de produto em IndexedDB devem ser criptografados antes da gravação. Firestore usa cache em memória e o Firebase Auth persiste apenas na sessão da aba; consulte [segurança e armazenamento local](specs/features/browser-local-data-encryption/spec.md).
+- Dados de produto em IndexedDB devem ser criptografados antes da gravação. Firestore usa cache em memória; Firebase Auth compartilha a sessão entre abas via localStorage, com encerramento por inatividade configurável; consulte [segurança e armazenamento local](specs/features/browser-local-data-encryption/spec.md) e [sessão compartilhada e inatividade](specs/features/cross-tab-session-idle-timeout/spec.md).
 - Criação de pedidos e edição financeira exigem as Functions publicadas; a regra bloqueia criação direta. Uma tentativa pendente deve ser confirmada com a mesma chave e dados antes de iniciar outra. A recuperação local cobre reload/reabertura na mesma sessão, sem promessa entre dispositivos.
 
 Detalhes e fontes estão nos guias vinculados acima.

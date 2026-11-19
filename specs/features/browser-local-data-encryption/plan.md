@@ -2,7 +2,7 @@
 
 ## Abordagem
 
-Substituir persistência web nativa Firestore por `memoryLocalCache()`, alterar Auth para `browserSessionPersistence`, limpar armazenamento Firestore legado durante bootstrap antes de renderizar o React, e atualizar E2E para capturar/restaurar a sessão temporária sem editar IndexedDB. Manter o único IndexedDB próprio com criptografia AES-GCM, conforme `email-body-local-cache`.
+Substituir persistência web nativa Firestore por `memoryLocalCache()`, usar `browserLocalPersistence` do Auth (localStorage compartilhado entre abas, sem IndexedDB), limpar armazenamento Firestore legado durante bootstrap antes de renderizar o React, e atualizar E2E para capturar/restaurar a sessão temporária sem editar IndexedDB. Manter o único IndexedDB próprio com criptografia AES-GCM, conforme `email-body-local-cache`. A expiração configurável por inatividade está especificada em `cross-tab-session-idle-timeout`.
 
 ## Componentes e documentação
 
@@ -19,7 +19,7 @@ Substituir persistência web nativa Firestore por `memoryLocalCache()`, alterar 
 
 - Firestore Rules e Storage Rules permanecem autoritativas. Requisições continuam online como antes.
 - Cache offline de documentos deixa de existir. Reverter `memoryLocalCache` exigiria primeiro oferecer cifra suportada e migrar dados locais.
-- Login mantém reload dentro da aba, mas não mantém sessão após fechar a aba.
+- Auth compartilha a sessão entre abas e pode persistir após fechar o navegador; o timeout de inatividade é o controle de encerramento automático da aplicação.
 - Limpeza legado pode falhar se outra aba antiga mantiver o banco aberto; esse limite deve ser reportado sem bloquear acesso.
 
 ## Copiloto e MCP

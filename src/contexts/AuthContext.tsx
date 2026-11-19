@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { usePresence } from '../hooks/usePresence';
 import { repairClaimsIfNeeded } from '../services/claimsRepairService';
 import { retainOnlyUserEmailCache } from '../services/emailBodyCache';
+import { clearSessionActivity, startSessionInactivityGuard } from '../services/sessionInactivityService';
 
 interface AuthContextType {
   user: User | null;
@@ -54,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const uidToClear = uUid || user?.uid;
     if (uidToClear) {
       localStorage.removeItem(`luisices_device_reg_${uidToClear}`);
+      clearSessionActivity(uidToClear);
     }
     try {
       localStorage.removeItem('luisices_device_id');
@@ -73,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let profileUnsub: (() => void) | null = null;
     let deviceUnsub: (() => void) | null = null;
+    let inactivityUnsub: (() => void) | null = null;
 
     const authUnsubscribe = firebaseAuthService.onAuthChange(async (u) => {
       void retainOnlyUserEmailCache(u?.uid || null);
@@ -95,6 +98,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         deviceUnsub();
         deviceUnsub = null;
       }
+      if (inactivityUnsub) {
+        inactivityUnsub();
+        inactivityUnsub = null;
+      }
 
       setLoading(true);
       setUser(u);
@@ -107,6 +114,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Garante que o token de autenticação está válido antes de conectar os listeners do Firestore
           await u.getIdToken();
           if (!isCurrentTransition()) return;
+
+          inactivityUnsub = await startSessionInactivityGuard(
+            u.uid,
+            (timeoutMinutes) => {
+              toast.info(`Sessão encerrada após ${timeoutMinutes} minutos sem atividade.`);
+              return handleLogout(true, u.uid);
+            },
+            isCurrentTransition,
+          );
+          if (!isCurrentTransition()) {
+            inactivityUnsub();
+            inactivityUnsub = null;
+            return;
+          }
           
           let deviceId = localStorage.getItem('luisices_device_id');
 
@@ -359,6 +380,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       currentUidRef.current = null;
       if (profileUnsub) profileUnsub();
       if (deviceUnsub) deviceUnsub();
+      if (inactivityUnsub) inactivityUnsub();
       authUnsubscribe();
     };
   }, [listenerGeneration]);

@@ -6,7 +6,7 @@
  */
 
 import { initializeApp } from 'firebase/app';
-import { browserSessionPersistence, inMemoryPersistence, getAuth, setPersistence } from 'firebase/auth';
+import { browserLocalPersistence, inMemoryPersistence, getAuth, setPersistence } from 'firebase/auth';
 import {
   initializeFirestore,
   memoryLocalCache,
@@ -103,8 +103,8 @@ export async function recoverFirestorePersistence(): Promise<void> {
 // Serviços exportados
 export const auth = getAuth(app);
 
-export const authPersistenceReady = setPersistence(auth, browserSessionPersistence).catch(async error => {
-  console.warn('[Firebase] Persistência de sessão indisponível; usando sessão somente em memória:', error);
+export const authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch(async error => {
+  console.warn('[Firebase] Persistência compartilhada entre abas indisponível; usando sessão somente em memória:', error);
   await setPersistence(auth, inMemoryPersistence);
 });
 

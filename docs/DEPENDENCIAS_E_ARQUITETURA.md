@@ -32,7 +32,7 @@ O navegador também utiliza serviços de observabilidade, consulta de CEP e URLs
 | Aplicação | React, React DOM, TypeScript, Vite, React Router | Componentes, tipagem, build e navegação |
 | Interface | Tailwind, Radix, Lucide, Sonner, Motion | Estilos, componentes e feedback |
 | Formulários | React Hook Form, Zod, resolvers | Entrada e validação |
-| Dados | Firebase SDK | Auth, Firestore, RTDB, Storage, Analytics e Performance; Firestore usa cache em memória e Auth persiste na sessão da aba para evitar IndexedDB interno sem cifra configurável |
+| Dados | Firebase SDK | Auth, Firestore, RTDB, Storage, Analytics e Performance; Firestore usa cache em memória; Auth usa `browserLocalPersistence` (localStorage) com sincronização entre abas e expiração configurável por inatividade |
 | Backend | firebase-admin, firebase-functions | Operações administrativas, callables e eventos |
 | E-mail | Resend, Firebase Storage, IndexedDB/Web Crypto no navegador | Envio/webhook Resend; corpos recebidos grandes em objetos privados carregados sob demanda e, após leitura, cache local criptografado por usuário com TTL/limites; leitura web direta exige CORS restrito aos domínios DEV/Beta em `storage.cors.dev.json` |
 | WhatsApp | Evolution API via HTTP | Envio, histórico e webhook |

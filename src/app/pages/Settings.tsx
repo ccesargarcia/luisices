@@ -47,7 +47,9 @@ import { McpSettingsSection } from '../components/settings/McpSettingsSection';
 import { SuperfreteSettingsSection } from '../components/settings/SuperfreteSettingsSection';
 import { BackendRoutingSettingsSection } from '../components/settings/BackendRoutingSettingsSection';
 import { DangerZoneSection } from '../components/settings/DangerZoneSection';
+import { SessionSecuritySection } from '../components/settings/SessionSecuritySection';
 import type { UserSettings } from '../../services/firebaseSettingsService';
+import { DEFAULT_SESSION_IDLE_TIMEOUT_MINUTES, normalizeSessionIdleTimeout } from '../../services/sessionInactivityService';
 import { isSuperfreteDevEnvironment } from '../../lib/firebase';
 
 export function Settings() {
@@ -137,6 +139,8 @@ export function Settings() {
   const [whatsappSignature, setWhatsappSignature] = useState('');
   const [savingWhatsappTemplate, setSavingWhatsappTemplate] = useState(false);
   const [savingSuperfrete, setSavingSuperfrete] = useState(false);
+  const [sessionIdleTimeoutMinutes, setSessionIdleTimeoutMinutes] = useState<0 | 15 | 30 | 60>(DEFAULT_SESSION_IDLE_TIMEOUT_MINUTES);
+  const [savingSessionIdleTimeout, setSavingSessionIdleTimeout] = useState(false);
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo>({
     businessName: settings?.businessName || '',
     businessPhone: settings?.businessPhone || '',
@@ -157,6 +161,7 @@ export function Settings() {
   // Atualizar business info quando settings carregar
   useEffect(() => {
     if (settings) {
+      setSessionIdleTimeoutMinutes(normalizeSessionIdleTimeout(settings.sessionIdleTimeoutMinutes));
       setBusinessInfo({
         businessName: settings.businessName || '',
         businessPhone: settings.businessPhone || '',
@@ -403,6 +408,21 @@ export function Settings() {
       toast.error(error instanceof Error ? error.message : 'Erro ao salvar configurações da SuperFrete');
     } finally {
       setSavingSuperfrete(false);
+    }
+  };
+
+  const handleSessionIdleTimeoutSave = async () => {
+    setSavingSessionIdleTimeout(true);
+    try {
+      await updateSettings({ sessionIdleTimeoutMinutes });
+      toast.success(sessionIdleTimeoutMinutes === 0
+        ? 'Encerramento por inatividade desativado.'
+        : 'Prazo de inatividade salvo com sucesso.');
+    } catch (error) {
+      console.error('Erro ao salvar preferência de sessão:', error);
+      toast.error('Não foi possível salvar a preferência de sessão.');
+    } finally {
+      setSavingSessionIdleTimeout(false);
     }
   };
 
@@ -736,6 +756,12 @@ export function Settings() {
         {/* ─── ABA 5: AVANÇADO & SEGURANÇA ───────────────────────── */}
         <TabsContent value="avancado" className="space-y-6">
           <BackendRoutingSettingsSection isAdmin={isAdmin} />
+          <SessionSecuritySection
+            value={sessionIdleTimeoutMinutes}
+            saving={savingSessionIdleTimeout}
+            onChange={setSessionIdleTimeoutMinutes}
+            onSave={handleSessionIdleTimeoutSave}
+          />
 
           {/* Informações da Conta */}
           <Card>

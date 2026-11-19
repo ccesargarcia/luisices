@@ -14,7 +14,7 @@ O frontend usava cache persistente nativo do Firestore e persistência local do 
 
 - Exigir criptografia antes da gravação de dados de aplicação em IndexedDB.
 - Desativar persistências IndexedDB internas sem criptografia configurável.
-- Usar persistência de sessão da aba no Firebase Auth e cache em memória no Firestore.
+- Usar persistência local do Firebase Auth em `localStorage`, que sincroniza a autenticação entre abas, e cache em memória no Firestore.
 - Cifrar o cache explícito dos corpos de e-mail com AES-GCM antes de gravar.
 - Remover cache Firestore legado quando possível e não copiar tokens de Firebase Auth via IndexedDB em E2E.
 
@@ -28,7 +28,7 @@ O frontend usava cache persistente nativo do Firestore e persistência local do 
 
 - **RF-1:** Todo novo dado da aplicação persistido em IndexedDB precisa ser cifrado antes da gravação.
 - **RF-2:** Firestore web usa `memoryLocalCache()`; documentos não ficam persistidos localmente para uso offline.
-- **RF-3:** Firebase Auth usa `browserSessionPersistence`; a sessão permanece na aba atual, inclusive reloads, e termina ao fechar a aba.
+- **RF-3:** Firebase Auth usa `browserLocalPersistence` (localStorage); a sessão é compartilhada entre abas e pode sobreviver ao fechamento do navegador, sujeita ao encerramento por inatividade da aplicação.
 - **RF-4:** O cache próprio de e-mails usa AES-GCM, chave não exportável por UID, IV aleatório, expiração de 7 dias e limites definidos em sua spec dedicada.
 - **RF-5:** Dados residuais de cache Firestore legado são limpos durante a inicialização, antes do primeiro uso Firestore, quando o navegador permite.
 - **RF-6:** E2E não extrai nem injeta os bancos IndexedDB internos do Firebase; configura sessão transitória de teste fora do IndexedDB.
@@ -38,7 +38,7 @@ O frontend usava cache persistente nativo do Firestore e persistência local do 
 
 - **CA-1 (RF-1/RF-4):** Valores HTML/texto do cache de e-mail não aparecem em claro nos registros IndexedDB; somente conteúdo descriptografado em memória chega à UI.
 - **CA-2 (RF-2):** A inicialização Firestore não habilita `persistentLocalCache` e não promete leitura/escrita offline após reload.
-- **CA-3 (RF-3):** A autenticação persiste durante reload da aba e exige login após fechar a aba.
+- **CA-3 (RF-3):** A autenticação se sincroniza entre abas; o prazo de inatividade encerra a sessão em todas elas. Sem limite configurado, não há logout automático por inatividade.
 - **CA-4 (RF-5):** A limpeza do cache antigo ocorre antes da renderização principal; falha por outra aba/navegador é registrada e não impede o app.
 - **CA-5 (RF-6):** Arquivos E2E de sessão não são banco IndexedDB; `.auth` permanece fora do Git.
 - **CA-6 (RF-7):** Skill, constituição, arquitetura e funcionalidades documentam a regra e as exceções técnicas.
@@ -46,13 +46,13 @@ O frontend usava cache persistente nativo do Firestore e persistência local do 
 ## Segurança e dados
 
 - Cache próprio: Web Crypto AES-GCM, IV de 96 bits aleatório por entrada e chave não exportável no mesmo IndexedDB, segregada por UID. Essa chave protege leitura direta/exportação dos dados; por estar disponível à origem autenticada, não protege contra XSS.
-- SDKs sem criptografia configurável: desativar IndexedDB em vez de alegar criptografia nativa. Firestore fica em memória; Auth usa sessionStorage.
+- SDKs sem criptografia configurável: desativar IndexedDB em vez de alegar criptografia nativa. Firestore fica em memória; Auth usa a persistência local padrão Firebase em localStorage, não IndexedDB.
 - O cache local nunca altera a autorização autoritativa do backend/Rules.
 
 ## Impactos funcionais
 
 - Sem documentos Firestore offline após recarregar ou fechar a aba; a aplicação precisa de conectividade para buscar dados ausentes da memória.
-- Login deixa de sobreviver ao fechamento da aba; recarregar a mesma aba preserva sessão.
+- A autenticação é compartilhada entre abas. `browserLocalPersistence` persiste em localStorage e pode sobreviver ao fechamento do navegador; a checagem de inatividade ocorre ao iniciar/retomar o app.
 - Cada aba pode manter sua própria sessão Firebase Auth; coordenação multi-aba da persistência local deixa de ser fornecida pelo Auth.
 
 ## Impacto nas integrações de IA

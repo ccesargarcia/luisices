@@ -80,6 +80,8 @@ export const DEFAULT_ORDER_TRACKING_TEMPLATE: OrderTrackingTemplate = {
 
 export interface UserSettings {
   userId: string;
+  /** Inactivity logout in minutes; 0 disables the automatic timeout. */
+  sessionIdleTimeoutMinutes?: 0 | 15 | 30 | 60;
   orderTrackingTemplate?: Partial<OrderTrackingTemplate>;
 
   // Personalização visual

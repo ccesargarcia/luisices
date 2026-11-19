@@ -10,3 +10,5 @@
   - Evidência: arquivos desta pasta, `docs/FUNCIONALIDADES.md`, `docs/DEPENDENCIAS_E_ARQUITETURA.md`, README e índice de specs.
 - [x] **T5 — Validação estática e deploy DEV/Beta:** executar typecheck, publicar conforme solicitação e registrar resultado; validação funcional autenticada no navegador permanece pendente.
   - Evidência: `npm run typecheck` e `git diff --check` passaram; busca estática confirmou que o único IndexedDB próprio restante cifra conteúdo antes da gravação. Deploy Firebase DEV `44457575451`, Vercel DEV/Beta `44457575322` e CodeQL `44457575318` passaram. Sem Functions/Cloudflare e sem E2E. Playwright não abriu porque Chromium não está instalado.
+- [x] **T6 — Corrigir descrição da persistência Auth:** documentar `browserLocalPersistence` como localStorage cross-tab (não IndexedDB) e ligar a expiração por inatividade à spec dedicada.
+  - Evidência: código revisado nesta mudança; validação de tipo ainda pendente.
