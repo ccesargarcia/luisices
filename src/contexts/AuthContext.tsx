@@ -10,6 +10,7 @@ import { setUserAnalytics } from '../services/analyticsService';
 import { toast } from 'sonner';
 import { usePresence } from '../hooks/usePresence';
 import { repairClaimsIfNeeded } from '../services/claimsRepairService';
+import { retainOnlyUserEmailCache } from '../services/emailBodyCache';
 
 interface AuthContextType {
   user: User | null;
@@ -74,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let deviceUnsub: (() => void) | null = null;
 
     const authUnsubscribe = firebaseAuthService.onAuthChange(async (u) => {
+      void retainOnlyUserEmailCache(u?.uid || null);
       // Se for o mesmo usuário e os listeners já estiverem ativos, apenas atualiza o objeto user (ex: token refresh).
       // Se os listeners não estiverem ativos (ex: novo login consecutivo), prossegue com a inicialização completa.
       if (currentUidRef.current === u?.uid && profileUnsub) {

@@ -7,6 +7,15 @@ description: Arquitetura de segurança da plataforma Luisices (RBAC multi-tenant
 
 Esta skill consolida os invariantes de segurança, controles de acesso, proteção de dados financeiros, integridade transacional e testes adversariais (Red Team) da plataforma Luisices.
 
+## 0. Armazenamento local no navegador e IndexedDB
+
+- **Regra obrigatória:** qualquer dado da aplicação persistido em IndexedDB deve ser cifrado antes de ser gravado. Texto, HTML, tokens, PII, anexos, metadados sensíveis e chaves de conteúdo não podem ser persistidos em claro.
+- Prefira Web Crypto AES-GCM com IV aleatório por gravação, validação autenticada na leitura, chaves não exportáveis e separação por UID/tenant quando houver dados de conta. Defina expiração, limites de tamanho/quantidade, limpeza em logout/troca de conta e fallback seguro quando IndexedDB/Web Crypto falhar.
+- Uma chave não exportável armazenada no mesmo perfil/origem reduz exposição em leitura direta do banco exportado, mas **não** é uma fronteira contra XSS, script comprometido na origem, malware ou usuário com sessão ativa. Registre essa limitação; cache local nunca substitui autorização do servidor.
+- Bibliotecas que controlam internamente seus bancos IndexedDB e não oferecem criptografia configurável (ex.: persistência web nativa do Firestore e Firebase Auth `browserLocalPersistence`) não podem ser tratadas como criptografadas. Não habilite esses modos: use `memoryLocalCache()` para Firestore e persistência de sessão da aba (`browserSessionPersistence`) ou memória para Auth. Quando migrar de persistência local sem criptografia, remova o banco legado quando for seguro e documente limitações de abas antigas/dispositivos offline.
+- E2E e ferramentas de desenvolvimento não devem extrair/restaurar bancos IndexedDB internos com tokens em claro. Use sessão de teste de curta duração fora do IndexedDB e mantenha os arquivos de estado ignorados pelo Git.
+- Toda spec que introduzir ou tocar em IndexedDB deve declarar o mecanismo criptográfico, localização/escopo da chave, limites/expiração, limpeza, fallback e ameaça residual. Se o SDK controla o IndexedDB sem opção de cifra, desative essa persistência e registre a consequência funcional (por exemplo, ausência de leitura offline).
+
 ---
 
 ## 1. Modelo de Autorização Multi-Tenant e RBAC

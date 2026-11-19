@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client";
 import App from "./app/App";
 import "./styles/index.css";
 import { initSentry } from "./lib/sentry";
-import { recoverFirestorePersistence } from "./lib/firebase";
+import { authPersistenceReady, legacyFirestoreCacheCleanup, recoverFirestorePersistence } from "./lib/firebase";
 
 // Inicializa monitoramento de erros e performance do Sentry (Build: 2026-10-13)
 initSentry();
@@ -39,9 +39,9 @@ window.addEventListener('vite:preloadError', (event) => {
 });
 
 /**
- * Escudo Global contra Asserções Internas de SDKs (Firebase Firestore / Multi-tab)
+ * Escudo Global contra Asserções Internas do Firebase Firestore
  * Evita que erros assíncronos não tratados como "INTERNAL ASSERTION FAILED: Unexpected state (ID: b815)"
- * quebrem o ciclo de renderização do React e aciona auto-recuperação do IndexedDB.
+ * quebrem o ciclo de renderização do React e aciona recuperação do estado local.
  */
 window.addEventListener('unhandledrejection', (event) => {
   const reason = event.reason;
@@ -62,4 +62,10 @@ window.addEventListener('unhandledrejection', (event) => {
   }
 });
 
-createRoot(document.getElementById("root")!).render(<App />);
+void Promise.all([authPersistenceReady, legacyFirestoreCacheCleanup]).then(
+  () => createRoot(document.getElementById("root")!).render(<App />),
+  error => {
+    console.error('[Firebase] Falha ao preparar armazenamento local seguro:', error);
+    createRoot(document.getElementById("root")!).render(<App />);
+  },
+);

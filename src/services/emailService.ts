@@ -17,6 +17,7 @@ import { auth, db, functions, storage } from '../lib/firebase';
 import { SendEmailPayload, EmailUsage } from '../app/types';
 import { getVercelBetaApiUrl } from '../app/utils/betaHost';
 import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
+import { cacheReceivedEmailBody, getCachedReceivedEmailBody } from './emailBodyCache';
 
 function getStorageErrorCode(error: unknown): string {
   if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string') {
@@ -110,6 +111,7 @@ export class EmailService {
     options: {
       fallbackText?: string;
       timeoutMs?: number;
+      cacheIdentity?: { uid: string; emailId: string };
       onProgress?: (body: {
         html: string;
         text: string;
@@ -129,6 +131,18 @@ export class EmailService {
     htmlErrorCode: string | null;
     textErrorCode: string | null;
   }> {
+    if (options.cacheIdentity) {
+      const cached = await getCachedReceivedEmailBody(
+        options.cacheIdentity.uid,
+        options.cacheIdentity.emailId,
+        paths,
+      );
+      if (cached) {
+        options.onProgress?.(cached);
+        return cached;
+      }
+    }
+
     const timeoutMs = Number.isFinite(options.timeoutMs) && (options.timeoutMs || 0) > 0
       ? options.timeoutMs as number
       : 15_000;
@@ -185,6 +199,9 @@ export class EmailService {
       html, text, htmlLoading: false, htmlUnavailable, textUnavailable,
       htmlErrorCode, textErrorCode,
     };
+    if (options.cacheIdentity) {
+      void cacheReceivedEmailBody(options.cacheIdentity.uid, options.cacheIdentity.emailId, paths, result);
+    }
     options.onProgress?.(result);
     return result;
   }

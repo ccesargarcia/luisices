@@ -577,6 +577,7 @@ export function Emails() {
       { html: receivedHtmlPath, text: receivedTextPath },
       {
         fallbackText: currentReceivedEmail?.bodyPreview || '',
+        cacheIdentity: { uid: user?.uid || '', emailId },
         onProgress: body => {
           if (!cancelled) setLoadedReceivedBody({ emailId, ...body });
         },
@@ -590,7 +591,7 @@ export function Emails() {
       .finally(() => { if (!cancelled) setLoadingReceivedBodyId(null); });
 
     return () => { cancelled = true; };
-  }, [currentReceivedEmail?.id, currentReceivedEmail?.bodyPreview, receivedHtmlPath, receivedTextPath]);
+  }, [currentReceivedEmail?.id, currentReceivedEmail?.bodyPreview, receivedHtmlPath, receivedTextPath, user?.uid]);
 
   const currentSentEmail = useMemo(() => {
     if (selectedEmailType !== 'sent' || !selectedEmailId) return null;
@@ -1320,7 +1321,9 @@ export function Emails() {
     let fullBody = { html: email.html || '', text: email.text || '' };
     if (email.bodyStoragePaths) {
       try {
-        fullBody = await emailService.loadReceivedEmailBody(email.bodyStoragePaths);
+        fullBody = await emailService.loadReceivedEmailBody(email.bodyStoragePaths, {
+          cacheIdentity: { uid: user?.uid || '', emailId: email.id },
+        });
       } catch {
         toast.error('Não foi possível carregar o conteúdo completo para a resposta.');
         return;
@@ -1350,7 +1353,9 @@ export function Emails() {
     let receivedText = currentReceivedEmail?.text || '';
     if (currentReceivedEmail?.bodyStoragePaths) {
       try {
-        const body = await emailService.loadReceivedEmailBody(currentReceivedEmail.bodyStoragePaths);
+        const body = await emailService.loadReceivedEmailBody(currentReceivedEmail.bodyStoragePaths, {
+          cacheIdentity: { uid: user?.uid || '', emailId: currentReceivedEmail.id },
+        });
         receivedText = body.text || body.html.replace(/<[^>]+>/g, ' ');
       } catch {
         toast.error('Não foi possível carregar o conteúdo da mensagem.');

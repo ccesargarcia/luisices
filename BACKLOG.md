@@ -77,7 +77,7 @@ Itens mapeados na auditoria de segurança para serem abordados em próximas etap
 
 ### ⚡ Resiliência de Aplicação e Auto-Cura
 - **Carregador de Rotas Quádruplo (`lazyWithRetry` em `routes.tsx`):** Suporte a named e default exports, retentativa em memória de 800ms, auto-recuperação com limpeza de cache para evitar telas brancas pós-deploy e Error Boundary.
-- **Escudo Global do Firestore (`main.tsx` + `firebase.ts`):** Interceptação de asserções assíncronas do Firestore (como o erro `b815`) e auto-recuperação do IndexedDB via `recoverFirestorePersistence()` sem quebrar a aplicação React.
+- **Escudo Global do Firestore (`main.tsx` + `firebase.ts`):** Interceptação de asserções assíncronas do Firestore (como o erro `b815`) e recuperação do estado local via `recoverFirestorePersistence()` sem quebrar a aplicação React. O Firestore usa cache em memória para não persistir documentos sem criptografia no IndexedDB.
 - **Performance com Dynamic Imports:** Carregamento sob demanda (*code splitting*) de `xlsx` e `jspdf` para redução de bundle inicial.
 
 ### 🛍️ Segregação de WhatsApp e Desacoplamento da Lojinha

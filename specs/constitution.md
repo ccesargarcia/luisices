@@ -15,6 +15,7 @@ Estas regras orientam novas specs e planos. Complementam `AGENTS.md`; não subst
 - Operações financeiras preservam cálculo em centavos, integridade transacional entre pedidos e ledger e idempotência conforme documentos e skills existentes. Não inferir caixa recebido a partir de volume emitido.
 - Mudanças em contrato público identificam clientes, schemas, aliases, compatibilidade e estratégia de transição.
 - Segredos, credenciais, dados reais de clientes e informações privadas de operação não pertencem a specs versionadas.
+- **IndexedDB:** qualquer dado persistido pela aplicação em IndexedDB deve ser cifrado antes da gravação; texto, PII, credenciais e conteúdo de mensagens em claro são proibidos. Specs devem registrar algoritmo, gestão/escopo da chave, limites, expiração, limpeza, fallback e ameaça residual. Se um SDK gerencia o banco sem opção de criptografia, desative essa persistência (ou use cache em memória/persistência fora do IndexedDB) e documente a perda funcional; não declare o banco como criptografado por padrão.
 
 ## Qualidade e entrega
 

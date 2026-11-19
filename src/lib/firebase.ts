@@ -1,16 +1,15 @@
 /**
  * Firebase Configuration
  *
- * Setup do Firebase SDK para o projeto de papelaria personalizada
- * Inclui auto-cura contra asserções internas de colisão de abas do Firestore (ex: erro b815).
+ * Setup do Firebase SDK para o projeto de papelaria personalizada.
+ * Dados persistentes do SDK não devem ser gravados sem criptografia no IndexedDB.
  */
 
 import { initializeApp } from 'firebase/app';
-import { browserLocalPersistence, getAuth, setPersistence } from 'firebase/auth';
+import { browserSessionPersistence, inMemoryPersistence, getAuth, setPersistence } from 'firebase/auth';
 import {
   initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
+  memoryLocalCache,
   terminate,
   clearIndexedDbPersistence,
   connectFirestoreEmulator,
@@ -44,18 +43,30 @@ export const isSuperfreteDevEnvironment =
 // Inicializar Firebase
 const app = initializeApp(firebaseConfig);
 
-// Inicializar Firestore com cache persistente multi-aba moderno
+// O cache persistente nativo do Firestore grava documentos em IndexedDB sem
+// criptografia configurável pelo aplicativo. Usamos somente memória.
 export const db: Firestore = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
-  }),
+  localCache: memoryLocalCache(),
   ignoreUndefinedProperties: true,
 });
 
+/** Remove o cache IndexedDB legado do Firestore antes da aplicação iniciar. */
+const clearLegacyFirestoreCache = clearIndexedDbPersistence(db).catch(error => {
+  console.warn('[Firebase] Não foi possível limpar o cache IndexedDB legado do Firestore:', error);
+});
+export const legacyFirestoreCacheCleanup = new Promise<void>(resolve => {
+  const timeout = setTimeout(() => {
+    console.warn('[Firebase] A limpeza do cache legado demorou; a inicialização seguirá sem cache persistente.');
+    resolve();
+  }, 1500);
+  void clearLegacyFirestoreCache.then(() => {
+    clearTimeout(timeout);
+    resolve();
+  });
+});
+
 /**
- * Auto-Cura de Persistência do Firestore
- * Se o SDK sofrer descompasso ou corrupção de targetId entre abas (ex: asserção b815),
- * limpa com segurança o cache IndexedDB sem afetar as credenciais ou dados na nuvem.
+ * Recuperação de cache do Firestore em memória após asserções internas (ex.: b815).
  */
 let isRecoveringPersistence = false;
 export async function recoverFirestorePersistence(): Promise<void> {
@@ -72,11 +83,11 @@ export async function recoverFirestorePersistence(): Promise<void> {
     }
     sessionStorage.setItem('firestore_recovery_timestamp', String(now));
 
-    console.warn('[Firebase] Iniciando auto-cura do cache IndexedDB do Firestore...');
+    console.warn('[Firebase] Iniciando recuperação do estado local do Firestore...');
     try {
       await terminate(db);
       await clearIndexedDbPersistence(db);
-      console.info('[Firebase] Cache IndexedDB resetado com sucesso.');
+      console.info('[Firebase] Estado persistente legado do Firestore limpo.');
     } catch (clearErr) {
       console.warn('[Firebase] Aviso ao limpar persistência do IndexedDB (outra aba pode estar ativa):', clearErr);
     }
@@ -92,8 +103,9 @@ export async function recoverFirestorePersistence(): Promise<void> {
 // Serviços exportados
 export const auth = getAuth(app);
 
-setPersistence(auth, browserLocalPersistence).catch(error => {
-  console.warn('[Firebase] Não foi possível ativar persistência local:', error);
+export const authPersistenceReady = setPersistence(auth, browserSessionPersistence).catch(async error => {
+  console.warn('[Firebase] Persistência de sessão indisponível; usando sessão somente em memória:', error);
+  await setPersistence(auth, inMemoryPersistence);
 });
 
 export const storage = getStorage(app);

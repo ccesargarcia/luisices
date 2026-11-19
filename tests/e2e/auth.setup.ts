@@ -4,10 +4,12 @@ import * as path from 'path';
 import { getTestCredentials } from './utils/auth.util';
 
 const authFile = 'playwright/.auth/user.json';
-const idbFile = 'playwright/.auth/firebaseIdb.json';
+const sessionFile = 'playwright/.auth/firebaseSession.json';
 
 setup('authenticate', async ({ page }) => {
   setup.setTimeout(60000);
+  const staleIdbFile = 'playwright/.auth/firebaseIdb.json';
+  if (fs.existsSync(staleIdbFile)) fs.unlinkSync(staleIdbFile);
   const credentials = getTestCredentials();
 
   console.log(`[auth.setup] Iniciando autenticação com usuário: ${credentials.email}`);
@@ -63,45 +65,15 @@ setup('authenticate', async ({ page }) => {
     fs.mkdirSync(authDir, { recursive: true });
   }
 
-  // Capturar tokens do IndexedDB (Firebase Auth) para persistência
+  // Capturar a sessão temporária do Firebase Auth para restaurá-la nos contextos E2E.
   try {
-    const idbData = await page.evaluate(async () => {
-      return new Promise<Array<{ key: IDBValidKey; value: any }>>((resolve) => {
-        const req = indexedDB.open('firebaseLocalStorageDb');
-        req.onsuccess = () => {
-          const db = req.result;
-          if (!db.objectStoreNames.contains('firebaseLocalStorage')) {
-            db.close();
-            resolve([]);
-            return;
-          }
-          const tx = db.transaction('firebaseLocalStorage', 'readonly');
-          const store = tx.objectStore('firebaseLocalStorage');
-          const getAllReq = store.getAll();
-          const getAllKeysReq = store.getAllKeys();
-
-          tx.oncomplete = () => {
-            const keys = getAllKeysReq.result;
-            const values = getAllReq.result;
-            const entries = keys.map((k, i) => ({ key: k, value: values[i] }));
-            db.close();
-            resolve(entries);
-          };
-          tx.onerror = () => {
-            db.close();
-            resolve([]);
-          };
-        };
-        req.onerror = () => resolve([]);
-      });
-    });
-
-    if (idbData && idbData.length > 0) {
-      fs.writeFileSync(idbFile, JSON.stringify(idbData, null, 2));
-      console.log(`[auth.setup] IndexedDB do Firebase capturado com sucesso (${idbData.length} entradas)`);
+    const sessionData = await page.evaluate(() => Object.entries(sessionStorage));
+    if (sessionData.length > 0) {
+      fs.writeFileSync(sessionFile, JSON.stringify(sessionData, null, 2));
+      console.log(`[auth.setup] Sessão da aba do Firebase capturada (${sessionData.length} entradas)`);
     }
   } catch (err) {
-    console.warn('[auth.setup] Não foi possível extrair IndexedDB do Firebase:', err);
+    console.warn('[auth.setup] Não foi possível capturar a sessão do Firebase:', err);
   }
 
   // Salvar cookies e localStorage

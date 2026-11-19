@@ -15,46 +15,30 @@ export function getTestCredentials() {
   return { email, password };
 }
 
-const IDB_FILE = path.resolve(process.cwd(), 'playwright/.auth/firebaseIdb.json');
+const SESSION_FILE = path.resolve(process.cwd(), 'playwright/.auth/firebaseSession.json');
 
 /**
- * Restaura IndexedDB salvo pelo auth.setup.ts antes do carregamento da página
+ * Restaura a sessão do Firebase antes do carregamento da página
  */
-export async function restoreIndexedDB(page: Page) {
-  if (!fs.existsSync(IDB_FILE)) return;
+export async function restoreFirebaseSession(page: Page) {
+  if (!fs.existsSync(SESSION_FILE)) return;
 
   try {
-    const raw = fs.readFileSync(IDB_FILE, 'utf-8');
+    const raw = fs.readFileSync(SESSION_FILE, 'utf-8');
     const entries = JSON.parse(raw);
     if (!entries || !entries.length) return;
 
     await page.addInitScript((items) => {
-      const req = indexedDB.open('firebaseLocalStorageDb', 1);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains('firebaseLocalStorage')) {
-          db.createObjectStore('firebaseLocalStorage', { keyPath: 'fbase_key' });
-        }
-      };
-      req.onsuccess = () => {
-        const db = req.result;
-        const tx = db.transaction('firebaseLocalStorage', 'readwrite');
-        const store = tx.objectStore('firebaseLocalStorage');
-        items.forEach((item: any) => {
-          try {
-            store.put(item.value ?? item);
-          } catch {}
-        });
-      };
+      for (const [key, value] of items as Array<[string, string]>) sessionStorage.setItem(key, value);
     }, entries);
   } catch (err) {
-    console.warn('[auth.util] Falha ao ler ou restaurar IndexedDB:', err);
+    console.warn('[auth.util] Falha ao ler ou restaurar sessão do Firebase:', err);
   }
 }
 
 /**
  * Garante que a página está autenticada.
- * Se storageState/IndexedDB estiverem disponíveis, evita logins repetidos.
+ * Se a sessão temporária estiver disponível, evita logins repetidos.
  * Caso contrário, executa o login pelo formulário como fallback seguro.
  */
 export async function ensureAuthenticated(page: Page) {
@@ -66,7 +50,7 @@ export async function ensureAuthenticated(page: Page) {
     }
   }
 
-  await restoreIndexedDB(page);
+  await restoreFirebaseSession(page);
 
   await page.goto('/dashboard');
 

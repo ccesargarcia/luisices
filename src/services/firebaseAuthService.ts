@@ -14,7 +14,7 @@ import {
   reload,
 } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
-import { auth, functions } from '../lib/firebase';
+import { auth, authPersistenceReady, functions } from '../lib/firebase';
 import { executeWithGcpFallback } from './backendRoutingService';
 import { callBetaUsersApi } from './firebaseUserService';
 
@@ -23,6 +23,7 @@ export class FirebaseAuthService {
    * Registrar novo usuário
   */
   async register(email: string, password: string, displayName?: string, inviteToken?: string): Promise<User> {
+    await authPersistenceReady;
     if (!inviteToken) {
       throw new Error('Este cadastro só pode ser concluído por meio de um convite válido.');
     }
@@ -63,6 +64,7 @@ export class FirebaseAuthService {
    * Login
    */
   async login(email: string, password: string): Promise<User> {
+    await authPersistenceReady;
     const userCredential = await signInWithEmailAndPassword(
       auth,
       email,

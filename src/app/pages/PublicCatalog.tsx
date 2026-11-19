@@ -218,7 +218,7 @@ export function PublicCatalog() {
     };
   }, [isCategoryDropdownOpen, isBottomSheetOpen]);
 
-  // Produtos reais carregados em tempo real via Firestore (IndexedDB nativo do SDK)
+  // Produtos reais carregados em tempo real via Firestore (cache em memória do SDK)
   const [products, setProducts] = useState<CatalogProduct[]>(readCachedCatalogProducts);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [catalogLoadError, setCatalogLoadError] = useState(false);
