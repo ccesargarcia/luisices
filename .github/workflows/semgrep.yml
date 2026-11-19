@@ -69,7 +69,7 @@ jobs:
             -e GITHUB_RUN_ID \
             -e GITHUB_SERVER_URL \
             semgrep/semgrep:latest \
-            semgrep ci --config .semgrep/luisices.yml
+            semgrep ci
 
       - name: Run Semgrep scan (SARIF)
         run: |
