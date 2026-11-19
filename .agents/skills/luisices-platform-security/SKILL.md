@@ -127,3 +127,41 @@ npm run test:unit
 2. **Atestar a falha antes do patch (Red)**: Executar o teste contra o código sem correção para provar que o vetor é explorável.
 3. **Aplicar a correção mínima e defensiva (Green)**: Corrigir a validação na camada correspondente mantendo compatibilidade com os fluxos legítimos.
 4. **Verificar ausência de regressões**: Rodar toda a suíte unitária e de regras.
+
+---
+
+## 6. Guardrails de Código Seguro, CI/CD e SAST (CodeQL & Semgrep)
+
+Para impedir a reintrodução de vulnerabilidades já mitigadas em auditorias SAST (CodeQL e Semgrep), toda alteração de código, script ou workflow deve seguir estes padrões obrigatórios:
+
+### 6.1 Validação de URL e Hostname (nunca usar `.includes()` em URLs)
+- **Proibido:** validar domínios com `url.includes('firebasestorage.googleapis.com')`, `url.includes('cloudfunctions.net')` ou `url.includes('run.app')` (vulnerável a `https://evil.com/firebasestorage.googleapis.com` ou `https://cloudfunctions.net.evil.com`).
+- **Obrigatório:** parsear com `new URL(rawUrl)` e validar `parsed.hostname` (igualdade exata ou sufixo com ponto `.endsWith('.cloudfunctions.net')`) e `parsed.protocol` (`https:` / `http:`).
+
+### 6.2 Prevenção de XSS no DOM (`href`, `<img src>` e sanitização)
+- **Links externos (`href`) e previews de imagem (`<img src>`):** usar obrigatoriamente `sanitizeExternalHttpUrl` e `sanitizeImagePreviewUrl` de `src/app/utils/safeMediaUrl.ts`, aceitando apenas `https:`, `http:`, `blob:` ou `data:image/(png|jpeg|jpg|webp|gif|avif);base64,...` e bloqueando `javascript:`, `data:text/html` e `data:image/svg+xml`.
+- **Sanitização parcial proibida:** nunca usar `.replace(/<.*?>/, '')` para limpar strings com `<...>` (alerta `js/incomplete-multi-character-sanitization`). Para extrair nome/endereço de cabeçalhos de e-mail (`Nome <email>`), usar parsing explícito por índice (`indexOf('<')`).
+
+### 6.3 Criptografia (AES-GCM) e Aleatoriedade Segura
+- **AES-GCM no backend (Node.js):** especificar sempre `{ authTagLength: 16 }` em `crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 })` e validar o tamanho do IV e da auth tag antes de decifrar.
+- **Aleatoriedade:** nunca usar `Math.random()` para IDs, tokens ou chaves de idempotência. Usar `secureRandomId` / `secureRandomNumber` de `src/app/utils/random.ts` (fail-closed sobre Web Crypto API, sem fallback para `Math.random()`).
+- **Hashes não-senha:** SHA-256 é permitido apenas para tokens criptográficos de alta entropia (ex.: lookup de OAuth access token) ou chaves de idempotência — nunca para senhas de usuário.
+
+### 6.4 Segredos e PII no Navegador (`sessionStorage` / `localStorage`)
+- **Chaves de API one-time (MCP):** nunca gravar `rawKey` nem `keyId` recém-criado em `sessionStorage` ou `localStorage` em texto claro; manter exclusivamente em memória volátil da aba (`Map` em escopo de módulo, conforme `src/app/utils/mcpRawKeySessionStorage.ts`).
+- **Buffers temporários de retry:** antes de gravar payloads de formulário no `sessionStorage` (`src/services/pendingOrderOperations.ts`), remover explicitamente campos PII sensíveis (`birthDate`, `birthday`, `birthdayCustomer`, `cpf`, `cnpj`, `document`, `password`, `token`).
+
+### 6.5 Logs sem Vazamento de Credenciais (`clear-text-logging`)
+- Nunca despejar objetos de erro brutos de requisições autenticadas (`console.error(err)`) nem referenciar variáveis de segredo (`API_TOKEN`, `FIREBASE_SERVICE_ACCOUNT`, etc.) em expressões passadas a `console.log`/`console.error`.
+- Em scripts CLI e migrações (`scripts/*.mjs`), registrar apenas códigos HTTP numéricos (`err.statusCode`) e nomes de recursos/buckets validados por regex estrita (ex.: `sanitizeBucketName`).
+
+### 6.6 CORS em Endpoints HTTP
+- Nunca refletir `req.headers.origin` diretamente em `Access-Control-Allow-Origin`. Sempre resolver a origem canônica (`new URL(origin).origin`) via função de allowlist estrita de protocolo + hostname (ex.: `resolveAllowedCorsOrigin` em `functions/media/galleryCore.js`) e definir `Vary: Origin`.
+
+### 6.7 Hardening de Workflows GitHub Actions (`.github/workflows/*.yml`)
+- **Zero `run-shell-injection`:** nunca interpolar `${{ github.* }}` ou `${{ inputs.* }}` dentro de blocos `run:`. Passar sempre via `env:` do step e referenciar entre aspas duplas (`"$VAR"`).
+- **Zero `secrets: inherit`:** nunca usar `secrets: inherit` ao invocar workflows reutilizáveis. Declarar explicitamente `on.workflow_call.secrets` (com `required: false` para opcionais/fallbacks, sem duplicatas case-insensitive) no workflow chamado e repassar apenas os secrets mínimos necessários no chamador.
+- **Menor privilégio de `GITHUB_TOKEN`:** todo workflow deve declarar bloco `permissions:` explícito (mínimo `contents: read`).
+
+### 6.8 Higiene de Supply Chain e Lockfiles
+- Manter apenas os lockfiles oficiais do gerenciador usado no repositório (`package-lock.json` na raiz e em `functions/`). Não commitar lockfiles órfãos de outros gerenciadores (ex.: `bun.lock`) para evitar alertas falsos de Supply Chain.

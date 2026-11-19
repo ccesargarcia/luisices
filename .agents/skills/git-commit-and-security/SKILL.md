@@ -27,10 +27,11 @@ Under no circumstances may any of the following be staged or committed to Git:
 * Real customer names, phone numbers, WhatsApp numbers (`5511...`), addresses, CPF/CNPJ, order delivery details.
 * Uploaded files: customer artwork, personal photos, audio recordings (`*.wav`), transcription files (`*.srt`).
 
-### C. Temporary Files & Database Dumps
+### C. Temporary Files, Orphan Lockfiles & Database Dumps
 * SQLite databases: `*.db`, `*.sqlite`, `*-shm`, `*-wal`.
 * Debug logs: `firestore-debug.log`, `database-debug.log`, `firebase-debug.log`, `ui-debug.log`.
-* Local sessions & index files: `history.jsonl`, `session_index.jsonl`.
+* Local sessions, agent state & index files: `history.jsonl`, `session_index.jsonl`, `.aye_consciousness.m8`.
+* Orphan lockfiles from unused package managers (e.g., `bun.lock`, `yarn.lock`, `pnpm-lock.yaml` when the repo uses `package-lock.json`).
 
 ---
 
