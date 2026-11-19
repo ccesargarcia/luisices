@@ -21,6 +21,7 @@ export interface BusinessInfo {
   businessPhone: string;
   businessEmail: string;
   businessAddress: string;
+  businessDistrict: string;
   businessNumber: string;
   businessComplement: string;
   businessZipCode: string;
@@ -70,6 +71,7 @@ export function BusinessInfoSection({
         onChange({
           ...businessInfo,
           businessAddress: address.logradouro || businessInfo.businessAddress,
+          businessDistrict: address.bairro || businessInfo.businessDistrict,
           businessCity: address.localidade || businessInfo.businessCity,
           businessState: address.uf || businessInfo.businessState,
           businessNumber: businessInfo.businessNumber,
@@ -175,6 +177,16 @@ export function BusinessInfoSection({
               {zipLookupLoading && <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />}
             </div>
             {zipLookupError && <p className="text-xs text-destructive" role="status">{zipLookupError}</p>}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="businessDistrict">Bairro</Label>
+            <Input
+              id="businessDistrict"
+              placeholder="Bairro"
+              value={businessInfo.businessDistrict}
+              onChange={(e) => onChange({ ...businessInfo, businessDistrict: e.target.value })}
+            />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">

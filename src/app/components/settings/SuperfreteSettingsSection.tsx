@@ -187,7 +187,7 @@ export function SuperfreteSettingsSection({
               </p>
               <p className="font-mono text-muted-foreground pt-1">
                 {settings?.businessName || 'Ateliê'} — {settings?.businessAddress || 'Endereço'}, {settings?.businessNumber || 'S/N'}{' '}
-                — {settings?.businessCity || 'Cidade'}/{settings?.businessState || 'UF'} (CEP: {settings?.businessZipCode || 'Não informado'})
+                — {settings?.businessDistrict ? `${settings.businessDistrict}, ` : ''}{settings?.businessCity || 'Cidade'}/{settings?.businessState || 'UF'} (CEP: {settings?.businessZipCode || 'Não informado'})
               </p>
             </div>
 

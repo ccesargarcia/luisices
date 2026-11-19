@@ -92,6 +92,7 @@ export interface UserSettings {
   businessPhone?: string;
   businessEmail?: string;
   businessAddress?: string;
+  businessDistrict?: string;
   businessNumber?: string;
   businessComplement?: string;
   businessZipCode?: string;

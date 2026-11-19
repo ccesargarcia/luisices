@@ -10,5 +10,7 @@
   - Evidência: `functions/orders/superfrete.js` persiste `payment_unconfirmed`, `tagId` e mensagem de reconciliação.
 - [x] **T3 — Documentação e impacto de IA:** revisar guia, spec e catálogo; registrar não impacto Copiloto/MCP e limitação de reconciliação externa.
   - Evidência: `docs/FUNCIONALIDADES.md`, catálogo e esta spec.
-- [ ] **T4 — Validação local e CI/deploy:** executar typecheck, lint e revisão do diff; depois confirmar workflows Firebase Dev e Vercel Dev/Beta sem deploy Cloudflare.
-- [ ] **T5 — Fechamento:** registrar commit, publicação efetiva e limitações sem inferir sucesso antes dos workflows.
+- [x] **T4 — Validação local e CI/deploy:** executar typecheck, lint e revisão do diff; confirmar workflows Firebase Dev e Vercel Dev/Beta sem deploy Cloudflare.
+  - Evidência: validações locais passaram; Firebase Dev `44426580549`, Vercel Dev/Beta `44426580237` e CodeQL `44426580348` concluídos com sucesso; Workers Cloudflare ignorados.
+- [x] **T5 — Fechamento:** registrar commit, publicação efetiva e limitações sem inferir sucesso antes dos workflows.
+  - Evidência: commit `babfad1e3345ea9399fe326ee01d8bc7d9ba7c32` em `develop`; publicada em Dev/Beta; sem compra real, reconciliação externa manual.

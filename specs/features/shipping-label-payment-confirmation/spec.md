@@ -1,7 +1,7 @@
 # Confirmação do pagamento de etiquetas SuperFrete
 
 - **ID:** `shipping-label-payment-confirmation`
-- **Status:** Correção em andamento
+- **Status:** Concluída em Dev
 - **Responsável:** Não definido
 - **Atualizado em:** 2026-11-18
 - **Referências:** `functions/orders/superfrete.js`; `src/contexts/OrdersContext.tsx`; `src/services/firebaseOrderService.ts`; `src/app/components/shipping/SuperfreteGenerateLabelDialog.tsx`; `src/app/components/orders/OrderShippingSection.tsx`; `docs/FUNCIONALIDADES.md`; [status de etiquetas SuperFrete](https://ajuda.superfrete.com/artigo/o-que-significam-os-status-das-etiquetas-geradas-via-integracao-na-superfrete/)
@@ -93,5 +93,7 @@ Pedidos passam a usar `shippingStatus: 'pending_payment'` ou `payment_unconfirme
 
 ## Evidências de conclusão
 
-- A validação desta correção e os workflows de deploy estão pendentes.
-- Não executar compra/checkout real; a reconciliação de pagamentos externos continua manual.
+- `npm run typecheck`, `npm --prefix functions run lint` (108 arquivos) e `git diff --check` passaram localmente.
+- Commit `babfad1e3345ea9399fe326ee01d8bc7d9ba7c32` publicado em `develop`; Firebase Dev (`44426580549`), Vercel Dev/Beta (`44426580237`) e CodeQL (`44426580348`) concluíram com sucesso.
+- Os jobs de deploy/validação de Workers Cloudflare foram ignorados; não houve alteração de Worker nem da rota `api.dev` por este commit.
+- Não foi executada compra/checkout real; a reconciliação de pagamentos externos continua manual.

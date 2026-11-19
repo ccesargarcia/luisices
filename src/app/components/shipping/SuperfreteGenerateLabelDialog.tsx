@@ -293,7 +293,7 @@ export function SuperfreteGenerateLabelDialog({
       address: settings?.businessAddress || 'Rua Principal',
       number: settings?.businessNumber || '100',
       complement: settings?.businessComplement || '',
-      district: 'Centro',
+      district: settings?.businessDistrict || 'Centro',
       city: settings?.businessCity || 'São Paulo',
       state_abbr: (settings?.businessState || 'SP').toUpperCase().slice(0, 2),
       postal_code: (settings?.businessZipCode || '01153000').replace(/\D/g, ''),

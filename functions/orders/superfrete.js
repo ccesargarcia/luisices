@@ -522,7 +522,7 @@ async function handleCreateSuperfreteLabel(request) {
           address: superfreteSettings?.businessAddress || from.address,
           number: superfreteSettings?.businessNumber || from.number,
           complement: superfreteSettings?.businessComplement ?? from.complement,
-          district: from.district || 'Centro',
+          district: superfreteSettings?.businessDistrict || from.district || 'Centro',
           city: superfreteSettings?.businessCity || from.city,
           state_abbr: superfreteSettings?.businessState || from.state_abbr,
           postal_code: superfreteSettings?.businessZipCode || from.postal_code,
