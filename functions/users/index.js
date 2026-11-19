@@ -374,7 +374,7 @@ const repairUserClaims = onCall(async (request) => {
       pendingSteps: result.pendingSteps,
     };
   } catch (err) {
-    console.error(`[repairUserClaims] Falha no reparo do usuário ${uid}:`, err);
+    console.error('[repairUserClaims] Falha no reparo do usuário:', uid, err);
     throw new HttpsError('internal', 'Não foi possível concluir o reparo das credenciais.');
   }
 });
@@ -611,7 +611,7 @@ const updateUser = onCall(async (request) => {
     if (err.code === 'not-found') {
       throw new HttpsError('not-found', err.message);
     }
-    console.error(`[updateUser] Erro ao atualizar usuário ${uid}:`, err);
+    console.error('[updateUser] Erro ao atualizar usuário:', uid, err);
     throw new HttpsError(
       'internal',
       err.message || 'O perfil foi atualizado, mas houve falha na sincronização de credenciais/sessões. Reparo pendente.'
@@ -646,7 +646,7 @@ const revokeAllSessions = onCall(async (request) => {
     if (err.code === 'not-found') {
       throw new HttpsError('not-found', err.message);
     }
-    console.error(`[revokeAllSessions] Erro crítico ao revogar sessões do usuário ${uid}:`, err);
+    console.error('[revokeAllSessions] Erro crítico ao revogar sessões do usuário:', uid, err);
     throw new HttpsError('internal', 'Falha ao revogar credenciais de autenticação no servidor.');
   }
 });

@@ -121,10 +121,11 @@ const resendReceivingWebhook = onRequest(
           event = JSON.parse(event.toString('utf8'));
         } catch {}
       }
-      console.log('[resendReceivingWebhook] Evento recebido:', event?.type);
+      const safeEventType = String(event?.type || '').replace(/[\r\n\u0000-\u001F\u007F]/g, ' ').slice(0, 64);
+      console.log('[resendReceivingWebhook] Evento recebido:', safeEventType);
 
       if (!event || event.type !== 'email.received') {
-        console.log('[resendReceivingWebhook] Evento não é email.received, ignorado:', event?.type);
+        console.log('[resendReceivingWebhook] Evento não é email.received, ignorado:', safeEventType);
         return res.status(200).json({ status: 'ignored', type: event?.type });
       }
 
@@ -301,10 +302,11 @@ const resendReceivingWebhook = onRequest(
       const bodyStoragePaths = bodyPlan.mode === 'storage'
         ? await persistReceivedEmailBody(getStorage().bucket(), bodyPlan)
         : null;
+      const safeEmailId = String(emailId || '').replace(/[\r\n\u0000-\u001F\u007F]/g, ' ').slice(0, 128);
       if (bodyPlan.mode === 'storage') {
-        console.log(`[resendReceivingWebhook] Corpo grande guardado no Storage: ${emailId}, bytes=${bodyPlan.totalBytes}`);
+        console.log('[resendReceivingWebhook] Corpo grande guardado no Storage:', safeEmailId, 'bytes=', bodyPlan.totalBytes);
       } else if (bodyPlan.mode === 'omitted') {
-        console.warn(`[resendReceivingWebhook] Corpo omitido por exceder o limite operacional: ${emailId}, bytes=${bodyPlan.totalBytes}`);
+        console.warn('[resendReceivingWebhook] Corpo omitido por exceder o limite operacional:', safeEmailId, 'bytes=', bodyPlan.totalBytes);
       }
 
       const emailDoc = {
@@ -336,7 +338,7 @@ const resendReceivingWebhook = onRequest(
         }
         throw writeError;
       }
-      console.log(`[resendReceivingWebhook] E-mail recebido salvo com sucesso: ${emailId}`);
+      console.log('[resendReceivingWebhook] E-mail recebido salvo com sucesso:', safeEmailId);
 
       return res.status(200).json({ ok: true, id: emailId });
     } catch (error) {

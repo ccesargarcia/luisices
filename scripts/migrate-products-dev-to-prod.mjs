@@ -173,7 +173,7 @@ try {
                 },
               });
             } catch (err) {
-              console.warn(`    ⚠️ Aviso ao copiar arquivo "${file.name}":`, err.message);
+              console.warn('    ⚠️ Aviso ao copiar arquivo:', file.name, err.message);
             }
           }
         }

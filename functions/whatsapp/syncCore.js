@@ -54,7 +54,7 @@ async function syncWhatsAppChatMessagesCore({
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      console.warn(`[syncWhatsAppChatMessages] Erro ao consultar mensagens (${response.status}):`, errText);
+      console.warn('[syncWhatsAppChatMessages] Erro ao consultar mensagens:', response.status, errText);
       return { success: false, message: `Não foi possível sincronizar histórico (${response.status}).` };
     }
 

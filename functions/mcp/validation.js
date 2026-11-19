@@ -29,6 +29,18 @@ function parseLocalizedMoney(value, path) {
   return amount;
 }
 
+const KNOWN_SCHEMA_PATTERNS = new Map([
+  ['^[A-Za-z0-9._:-]{8,128}$', /^[A-Za-z0-9._:-]{8,128}$/],
+  ['^(?:R\\$\\s*)?(?:\\d{1,3}(?:\\.\\d{3})+(?:,\\d{1,2})?|\\d{1,3}(?:,\\d{3})+(?:\\.\\d{1,2})?|\\d+(?:[,.]\\d{1,2})?|[,.]\\d{1,2})$', /^(?:R\$\s*)?(?:\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:[,.]\d{1,2})?|[,.]\d{1,2})$/],
+]);
+
+function matchesSchemaPattern(pattern, value) {
+  if (pattern instanceof RegExp) return pattern.test(value);
+  const compiled = KNOWN_SCHEMA_PATTERNS.get(pattern);
+  if (compiled) return compiled.test(value);
+  return true;
+}
+
 function validateValue(value, schema, path) {
   if (value === null) {
     if (schema.nullable) return;
@@ -41,7 +53,7 @@ function validateValue(value, schema, path) {
     if (value.length > (schema.maxLength ?? 4096)) invalid(`${path} excede o limite de caracteres.`);
     if (schema.minLength !== undefined && value.length < schema.minLength) invalid(`${path} é muito curto.`);
     if (schema.maxLength !== undefined && value.length > schema.maxLength) invalid(`${path} excede o limite de caracteres.`);
-    if (schema.pattern && !(new RegExp(schema.pattern).test(value))) invalid(`${path} possui formato inválido.`);
+    if (schema.pattern && !matchesSchemaPattern(schema.pattern, value)) invalid(`${path} possui formato inválido.`);
   } else if (schema.type === 'integer') {
     if (!Number.isSafeInteger(value)) invalid(`${path} deve ser um número inteiro válido.`);
   } else if (schema.type === 'number') {

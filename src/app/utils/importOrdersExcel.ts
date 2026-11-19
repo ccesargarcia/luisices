@@ -817,7 +817,7 @@ export async function executeOrdersImport(
       result.successCount++;
       result.createdOrderIds.push(createdOrder.id);
     } catch (err: any) {
-      console.error(`[executeOrdersImport] Erro na linha ${row.rowIndex}:`, err);
+      console.error('[executeOrdersImport] Erro na linha:', row.rowIndex, err);
       result.errorCount++;
       result.errors.push({
         rowIndex: row.rowIndex,

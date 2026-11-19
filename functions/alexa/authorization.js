@@ -293,7 +293,7 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
 
   // Validar conta no Firebase Auth (não suspensa/desativada)
   if (authUserResult.error) {
-    console.warn(`[AlexaAuth] Erro ao consultar Firebase Auth para UID ${uid}:`, authUserResult.error.message);
+    console.warn('[AlexaAuth] Erro ao consultar Firebase Auth para UID:', uid, authUserResult.error.message);
     return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.USER_NOT_FOUND,

@@ -151,8 +151,9 @@ Para impedir a reintrodução de vulnerabilidades já mitigadas em auditorias SA
 - **Chaves de API one-time (MCP):** nunca gravar `rawKey` nem `keyId` recém-criado em `sessionStorage` ou `localStorage` em texto claro; manter exclusivamente em memória volátil da aba (`Map` em escopo de módulo, conforme `src/app/utils/mcpRawKeySessionStorage.ts`).
 - **Buffers temporários de retry:** antes de gravar payloads de formulário no `sessionStorage` (`src/services/pendingOrderOperations.ts`), remover explicitamente campos PII sensíveis (`birthDate`, `birthday`, `birthdayCustomer`, `cpf`, `cnpj`, `document`, `password`, `token`).
 
-### 6.5 Logs sem Vazamento de Credenciais (`clear-text-logging`)
+### 6.5 Logs sem Vazamento de Credenciais (`clear-text-logging` & `unsafe-formatstring`)
 - Nunca despejar objetos de erro brutos de requisições autenticadas (`console.error(err)`) nem referenciar variáveis de segredo (`API_TOKEN`, `FIREBASE_SERVICE_ACCOUNT`, etc.) em expressões passadas a `console.log`/`console.error`.
+- Usar sempre string literal constante como primeiro argumento de `console.log`/`console.warn`/`console.error` (ex.: `console.warn('[Serviço] Falha ao processar:', id, error)` em vez de template literal interpolado no primeiro argumento), e sanitizar caracteres de controle (`[\r\n\u0000-\u001F\u007F]`) ao logar dados de webhooks HTTP.
 - Em scripts CLI e migrações (`scripts/*.mjs`), registrar apenas códigos HTTP numéricos (`err.statusCode`) e nomes de recursos/buckets validados por regex estrita (ex.: `sanitizeBucketName`).
 
 ### 6.6 CORS em Endpoints HTTP
@@ -161,7 +162,9 @@ Para impedir a reintrodução de vulnerabilidades já mitigadas em auditorias SA
 ### 6.7 Hardening de Workflows GitHub Actions (`.github/workflows/*.yml`)
 - **Zero `run-shell-injection`:** nunca interpolar `${{ github.* }}` ou `${{ inputs.* }}` dentro de blocos `run:`. Passar sempre via `env:` do step e referenciar entre aspas duplas (`"$VAR"`).
 - **Zero `secrets: inherit`:** nunca usar `secrets: inherit` ao invocar workflows reutilizáveis. Declarar explicitamente `on.workflow_call.secrets` (com `required: false` para opcionais/fallbacks, sem duplicatas case-insensitive) no workflow chamado e repassar apenas os secrets mínimos necessários no chamador.
+- **Pinagem por Commit SHA (40 caracteres):** toda action externa (`uses: owner/repo@...`) deve ser fixada pelo commit SHA completo de 40 caracteres com comentário da tag (ex.: `uses: actions/checkout@<sha> # v5`), nunca por tag mutável isolada.
 - **Menor privilégio de `GITHUB_TOKEN`:** todo workflow deve declarar bloco `permissions:` explícito (mínimo `contents: read`).
+- **Cooldown no Dependabot:** cada ecossistema em `.github/dependabot.yml` deve declarar `cooldown: { default-days: 7 }`.
 
 ### 6.8 Higiene de Supply Chain e Lockfiles
 - Manter apenas os lockfiles oficiais do gerenciador usado no repositório (`package-lock.json` na raiz e em `functions/`). Não commitar lockfiles órfãos de outros gerenciadores (ex.: `bun.lock`) para evitar alertas falsos de Supply Chain.

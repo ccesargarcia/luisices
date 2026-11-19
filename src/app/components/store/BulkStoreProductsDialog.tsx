@@ -314,7 +314,7 @@ export function BulkStoreProductsDialog({
         updateItem(item.id, { status: 'success' });
         successCount++;
       } catch (err: any) {
-        console.error(`Erro ao publicar "${item.name}":`, err);
+        console.error('Erro ao publicar produto:', item.name, err);
         updateItem(item.id, {
           status: 'error',
           errorMessage: err?.message || 'Falha ao salvar produto',

@@ -106,7 +106,7 @@ export class EmailService {
             if (error?.code !== 'storage/object-not-found') throw error;
           })));
         } catch (error) {
-          console.warn(`[EmailService] Não foi possível remover o corpo do e-mail excluído ${id}:`, error);
+          console.warn('[EmailService] Não foi possível remover o corpo do e-mail excluído:', id, error);
         }
       }
     }
@@ -364,7 +364,7 @@ export class EmailService {
       .filter((path): path is string => typeof path === 'string')
       .map(path => deleteObject(ref(storage, path)).catch(error => {
         if (error?.code !== 'storage/object-not-found') {
-          console.warn(`[EmailService] Não foi possível remover o corpo do e-mail excluído ${emailId}:`, error);
+          console.warn('[EmailService] Não foi possível remover o corpo do e-mail excluído:', emailId, error);
         }
       })));
   }

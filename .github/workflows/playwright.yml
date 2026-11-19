@@ -46,15 +46,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: |
             package-lock.json
             functions/package-lock.json
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -72,7 +72,7 @@ jobs:
         env:
           SDK_TEST_FIREBASE_CLI: ${{ runner.temp }}/firebase-cli/node_modules/firebase-tools/lib/bin/firebase.js
         run: node scripts/run-firebase-sdk-tests.mjs --http-wrapper --reporter=json --outputFile=test-results/backend-sdk-http.json
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: ${{ always() }}
         with:
           name: backend-sdk-results
@@ -87,10 +87,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '22'
           cache: 'npm'
@@ -107,7 +107,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Setup Java (for Firebase Emulators)
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -187,14 +187,14 @@ jobs:
 
       - name: Upload raw test metrics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: test-metrics-shard-1
           path: test-results/*.json
           retention-days: 30
           if-no-files-found: ignore
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: ${{ !cancelled() }}
         with:
           name: playwright-report
@@ -210,17 +210,17 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Download test metrics
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           pattern: test-metrics-shard-*
           path: test-results
           merge-multiple: true
 
       - name: Restore recent test history
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: test-trends/history.json
           key: test-trends-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -239,7 +239,7 @@ jobs:
 
       - name: Upload test trend charts and history
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: test-trends
           path: test-trends/
@@ -247,7 +247,7 @@ jobs:
 
       - name: Save history for trusted branch runs
         if: always() && steps.generate-trends.outputs.has_metrics == 'true' && github.event_name != 'pull_request'
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: test-trends/history.json
           key: test-trends-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}

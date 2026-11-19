@@ -292,7 +292,7 @@ function touchKeyUsage(db, keyHash) {
       totalCalls: FieldValue.increment(1),
     })
     .catch((err) => {
-      console.warn(`[MCP] Falha não-bloqueante ao atualizar métricas da chave ${keyHash}:`, err.message);
+      console.warn('[MCP] Falha não-bloqueante ao atualizar métricas da chave:', err.message);
     });
 }
 

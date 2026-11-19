@@ -129,7 +129,7 @@ export function useFirebaseQuotes() {
     const unsubscribers: Array<() => void> = [];
 
     const handleQueryError = (queryName: string, err: any) => {
-      console.warn(`useFirebaseQuotes: aviso ao escutar ${queryName}:`, err?.message || err);
+      console.warn('useFirebaseQuotes: aviso ao escutar query:', queryName, err?.message || err);
       if (err?.code === 'failed-precondition' && !isFallbackActive) {
         isFallbackActive = true;
         console.warn('useFirebaseQuotes: índice ausente. Ativando fallback para consulta unificada.');

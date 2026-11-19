@@ -227,7 +227,7 @@ async function updateUserProfile(params, deps = {}) {
       opId: txResult.opId,
     };
   } catch (syncErr) {
-    console.error(`[userSyncService.updateUserProfile] Falha na sincronização externa para ${uid}:`, syncErr);
+    console.error('[userSyncService.updateUserProfile] Falha na sincronização externa:', uid, syncErr);
     await recordSyncFailure(uid, txResult.opId, txResult.version, syncErr, deps).catch(() => {});
     const err = new Error('O perfil foi atualizado no banco de dados, mas houve falha na sincronização externa de credenciais/sessões. Reparo pendente.');
     err.code = 'internal';
@@ -361,7 +361,7 @@ async function revokeUserSessions(params, deps = {}) {
       opId: txResult.opId,
     };
   } catch (syncErr) {
-    console.error(`[userSyncService.revokeUserSessions] Falha ao executar etapas externas para ${uid}:`, syncErr);
+    console.error('[userSyncService.revokeUserSessions] Falha ao executar etapas externas:', uid, syncErr);
     await recordSyncFailure(uid, txResult.opId, txResult.version, syncErr, deps).catch(() => {});
     const err = new Error('Falha ao concluir a revogação externa de credenciais/sessões. Reparo pendente.');
     err.code = 'internal';
@@ -649,7 +649,7 @@ async function processUserSync(uid, options = {}, deps = {}) {
           ]);
           completedSteps.rtdbRevocation = true;
         } catch (rtdbErr) {
-          console.error(`[processUserSync] Falha no RTDB para ${uid}:`, rtdbErr);
+          console.error('[processUserSync] Falha no RTDB:', uid, rtdbErr);
           throw rtdbErr;
         }
       }
@@ -684,7 +684,7 @@ async function processUserSync(uid, options = {}, deps = {}) {
       completedSteps.authClaims = true;
     }
   } catch (externalErr) {
-    console.error(`[processUserSync] Erro na chamada externa para ${uid}:`, externalErr);
+    console.error('[processUserSync] Erro na chamada externa:', uid, externalErr);
     await recordSyncFailure(uid, activeMarker.opId, activeMarker.version, externalErr, completedSteps, deps).catch(() => {});
     throw externalErr;
   }
@@ -731,7 +731,7 @@ async function processUserSync(uid, options = {}, deps = {}) {
       });
     } catch (finalizeTxErr) {
       // Cenário F: Falha ao confirmar no Firestore
-      console.error(`[processUserSync] Falha na transação de finalização no Firestore para ${uid}:`, finalizeTxErr);
+      console.error('[processUserSync] Falha na transação de finalização no Firestore:', uid, finalizeTxErr);
       await recordSyncFailure(uid, activeMarker.opId, currentFinalizeVersion, finalizeTxErr, deps).catch(() => {});
       throw finalizeTxErr;
     }
@@ -765,7 +765,7 @@ async function processUserSync(uid, options = {}, deps = {}) {
           active: finalizeResult.latestActive,
         });
       } catch (reconcileErr) {
-        console.error(`[processUserSync] Falha durante escrita de reconciliação para ${uid}:`, reconcileErr);
+        console.error('[processUserSync] Falha durante escrita de reconciliação:', uid, reconcileErr);
         await recordSyncFailure(uid, finalizeResult.currentMarker?.opId || activeMarker.opId, finalizeResult.latestVersion, reconcileErr, deps).catch(() => {});
         throw reconcileErr;
       }

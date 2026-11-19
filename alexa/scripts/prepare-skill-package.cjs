@@ -58,11 +58,19 @@ function prepareSkillPackage(options = {}) {
   const skillName = options.skillName || (env === 'dev' ? process.env.ALEXA_DEV_SKILL_NAME : process.env.ALEXA_PROD_SKILL_NAME) || envDefaults.skillName;
   const privacyPolicyUrl = options.privacyPolicyUrl || (env === 'dev' ? process.env.ALEXA_DEV_PRIVACY_POLICY_URL : process.env.ALEXA_PROD_PRIVACY_POLICY_URL) || process.env.ALEXA_PRIVACY_POLICY_URL || envDefaults.privacyPolicyUrl;
 
-  const baseDir = options.sourceDir || path.resolve(__dirname, '../skill-package');
-  const outDir = options.outputDir || path.resolve(__dirname, '../build/skill-package');
+  const baseDir = path.resolve(options.sourceDir || path.resolve(__dirname, '../skill-package'));
+  const outDir = path.resolve(options.outputDir || path.resolve(__dirname, '../build/skill-package'));
 
-  const manifestPath = path.join(baseDir, 'skill.json');
-  const interactionModelPath = path.join(baseDir, 'interactionModels/custom/pt-BR.json');
+  const resolveWithin = (rootDir, relSegment) => {
+    const resolved = path.resolve(rootDir, relSegment);
+    if (resolved !== rootDir && !resolved.startsWith(`${rootDir}${path.sep}`)) {
+      throw new Error(`Caminho fora do diretório permitido: ${relSegment}`);
+    }
+    return resolved;
+  };
+
+  const manifestPath = resolveWithin(baseDir, 'skill.json');
+  const interactionModelPath = resolveWithin(baseDir, 'interactionModels/custom/pt-BR.json');
 
   if (!fs.existsSync(manifestPath)) {
     throw new Error(`Arquivo de manifesto não encontrado em: ${manifestPath}`);
@@ -115,11 +123,11 @@ function prepareSkillPackage(options = {}) {
   }
 
   // 3. Salva no diretório de saída
-  const outModelsDir = path.join(outDir, 'interactionModels/custom');
+  const outModelsDir = resolveWithin(outDir, 'interactionModels/custom');
   fs.mkdirSync(outModelsDir, { recursive: true });
 
-  const outManifestPath = path.join(outDir, 'skill.json');
-  const outModelPath = path.join(outModelsDir, 'pt-BR.json');
+  const outManifestPath = resolveWithin(outDir, 'skill.json');
+  const outModelPath = resolveWithin(outModelsDir, 'pt-BR.json');
 
   fs.writeFileSync(outManifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
   fs.writeFileSync(outModelPath, JSON.stringify(interactionModel, null, 2) + '\n', 'utf8');

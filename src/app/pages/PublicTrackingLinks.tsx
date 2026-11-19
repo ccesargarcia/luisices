@@ -98,7 +98,7 @@ export function PublicTrackingLinks() {
       }
       setPendingAction(null);
     } catch (err) {
-      console.error(`Falha ao ${action === 'revoke' ? 'revogar' : 'excluir'} link de acompanhamento:`, err);
+      console.error('Falha ao atualizar link de acompanhamento:', action, err);
       toast.error(`Não foi possível ${action === 'revoke' ? 'revogar' : 'excluir'} este link.`);
     } finally {
       setProcessingLinkId(null);

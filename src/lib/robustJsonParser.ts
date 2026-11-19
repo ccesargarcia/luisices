@@ -87,21 +87,42 @@ export function sanitizeLlmJson(raw: string): string {
  */
 export function extractKeysFromLlmText(raw: string, expectedKeys: string[]): Record<string, string> {
   const recovered: Record<string, string> = {};
+  const lowerRaw = raw.toLowerCase();
 
   for (const key of expectedKeys) {
-    // Busca a chave seguida de dois pontos e valor string (mesmo com quebras de linha)
-    // Padrão: "chave"\s*:\s*"conteúdo" delimitado pela próxima chave ou fechamento
-    const regex = new RegExp(`"${key}"\\s*:\\s*"([\\s\\S]*?)(?="\\s*[,}]|"\\s*\\n\\s*"|$)`, 'i');
-    const match = raw.match(regex);
+    // Busca determinística sem RegExp dinâmico: "chave" : "conteúdo"
+    const needle = `"${key.toLowerCase()}"`;
+    const keyIdx = lowerRaw.indexOf(needle);
+    if (keyIdx === -1) continue;
 
-    if (match && match[1] !== undefined) {
-      let val = match[1].trim();
-      // Remove aspas de fechamento se pegou
-      val = val.replace(/"$/, '').trim();
-      // Normaliza quebras de linha e caracteres escapados
-      val = val.replace(/\\n/g, '\n').replace(/\\"/g, '"');
-      recovered[key] = val;
+    let pos = keyIdx + needle.length;
+    while (pos < raw.length && /\s/.test(raw[pos])) pos += 1;
+    if (raw[pos] !== ':') continue;
+    pos += 1;
+    while (pos < raw.length && /\s/.test(raw[pos])) pos += 1;
+    if (raw[pos] !== '"') continue;
+    pos += 1;
+
+    // Lê até a aspa de fechamento não escapada seguida de ',', '}', quebra de linha + '"' ou fim
+    let end = pos;
+    while (end < raw.length) {
+      if (raw[end] === '\\' && end + 1 < raw.length) {
+        end += 2;
+        continue;
+      }
+      if (raw[end] === '"') {
+        const rest = raw.slice(end + 1);
+        if (/^\s*(?:[,}]|\n\s*"|$)/.test(rest)) {
+          break;
+        }
+      }
+      end += 1;
     }
+
+    let val = raw.slice(pos, end).trim();
+    val = val.replace(/"$/, '').trim();
+    val = val.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+    recovered[key] = val;
   }
 
   return recovered;

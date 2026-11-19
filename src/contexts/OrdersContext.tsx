@@ -277,7 +277,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
     const handleQueryError = (queryName: string, err: any) => {
       if (err?.code !== 'permission-denied' && !String(err?.message).includes('insufficient permissions')) {
-        console.warn(`OrdersContext: aviso ao escutar ${queryName} no Firestore:`, err?.message || err);
+        console.warn('OrdersContext: aviso ao escutar query no Firestore:', queryName, err?.message || err);
       }
       // Se houver erro de índice (ex: failed-precondition) em ambiente novo, ativa fallback unificado
       if (err?.code === 'failed-precondition' && !isFallbackActive) {

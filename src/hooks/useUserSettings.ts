@@ -37,7 +37,7 @@ export function useUserSettings() {
     try {
       await firebaseStorageService.deleteImage(url);
     } catch (storageError) {
-      console.warn(`Não foi possível excluir ${description} do Storage:`, storageError);
+      console.warn('Não foi possível excluir arquivo do Storage:', description, storageError);
     }
   };
 

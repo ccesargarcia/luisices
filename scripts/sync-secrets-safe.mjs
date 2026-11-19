@@ -181,7 +181,7 @@ async function main() {
         failures.push({ name, error: `Falha ao adicionar nova versão: ${errText}` });
       }
     } catch (err) {
-      console.error(`❌ Erro inesperado ao processar secret ${name}:`, err);
+      console.error('❌ Erro inesperado ao processar secret:', name, err);
       failures.push({ name, error: err.message || String(err) });
     }
   }
