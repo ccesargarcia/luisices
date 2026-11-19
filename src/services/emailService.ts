@@ -18,6 +18,14 @@ import { SendEmailPayload, EmailUsage } from '../app/types';
 import { getVercelBetaApiUrl } from '../app/utils/betaHost';
 import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
 
+function getStorageErrorCode(error: unknown): string {
+  if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string') {
+    return error.code;
+  }
+  if (error instanceof Error && error.message.includes('Tempo limite')) return 'storage/timeout';
+  return 'storage/unknown';
+}
+
 async function callBetaEmailApi<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
   const user = auth.currentUser;
   if (!user) throw new Error('Entre na sua conta para utilizar o módulo de E-mail.');
@@ -97,14 +105,88 @@ export class EmailService {
     return { deleted, failed };
   }
 
-  async loadReceivedEmailBody(paths: { html?: string; text?: string }): Promise<{ html: string; text: string }> {
+  async loadReceivedEmailBody(
+    paths: { html?: string; text?: string },
+    options: {
+      fallbackText?: string;
+      timeoutMs?: number;
+      onProgress?: (body: {
+        html: string;
+        text: string;
+        htmlLoading: boolean;
+        htmlUnavailable: boolean;
+        textUnavailable: boolean;
+        htmlErrorCode: string | null;
+        textErrorCode: string | null;
+      }) => void;
+    } = {},
+  ): Promise<{
+    html: string;
+    text: string;
+    htmlLoading: boolean;
+    htmlUnavailable: boolean;
+    textUnavailable: boolean;
+    htmlErrorCode: string | null;
+    textErrorCode: string | null;
+  }> {
+    const timeoutMs = Number.isFinite(options.timeoutMs) && (options.timeoutMs || 0) > 0
+      ? options.timeoutMs as number
+      : 15_000;
     const load = async (path?: string) => {
       if (!path) return '';
-      const bytes = await getBytes(ref(storage, path), 15 * 1024 * 1024);
-      return new TextDecoder().decode(bytes);
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const bytes = await Promise.race([
+          getBytes(ref(storage, path), 15 * 1024 * 1024),
+          new Promise<never>((_, reject) => {
+            timeout = setTimeout(() => reject(new Error('Tempo limite ao carregar corpo de e-mail')), timeoutMs);
+          }),
+        ]);
+        return new TextDecoder().decode(bytes);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
     };
-    const [html, text] = await Promise.all([load(paths.html), load(paths.text)]);
-    return { html, text };
+
+    let text = options.fallbackText || '';
+    let textUnavailable = false;
+    let textErrorCode: string | null = null;
+    if (paths.text) {
+      try {
+        text = await load(paths.text);
+      } catch (error) {
+        textUnavailable = true;
+        textErrorCode = getStorageErrorCode(error);
+        console.warn('[EmailService] Texto recebido indisponível; usando prévia:', error);
+      }
+    }
+
+    let html = '';
+    let htmlUnavailable = false;
+    let htmlErrorCode: string | null = null;
+    if (options.onProgress && (text || !paths.html)) {
+      options.onProgress({
+        html, text, htmlLoading: Boolean(paths.html), htmlUnavailable, textUnavailable,
+        htmlErrorCode, textErrorCode,
+      });
+    }
+
+    if (paths.html) {
+      try {
+        html = await load(paths.html);
+      } catch (error) {
+        htmlUnavailable = true;
+        htmlErrorCode = getStorageErrorCode(error);
+        console.warn('[EmailService] HTML recebido indisponível; mantendo texto simples:', error);
+      }
+    }
+
+    const result = {
+      html, text, htmlLoading: false, htmlUnavailable, textUnavailable,
+      htmlErrorCode, textErrorCode,
+    };
+    options.onProgress?.(result);
+    return result;
   }
 
   /**

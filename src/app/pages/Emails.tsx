@@ -350,7 +350,16 @@ export function Emails() {
   // Seleção de mensagem ativa no painel de leitura
   const [selectedEmailType, setSelectedEmailType] = useState<'received' | 'sent' | null>('received');
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
-  const [loadedReceivedBody, setLoadedReceivedBody] = useState<{ emailId: string; html: string; text: string } | null>(null);
+  const [loadedReceivedBody, setLoadedReceivedBody] = useState<{
+    emailId: string;
+    html: string;
+    text: string;
+    htmlLoading: boolean;
+    htmlUnavailable: boolean;
+    textUnavailable: boolean;
+    htmlErrorCode: string | null;
+    textErrorCode: string | null;
+  } | null>(null);
   const [loadingReceivedBodyId, setLoadingReceivedBodyId] = useState<string | null>(null);
   const [receivedBodyLoadFailedId, setReceivedBodyLoadFailedId] = useState<string | null>(null);
 
@@ -563,7 +572,15 @@ export function Emails() {
     setLoadedReceivedBody(null);
     setReceivedBodyLoadFailedId(null);
     setLoadingReceivedBodyId(emailId);
-    emailService.loadReceivedEmailBody({ html: receivedHtmlPath, text: receivedTextPath })
+    emailService.loadReceivedEmailBody(
+      { html: receivedHtmlPath, text: receivedTextPath },
+      {
+        fallbackText: currentReceivedEmail?.bodyPreview || '',
+        onProgress: body => {
+          if (!cancelled) setLoadedReceivedBody({ emailId, ...body });
+        },
+      },
+    )
       .then(body => { if (!cancelled) setLoadedReceivedBody({ emailId, ...body }); })
       .catch(error => {
         console.warn('[Emails] Não foi possível carregar o corpo completo recebido:', error);
@@ -572,7 +589,7 @@ export function Emails() {
       .finally(() => { if (!cancelled) setLoadingReceivedBodyId(null); });
 
     return () => { cancelled = true; };
-  }, [currentReceivedEmail?.id, receivedHtmlPath, receivedTextPath]);
+  }, [currentReceivedEmail?.id, currentReceivedEmail?.bodyPreview, receivedHtmlPath, receivedTextPath]);
 
   const currentSentEmail = useMemo(() => {
     if (selectedEmailType !== 'sent' || !selectedEmailId) return null;
@@ -2767,7 +2784,18 @@ export function Emails() {
                 {currentReceivedEmail ? (
                   currentReceivedEmail.bodyStoragePaths ? (
                     loadedReceivedBody?.emailId === currentReceivedEmail.id ? (
-                      <EmailHtmlViewer html={loadedReceivedBody.html} text={loadedReceivedBody.text} />
+                      <>
+                          {(loadedReceivedBody.htmlLoading || loadedReceivedBody.htmlUnavailable || loadedReceivedBody.textUnavailable) && (
+                          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                            {loadedReceivedBody.htmlUnavailable
+                              ? `A versão formatada não carregou. Exibindo o texto disponível. Código: ${loadedReceivedBody.htmlErrorCode || 'storage/unknown'}`
+                              : loadedReceivedBody.textUnavailable
+                                ? `Não foi possível carregar o texto completo. Exibindo a prévia enquanto tentamos abrir a mensagem. Código: ${loadedReceivedBody.textErrorCode || 'storage/unknown'}`
+                                : 'Exibindo o texto simples enquanto carregamos a versão formatada…'}
+                          </div>
+                        )}
+                        <EmailHtmlViewer html={loadedReceivedBody.html} text={loadedReceivedBody.text} />
+                      </>
                     ) : loadingReceivedBodyId === currentReceivedEmail.id ? (
                       <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
                         <Loader2 className="size-4 animate-spin" /> Carregando conteúdo completo…

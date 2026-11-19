@@ -162,9 +162,65 @@ describe('Funcionalidade: Comunicação e Mensageria por E-mail (emailService)',
 
     it('carrega corpo armazenado usando Storage autenticado', async () => {
       await expect(emailService.loadReceivedEmailBody({ html: 'emails/received/hash/body.html' }))
-        .resolves.toEqual({ html: '<p>Stored</p>', text: '' });
+        .resolves.toEqual({
+          html: '<p>Stored</p>', text: '', htmlLoading: false,
+          htmlUnavailable: false, textUnavailable: false,
+          htmlErrorCode: null, textErrorCode: null,
+        });
       expect(ref).toHaveBeenCalledWith(expect.anything(), 'emails/received/hash/body.html');
       expect(getBytes).toHaveBeenCalled();
+    });
+
+    it('publica o texto antes de aguardar o HTML grande', async () => {
+      let resolveHtml!: (bytes: Uint8Array) => void;
+      vi.mocked(getBytes).mockImplementation((storageRef: any) => (
+        storageRef.path.endsWith('body.txt')
+          ? Promise.resolve(new TextEncoder().encode('Texto da mensagem'))
+          : new Promise(resolve => { resolveHtml = resolve; })
+      ) as any);
+      const onProgress = vi.fn();
+      const loading = emailService.loadReceivedEmailBody({
+        html: 'emails/received/hash/body.html',
+        text: 'emails/received/hash/body.txt',
+      }, { onProgress, timeoutMs: 1000 });
+
+      await vi.waitFor(() => expect(onProgress).toHaveBeenCalledWith({
+        html: '', text: 'Texto da mensagem', htmlLoading: true,
+        htmlUnavailable: false, textUnavailable: false,
+        htmlErrorCode: null, textErrorCode: null,
+      }));
+      resolveHtml(new TextEncoder().encode('<p>Versão formatada</p>'));
+      await expect(loading).resolves.toMatchObject({
+        html: '<p>Versão formatada</p>', text: 'Texto da mensagem',
+        htmlUnavailable: false, textUnavailable: false,
+      });
+    });
+
+    it('usa a prévia e termina a leitura quando os arquivos do Storage não respondem', async () => {
+      vi.mocked(getBytes).mockImplementation(() => new Promise(() => {}) as any);
+      const body = await emailService.loadReceivedEmailBody({
+        html: 'emails/received/hash/body.html',
+        text: 'emails/received/hash/body.txt',
+      }, { fallbackText: 'Prévia da mensagem', timeoutMs: 5 });
+
+      expect(body).toMatchObject({
+        html: '', text: 'Prévia da mensagem', htmlLoading: false,
+        htmlUnavailable: true, textUnavailable: true,
+        htmlErrorCode: 'storage/timeout', textErrorCode: 'storage/timeout',
+      });
+    });
+
+    it('preserva o código da regra do Storage para diagnosticar falha de permissão', async () => {
+      vi.mocked(getBytes).mockRejectedValue(Object.assign(new Error('Permission denied'), { code: 'storage/unauthorized' }));
+      const body = await emailService.loadReceivedEmailBody({ text: 'emails/received/hash/body.txt' }, {
+        fallbackText: 'Prévia da mensagem',
+        timeoutMs: 100,
+      });
+      expect(body).toMatchObject({
+        text: 'Prévia da mensagem',
+        textUnavailable: true,
+        textErrorCode: 'storage/unauthorized',
+      });
     });
 
     it('remove objetos do Storage ao excluir definitivamente uma mensagem que os referencia', async () => {

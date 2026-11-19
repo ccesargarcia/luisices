@@ -13,6 +13,7 @@ Em 29/10/2026 e 05/11/2026, o endpoint `resendReceivingWebhook` respondeu com er
 - Como há um único endpoint Resend encaminhando entre projetos, `RESEND_WEBHOOK_SECRET` precisa conter em ambos os projetos o segredo vigente desse endpoint; os workflows aceitam `DEV_RESEND_WEBHOOK_SECRET` e `PROD_RESEND_WEBHOOK_SECRET` separados, então a configuração deve ser alinhada antes do deploy.
 - Uma falha de encaminhamento retorna erro ao Resend e libera a reserva de idempotência para que uma repetição possa tentar novamente.
 - Corpos de e-mail cujo tamanho possa exceder o Firestore são armazenados em objetos privados no Firebase Storage; o documento mantém metadados e referências. O módulo de E-mails carrega o conteúdo completo quando abre a mensagem.
+- O carregamento progressivo mostra o texto/prévia assim que disponível, não mantém o corpo oculto enquanto aguarda o HTML e aplica timeout a cada leitura. Se o Storage negar ou não responder, a interface mantém a prévia e exibe o código técnico para diagnóstico.
 - O conteúdo recuperável tem limite operacional explícito. Se excedido, o evento é persistido com metadados e estado que explica a ausência do corpo; o webhook confirma o recebimento para evitar repetição infinita.
 - Exclusão definitiva do e-mail também tenta remover objetos associados.
 
@@ -28,7 +29,7 @@ Em 29/10/2026 e 05/11/2026, o endpoint `resendReceivingWebhook` respondeu com er
 ## Fora de escopo
 
 - Reconfigurar ou desativar o endpoint no painel do Resend.
-- Deploy ou alteração de dados em produção/DEV durante esta implementação.
+- Deploy ou alteração de dados em produção.
 - Alterar o contrato de envio de e-mail ou as ferramentas Copiloto/MCP.
 
 ## Decisões
