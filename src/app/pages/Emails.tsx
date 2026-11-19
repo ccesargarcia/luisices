@@ -2524,13 +2524,13 @@ export function Emails() {
 
         <Dialog open={Boolean(selectedEmailId)} onOpenChange={(open) => { if (!open) setSelectedEmailId(null); }}>
           <DialogContent
-            size="5xl"
+            size="4xl"
             noPadding
-            className="h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border-glass-border bg-card/95 shadow-xl backdrop-blur-xl sm:h-[min(90dvh,56rem)] sm:max-h-[90dvh]"
+            className="flex flex-col h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border-glass-border bg-card/95 shadow-xl backdrop-blur-xl sm:h-auto sm:max-h-[85dvh]"
           >
             <DialogTitle className="sr-only">Leitura da mensagem de e-mail</DialogTitle>
           {currentReceivedEmail || currentSentEmail ? (
-            <div className="flex flex-col h-full min-w-0 overflow-hidden">
+            <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
               {/* Barra de Ações Superior */}
               <div className="p-3 pr-12 border-b border-border/60 flex flex-wrap items-center justify-between gap-2 bg-muted/10 shrink-0 min-w-0">
                 <div className="flex flex-wrap items-center gap-1 min-w-0 flex-1">
@@ -2870,34 +2870,37 @@ export function Emails() {
                   />
                 )}
 
-                {/* Anexos */}
+                {/* Anexos (compactos em chips) */}
                 {currentReceivedEmail?.attachments && currentReceivedEmail.attachments.length > 0 && (
-                  <div className="pt-4 border-t space-y-2">
-                    <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                      <Paperclip className="size-3.5" />
+                  <div className="pt-3 border-t border-border/60 space-y-1.5">
+                    <div className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
+                      <Paperclip className="size-3" />
                       <span>Anexos ({currentReceivedEmail.attachments.length})</span>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto custom-scrollbar pr-1">
                       {currentReceivedEmail.attachments.map((att, idx) => (
-                        <div
-                          key={att.id || idx}
-                          className="flex items-center justify-between p-2.5 rounded-lg border bg-card text-xs shadow-2xs"
-                        >
-                          <div className="flex items-center gap-2 truncate">
-                            <Paperclip className="size-3.5 text-muted-foreground shrink-0" />
-                            <span className="font-medium truncate">{att.filename}</span>
-                          </div>
-                          {att.downloadUrl && (
-                            <a
-                              href={att.downloadUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-primary hover:underline font-semibold ml-2 shrink-0"
-                            >
-                              Baixar
-                            </a>
-                          )}
-                        </div>
+                        att.downloadUrl ? (
+                          <a
+                            key={att.id || idx}
+                            href={att.downloadUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={`Baixar ${att.filename}`}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border bg-muted/40 hover:bg-primary/10 hover:border-primary/40 text-xs transition-colors max-w-full"
+                          >
+                            <Paperclip className="size-3 text-muted-foreground shrink-0" />
+                            <span className="font-medium truncate max-w-[180px] sm:max-w-[220px]">{att.filename}</span>
+                            <span className="text-[10px] text-primary font-semibold shrink-0">Baixar</span>
+                          </a>
+                        ) : (
+                          <span
+                            key={att.id || idx}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border bg-muted/30 text-xs text-muted-foreground max-w-full"
+                          >
+                            <Paperclip className="size-3 shrink-0" />
+                            <span className="truncate max-w-[180px] sm:max-w-[220px]">{att.filename}</span>
+                          </span>
+                        )
                       ))}
                     </div>
                   </div>
