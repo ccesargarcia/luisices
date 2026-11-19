@@ -1,17 +1,17 @@
-# Plano de implementação — email-open-new-tab
+# Plano de implementação — email-message-modal
 
 ## Abordagem
 
-Abrir a rota própria `/emails/mensagem/:type/:id` com `window.open` diretamente no gesto de clique. A nova página consulta o documento protegido, carrega corpo recebido por `emailService.loadReceivedEmailBody` e reaproveita `EmailHtmlViewer`, mantendo a aba principal aberta.
+Substituir a coluna de leitura do e-mail por um `Dialog` compartilhado controlado por `selectedEmailId`. Reaproveitar o conteúdo, estado e ações do leitor já existente em `Emails.tsx`; remover a rota/página de nova aba publicada antes.
 
 ## Componentes existentes
 
 | Área | Arquivos/módulos atuais | Alteração proposta |
 |---|---|---|
-| Lista e-mail | `src/app/pages/Emails.tsx` | Clique abre nova aba; marca recebidos como lidos se houver permissão de edição |
-| Rota | `src/app/routes.tsx` | Rota independente da navegação principal, protegida por autenticação e `emails.view` |
-| Leitor | `src/app/pages/EmailMessageWindow.tsx`, `EmailHtmlViewer.tsx`, `emailService.ts` | Consultar por ID, corpo de Storage, cabeçalho, anexos e estados de erro |
-| Documentação | `docs/FUNCIONALIDADES.md`, Help Center | Explicar abertura em nova aba e permissão |
+| Lista/leitor | `src/app/pages/Emails.tsx` | Abrir seleção atual no `Dialog`; fechar limpa seleção e mantém pasta/caixa |
+| Primitivo | `src/app/components/ui/dialog.tsx` | Reuso do modal acessível, responsivo e integrado ao histórico |
+| Rota | `src/app/routes.tsx` | Remover a rota independente de mensagem |
+| Documentação | `docs/FUNCIONALIDADES.md`, Help Center | Explicar leitura em modal |
 
 ## Contratos, dados e compatibilidade
 
@@ -28,7 +28,7 @@ Abrir a rota própria `/emails/mensagem/:type/:id` com `window.open` diretamente
 
 ## UX e documentação
 
-- UI usa tokens semânticos, cartões translúcidos, componentes compartilhados e alvo mínimo móvel do design system.
+- UI usa `Dialog`, tokens semânticos, glassmorphism e dimensões que respeitam área segura móvel.
 - Documentação atualizada em Help Center, `docs/FUNCIONALIDADES.md` e nesta spec.
 - Copiloto (Gemini): sem impacto, interface de leitura não é consumida por IA.
 - MCP/ChatGPT: sem impacto, nenhuma ferramenta/escopo/schema muda.
@@ -37,9 +37,9 @@ Abrir a rota própria `/emails/mensagem/:type/:id` com `window.open` diretamente
 ## Validação e riscos
 
 - Typecheck: `npm run typecheck`.
-- Revisão manual do diff e das proteções da rota; validar erros e URLs de anexos disponíveis.
-- Risco: navegador pode bloquear nova aba se a chamada sair do gesto direto; por isso `window.open` é chamado no handler síncrono do clique.
+- Revisão manual do diff e do estado modal/lista/carregamento.
+- Risco: modal alto pode reduzir área em telas pequenas; mitigar com altura limitada à viewport e rolagem interna existente.
 
 ## Reversão
 
-Reverter a rota e o handler de clique; nenhuma migração ou dado persistente novo.
+Reverter o `Dialog` e restaurar o painel anterior; nenhuma migração ou dado persistente novo.

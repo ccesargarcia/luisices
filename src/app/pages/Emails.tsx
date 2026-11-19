@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from '../components/ui/select';
 import { Checkbox } from '../components/ui/checkbox';
+import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog';
 import { PaginationControls } from '../components/common/PaginationControls';
 import {
   ContextMenu,
@@ -628,11 +629,6 @@ export function Emails() {
         markAsRead(id, true).catch(() => toast.error('Não foi possível marcar a mensagem como lida.'));
       }
     }
-  };
-
-  const openEmailWindow = (id: string, type: 'received' | 'sent') => {
-    const routeType = type === 'received' ? 'recebidos' : 'enviados';
-    window.open(`/emails/mensagem/${routeType}/${encodeURIComponent(id)}`, '_blank', 'noopener,noreferrer');
   };
 
   // Alternar explicitamente status de lido / não lido
@@ -1613,9 +1609,7 @@ export function Emails() {
 
         {/* ── Coluna 2: Lista de Mensagens / Master (md: 4 ou 5 colunas) ── */}
         <div
-          className={`col-span-1 md:col-span-4 lg:col-span-4 border-r border-border/60 flex flex-col bg-background min-w-0 min-h-0 h-full overflow-hidden ${
-            selectedEmailId ? 'hidden md:flex' : 'flex'
-          }`}
+          className="col-span-1 md:col-span-9 lg:col-span-9 flex flex-col bg-background min-w-0 min-h-0 h-full overflow-hidden"
         >
           {/* Barra de Busca & Filtros Rápidos */}
           <div className="p-3 border-b border-border/60 space-y-2">
@@ -1867,7 +1861,7 @@ export function Emails() {
                   <ContextMenu key={email.id}>
                     <ContextMenuTrigger asChild>
                       <div
-                        onClick={() => openEmailWindow(email.id, email._type)}
+                        onClick={() => handleSelectEmail(email.id, email._type)}
                         className={`group p-3 sm:p-3.5 cursor-pointer transition-all relative border-b border-border/80 dark:border-zinc-800/90 select-none ${
                           isSelected
                             ? 'bg-primary/10 dark:bg-primary/20 border-l-4 border-l-primary shadow-xs'
@@ -2487,16 +2481,17 @@ export function Emails() {
           )}
         </div>
 
-        {/* ── Coluna 3: Leitura da Mensagem / Detail (md: 5 ou 6 colunas) ── */}
-        <div
-          className={`col-span-1 md:col-span-5 lg:col-span-6 flex flex-col bg-background min-w-0 h-full overflow-hidden ${
-            !selectedEmailId ? 'hidden md:flex' : 'flex'
-          }`}
-        >
+        <Dialog open={Boolean(selectedEmailId)} onOpenChange={(open) => { if (!open) setSelectedEmailId(null); }}>
+          <DialogContent
+            size="5xl"
+            noPadding
+            className="h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border-glass-border bg-card/95 shadow-xl backdrop-blur-xl sm:h-[min(90dvh,56rem)] sm:max-h-[90dvh]"
+          >
+            <DialogTitle className="sr-only">Leitura da mensagem de e-mail</DialogTitle>
           {currentReceivedEmail || currentSentEmail ? (
             <div className="flex flex-col h-full min-w-0 overflow-hidden">
               {/* Barra de Ações Superior */}
-              <div className="p-3 border-b border-border/60 flex flex-wrap items-center justify-between gap-2 bg-muted/10 shrink-0 min-w-0">
+              <div className="p-3 pr-12 border-b border-border/60 flex flex-wrap items-center justify-between gap-2 bg-muted/10 shrink-0 min-w-0">
                 <div className="flex flex-wrap items-center gap-1 min-w-0 flex-1">
                   {/* Botão voltar no mobile */}
                   <Button
@@ -2866,7 +2861,7 @@ export function Emails() {
               </div>
               <h3 className="font-semibold text-sm text-foreground">Nenhuma mensagem selecionada</h3>
               <p className="text-xs text-muted-foreground max-w-xs mt-1">
-                Escolha um e-mail na lista ao lado para ler o conteúdo ou redija uma nova mensagem para seus clientes.
+                Escolha um e-mail na lista para abrir a leitura em um modal ou redija uma nova mensagem para seus clientes.
               </p>
               {canCreate && (
                 <Button
@@ -2882,7 +2877,8 @@ export function Emails() {
               )}
             </div>
           )}
-        </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* ─── Modal de Composição / Nova Mensagem ───────────────────── */}
