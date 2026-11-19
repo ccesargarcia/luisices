@@ -1,0 +1,62 @@
+rules:
+  - id: luisices-no-eval-or-new-function
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: new Function(...)
+    message: Evite eval() ou new Function() por risco de execução arbitrária de código (XSS/RCE).
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-95"
+
+  - id: luisices-no-dangerously-set-innerhtml
+    pattern: dangerouslySetInnerHTML={{ __html: $HTML }}
+    message: Uso de dangerouslySetInnerHTML detectado; prefira renderização declarativa ou iframe sandboxed com DOMPurify.
+    languages: [typescript, javascript]
+    severity: WARNING
+    paths:
+      include:
+        - src/
+    metadata:
+      category: security
+      cwe: "CWE-79"
+
+  - id: luisices-no-hardcoded-provider-secrets
+    pattern-regex: "(AIza[0-9A-Za-z_-]{35}|sk_live_[0-9a-zA-Z]{24,}|re_[0-9a-zA-Z_]{24,}|whsec_[0-9a-zA-Z+/=]{24,})"
+    message: Possível chave ou segredo hardcoded detectado no código-fonte. Utilize variáveis de ambiente ou Google Secret Manager.
+    languages: [generic]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: luisices-no-secret-console-log
+    pattern-either:
+      - pattern: console.log(..., $SECRET, ...)
+      - pattern: console.error(..., $SECRET, ...)
+      - pattern: console.warn(..., $SECRET, ...)
+    metavariable-regex:
+      metavariable: $SECRET
+      regex: "(?i).*(secret|apiKey|privateKey|private_key|password|accessToken|refreshToken).*"
+    message: Evite registrar variáveis de segredo, token ou senha em logs.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-532"
+
+  - id: luisices-no-client-write-restricted-collections
+    pattern-either:
+      - pattern: setDoc(doc($DB, "salesLedger", ...), ...)
+      - pattern: updateDoc(doc($DB, "salesLedger", ...), ...)
+      - pattern: deleteDoc(doc($DB, "salesLedger", ...))
+    message: Escrita direta do cliente em salesLedger deve ser evitada; utilize Cloud Functions transacionais.
+    languages: [typescript, javascript]
+    severity: ERROR
+    paths:
+      include:
+        - src/
+    metadata:
+      category: security
