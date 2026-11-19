@@ -1913,11 +1913,17 @@ export function Emails() {
                         <div className="flex items-start gap-2.5">
                           {/* Checkbox para seleção individual */}
                           <div
-                            onClick={(e) => handleToggleSelectEmail(email.id, e)}
-                            className="pt-0.5 shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (e.target === e.currentTarget) {
+                                handleToggleSelectEmail(email.id);
+                              }
+                            }}
+                            className="-m-1.5 p-2 shrink-0 flex items-center justify-center rounded-md hover:bg-muted/60"
                           >
                             <Checkbox
                               checked={isChecked}
+                              onClick={(e) => e.stopPropagation()}
                               onCheckedChange={() => handleToggleSelectEmail(email.id)}
                               className="size-4 rounded"
                               aria-label={`Selecionar ${email.subject || 'mensagem'}`}
