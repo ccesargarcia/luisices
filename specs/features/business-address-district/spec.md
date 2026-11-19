@@ -1,7 +1,7 @@
 # Bairro no endereço do negócio
 
 - **ID:** `business-address-district`
-- **Status:** Implementada localmente
+- **Status:** Concluída em Dev
 - **Responsável:** Não definido
 - **Atualizado em:** 2026-11-18
 - **Referências:** `src/app/components/settings/BusinessInfoSection.tsx`; `src/app/pages/Settings.tsx`; `src/services/firebaseSettingsService.ts`; `src/app/components/shipping/SuperfreteGenerateLabelDialog.tsx`; `functions/orders/superfrete.js`; `docs/FUNCIONALIDADES.md`
@@ -74,4 +74,6 @@ O formulário Informações do Negócio não tinha campo para bairro. A consulta
 
 ## Evidências de conclusão
 
-- Implementação e documentação locais concluídas; validação e publicação pendentes.
+- `npm run typecheck`, `npm --prefix functions run lint` (108 arquivos) e `git diff --check` passaram localmente.
+- Commit `794bce219807fcc471a8dea892a70c9ed3bfcfa5` publicado em `develop`; Firebase Dev (`44427416678`), Vercel Dev/Beta (`44427416604`) e CodeQL (`44427416761`) concluíram com sucesso.
+- Os jobs de Cloudflare Workers foram ignorados; sem mudança no Worker ou em `api.dev`. Produção não foi publicada.

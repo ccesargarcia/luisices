@@ -8,5 +8,5 @@
   - Evidência: `SuperfreteGenerateLabelDialog.tsx`, `functions/orders/superfrete.js`.
 - [x] **T4 — Documentação:** atualizar guia, catálogo e registrar impactos Copiloto/MCP.
   - Evidência: `docs/FUNCIONALIDADES.md`, `specs/features/README.md`, esta spec.
-- [ ] **T5 — Validação e deploy:** typecheck, lint Functions, diff check e confirmar CI Firebase Dev/Vercel; Worker Cloudflare deve continuar sem deploy.
-  - Evidência: preencher após execução e workflows.
+- [x] **T5 — Validação e deploy:** typecheck, lint Functions, diff check e confirmar CI Firebase Dev/Vercel; Worker Cloudflare deve continuar sem deploy.
+  - Evidência: validações locais passaram; Firebase Dev `44427416678`, Vercel Dev/Beta `44427416604` e CodeQL `44427416761` concluídos com sucesso; Workers ignorados.
