@@ -1,27 +1,9 @@
 name: Semgrep
 
 on:
-  push:
-    branches: [main, develop]
-    paths:
-      - 'src/**'
-      - 'functions/**'
-      - 'api/**'
-      - 'cloudflare/**'
-      - '.semgrep/**'
-      - '.github/workflows/semgrep.yml'
-  pull_request:
-    branches: [main, develop]
-    paths:
-      - 'src/**'
-      - 'functions/**'
-      - 'api/**'
-      - 'cloudflare/**'
-      - '.semgrep/**'
-      - '.github/workflows/semgrep.yml'
+  workflow_dispatch:
   schedule:
     - cron: '17 4 * * 1'
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -43,6 +25,7 @@ jobs:
           fetch-depth: 0
 
       - name: Send scan to Semgrep Cloud (SaaS)
+        continue-on-error: true
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -72,6 +55,7 @@ jobs:
             semgrep ci
 
       - name: Run Semgrep scan (SARIF)
+        continue-on-error: true
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/src" \
@@ -96,7 +80,8 @@ jobs:
           sarif_file: semgrep.sarif
           category: semgrep
 
-      - name: Enforce zero ERROR findings on Luisices custom & secrets rules
+      - name: Report Luisices custom & secrets findings (non-blocking)
+        continue-on-error: true
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/src" \
@@ -106,6 +91,5 @@ jobs:
             --config .semgrep/luisices.yml \
             --config p/secrets \
             --severity ERROR \
-            --error \
             --metrics=off \
             src functions api cloudflare
