@@ -40,37 +40,41 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Run Semgrep scan
-        uses: docker://semgrep/semgrep:latest
-        with:
-          args: >-
-            semgrep scan
-            --config p/typescript
-            --config p/javascript
-            --config p/react
-            --config p/nodejs
-            --config p/secrets
-            --config .semgrep/luisices.yml
-            --metrics=off
-            --sarif
-            --output=semgrep.sarif
+      - name: Run Semgrep scan (SARIF)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/src" \
+            --workdir /src \
+            semgrep/semgrep:latest \
+            semgrep scan \
+            --config p/typescript \
+            --config p/javascript \
+            --config p/react \
+            --config p/nodejs \
+            --config p/secrets \
+            --config .semgrep/luisices.yml \
+            --metrics=off \
+            --sarif \
+            --output=semgrep.sarif \
             src functions api cloudflare
 
       - name: Upload Semgrep SARIF to GitHub Security
-        if: always()
+        if: always() && hashFiles('semgrep.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep.sarif
           category: semgrep
 
       - name: Enforce zero ERROR findings on Luisices custom & secrets rules
-        uses: docker://semgrep/semgrep:latest
-        with:
-          args: >-
-            semgrep scan
-            --config .semgrep/luisices.yml
-            --config p/secrets
-            --severity ERROR
-            --error
-            --metrics=off
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/src" \
+            --workdir /src \
+            semgrep/semgrep:latest \
+            semgrep scan \
+            --config .semgrep/luisices.yml \
+            --config p/secrets \
+            --severity ERROR \
+            --error \
+            --metrics=off \
             src functions api cloudflare
