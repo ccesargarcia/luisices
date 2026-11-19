@@ -33,13 +33,14 @@ rules:
       cwe: "CWE-798"
 
   - id: luisices-no-secret-console-log
-    pattern-either:
-      - pattern: "console.log(..., $SECRET, ...)"
-      - pattern: "console.error(..., $SECRET, ...)"
-      - pattern: "console.warn(..., $SECRET, ...)"
-    metavariable-regex:
-      metavariable: $SECRET
-      regex: "(?i).*(secret|apiKey|privateKey|private_key|password|accessToken|refreshToken).*"
+    patterns:
+      - pattern-either:
+          - pattern: "console.log(..., $SECRET, ...)"
+          - pattern: "console.error(..., $SECRET, ...)"
+          - pattern: "console.warn(..., $SECRET, ...)"
+      - metavariable-regex:
+          metavariable: $SECRET
+          regex: "^[a-zA-Z_$][a-zA-Z0-9_$]*(Secret|ApiKey|PrivateKey|private_key|Password|AccessToken|RefreshToken)$"
     message: Evite registrar variáveis de segredo, token ou senha em logs.
     languages: [javascript, typescript]
     severity: WARNING

@@ -25,12 +25,15 @@ function encryptTrackingToken(token, encryptionKeyBase64) {
 function decryptTrackingToken(value, encryptionKeyBase64) {
   const [ivValue, tagValue, ciphertextValue] = String(value || '').split('.');
   if (!ivValue || !tagValue || !ciphertextValue) throw new Error('invalid_ciphertext');
+  const authTag = Buffer.from(tagValue, 'base64url');
+  if (authTag.length !== 16) throw new Error('invalid_auth_tag');
   const decipher = crypto.createDecipheriv(
     'aes-256-gcm',
     getTrackingEncryptionKey(encryptionKeyBase64),
     Buffer.from(ivValue, 'base64url'),
+    { authTagLength: 16 },
   );
-  decipher.setAuthTag(Buffer.from(tagValue, 'base64url'));
+  decipher.setAuthTag(authTag);
   return Buffer.concat([
     decipher.update(Buffer.from(ciphertextValue, 'base64url')),
     decipher.final(),
