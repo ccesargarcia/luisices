@@ -88,13 +88,10 @@ export function SendEmailDialog({
   }, []);
 
   const defaultSender = useMemo(() => {
-    if (businessEmail) {
-      return `${businessName} <${businessEmail}>`;
-    }
     return isDev
       ? 'Luisices Dev <contato@dev.luisices.com.br>'
       : 'Luisices <contato@luisices.com.br>';
-  }, [businessName, businessEmail, isDev]);
+  }, [isDev]);
 
   const [recipient, setRecipient] = useState(defaultRecipient);
   const [subject, setSubject] = useState(defaultSubject);
