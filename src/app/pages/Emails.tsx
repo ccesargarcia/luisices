@@ -350,6 +350,9 @@ export function Emails() {
   // Seleção de mensagem ativa no painel de leitura
   const [selectedEmailType, setSelectedEmailType] = useState<'received' | 'sent' | null>('received');
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
+  const [loadedReceivedBody, setLoadedReceivedBody] = useState<{ emailId: string; html: string; text: string } | null>(null);
+  const [loadingReceivedBodyId, setLoadingReceivedBodyId] = useState<string | null>(null);
+  const [receivedBodyLoadFailedId, setReceivedBodyLoadFailedId] = useState<string | null>(null);
 
   // Modal de composição (Nova Mensagem / Resposta)
   const [isComposeOpen, setIsComposeOpen] = useState(false);
@@ -448,7 +451,7 @@ export function Emails() {
         if (filterMode === 'unread' && email._type === 'received' && email.read) return false;
         if (q) {
           const matchSub = email.subject?.toLowerCase().includes(q);
-          const matchTxt = (email.text || (email as any).html)?.toLowerCase().includes(q);
+          const matchTxt = (email.text || ('bodyPreview' in email ? email.bodyPreview : '') || (email as any).html)?.toLowerCase().includes(q);
           const matchFrom = email._type === 'received' ? email.from?.toLowerCase().includes(q) : false;
           const matchTo = email._type === 'sent' ? email.to?.some((t) => t.toLowerCase().includes(q)) : false;
           return matchSub || matchTxt || matchFrom || matchTo;
@@ -495,7 +498,7 @@ export function Emails() {
         if (q) {
           const matchSub = email.subject?.toLowerCase().includes(q);
           const matchFrom = email.from?.toLowerCase().includes(q);
-          const matchTxt = email.text?.toLowerCase().includes(q);
+          const matchTxt = (email.text || email.bodyPreview)?.toLowerCase().includes(q);
           return matchSub || matchFrom || matchTxt;
         }
         return true;
@@ -544,6 +547,32 @@ export function Emails() {
     if (selectedEmailType !== 'received' || !selectedEmailId) return null;
     return receivedEmails.find((e) => e.id === selectedEmailId) ?? null;
   }, [receivedEmails, selectedEmailType, selectedEmailId]);
+
+  const receivedHtmlPath = currentReceivedEmail?.bodyStoragePaths?.html;
+  const receivedTextPath = currentReceivedEmail?.bodyStoragePaths?.text;
+  useEffect(() => {
+    const emailId = currentReceivedEmail?.id;
+    if (!emailId || (!receivedHtmlPath && !receivedTextPath)) {
+      setLoadedReceivedBody(null);
+      setLoadingReceivedBodyId(null);
+      setReceivedBodyLoadFailedId(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadedReceivedBody(null);
+    setReceivedBodyLoadFailedId(null);
+    setLoadingReceivedBodyId(emailId);
+    emailService.loadReceivedEmailBody({ html: receivedHtmlPath, text: receivedTextPath })
+      .then(body => { if (!cancelled) setLoadedReceivedBody({ emailId, ...body }); })
+      .catch(error => {
+        console.warn('[Emails] Não foi possível carregar o corpo completo recebido:', error);
+        if (!cancelled) setReceivedBodyLoadFailedId(emailId);
+      })
+      .finally(() => { if (!cancelled) setLoadingReceivedBodyId(null); });
+
+    return () => { cancelled = true; };
+  }, [currentReceivedEmail?.id, receivedHtmlPath, receivedTextPath]);
 
   const currentSentEmail = useMemo(() => {
     if (selectedEmailType !== 'sent' || !selectedEmailId) return null;
@@ -1268,8 +1297,17 @@ export function Emails() {
   };
 
   // Ação de Responder preservando mídia, links e HTML da mensagem original
-  const handleStartReply = (email: ReceivedEmail) => {
+  const handleStartReply = async (email: ReceivedEmail) => {
     if (!canCreate) return;
+    let fullBody = { html: email.html || '', text: email.text || '' };
+    if (email.bodyStoragePaths) {
+      try {
+        fullBody = await emailService.loadReceivedEmailBody(email.bodyStoragePaths);
+      } catch {
+        toast.error('Não foi possível carregar o conteúdo completo para a resposta.');
+        return;
+      }
+    }
     const cleanEmail = email.from.match(/<([^>]+)>/)?.[1] || email.from.trim();
     setRecipient(cleanEmail);
     const cleanSubject = email.subject.replace(/^Re:\s*/i, '');
@@ -1279,8 +1317,8 @@ export function Emails() {
       from: email.from,
       date: new Date(email.receivedAt).toLocaleString('pt-BR'),
       subject: email.subject,
-      html: email.html,
-      text: email.text,
+      html: fullBody.html,
+      text: fullBody.text,
       attachments: email.attachments || [],
     });
     setAttachments([]);
@@ -1290,9 +1328,19 @@ export function Emails() {
   };
 
   // Copiar conteúdo da mensagem atual
-  const handleCopyMessageText = () => {
+  const handleCopyMessageText = async () => {
+    let receivedText = currentReceivedEmail?.text || '';
+    if (currentReceivedEmail?.bodyStoragePaths) {
+      try {
+        const body = await emailService.loadReceivedEmailBody(currentReceivedEmail.bodyStoragePaths);
+        receivedText = body.text || body.html.replace(/<[^>]+>/g, ' ');
+      } catch {
+        toast.error('Não foi possível carregar o conteúdo da mensagem.');
+        return;
+      }
+    }
     const textToCopy = currentReceivedEmail
-      ? currentReceivedEmail.text || currentReceivedEmail.subject
+      ? receivedText || currentReceivedEmail.bodyPreview || currentReceivedEmail.subject
       : currentSentEmail
       ? currentSentEmail.text || currentSentEmail.subject
       : '';
@@ -2717,10 +2765,25 @@ export function Emails() {
               {/* Corpo da Mensagem com Rolagem Fluida */}
               <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-4 select-text custom-scrollbar">
                 {currentReceivedEmail ? (
-                  <EmailHtmlViewer
-                    html={currentReceivedEmail.html}
-                    text={currentReceivedEmail.text}
-                  />
+                  currentReceivedEmail.bodyStoragePaths ? (
+                    loadedReceivedBody?.emailId === currentReceivedEmail.id ? (
+                      <EmailHtmlViewer html={loadedReceivedBody.html} text={loadedReceivedBody.text} />
+                    ) : loadingReceivedBodyId === currentReceivedEmail.id ? (
+                      <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                        <Loader2 className="size-4 animate-spin" /> Carregando conteúdo completo…
+                      </div>
+                    ) : receivedBodyLoadFailedId === currentReceivedEmail.id ? (
+                      <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+                        Não foi possível carregar o conteúdo completo deste e-mail. Verifique sua permissão de leitura do módulo de E-mails.
+                      </div>
+                    ) : null
+                  ) : currentReceivedEmail.bodyUnavailableReason ? (
+                    <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+                      O corpo desta mensagem excede o limite de armazenamento do módulo. Os dados do remetente, assunto e anexos continuam disponíveis.
+                    </div>
+                  ) : (
+                    <EmailHtmlViewer html={currentReceivedEmail.html} text={currentReceivedEmail.text} />
+                  )
                 ) : (
                   <EmailHtmlViewer
                     html={currentSentEmail?.html}

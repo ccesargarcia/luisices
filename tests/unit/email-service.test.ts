@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { emailService } from '../../src/services/emailService';
-import { updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { updateDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
+import { deleteObject, getBytes, ref } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 
 // Mocking firebase/firestore
@@ -10,10 +11,17 @@ vi.mock('firebase/firestore', () => ({
     id,
   })),
   updateDoc: vi.fn().mockResolvedValue(undefined),
+  getDoc: vi.fn().mockResolvedValue({ data: () => undefined }),
   deleteDoc: vi.fn().mockResolvedValue(undefined),
   collection: vi.fn(),
   setDoc: vi.fn().mockResolvedValue(undefined),
   serverTimestamp: vi.fn(() => new Date()),
+}));
+
+vi.mock('firebase/storage', () => ({
+  deleteObject: vi.fn().mockResolvedValue(undefined),
+  getBytes: vi.fn().mockResolvedValue(new TextEncoder().encode('<p>Stored</p>')),
+  ref: vi.fn((_storage, path) => ({ path })),
 }));
 
 // Mocking firebase/functions
@@ -35,6 +43,7 @@ vi.mock('firebase/functions', () => ({
 vi.mock('../../src/lib/firebase', () => ({
   db: {},
   functions: {},
+  storage: {},
 }));
 
 describe('Funcionalidade: Comunicação e Mensageria por E-mail (emailService)', () => {
@@ -149,6 +158,21 @@ describe('Funcionalidade: Comunicação e Mensageria por E-mail (emailService)',
       expect(deleteDoc).toHaveBeenCalledWith(
         expect.objectContaining({ path: 'receivedEmails/email-xyz' })
       );
+    });
+
+    it('carrega corpo armazenado usando Storage autenticado', async () => {
+      await expect(emailService.loadReceivedEmailBody({ html: 'emails/received/hash/body.html' }))
+        .resolves.toEqual({ html: '<p>Stored</p>', text: '' });
+      expect(ref).toHaveBeenCalledWith(expect.anything(), 'emails/received/hash/body.html');
+      expect(getBytes).toHaveBeenCalled();
+    });
+
+    it('remove objetos do Storage ao excluir definitivamente uma mensagem que os referencia', async () => {
+      vi.mocked(getDoc).mockResolvedValueOnce({
+        data: () => ({ bodyStoragePaths: { html: 'emails/received/hash/body.html' } }),
+      } as any);
+      await emailService.deleteReceivedEmail('email-with-body');
+      expect(deleteObject).toHaveBeenCalledWith(expect.objectContaining({ path: 'emails/received/hash/body.html' }));
     });
 
     it('deleteSentEmail deve excluir o documento de sentEmails', async () => {

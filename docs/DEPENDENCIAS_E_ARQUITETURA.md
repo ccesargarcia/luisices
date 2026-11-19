@@ -34,7 +34,7 @@ O navegador também utiliza serviços de observabilidade, consulta de CEP e URLs
 | Formulários | React Hook Form, Zod, resolvers | Entrada e validação |
 | Dados | Firebase SDK | Auth, Firestore, RTDB, Storage, Analytics e Performance |
 | Backend | firebase-admin, firebase-functions | Operações administrativas, callables e eventos |
-| E-mail | Resend | Envio e webhook de recebimento |
+| E-mail | Resend, Firebase Storage | Envio/webhook Resend; corpos recebidos grandes em objetos privados carregados sob demanda |
 | WhatsApp | Evolution API via HTTP | Envio, histórico e webhook |
 | IA | Gemini via HTTP | Chat com ferramentas e análise de imagens |
 | Voz | ASK SDK e verificação de requisições | Integração Alexa |

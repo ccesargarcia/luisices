@@ -1,11 +1,14 @@
 /** Recebimento e validação de eventos do Resend. */
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
+const { getStorage } = require('firebase-admin/storage');
 const { onRequest } = require('../common/sentryFunctions');
 const { RESEND_API_KEY, RESEND_WEBHOOK_SECRET, ORIGIN_SECRET } = require('../common/secrets');
 const { getResend } = require('../common/helpers');
 const { validateOriginSecret, getOriginSecretValue } = require('../originProtection');
 const { evaluateSpam } = require('./spamFilter');
-const { isValidSvixSignature } = require('./webhookSecurity');
+const { isValidSvixSignature, isValidForwardSignature } = require('./webhookSecurity');
+const { forwardVerifiedWebhook } = require('./webhookForwarding');
+const { prepareReceivedEmailBody, persistReceivedEmailBody } = require('./receivedEmailBody');
 
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
 
@@ -59,6 +62,12 @@ const resendReceivingWebhook = onRequest(
       const svixId = Array.isArray(rawSvixId) ? rawSvixId[0] : rawSvixId;
       const svixTimestamp = Array.isArray(rawSvixTimestamp) ? rawSvixTimestamp[0] : rawSvixTimestamp;
       const svixSignature = Array.isArray(rawSvixSignature) ? rawSvixSignature[0] : rawSvixSignature;
+      const forwardedFromHeader = req.headers['x-forwarded-from'];
+      const forwardedFrom = Array.isArray(forwardedFromHeader) ? forwardedFromHeader[0] : forwardedFromHeader;
+      const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+      const isDev = projectId === 'luisices-dev';
+      const expectedForwarder = isDev ? 'prod' : 'dev';
+      const rawContent = Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
 
       if (!svixId || !svixTimestamp || !svixSignature) {
         console.warn('[resendReceivingWebhook] Cabeçalhos de assinatura Svix ausentes');
@@ -73,18 +82,29 @@ const resendReceivingWebhook = onRequest(
       }
 
       try {
-        const rawContent = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
-        const signatureValid = isValidSvixSignature({
-          secret: webhookSecret,
-          svixId,
-          svixTimestamp,
-          rawContent,
-          signature: svixSignature,
-        });
+        const signatureValid = forwardedFrom
+          ? isValidForwardSignature({
+            secret: webhookSecret,
+            source: forwardedFrom,
+            expectedSource: expectedForwarder,
+            svixId,
+            svixTimestamp,
+            rawContent,
+            signature: req.headers['x-luisices-forward-signature'],
+          })
+          : isValidSvixSignature({
+            secret: webhookSecret,
+            svixId,
+            svixTimestamp,
+            rawContent,
+            signature: svixSignature,
+          });
 
         if (!signatureValid) {
-          console.warn('[resendReceivingWebhook] Assinatura Svix rejeitada');
-          return res.status(401).json({ error: 'Assinatura Svix inválida' });
+          console.warn(forwardedFrom
+            ? '[resendReceivingWebhook] Assinatura de encaminhamento interno rejeitada'
+            : '[resendReceivingWebhook] Assinatura Svix rejeitada');
+          return res.status(401).json({ error: 'Assinatura do webhook inválida' });
         }
       } catch (err) {
         console.error('[resendReceivingWebhook] Falha na validação criptográfica:', err);
@@ -132,9 +152,6 @@ const resendReceivingWebhook = onRequest(
         return res.status(200).json({ status: 'duplicate', id: emailId });
       }
 
-      const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-      const isDev = projectId === 'luisices-dev';
-
       const initialRecipients = [
         ...(Array.isArray(eventData.to) ? eventData.to : [eventData.to]),
         ...(Array.isArray(eventData.cc) ? eventData.cc : [eventData.cc]),
@@ -153,64 +170,37 @@ const resendReceivingWebhook = onRequest(
       const hasProdRecipient = recipientDomains.some((d) => (d === 'luisices.com.br' || d.endsWith('.luisices.com.br')) && !(d === 'dev.luisices.com.br' || d.endsWith('.dev.luisices.com.br')));
 
       // Redirecionamento inteligente entre ambientes quando o Resend possui apenas um webhook cadastrado:
-      const forwardedFrom = req.headers['x-forwarded-from'];
       const dynamicOriginToken = getOriginSecretValue();
 
       if (!forwardedFrom) {
         if (!isDev && hasDevRecipient && !hasProdRecipient) {
           // Chegou em PROD, mas é um e-mail de DEV -> Encaminhar para a API de DEV
-          try {
-            console.log('[resendReceivingWebhook] Encaminhando webhook de e-mail de DEV para api.dev.luisices.com.br...');
-            const forwardHeaders = {
-              'content-type': 'application/json',
-              'x-forwarded-from': 'prod',
-            };
-            if (dynamicOriginToken) {
-              forwardHeaders['x-origin-secret'] = dynamicOriginToken;
-              forwardHeaders['x-cf-origin-token'] = dynamicOriginToken;
-            }
-            if (rawSvixId) forwardHeaders['svix-id'] = svixId;
-            if (rawSvixTimestamp) forwardHeaders['svix-timestamp'] = svixTimestamp;
-            if (rawSvixSignature) forwardHeaders['svix-signature'] = svixSignature;
-
-            const forwardResp = await fetch('https://api.dev.luisices.com.br/resendReceivingWebhook', {
-              method: 'POST',
-              headers: forwardHeaders,
-              body: req.rawBody ? req.rawBody : JSON.stringify(req.body),
-            });
-            const forwardJson = await forwardResp.json().catch(() => ({}));
-            console.log('[resendReceivingWebhook] Encaminhado para DEV com resposta:', forwardResp.status, forwardJson);
-            return res.status(forwardResp.status).json(forwardJson);
-          } catch (fwdErr) {
-            console.error('[resendReceivingWebhook] Falha ao encaminhar para DEV:', fwdErr);
+          console.log('[resendReceivingWebhook] Encaminhando webhook de e-mail de DEV para api.dev.luisices.com.br...');
+          const forwardResult = await forwardVerifiedWebhook({
+            url: 'https://api.dev.luisices.com.br/resendReceivingWebhook',
+            source: 'prod', webhookSecret, originToken: dynamicOriginToken,
+            svixId, svixTimestamp, svixSignature, rawContent,
+            releaseClaim: () => webhookClaimRef.delete(),
+          });
+          if (!forwardResult.ok) {
+            webhookClaimed = false;
+            return res.status(502).json({ error: 'Falha temporária ao encaminhar o e-mail para desenvolvimento.' });
           }
+          return res.status(200).json({ ok: true, id: emailId, forwarded: true });
         } else if (isDev && hasProdRecipient && !hasDevRecipient) {
           // Chegou em DEV, mas é um e-mail de PROD -> Encaminhar para a API de PROD
-          try {
-            console.log('[resendReceivingWebhook] Encaminhando webhook de e-mail de PROD para api.luisices.com.br...');
-            const forwardHeaders = {
-              'content-type': 'application/json',
-              'x-forwarded-from': 'dev',
-            };
-            if (dynamicOriginToken) {
-              forwardHeaders['x-origin-secret'] = dynamicOriginToken;
-              forwardHeaders['x-cf-origin-token'] = dynamicOriginToken;
-            }
-            if (rawSvixId) forwardHeaders['svix-id'] = svixId;
-            if (rawSvixTimestamp) forwardHeaders['svix-timestamp'] = svixTimestamp;
-            if (rawSvixSignature) forwardHeaders['svix-signature'] = svixSignature;
-
-            const forwardResp = await fetch('https://api.luisices.com.br/resendReceivingWebhook', {
-              method: 'POST',
-              headers: forwardHeaders,
-              body: req.rawBody ? req.rawBody : JSON.stringify(req.body),
-            });
-            const forwardJson = await forwardResp.json().catch(() => ({}));
-            console.log('[resendReceivingWebhook] Encaminhado para PROD com resposta:', forwardResp.status, forwardJson);
-            return res.status(forwardResp.status).json(forwardJson);
-          } catch (fwdErr) {
-            console.error('[resendReceivingWebhook] Falha ao encaminhar para PROD:', fwdErr);
+          console.log('[resendReceivingWebhook] Encaminhando webhook de e-mail de PROD para api.luisices.com.br...');
+          const forwardResult = await forwardVerifiedWebhook({
+            url: 'https://api.luisices.com.br/resendReceivingWebhook',
+            source: 'dev', webhookSecret, originToken: dynamicOriginToken,
+            svixId, svixTimestamp, svixSignature, rawContent,
+            releaseClaim: () => webhookClaimRef.delete(),
+          });
+          if (!forwardResult.ok) {
+            webhookClaimed = false;
+            return res.status(502).json({ error: 'Falha temporária ao encaminhar o e-mail para produção.' });
           }
+          return res.status(200).json({ ok: true, id: emailId, forwarded: true });
         }
       }
 
@@ -297,17 +287,35 @@ const resendReceivingWebhook = onRequest(
         html: emailHtml,
       });
 
-      const emailDoc = {
-        resendId: emailId,
+      const emailMetadata = {
         from: emailFrom,
         to: fullEmail?.to || (Array.isArray(eventData.to) ? eventData.to : [eventData.to].filter(Boolean)),
         cc: fullEmail?.cc || eventData.cc || [],
         bcc: fullEmail?.bcc || eventData.bcc || [],
         subject: emailSubject || '(Sem assunto)',
-        html: emailHtml,
-        text: emailText,
         attachments: fullEmail?.attachments || eventData.attachments || [],
         raw: fullEmail?.raw || null,
+      };
+      const reservedBytes = Buffer.byteLength(JSON.stringify(emailMetadata), 'utf8') + 64 * 1024;
+      const bodyPlan = prepareReceivedEmailBody({ emailId, html: emailHtml, text: emailText, reservedBytes });
+      const bodyStoragePaths = bodyPlan.mode === 'storage'
+        ? await persistReceivedEmailBody(getStorage().bucket(), bodyPlan)
+        : null;
+      if (bodyPlan.mode === 'storage') {
+        console.log(`[resendReceivingWebhook] Corpo grande guardado no Storage: ${emailId}, bytes=${bodyPlan.totalBytes}`);
+      } else if (bodyPlan.mode === 'omitted') {
+        console.warn(`[resendReceivingWebhook] Corpo omitido por exceder o limite operacional: ${emailId}, bytes=${bodyPlan.totalBytes}`);
+      }
+
+      const emailDoc = {
+        resendId: emailId,
+        ...emailMetadata,
+        html: bodyPlan.html,
+        text: bodyPlan.text,
+        bodyPreview: bodyPlan.preview,
+        bodySizeBytes: bodyPlan.totalBytes,
+        ...(bodyStoragePaths ? { bodyStoragePaths } : {}),
+        ...(bodyPlan.reason ? { bodyUnavailableReason: bodyPlan.reason } : {}),
         read: false,
         starred: false,
         archived: false,
@@ -318,7 +326,16 @@ const resendReceivingWebhook = onRequest(
         createdAt: FieldValue.serverTimestamp(),
       };
 
-      await getFirestore().collection('receivedEmails').doc(emailId).set(emailDoc, { merge: true });
+      try {
+        await getFirestore().collection('receivedEmails').doc(emailId).set(emailDoc, { merge: true });
+      } catch (writeError) {
+        if (bodyStoragePaths) {
+          await Promise.all(Object.values(bodyStoragePaths).map((path) => (
+            getStorage().bucket().file(path).delete({ ignoreNotFound: true }).catch(() => {})
+          )));
+        }
+        throw writeError;
+      }
       console.log(`[resendReceivingWebhook] E-mail recebido salvo com sucesso: ${emailId}`);
 
       return res.status(200).json({ ok: true, id: emailId });

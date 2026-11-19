@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDocs,
+  getDoc,
   limit,
   query,
   updateDoc,
@@ -10,8 +11,9 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore';
+import { deleteObject, getBytes, ref } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
-import { auth, db, functions } from '../lib/firebase';
+import { auth, db, functions, storage } from '../lib/firebase';
 import { SendEmailPayload, EmailUsage } from '../app/types';
 import { getVercelBetaApiUrl } from '../app/utils/betaHost';
 import { executeWithGcpFallback, VercelInfraError } from './backendRoutingService';
@@ -64,6 +66,15 @@ export class EmailService {
     let failed = 0;
     for (let offset = 0; offset < ids.length; offset += 400) {
       const chunk = ids.slice(offset, offset + 400);
+      const pathsById = new Map<string, string[]>();
+      if (collectionName === 'receivedEmails') {
+        const docs = await Promise.all(chunk.map(id => getDoc(doc(db, collectionName, id))));
+        docs.forEach((email, index) => {
+          const bodyPaths = email.data()?.bodyStoragePaths || {};
+          pathsById.set(chunk[index], [bodyPaths.html, bodyPaths.text]
+            .filter((path): path is string => typeof path === 'string'));
+        });
+      }
       const batch = writeBatch(db);
       chunk.forEach(id => batch.delete(doc(db, collectionName, id)));
       try {
@@ -71,9 +82,29 @@ export class EmailService {
         deleted += chunk.length;
       } catch {
         failed += chunk.length;
+        continue;
+      }
+      for (const [id, paths] of pathsById) {
+        try {
+          await Promise.all(paths.map(path => deleteObject(ref(storage, path)).catch(error => {
+            if (error?.code !== 'storage/object-not-found') throw error;
+          })));
+        } catch (error) {
+          console.warn(`[EmailService] Não foi possível remover o corpo do e-mail excluído ${id}:`, error);
+        }
       }
     }
     return { deleted, failed };
+  }
+
+  async loadReceivedEmailBody(paths: { html?: string; text?: string }): Promise<{ html: string; text: string }> {
+    const load = async (path?: string) => {
+      if (!path) return '';
+      const bytes = await getBytes(ref(storage, path), 15 * 1024 * 1024);
+      return new TextDecoder().decode(bytes);
+    };
+    const [html, text] = await Promise.all([load(paths.html), load(paths.text)]);
+    return { html, text };
   }
 
   /**
@@ -180,8 +211,17 @@ export class EmailService {
    * Exclui um e-mail recebido definitivamente
    */
   async deleteReceivedEmail(emailId: string): Promise<void> {
-    const ref = doc(db, 'receivedEmails', emailId);
-    await deleteDoc(ref);
+    const emailRef = doc(db, 'receivedEmails', emailId);
+    const snapshot = await getDoc(emailRef);
+    const bodyPaths = snapshot.data()?.bodyStoragePaths || {};
+    await deleteDoc(emailRef);
+    await Promise.all([bodyPaths.html, bodyPaths.text]
+      .filter((path): path is string => typeof path === 'string')
+      .map(path => deleteObject(ref(storage, path)).catch(error => {
+        if (error?.code !== 'storage/object-not-found') {
+          console.warn(`[EmailService] Não foi possível remover o corpo do e-mail excluído ${emailId}:`, error);
+        }
+      })));
   }
 
   /**

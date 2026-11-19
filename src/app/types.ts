@@ -731,6 +731,10 @@ export interface ReceivedEmail {
   subject: string;
   html?: string;
   text?: string;
+  bodyPreview?: string;
+  bodySizeBytes?: number;
+  bodyStoragePaths?: { html?: string; text?: string };
+  bodyUnavailableReason?: 'size_limit' | string;
   attachments?: EmailAttachment[];
   raw?: {
     download_url?: string;

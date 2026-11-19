@@ -82,6 +82,26 @@ describe('rascunhos privados', () => {
   });
 });
 
+describe('corpos recebidos em Storage privado', () => {
+  it('permite leitura apenas com emails.view e exclusão apenas com emails.delete; cliente não grava HTML', async () => {
+    const path = 'emails/received/opaque-hash/body.html';
+    await env.withSecurityRulesDisabled(async context => {
+      await uploadBytes(ref(context.storage() as any, path), new TextEncoder().encode('<p>Privado</p>'), {
+        contentType: 'text/html; charset=utf-8',
+      });
+    });
+
+    const viewStorage = env.authenticatedContext('view').storage();
+    const deleteStorage = env.authenticatedContext('delete').storage();
+    const createStorage = env.authenticatedContext('create').storage();
+    await assertSucceeds(getMetadata(ref(viewStorage as any, path)));
+    await assertPermissionDenied(() => getMetadata(ref(createStorage as any, path)));
+    await assertPermissionDenied(() => uploadBytes(ref(deleteStorage as any, path), new Uint8Array([1]), { contentType: 'text/html' }));
+    await assertPermissionDenied(() => deleteObject(ref(viewStorage as any, path)));
+    await assertSucceeds(deleteObject(ref(deleteStorage as any, path)));
+  });
+});
+
 describe('histórico paginado por cursor', () => {
   it('alcança mensagens além de 50, sem lacunas após inserção e exclusão na fronteira', async () => {
     await env.withSecurityRulesDisabled(async context => {

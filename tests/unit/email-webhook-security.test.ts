@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { isValidSvixSignature } = require('../../functions/email/webhookSecurity.js');
+const { isValidSvixSignature, createForwardSignature, isValidForwardSignature } = require('../../functions/email/webhookSecurity.js');
 const { validateOriginSecret } = require('../../functions/originProtection.js');
 
 vi.stubEnv('NODE_ENV', 'test');
@@ -36,6 +36,18 @@ describe('segurança do webhook Resend', () => {
       rawContent: '{"type":"email.received"}',
       signature: 'v1,ZmFrZS1zaWduYXR1cmU=',
     })).toBe(false);
+  });
+
+  it('assina encaminhamento interno e rejeita origem ou conteúdo adulterado', () => {
+    const payload = {
+      secret: 'email-webhook-origin-test', source: 'prod', svixId: 'msg_forward_1',
+      svixTimestamp: '1793210000', rawContent: '{"type":"email.received"}',
+    };
+    const signature = createForwardSignature(payload);
+    expect(isValidForwardSignature({ ...payload, expectedSource: 'prod', signature })).toBe(true);
+    expect(isValidForwardSignature({ ...payload, expectedSource: 'dev', signature })).toBe(false);
+    expect(isValidForwardSignature({ ...payload, expectedSource: 'prod', rawContent: '{"type":"tampered"}', signature })).toBe(false);
+    expect(isValidForwardSignature({ ...payload, expectedSource: 'prod', signature: 'forged' })).toBe(false);
   });
 
   it('nega origem ausente ou inválida e aceita o token da origem confiável', () => {
