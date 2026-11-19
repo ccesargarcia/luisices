@@ -29,4 +29,6 @@ O card de pedido abre os detalhes ao ser tocado/clicado. A área vazia ao redor 
 
 ## Evidências
 
-- Implementação e validação pendentes.
+- Correção publicada em DEV/Beta no commit `fc9ba6c`; `npm run typecheck` e `git diff --check` passaram.
+- Workflows Firebase DEV `44532002744`, Vercel Beta `44532002584` e CodeQL `44532002588` concluíram com sucesso; DEV e Beta responderam HTTP 200.
+- Validação autenticada do toque/clique no dispositivo do usuário ainda pendente.

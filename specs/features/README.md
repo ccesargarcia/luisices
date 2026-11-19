@@ -5,7 +5,7 @@ Cada subpasta representa uma mudança coesa em andamento ou concluída. Este cat
 | ID | Tema | Status | Observação |
 |---|---|---|---|
 | [order-lifecycle](order-lifecycle/spec.md) | Ciclo interno do pedido | Pronta (baseline) | Contrato atual de pedidos para orientar specs de mudanças futuras. |
-| [order-card-click-area](order-card-click-area/spec.md) | Área clicável do card de pedido | Em andamento | Clique perto de “Compartilhar link” volta a abrir o pedido; typecheck e publicação pendentes. |
+| [order-card-click-area](order-card-click-area/spec.md) | Área clicável do card de pedido | Em andamento | Correção publicada em DEV/Beta (`44532002744`, `44532002584`); confirmação autenticada do usuário pendente. |
 | [document-validation-and-session-isolation](document-validation-and-session-isolation/spec.md) | CNPJ alfanumérico no SuperFrete e isolamento do estado de clientes por sessão | Concluída | Validação de documentos alinhada ao padrão da Receita Federal e limpeza de dados ao trocar de sessão. |
 | [public-store-checkout](public-store-checkout/spec.md) | Checkout público da loja | Pronta (baseline) | Vitrine, validação server-side, gestão e conversão para pedido interno. |
 | [gallery-media-beta-gateway](gallery-media-beta-gateway/spec.md) | Galeria privada no gateway Beta | Concluída | Migrada e confirmada pelo usuário com acesso normal à galeria privada; `api.dev` permaneceu intacto. |
