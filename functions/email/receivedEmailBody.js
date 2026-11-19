@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const zlib = require('zlib');
 
 const INLINE_BODY_MAX_BYTES = 700 * 1024;
 const MAX_RECEIVED_BODY_BYTES = 15 * 1024 * 1024;
@@ -65,11 +66,13 @@ async function persistReceivedEmailBody(bucket, plan) {
   const saved = [];
   try {
     for (const file of plan.files) {
-      await bucket.file(file.path).save(file.content, {
+      const compressed = zlib.gzipSync(Buffer.from(file.content, 'utf8'));
+      await bucket.file(file.path).save(compressed, {
         resumable: false,
         metadata: {
           contentType: file.contentType,
-          cacheControl: 'private, no-store',
+          contentEncoding: 'gzip',
+          cacheControl: 'private, max-age=86400, immutable',
         },
       });
       saved.push(file.path);

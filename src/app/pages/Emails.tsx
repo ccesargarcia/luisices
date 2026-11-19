@@ -2802,9 +2802,19 @@ export function Emails() {
                         <EmailHtmlViewer html={loadedReceivedBody.html} text={loadedReceivedBody.text} />
                       </>
                     ) : loadingReceivedBodyId === currentReceivedEmail.id ? (
-                      <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-                        <Loader2 className="size-4 animate-spin" /> Carregando conteúdo completo…
-                      </div>
+                      currentReceivedEmail.bodyPreview ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                            <Loader2 className="size-3.5 animate-spin shrink-0" />
+                            <span>Exibindo prévia enquanto carregamos o conteúdo completo…</span>
+                          </div>
+                          <EmailHtmlViewer html="" text={currentReceivedEmail.bodyPreview} />
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                          <Loader2 className="size-4 animate-spin" /> Carregando conteúdo completo…
+                        </div>
+                      )
                     ) : receivedBodyLoadFailedId === currentReceivedEmail.id ? (
                       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
                         Não foi possível carregar o conteúdo completo deste e-mail. Verifique sua permissão de leitura do módulo de E-mails.

@@ -165,35 +165,54 @@ export class EmailService {
     let text = options.fallbackText || '';
     let textUnavailable = false;
     let textErrorCode: string | null = null;
-    if (paths.text) {
-      try {
-        text = await load(paths.text);
-      } catch (error) {
-        textUnavailable = true;
-        textErrorCode = getStorageErrorCode(error);
-        console.warn('[EmailService] Texto recebido indisponível; usando prévia:', error);
-      }
-    }
-
     let html = '';
     let htmlUnavailable = false;
     let htmlErrorCode: string | null = null;
-    if (options.onProgress && (text || !paths.html)) {
+    let htmlSettled = !paths.html;
+
+    const textPromise = paths.text
+      ? load(paths.text)
+          .then((loadedText) => {
+            text = loadedText;
+          })
+          .catch((error) => {
+            textUnavailable = true;
+            textErrorCode = getStorageErrorCode(error);
+            console.warn('[EmailService] Texto recebido indisponível; usando prévia:', error);
+          })
+          .finally(() => {
+            if (!htmlSettled && options.onProgress && text) {
+              options.onProgress({
+                html, text, htmlLoading: true, htmlUnavailable, textUnavailable,
+                htmlErrorCode, textErrorCode,
+              });
+            }
+          })
+      : Promise.resolve();
+
+    const htmlPromise = paths.html
+      ? load(paths.html)
+          .then((loadedHtml) => {
+            html = loadedHtml;
+          })
+          .catch((error) => {
+            htmlUnavailable = true;
+            htmlErrorCode = getStorageErrorCode(error);
+            console.warn('[EmailService] HTML recebido indisponível; mantendo texto simples:', error);
+          })
+          .finally(() => {
+            htmlSettled = true;
+          })
+      : Promise.resolve();
+
+    if (options.onProgress && !paths.text && paths.html && text) {
       options.onProgress({
-        html, text, htmlLoading: Boolean(paths.html), htmlUnavailable, textUnavailable,
+        html, text, htmlLoading: true, htmlUnavailable, textUnavailable,
         htmlErrorCode, textErrorCode,
       });
     }
 
-    if (paths.html) {
-      try {
-        html = await load(paths.html);
-      } catch (error) {
-        htmlUnavailable = true;
-        htmlErrorCode = getStorageErrorCode(error);
-        console.warn('[EmailService] HTML recebido indisponível; mantendo texto simples:', error);
-      }
-    }
+    await Promise.all([textPromise, htmlPromise]);
 
     const result = {
       html, text, htmlLoading: false, htmlUnavailable, textUnavailable,
