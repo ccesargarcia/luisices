@@ -99,6 +99,7 @@ jobs:
               - 'storage.cors.dev.json'
               - 'database.rules.json'
               - 'firebase.json'
+              - '.github/workflows/deploy-dev.yml'
             indexes:
               - 'firestore.indexes.json'
             cloudflare_api:
