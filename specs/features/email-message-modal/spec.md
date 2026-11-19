@@ -76,5 +76,9 @@ O painel de leitura em coluna lateral não atendeu à preferência visual da pes
 
 ## Evidências de conclusão
 
-- Histórico: a opção anterior foi publicada por `206003d` e substituída conforme preferência confirmada.
-- Evidências de conclusão e publicação do modal serão registradas após typecheck, deploy e reteste.
+- Histórico: a opção anterior foi publicada por `206003d` e substituída conforme preferência confirmada no commit `d03bf80`.
+- `npm run typecheck` e `git diff --check` passaram antes da publicação.
+- Firebase Hosting DEV: workflow [44450685560](https://github.com/ccesargarcia/luisices/actions/runs/44450685560) passou; somente frontend foi implantado.
+- Vercel Dev/Beta: workflow [44450685473](https://github.com/ccesargarcia/luisices/actions/runs/44450685473) passou.
+- CodeQL [44450685484](https://github.com/ccesargarcia/luisices/actions/runs/44450685484) passou. `dev.luisices.com.br` e `beta.luisices.com.br` responderam HTTP 200.
+- Os jobs de Firebase Functions, Rules, índices e Cloudflare Workers foram ignorados. Falta a validação visual autenticada por uma pessoa usuária.
