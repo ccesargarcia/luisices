@@ -224,6 +224,16 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         idempotencyKey: data.idempotencyKey,
         requiresFinancialApproval: Boolean(data.requiresFinancialApproval),
         financialWarning: data.financialWarning || null,
+        shippingTagId: data.shippingTagId ?? null,
+        shippingStatus: data.shippingStatus ?? null,
+        shippingTrackingNumber: data.shippingTrackingNumber ?? null,
+        shippingLabelUrl: data.shippingLabelUrl ?? null,
+        shippingServiceId: data.shippingServiceId ?? null,
+        shippingServiceName: data.shippingServiceName ?? null,
+        shippingCost: typeof data.shippingCost === 'number' ? data.shippingCost : null,
+        shippingUpdatedAt: data.shippingUpdatedAt?.toDate
+          ? data.shippingUpdatedAt.toDate().toISOString()
+          : data.shippingUpdatedAt ?? null,
         isArchived: Boolean(data.isArchived),
         archivedAt: data.archivedAt?.toDate
           ? data.archivedAt.toDate().toISOString()

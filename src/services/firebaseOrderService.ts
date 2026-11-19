@@ -836,6 +836,16 @@ export class FirebaseOrderService {
       userId: data.userId,
       updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt,
       version: Number.isSafeInteger(data.version) && data.version > 0 ? data.version : 1,
+      shippingTagId: data.shippingTagId ?? null,
+      shippingStatus: data.shippingStatus ?? null,
+      shippingTrackingNumber: data.shippingTrackingNumber ?? null,
+      shippingLabelUrl: data.shippingLabelUrl ?? null,
+      shippingServiceId: data.shippingServiceId ?? null,
+      shippingServiceName: data.shippingServiceName ?? null,
+      shippingCost: typeof data.shippingCost === 'number' ? data.shippingCost : null,
+      shippingUpdatedAt: data.shippingUpdatedAt?.toDate
+        ? data.shippingUpdatedAt.toDate().toISOString()
+        : data.shippingUpdatedAt ?? null,
       isArchived: Boolean(data.isArchived),
       archivedAt: data.archivedAt?.toDate ? data.archivedAt.toDate().toISOString() : data.archivedAt,
       archivedBy: data.archivedBy,

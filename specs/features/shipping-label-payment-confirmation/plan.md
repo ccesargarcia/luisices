@@ -2,7 +2,7 @@
 
 ## Abordagem
 
-Reconhecer mensagens explícitas e estados conhecidos de pagamento pendente na resposta do checkout. Só considerar pago quando houver status final reconhecido ou link de impressão; resposta ambígua vira `payment_unconfirmed`. Persistir o ID remoto dentro da transação do pedido, evitando reemitir. Atualizar os componentes existentes para exibir claramente a pendência e suprimir ações próprias de etiqueta liberada. Não inventar endpoint de consulta da SuperFrete sem contrato verificável.
+Reconhecer mensagens explícitas e estados conhecidos de pagamento pendente na resposta do checkout. Só considerar pago quando houver status final reconhecido ou link de impressão; toda resposta de checkout não conclusiva vira `payment_unconfirmed`. Persistir o ID remoto dentro da transação do pedido, evitando reemitir. Preservar os campos de frete nos dois mapeadores que leem pedidos do Firestore. Atualizar os componentes existentes para exibir claramente a pendência e suprimir ações próprias de etiqueta liberada. Não inventar endpoint de consulta da SuperFrete sem contrato verificável.
 
 ## Componentes existentes
 
@@ -13,13 +13,14 @@ Reconhecer mensagens explícitas e estados conhecidos de pagamento pendente na r
 | Diálogo | `src/app/components/shipping/SuperfreteGenerateLabelDialog.tsx` | Exibir pendência sem declarar sucesso/liberação |
 | Resumo do pedido | `src/app/components/orders/OrderShippingSection.tsx` | Estado de pagamento pendente sem permitir reemissão |
 | Tipo de pedido | `src/app/types.ts` | Incluir `pending_payment` e `payment_unconfirmed` |
+| Leitura de pedidos | `src/contexts/OrdersContext.tsx`, `src/services/firebaseOrderService.ts` | Preservar campos de etiqueta no estado carregado/reaberto |
 | Documentação | `docs/FUNCIONALIDADES.md`, `specs/features/README.md` | Explicar pendência e limitação de sincronização |
 
 ## Contratos, dados e compatibilidade
 
 - Contratos/API/schema: sem mudança de argumentos; resposta adiciona mensagem opcional e usa status novo conhecido pelo cliente.
 - Dados/migração: sem backfill; status novo é aditivo. Pedidos antigos não mudam.
-- Integrações/ambientes: somente Function SuperFrete de desenvolvimento; sem publicação nesta tarefa.
+- Integrações/ambientes: Function SuperFrete somente em Dev; Vercel Dev/Beta publica a interface alterada conforme workflow de `develop`. Cloudflare Worker, `api.dev` e produção fora do escopo.
 
 ## Segurança e integridade
 
@@ -42,6 +43,7 @@ Reconhecer mensagens explícitas e estados conhecidos de pagamento pendente na r
 
 - Typecheck: `npm run typecheck`.
 - Validação de sintaxe: `npm --prefix functions run lint`.
+- Deploy: revisar workflows Firebase Dev e Vercel Dev/Beta após push; confirmar que Worker/Cloudflare não foi publicado.
 - Risco e mitigação: a atualização do pagamento feito externamente não é automática; não permitir reemissão até confirmação/reconciliação. A conta Sandbox pode ter carteira não mockada, mas não representa carteira de produção.
 
 ## Reversão

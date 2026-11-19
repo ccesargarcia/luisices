@@ -682,26 +682,27 @@ async function handleCreateSuperfreteLabel(request) {
         ? `Saldo insuficiente ou falha ao debitar etiqueta da SuperFrete (Status ${checkoutRes.status}): ${checkoutText.slice(0, 180)}`
         : `Saldo insuficiente ou falha ao debitar etiqueta da SuperFrete (Status ${checkoutRes.status}).`;
       const errorMsg = formatSuperfreteApiError(checkoutJson, fallbackMsg);
-      if (paymentPending) {
-        await markLabelPaymentPending(orderRef, attemptId, {
-          tagId,
-          service,
-          price: cartJson?.price,
-          uid: session.uid,
-          message: errorMsg,
-        });
-        return {
-          success: true,
-          tagId,
-          status: 'pending_payment',
-          trackingCode: null,
-          labelPdfUrl: null,
-          price: cartJson?.price,
-          message: errorMsg,
-        };
-      }
-      await markLabelAttemptFailed(orderRef, attemptId, errorMsg);
-      throw createSuperfreteHttpError(checkoutRes.status, errorMsg);
+      const pendingStatus = paymentPending ? 'pending_payment' : 'payment_unconfirmed';
+      const pendingMessage = paymentPending
+        ? errorMsg
+        : `A SuperFrete não confirmou o checkout (HTTP ${checkoutRes.status}). Verifique o painel antes de qualquer nova tentativa. ${errorMsg}`;
+      await markLabelPaymentPending(orderRef, attemptId, {
+        tagId,
+        service,
+        price: cartJson?.price,
+        uid: session.uid,
+        message: pendingMessage,
+        status: pendingStatus,
+      });
+      return {
+        success: true,
+        tagId,
+        status: pendingStatus,
+        trackingCode: null,
+        labelPdfUrl: null,
+        price: cartJson?.price,
+        message: pendingMessage,
+      };
     }
 
     // ── Etapa 3: Obter link do PDF da etiqueta ──────────────────────────────
