@@ -96,6 +96,7 @@ jobs:
             rules:
               - 'firestore.rules'
               - 'storage.rules'
+              - 'storage.cors.dev.json'
               - 'database.rules.json'
               - 'firebase.json'
             indexes:
@@ -831,6 +832,7 @@ jobs:
       - name: Deploy Firestore & Storage Rules (Dev)
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+          STORAGE_BUCKET: ${{ secrets.DEV_VITE_FIREBASE_STORAGE_BUCKET }}
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
@@ -838,3 +840,8 @@ jobs:
             echo "⚠️ Deploy com database falhou (possível ausência da instância RTDB em dev). Tentando deploy de Firestore e Storage..."
             npx --yes firebase-tools@15.32.1 deploy --only firestore:rules,storage --project luisices-dev --non-interactive
           fi
+          if [ -z "$STORAGE_BUCKET" ]; then
+            echo "❌ DEV_VITE_FIREBASE_STORAGE_BUCKET ausente; CORS de downloads diretos não pode ser aplicado."
+            exit 1
+          fi
+          gcloud storage buckets update "gs://${STORAGE_BUCKET}" --cors-file=storage.cors.dev.json

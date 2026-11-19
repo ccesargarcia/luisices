@@ -15,12 +15,14 @@ Em 29/10/2026 e 05/11/2026, o endpoint `resendReceivingWebhook` respondeu com er
 - Corpos de e-mail cujo tamanho possa exceder o Firestore são armazenados em objetos privados no Firebase Storage; o documento mantém metadados e referências. O módulo de E-mails carrega o conteúdo completo quando abre a mensagem.
 - O carregamento progressivo mostra o texto/prévia assim que disponível, não mantém o corpo oculto enquanto aguarda o HTML e aplica timeout a cada leitura. Se o Storage negar ou não responder, a interface mantém a prévia e exibe o código técnico para diagnóstico.
 - O conteúdo recuperável tem limite operacional explícito. Se excedido, o evento é persistido com metadados e estado que explica a ausência do corpo; o webhook confirma o recebimento para evitar repetição infinita.
+- Downloads diretos do Storage no navegador exigem CORS limitado aos domínios `https://dev.luisices.com.br` e `https://beta.luisices.com.br`, somente para GET; a configuração é aplicada no bucket DEV pelo workflow.
 - Exclusão definitiva do e-mail também tenta remover objetos associados.
 
 ## Critérios de aceitação
 
 1. HTML/texto grandes não são escritos em campos Firestore e podem ser carregados no painel com permissão `emails.view`.
 2. Acesso ao corpo no Storage exige usuário ativo e permissão de leitura de e-mails; gravação permanece exclusiva do Admin SDK.
+2a. Downloads no navegador respondem ao preflight CORS apenas para os domínios DEV/Beta configurados.
 3. Webhook Resend inválido continua rejeitado. Encaminhamento interno assinado entre prod/dev é aceito; header de encaminhamento forjado é rejeitado.
 4. Falha de entrega interna não deixa claim que faça uma repetição ser reconhecida falsamente como processada.
 5. Mensagens pequenas conservam o formato atual dos documentos e continuam renderizadas sem chamada extra ao Storage.

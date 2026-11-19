@@ -1,0 +1,10 @@
+[
+  {
+    "origin": [
+      "https://dev.luisices.com.br",
+      "https://beta.luisices.com.br"
+    ],
+    "method": ["GET"],
+    "maxAgeSeconds": 3600
+  }
+]
