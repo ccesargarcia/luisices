@@ -39,6 +39,37 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Send scan to Semgrep Cloud (SaaS)
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "${SEMGREP_APP_TOKEN:-}" ]; then
+            echo "SEMGREP_APP_TOKEN não configurado; pulando envio ao Semgrep Cloud."
+            exit 0
+          fi
+          docker run --rm \
+            -v "${{ github.workspace }}:/src" \
+            -v "${GITHUB_EVENT_PATH}:${GITHUB_EVENT_PATH}:ro" \
+            --workdir /src \
+            -e SEMGREP_APP_TOKEN \
+            -e GITHUB_TOKEN \
+            -e GITHUB_ACTIONS \
+            -e GITHUB_REPOSITORY \
+            -e GITHUB_REF \
+            -e GITHUB_REF_NAME \
+            -e GITHUB_HEAD_REF \
+            -e GITHUB_BASE_REF \
+            -e GITHUB_SHA \
+            -e GITHUB_EVENT_NAME \
+            -e GITHUB_EVENT_PATH \
+            -e GITHUB_RUN_ID \
+            -e GITHUB_SERVER_URL \
+            semgrep/semgrep:latest \
+            semgrep ci --config .semgrep/luisices.yml
 
       - name: Run Semgrep scan (SARIF)
         run: |
