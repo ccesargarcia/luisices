@@ -127,6 +127,34 @@ describe('Red-Team / Audit Regressions — storage.rules & firestore.rules', () 
     );
   });
 
+  it('[MÉDIO] storage.rules deve permitir upload em store/catalog-* para usuário com permissions.settings sem liberar store/products', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc('userProfiles/settings-editor').set({
+        status: 'approved',
+        role: 'user',
+        permissions: { settings: true },
+      });
+    });
+
+    const settingsStorage = env.authenticatedContext('settings-editor').storage();
+
+    await assertSucceeds(
+      uploadBytes(
+        ref(settingsStorage as any, 'store/catalog-logo/logo-settings.png'),
+        new Uint8Array([1, 2, 3]),
+        { contentType: 'image/png', customMetadata: { userId: 'settings-editor' } },
+      ),
+    );
+
+    await assertFails(
+      uploadBytes(
+        ref(settingsStorage as any, 'store/products/produto-indevido.png'),
+        new Uint8Array([1, 2, 3]),
+        { contentType: 'image/png', customMetadata: { userId: 'settings-editor' } },
+      ),
+    );
+  });
+
   it('[ALTO] storage.rules não deve permitir leitura pública (não autenticada) da pasta customers', async () => {
     const anonStorage = env.unauthenticatedContext().storage();
 

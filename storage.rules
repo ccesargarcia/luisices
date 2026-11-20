@@ -45,6 +45,12 @@ service firebase.storage {
         || hasPerm(getEmployeePermissions().get('storeProducts', false), action);
     }
 
+    function hasStoreFolderPerm(folder, action) {
+      return hasStorePerm(action)
+        || (folder in ['catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
+          && hasPerm(getEmployeePermissions().get('settings', false), action));
+    }
+
     // Compatibilidade temporária com perfis legados sem gallery.edit.
     // Não concede edição a funcionários nem quando edit foi explicitamente revogado.
     function legacyGalleryEditPerm() {
@@ -149,15 +155,15 @@ service firebase.storage {
         && isActiveUser()
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp|gif)')
-        && (isAdmin() || (hasStorePerm('create') && request.resource.metadata != null && request.resource.metadata.userId == request.auth.uid));
+        && (isAdmin() || (hasStoreFolderPerm(folder, 'create') && request.resource.metadata != null && request.resource.metadata.userId == request.auth.uid));
       allow update: if folder in ['products', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
         && isActiveUser()
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp|gif)')
-        && (isAdmin() || (hasStorePerm('edit') && resource.metadata != null && resource.metadata.userId == request.auth.uid && request.resource.metadata != null && request.resource.metadata.userId == request.auth.uid));
+        && (isAdmin() || (hasStoreFolderPerm(folder, 'edit') && resource.metadata != null && resource.metadata.userId == request.auth.uid && request.resource.metadata != null && request.resource.metadata.userId == request.auth.uid));
       allow delete: if folder in ['products', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
         && isActiveUser()
-        && (isAdmin() || (hasStorePerm('delete') && resource.metadata != null && resource.metadata.userId == request.auth.uid));
+        && (isAdmin() || (hasStoreFolderPerm(folder, 'delete') && resource.metadata != null && resource.metadata.userId == request.auth.uid));
     }
 
     // Ativos e ícones estáticos públicos: leitura pública irrestrita
