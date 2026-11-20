@@ -346,8 +346,12 @@ describe('Red-Team / Audit Regressions (TDD — devem falhar antes das correçõ
 
       const customerCardSrc = readFileSync(resolve(ROOT_DIR, 'src/app/components/customers/CustomerCard.tsx'), 'utf8');
       const customerFormSrc = readFileSync(resolve(ROOT_DIR, 'src/app/components/customers/CustomerFormDialog.tsx'), 'utf8');
+      const photoHookSrc = readFileSync(resolve(ROOT_DIR, 'src/hooks/useCustomerPhotoUrl.ts'), 'utf8');
+      const authServiceSrc = readFileSync(resolve(ROOT_DIR, 'src/services/firebaseAuthService.ts'), 'utf8');
       expect(customerCardSrc).toContain('useCustomerPhotoUrl');
       expect(customerFormSrc).toContain('useCustomerPhotoUrl');
+      expect(photoHookSrc).toContain('export function clearCustomerPhotoBlobCache');
+      expect(authServiceSrc).toContain('clearCustomerPhotoBlobCache()');
     });
   });
 });
