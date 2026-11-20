@@ -334,5 +334,20 @@ describe('Red-Team / Audit Regressions (TDD — devem falhar antes das correçõ
         });
       }).not.toThrow();
     });
+
+    it('[MÉDIO] fotos de clientes devem persistir storageRef.fullPath e renderizar via fluxo autenticado', () => {
+      const storageServiceSrc = readFileSync(resolve(ROOT_DIR, 'src/services/firebaseStorageService.ts'), 'utf8');
+      const uploadStart = storageServiceSrc.indexOf('async uploadCustomerPhoto(');
+      const uploadEnd = storageServiceSrc.indexOf('async uploadProductPhoto(', uploadStart);
+      const uploadBlock = storageServiceSrc.slice(uploadStart, uploadEnd);
+
+      expect(uploadBlock).toContain('return storageRef.fullPath;');
+      expect(uploadBlock).not.toContain('toPublicCdnUrl(');
+
+      const customerCardSrc = readFileSync(resolve(ROOT_DIR, 'src/app/components/customers/CustomerCard.tsx'), 'utf8');
+      const customerFormSrc = readFileSync(resolve(ROOT_DIR, 'src/app/components/customers/CustomerFormDialog.tsx'), 'utf8');
+      expect(customerCardSrc).toContain('useCustomerPhotoUrl');
+      expect(customerFormSrc).toContain('useCustomerPhotoUrl');
+    });
   });
 });

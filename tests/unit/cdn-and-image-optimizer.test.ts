@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getCdnFallbackUrl, toCdnUrl, toPublicCdnUrl } from '../../src/app/utils/cdnUtils';
+import {
+  extractCustomerPhotoStoragePath,
+  getCdnFallbackUrl,
+  toCdnUrl,
+  toPublicCdnUrl,
+} from '../../src/app/utils/cdnUtils';
 import { optimizeImageToWebP, optimizeImageForAi } from '../../src/app/utils/imageOptimizer';
 
 describe('Funcionalidade: Otimização de Mídias e CDN de Armazenamento', () => {
@@ -21,6 +26,26 @@ describe('Funcionalidade: Otimização de Mídias e CDN de Armazenamento', () =>
         .toBe('https://cdn-dev.luisices.com.br/users/u1/avatar/a.webp');
       const privateUrl = 'https://cdn-dev.luisices.com.br/users/u1/gallery/a.webp?token=secret';
       expect(toPublicCdnUrl(privateUrl)).toBe(privateUrl);
+      const privateCustomerUrl = 'https://cdn-dev.luisices.com.br/users/u1/customers/customer_1.webp?token=secret';
+      expect(toPublicCdnUrl(privateCustomerUrl)).toBe(privateCustomerUrl);
+    });
+
+    it('extrai caminho privado de foto de cliente de paths diretos e URLs legadas da CDN/Storage', () => {
+      expect(extractCustomerPhotoStoragePath('users/u1/customers/customer_1_123.webp'))
+        .toBe('users/u1/customers/customer_1_123.webp');
+      expect(extractCustomerPhotoStoragePath('https://cdn.luisices.com.br/users/u1/customers/customer_1_123.webp'))
+        .toBe('users/u1/customers/customer_1_123.webp');
+      expect(extractCustomerPhotoStoragePath('https://cdn-dev.luisices.com.br/users/u1/customers/customer_1_123.webp?alt=media'))
+        .toBe('users/u1/customers/customer_1_123.webp');
+      expect(extractCustomerPhotoStoragePath('https://firebasestorage.googleapis.com/v0/b/bucket/o/users%2Fu1%2Fcustomers%2Fcustomer_1_123.webp?alt=media'))
+        .toBe('users/u1/customers/customer_1_123.webp');
+
+      expect(extractCustomerPhotoStoragePath('blob:https://app.luisices.com.br/abc-123')).toBeNull();
+      expect(extractCustomerPhotoStoragePath('data:image/webp;base64,AAAA')).toBeNull();
+      expect(extractCustomerPhotoStoragePath('https://example.com/users/u1/customers/avatar.webp')).toBeNull();
+      expect(extractCustomerPhotoStoragePath('users/u1/avatar/a.webp')).toBeNull();
+      expect(extractCustomerPhotoStoragePath('users/u1/customers/../secret.webp')).toBeNull();
+      expect(extractCustomerPhotoStoragePath('users/u1/customers/a\\b.webp')).toBeNull();
     });
 
     it('deve retornar string vazia para valores nulos, indefinidos ou tipos não-string', () => {

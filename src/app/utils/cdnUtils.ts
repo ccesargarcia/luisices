@@ -86,7 +86,7 @@ export function toPublicCdnUrl(value?: string | null): string {
     path = input.replace(/^\/+/, '').split('?')[0];
   }
 
-  const isPublicUserImage = /^users\/[^/]+\/(avatar|logo|tracking-logo|banner|products|customers|catalog-logo|catalog-banner|catalog-header|catalog-about)\/[^/]+$/.test(path);
+  const isPublicUserImage = /^users\/[^/]+\/(avatar|logo|tracking-logo|banner|products|catalog-logo|catalog-banner|catalog-header|catalog-about)\/[^/]+$/.test(path);
   const isPublicStoreImage = /^store\/[^/]+\/[^/]+$/.test(path);
   const isPublicAsset = /^public\/(?!.*(?:^|\/)\.\.\/).+$/.test(path);
   if (!isPublicUserImage && !isPublicStoreImage && !isPublicAsset) return input;
@@ -97,6 +97,50 @@ export function toPublicCdnUrl(value?: string | null): string {
   const bucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
   if (!bucket) return input;
   return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(path)}?alt=media`;
+}
+
+/**
+ * Extrai o caminho privado no Firebase Storage (`users/{uid}/customers/{file}`)
+ * tanto de caminhos persistidos diretamente quanto de URLs legadas da CDN ou do Storage.
+ * Retorna `null` para URLs externas, `blob:`/`data:` locais ou caminhos fora de `customers`.
+ */
+export function extractCustomerPhotoStoragePath(value?: string | null): string | null {
+  if (!value || typeof value !== 'string') return null;
+  const input = value.trim();
+  if (!input || input.startsWith('blob:') || input.startsWith('data:')) return null;
+
+  let path = input;
+  if (/^https?:\/\//i.test(input)) {
+    try {
+      const parsed = new URL(input);
+      const cdnBase = (import.meta.env.VITE_STORAGE_CDN_URL || '').replace(/\/+$/, '');
+      const isOwnCdn =
+        parsed.hostname === 'cdn.luisices.com.br' ||
+        parsed.hostname === 'cdn-dev.luisices.com.br' ||
+        (Boolean(cdnBase) && input.startsWith(`${cdnBase}/`));
+
+      if (parsed.hostname === 'firebasestorage.googleapis.com') {
+        const match = parsed.pathname.match(/\/o\/(.+)$/);
+        if (!match?.[1]) return null;
+        path = decodeURIComponent(match[1]);
+      } else if (isOwnCdn) {
+        path = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''));
+      } else {
+        return null;
+      }
+    } catch {
+      return null;
+    }
+  } else {
+    path = input.replace(/^\/+/, '').split('?')[0];
+  }
+
+  if (path.includes('\\')) return null;
+  const segments = path.split('/');
+  if (segments.some((segment) => segment === '.' || segment === '..')) return null;
+  if (!/^users\/[^/]+\/customers\/[^/]+$/.test(path)) return null;
+
+  return path;
 }
 
 /**
