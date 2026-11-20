@@ -8,7 +8,8 @@
  *
  * Ou use as variáveis de ambiente do .env.test:
  *   node scripts/create-test-user.mjs
- */ "$TEST_USER_PASSWORD" { initializeApp, cert } from 'firebase-admin/app';
+ */
+import { initializeApp, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { config } from 'dotenv';
@@ -26,7 +27,7 @@ if (!email || !password) {
   console.error('❌ Email e senha são obrigatórios!');
   console.error('');
   console.error('Uso:');
-  console.error('  node scripts/create-test-user.mjs EMAIL "$TEST_USER_PASSWORD"
+  console.error('  node scripts/create-test-user.mjs EMAIL "$TEST_USER_PASSWORD"');
   console.error('');
   console.error('Ou configure .env.test com:');
   console.error('  TEST_USER_EMAIL=test-user@example.invalid');

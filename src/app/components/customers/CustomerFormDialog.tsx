@@ -24,6 +24,7 @@ import { SafeImg } from '../SafeMedia';
 import { Camera, Loader2 } from 'lucide-react';
 import { firebaseCustomerService } from '../../../services/firebaseCustomerService';
 import { firebaseStorageService } from '../../../services/firebaseStorageService';
+import { useCustomerPhotoUrl } from '../../../hooks/useCustomerPhotoUrl';
 import { toast } from 'sonner';
 
 interface CustomerFormDialogProps {
@@ -61,6 +62,7 @@ export function CustomerFormDialog({
   const [formData, setFormData] = useState(INITIAL_FORM);
   const [pendingPhotoFile, setPendingPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>('');
+  const resolvedPhotoPreview = useCustomerPhotoUrl(photoPreview);
   const [loading, setLoading] = useState(false);
   const [zipLookupLoading, setZipLookupLoading] = useState(false);
   const [zipLookupError, setZipLookupError] = useState('');
@@ -159,7 +161,7 @@ export function CustomerFormDialog({
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (photoPreview && !photoPreview.startsWith('http')) {
+    if (photoPreview && photoPreview.startsWith('blob:')) {
       URL.revokeObjectURL(photoPreview);
     }
     setPendingPhotoFile(file);
@@ -288,8 +290,8 @@ export function CustomerFormDialog({
             <label className="cursor-pointer group relative">
               <input type="file" className="sr-only" accept="image/*" onChange={handlePhotoSelect} />
               <div className="size-24 rounded-full border-2 border-dashed border-muted-foreground/40 group-hover:border-primary overflow-hidden flex items-center justify-center bg-muted transition-colors">
-                {photoPreview ? (
-                  <SafeImg src={photoPreview} alt="Foto" className="w-full h-full object-cover" />
+                {resolvedPhotoPreview ? (
+                  <SafeImg src={resolvedPhotoPreview} alt="Foto" className="w-full h-full object-cover" />
                 ) : (
                   <Camera className="size-8 text-muted-foreground" />
                 )}

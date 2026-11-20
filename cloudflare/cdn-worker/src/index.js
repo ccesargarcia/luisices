@@ -65,17 +65,31 @@ export default {
         : env.FIREBASE_FALLBACK_BUCKET || (isDev ? FALLBACK_BUCKETS.dev : FALLBACK_BUCKETS.prod);
 
     // 3. Extrair e codificar o caminho com segurança
-    const rawPath = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
-    if (!rawPath) {
+    let rawPath;
+    try {
+      rawPath = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+    } catch {
+      return new Response('Bad Request', {
+        status: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+    const hasTraversalSegment = rawPath
+      .split('/')
+      .some((segment) => segment === '..' || segment === '.');
+    if (!rawPath || hasTraversalSegment || rawPath.includes('\\')) {
       return new Response('Not Found', { status: 404 });
     }
-    const encodedPath = encodeURIComponent(rawPath);
 
     // 4. Parâmetros de consulta (preservando token caso exista)
     const searchParams = new URLSearchParams(url.search);
     if (!searchParams.has('alt')) {
       searchParams.set('alt', 'media');
     }
+    const isTokenizedRequest = searchParams.has('token');
 
     // Cache TTL acompanha o domínio em ambientes conhecidos; variáveis podem
     // estar herdadas do ambiente errado. Hosts internos continuam configuráveis.
@@ -99,15 +113,17 @@ export default {
           'Accept': request.headers.get('Accept') || '*/*',
           'User-Agent': 'Luisices-Cloudflare-CDN',
         },
-        cf: {
-          cacheEverything: true,
-          cacheTtl: cacheTtlSeconds,
-          cacheTtlByStatus: {
-            '200-299': cacheTtlSeconds,
-            '404': 30,
-            '500-599': 0,
-          },
-        },
+        cf: isTokenizedRequest
+          ? { cacheEverything: false, cacheTtl: 0 }
+          : {
+              cacheEverything: true,
+              cacheTtl: cacheTtlSeconds,
+              cacheTtlByStatus: {
+                '200-299': cacheTtlSeconds,
+                '404': 30,
+                '500-599': 0,
+              },
+            },
       });
     };
 
@@ -129,6 +145,7 @@ export default {
         status: originResponse.status,
         headers: {
           'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store',
           'Content-Type': originResponse.headers.get('Content-Type') || 'text/plain; charset=utf-8',
         },
       });
@@ -139,9 +156,11 @@ export default {
     headers.set('Access-Control-Allow-Origin', '*');
     headers.set(
       'Cache-Control',
-      isDev
-        ? 'public, max-age=300, stale-while-revalidate=60'
-        : 'public, max-age=31536000, immutable'
+      isTokenizedRequest
+        ? 'private, no-store'
+        : isDev
+          ? 'public, max-age=300, stale-while-revalidate=60'
+          : 'public, max-age=31536000, immutable'
     );
     headers.set('X-Content-Type-Options', 'nosniff');
     headers.set('X-CDN-Origin-Bucket', originBucket);

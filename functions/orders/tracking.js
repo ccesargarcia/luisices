@@ -11,6 +11,7 @@ const { withFirstInvocationSpan } = require('../common/sentry');
 const { ORDER_TRACKING_ENCRYPTION_KEY } = require('../common/secrets');
 const crypto = require('crypto');
 const { publicOrderTrackingLimiter } = require('../common/rateLimiters');
+const { assertActiveSession } = require('../common/runtimeCompat');
 const { getTrustedClientIp } = require('../originProtection');
 const { handleGetPublicOrderTrackingCore } = require('./trackingCore');
 const {
@@ -63,8 +64,7 @@ function decryptTrackingToken(value) {
 
 /** Gera um link secreto de acompanhamento quando o pedido ainda não tem link ativo. */
 const createOrderTrackingLink = onCall({ cors: true, maxInstances: 10, memory: '512MiB', secrets: [ORDER_TRACKING_ENCRYPTION_KEY] }, withFirstInvocationSpan('createOrderTrackingLink', async (request) => {
-  const uid = request.auth?.uid;
-  if (!uid) throw new HttpsError('unauthenticated', 'Entre na sua conta para gerar o link.');
+  const { uid } = await assertActiveSession(request);
   try {
     await publicOrderTrackingLimiter.consume(`create:${uid}`);
   } catch {
@@ -83,8 +83,9 @@ const createOrderTrackingLink = onCall({ cors: true, maxInstances: 10, memory: '
 
 /** Lista links criados pelo usuário ou todos para administradores. Os tokens só saem por callable autenticada. */
 const listOrderTrackingLinks = onCall({ cors: true, maxInstances: 10, memory: '512MiB', secrets: [ORDER_TRACKING_ENCRYPTION_KEY] }, withFirstInvocationSpan('listOrderTrackingLinks', async (request) => {
+  const { uid } = await assertActiveSession(request);
   try {
-    return await listOrderTrackingLinksCore(request.auth?.uid, request.data, {
+    return await listOrderTrackingLinksCore(uid, request.data, {
       db: getFirestore(),
       encryptionKeyBase64: ORDER_TRACKING_ENCRYPTION_KEY.value() || '',
     });
@@ -95,8 +96,9 @@ const listOrderTrackingLinks = onCall({ cors: true, maxInstances: 10, memory: '5
 
 /** Invalida imediatamente o link público de acompanhamento. */
 const revokeOrderTrackingLink = onCall({ cors: true, maxInstances: 10 }, withFirstInvocationSpan('revokeOrderTrackingLink', async (request) => {
+  const { uid } = await assertActiveSession(request);
   try {
-    return await revokeOrderTrackingLinkCore(request.auth?.uid, request.data, {
+    return await revokeOrderTrackingLinkCore(uid, request.data, {
       db: getFirestore(),
       fieldValue: FieldValue,
     });
@@ -107,8 +109,9 @@ const revokeOrderTrackingLink = onCall({ cors: true, maxInstances: 10 }, withFir
 
 /** Revoga um link específico da lista de links e respeita quem o criou ou a administração. */
 const revokeOrderTrackingLinkById = onCall({ cors: true, maxInstances: 10 }, withFirstInvocationSpan('revokeOrderTrackingLinkById', async (request) => {
+  const { uid } = await assertActiveSession(request);
   try {
-    return await revokeOrderTrackingLinkByIdCore(request.auth?.uid, request.data, {
+    return await revokeOrderTrackingLinkByIdCore(uid, request.data, {
       db: getFirestore(),
       fieldValue: FieldValue,
     });
@@ -119,8 +122,9 @@ const revokeOrderTrackingLinkById = onCall({ cors: true, maxInstances: 10 }, wit
 
 /** Remove um link do histórico; se ainda estiver ativo, invalida-o antes da exclusão. */
 const deleteOrderTrackingLink = onCall({ cors: true, maxInstances: 10, memory: '512MiB' }, withFirstInvocationSpan('deleteOrderTrackingLink', async (request) => {
+  const { uid } = await assertActiveSession(request);
   try {
-    return await deleteOrderTrackingLinkCore(request.auth?.uid, request.data, {
+    return await deleteOrderTrackingLinkCore(uid, request.data, {
       db: getFirestore(),
       fieldValue: FieldValue,
     });
@@ -131,8 +135,9 @@ const deleteOrderTrackingLink = onCall({ cors: true, maxInstances: 10, memory: '
 
 /** Remove múltiplos links do histórico em lote (até 100 por chamada). */
 const deleteOrderTrackingLinksBatch = onCall({ cors: true, maxInstances: 10, memory: '512MiB' }, withFirstInvocationSpan('deleteOrderTrackingLinksBatch', async (request) => {
+  const { uid } = await assertActiveSession(request);
   try {
-    return await deleteOrderTrackingLinksBatchCore(request.auth?.uid, request.data, {
+    return await deleteOrderTrackingLinksBatchCore(uid, request.data, {
       db: getFirestore(),
       fieldValue: FieldValue,
     });

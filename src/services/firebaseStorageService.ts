@@ -179,7 +179,8 @@ export class FirebaseStorageService {
     await this.uploadValidatedBytes(storageRef, optimizedFile, {
       customMetadata: { uploadedAt: new Date().toISOString() },
     }, ['image/jpeg', 'image/png', 'image/webp']);
-    return toPublicCdnUrl(storageRef.fullPath);
+    // Fotos de clientes exigem autenticação em storage.rules: persistimos somente o caminho no Storage.
+    return storageRef.fullPath;
   }
 
   /**

@@ -24,6 +24,8 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { CustomerXRayMetrics, TIER_DEFINITIONS } from '../../utils/customerMetrics';
+import { SafeImg } from '../SafeMedia';
+import { useCustomerPhotoUrl } from '../../../hooks/useCustomerPhotoUrl';
 
 interface CustomerCardProps {
   customer: Customer;
@@ -52,6 +54,7 @@ function CustomerCardComponent({
   canCreateOrder = false,
   xray,
 }: CustomerCardProps) {
+  const resolvedPhotoUrl = useCustomerPhotoUrl(customer.photoUrl);
   const addressLine = customer.address || [customer.street, customer.number, customer.complement]
     .filter(Boolean)
     .join(', ');
@@ -96,9 +99,9 @@ function CustomerCardComponent({
             aria-label={`Selecionar ${customer.name}`}
           />
           <div className={`size-11 rounded-full overflow-hidden shrink-0 flex items-center justify-center border border-white/30 ${avatarAccent}`}>
-            {customer.photoUrl ? (
-              <img
-                src={customer.photoUrl}
+            {resolvedPhotoUrl ? (
+              <SafeImg
+                src={resolvedPhotoUrl}
                 alt={customer.name}
                 className="w-full h-full object-cover"
                 loading="lazy"

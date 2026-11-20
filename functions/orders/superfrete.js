@@ -501,7 +501,7 @@ const calculateSuperfreteShipping = onCall(
 async function handleCreateSuperfreteLabel(request) {
     // 1. RBAC: Garante sessão ativa e permissão granular SuperFrete (ou admin)
     const session = await authorizeSuperfrete(request);
-    const { profile, superfreteSettings } = session;
+    const { uid, profile, superfreteSettings } = session;
 
     const data = request.data || {};
     const { orderId, from, to, service, volume, products, nonCommercial = true } = data;

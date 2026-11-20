@@ -817,6 +817,7 @@ service cloud.firestore {
       allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && userHasPerm('pricing', 'create')) || isAdmin() || employeeHasPricingCreate())
         && isValidSupply(request.resource.data);
       allow update: if ((resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'edit')) || isAdmin() || employeeHasPricingEdit())
+        && (!('userId' in resource.data) || request.resource.data.userId == resource.data.userId)
         && isValidSupply(request.resource.data);
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'delete')) || isAdmin() || employeeHasPricingDelete();
     }
@@ -832,6 +833,7 @@ service cloud.firestore {
       allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && userHasPerm('pricing', 'create')) || isAdmin() || employeeHasPricingCreate())
         && isValidPurchase(request.resource.data);
       allow update: if ((resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'edit')) || isAdmin() || employeeHasPricingEdit())
+        && (!('userId' in resource.data) || request.resource.data.userId == resource.data.userId)
         && isValidPurchase(request.resource.data);
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'delete')) || isAdmin() || employeeHasPricingDelete();
     }
@@ -846,6 +848,7 @@ service cloud.firestore {
       allow create: if (('userId' in request.resource.data && isOwner(request.resource.data.userId) && userHasPerm('pricing', 'create')) || isAdmin() || employeeHasPricingCreate())
         && isValidRecipe(request.resource.data);
       allow update: if ((resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'edit')) || isAdmin() || employeeHasPricingEdit())
+        && (!('userId' in resource.data) || request.resource.data.userId == resource.data.userId)
         && isValidRecipe(request.resource.data);
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId) && userHasPerm('pricing', 'delete')) || isAdmin() || employeeHasPricingDelete();
     }
@@ -961,7 +964,13 @@ service cloud.firestore {
 
     // Regras para configurações públicas da loja / catálogo online
     match /storeSettings/{docId} {
-      allow read: if true;
+      // Apenas o documento 'public' é legível sem autenticação; telemetria e demais configs exigem permissão
+      allow read: if docId == 'public'
+        || (isActiveUser() && (
+          isAdmin()
+          || getEmployeePermissions().get('store', false) == true
+          || getEmployeePermissions().get('settings', false) == true
+        ));
       // Escrita restrita a administradores ou usuários ativos com permissão explícita de loja ou configurações
       allow write: if isActiveUser() && (
         isAdmin()
@@ -987,18 +996,18 @@ service cloud.firestore {
         || getEmployeePermissions().get('store', false) == true
       ) && isValidProduct(request.resource.data);
 
-      // Atualização permitida para administradores, donos do produto ou usuários com permissão
+      // Atualização permitida para administradores ou usuários ativos com permissão de edição em loja, preservando userId
       allow update: if isActiveUser() && (
         isAdmin()
-        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || ('storeProducts' in getEmployeePermissions() && hasPerm(getEmployeePermissions().storeProducts, 'edit'))
         || getEmployeePermissions().get('store', false) == true
-      ) && isValidProduct(request.resource.data);
+      )
+        && (!('userId' in resource.data) || request.resource.data.userId == resource.data.userId)
+        && isValidProduct(request.resource.data);
 
-      // Exclusão permitida para administradores, donos do produto ou usuários ativos com permissão de exclusão
+      // Exclusão permitida para administradores ou usuários ativos com permissão de exclusão em loja
       allow delete: if isActiveUser() && (
         isAdmin()
-        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || ('storeProducts' in getEmployeePermissions() && hasPerm(getEmployeePermissions().storeProducts, 'delete'))
         || getEmployeePermissions().get('store', false) == true
       );

@@ -31,8 +31,24 @@ service firebase.storage {
 
     function ownerHasPerm(userId, module, action) {
       return request.auth.uid == userId
-        && ((!(module in getEmployeePermissions()) || hasPerm(getEmployeePermissions()[module], action))
+        && (hasPerm(getEmployeePermissions().get(module, false), action)
           || (module == 'gallery' && action == 'edit' && legacyGalleryEditPerm()));
+    }
+
+    function isAssignedOrder(orderId) {
+      return firestore.exists(/databases/(default)/documents/orders/$(orderId))
+        && firestore.get(/databases/(default)/documents/orders/$(orderId)).data.get('assignedTo', '') == request.auth.uid;
+    }
+
+    function hasStorePerm(action) {
+      return hasPerm(getEmployeePermissions().get('store', false), action)
+        || hasPerm(getEmployeePermissions().get('storeProducts', false), action);
+    }
+
+    function hasStoreFolderPerm(folder, action) {
+      return hasStorePerm(action)
+        || (folder in ['catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
+          && hasPerm(getEmployeePermissions().get('settings', false), action));
     }
 
     // Compatibilidade temporária com perfis legados sem gallery.edit.
@@ -90,22 +106,22 @@ service firebase.storage {
     }
 
     // A regra genérica não pode reabrir os rascunhos: regras sobrepostas usam OR.
-    // Anexos de pedidos pertencem ao tenant ({userId}). Acesso restrito ao dono, admin ou funcionário autorizado.
+    // Anexos de pedidos pertencem ao tenant ({userId}). Acesso restrito ao dono, admin ou funcionário atribuído ao pedido.
     match /users/{userId}/orders/{orderId}/{allPaths=**} {
       allow read: if orderId != 'email_draft' && isActiveUser()
-        && (ownerHasPerm(userId, 'orders', 'view') || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'view')));
+        && (ownerHasPerm(userId, 'orders', 'view') || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'view') && isAssignedOrder(orderId)));
       allow create: if orderId != 'email_draft' && isActiveUser()
         && resource == null
-        && (ownerHasPerm(userId, 'orders', 'create') || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'create')))
+        && (ownerHasPerm(userId, 'orders', 'create') || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'create') && (!firestore.exists(/databases/(default)/documents/orders/$(orderId)) || isAssignedOrder(orderId))))
         && request.resource.size < 100 * 1024 * 1024
         && (request.resource.contentType.matches('image/(jpeg|png|webp|gif)') || request.resource.contentType == 'application/pdf');
       allow update: if orderId != 'email_draft' && isActiveUser()
         && resource != null
-        && (ownerHasPerm(userId, 'orders', 'edit') || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'edit')))
+        && (ownerHasPerm(userId, 'orders', 'edit') || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'edit') && isAssignedOrder(orderId)))
         && request.resource.size < 100 * 1024 * 1024
         && (request.resource.contentType.matches('image/(jpeg|png|webp|gif)') || request.resource.contentType == 'application/pdf');
       allow delete: if orderId != 'email_draft' && isActiveUser()
-        && (ownerHasPerm(userId, 'orders', 'delete') || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'delete')));
+        && (ownerHasPerm(userId, 'orders', 'delete') || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'delete') && isAssignedOrder(orderId)));
     }
 
     // Galeria de artes: apenas imagens, até 15MB
@@ -120,9 +136,10 @@ service firebase.storage {
       allow delete: if isActiveUser() && (ownerHasPerm(userId, 'gallery', 'delete') || isAdmin() || (isActiveEmployee() && ('gallery' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().gallery, 'delete')));
     }
 
-    // Imagens de perfil, logo e banner do usuário: leitura pública, edição restrita ao dono/admin
+    // Imagens de perfil, logo e banner do usuário: leitura pública apenas para ativos de vitrine/perfil; customers exige autenticação
     match /users/{userId}/{folder}/{fileName} {
-      allow read: if folder in ['avatar', 'logo', 'tracking-logo', 'banner', 'products', 'customers', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about'];
+      allow read: if folder in ['avatar', 'logo', 'tracking-logo', 'banner', 'products', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
+        || (folder == 'customers' && isActiveUser() && (request.auth.uid == userId || isAdmin() || hasPerm(getEmployeePermissions().get('customers', false), 'view')));
       allow create, update: if folder in ['avatar', 'logo', 'tracking-logo', 'banner', 'products', 'customers', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
         && isActiveUser() && (request.auth.uid == userId || isAdmin())
         && request.resource.size < 5 * 1024 * 1024
@@ -131,22 +148,22 @@ service firebase.storage {
       allow delete: if folder in ['avatar', 'logo', 'tracking-logo', 'banner', 'products', 'customers', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about'] && isActiveUser() && (request.auth.uid == userId || isAdmin());
     }
 
-    // Imagens e banners públicos da loja / catálogo: leitura pública, edição protegida
+    // Imagens e banners públicos da loja / catálogo: leitura pública, edição protegida por permissão de loja
     match /store/{folder}/{fileName} {
       allow read: if true;
       allow create: if folder in ['products', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
         && isActiveUser()
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp|gif)')
-        && (isAdmin() || (request.resource.metadata != null && request.resource.metadata.userId == request.auth.uid));
+        && (isAdmin() || (hasStoreFolderPerm(folder, 'create') && request.resource.metadata != null && request.resource.metadata.userId == request.auth.uid));
       allow update: if folder in ['products', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
         && isActiveUser()
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp|gif)')
-        && (isAdmin() || (resource.metadata != null && resource.metadata.userId == request.auth.uid && request.resource.metadata != null && request.resource.metadata.userId == request.auth.uid));
+        && (isAdmin() || (hasStoreFolderPerm(folder, 'edit') && resource.metadata != null && resource.metadata.userId == request.auth.uid && request.resource.metadata != null && request.resource.metadata.userId == request.auth.uid));
       allow delete: if folder in ['products', 'catalog-logo', 'catalog-banner', 'catalog-header', 'catalog-about']
         && isActiveUser()
-        && (isAdmin() || (resource.metadata != null && resource.metadata.userId == request.auth.uid));
+        && (isAdmin() || (hasStoreFolderPerm(folder, 'delete') && resource.metadata != null && resource.metadata.userId == request.auth.uid));
     }
 
     // Ativos e ícones estáticos públicos: leitura pública irrestrita

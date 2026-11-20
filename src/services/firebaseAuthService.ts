@@ -17,6 +17,7 @@ import { httpsCallable } from 'firebase/functions';
 import { auth, authPersistenceReady, functions } from '../lib/firebase';
 import { executeWithGcpFallback } from './backendRoutingService';
 import { callBetaUsersApi } from './firebaseUserService';
+import { clearCustomerPhotoBlobCache } from '../hooks/useCustomerPhotoUrl';
 
 export class FirebaseAuthService {
   /**
@@ -77,7 +78,11 @@ export class FirebaseAuthService {
    * Logout
    */
   async logout(): Promise<void> {
-    await signOut(auth);
+    try {
+      await signOut(auth);
+    } finally {
+      clearCustomerPhotoBlobCache();
+    }
   }
 
   /**
@@ -109,7 +114,15 @@ export class FirebaseAuthService {
    * Retorna função para cancelar a observação
    */
   onAuthChange(callback: (user: User | null) => void): () => void {
-    return onAuthStateChanged(auth, callback);
+    let lastUid: string | null = auth.currentUser?.uid ?? null;
+    return onAuthStateChanged(auth, (user) => {
+      const nextUid = user?.uid ?? null;
+      if (nextUid !== lastUid || !nextUid) {
+        clearCustomerPhotoBlobCache();
+      }
+      lastUid = nextUid;
+      callback(user);
+    });
   }
 
   /**
