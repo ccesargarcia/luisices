@@ -140,6 +140,46 @@ describe('Red-Team / Audit Regressions (TDD — devem falhar antes das correçõ
 
       expect(response.status).toBe(400);
     });
+
+    it('[MÉDIO] deve permitir nomes de arquivo com pontos consecutivos (ex: briefing..pdf) e bloquear segmentos de traversal', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response('pdf-bytes', {
+          status: 200,
+          headers: { 'Content-Type': 'application/pdf' },
+        }),
+      );
+      vi.stubGlobal('fetch', mockFetch);
+
+      const validRequest = new Request(
+        'https://cdn.luisices.com.br/users/u1/orders/ord-1/1732070000000_briefing..pdf?alt=media&token=valid-token',
+      );
+      const validResponse = await cdnWorker.fetch(
+        validRequest,
+        { ENVIRONMENT: 'production', FIREBASE_BUCKET: 'papelaria-dashboard.firebasestorage.app' },
+        {},
+      );
+
+      expect(validResponse.status).toBe(200);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      const blockedPaths = [
+        'https://cdn.luisices.com.br/users/..%2fadmin/secret.pdf',
+        'https://cdn.luisices.com.br/%2e%2e%2fsecret.pdf',
+        'https://cdn.luisices.com.br/users/.%2fsecret.pdf',
+        'https://cdn.luisices.com.br/users/u1%5Csecret.pdf',
+      ];
+
+      for (const blockedUrl of blockedPaths) {
+        const res = await cdnWorker.fetch(
+          new Request(blockedUrl),
+          { ENVIRONMENT: 'production', FIREBASE_BUCKET: 'papelaria-dashboard.firebasestorage.app' },
+          {},
+        );
+        expect(res.status).toBe(404);
+      }
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('3. Backend Cloud Functions — Path Traversal, Rate Limit OAuth e Crashes de Runtime', () => {

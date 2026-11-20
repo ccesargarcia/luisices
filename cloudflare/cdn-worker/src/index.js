@@ -77,7 +77,10 @@ export default {
         },
       });
     }
-    if (!rawPath || rawPath.includes('..') || rawPath.includes('\\')) {
+    const hasTraversalSegment = rawPath
+      .split('/')
+      .some((segment) => segment === '..' || segment === '.');
+    if (!rawPath || hasTraversalSegment || rawPath.includes('\\')) {
       return new Response('Not Found', { status: 404 });
     }
 
