@@ -17,7 +17,7 @@ const DEFAULT_ORIGINS = {
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
-  'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept, X-Client-Version, X-Requested-With, x-origin-secret, sentry-trace, baggage',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept, X-Client-Version, X-Requested-With, sentry-trace, baggage',
   'Access-Control-Expose-Headers': 'X-MCP-Trace-Id, X-Edge-Origin-Ms, X-Edge-Elapsed-Ms, Server-Timing',
   'Access-Control-Max-Age': '86400',
 };
@@ -141,8 +141,22 @@ const handler = {
     const isDev = url.hostname.includes('dev') || env.ENVIRONMENT === 'dev';
     const backendBase = env.BACKEND_ORIGIN || (isDev ? DEFAULT_ORIGINS.dev : DEFAULT_ORIGINS.prod);
 
-    // 3. Montar URL de encaminhamento preservando path e query params
+    // 3. Montar URL de encaminhamento preservando path e query params com proteção contra SSRF
     let targetPath = url.pathname;
+    if (
+      targetPath.startsWith('//') ||
+      targetPath.includes('\\') ||
+      /(?:^|\/)\.\.(?:\/|$)/.test(targetPath)
+    ) {
+      return new Response(JSON.stringify({
+        error: 'INVALID_PATH',
+        message: 'Caminho de requisição inválido.',
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+      });
+    }
+
     const galleryMediaMatch = targetPath.match(/^\/media\/gallery\/([A-Za-z0-9_-]{1,150})$/);
     if (galleryMediaMatch || targetPath === '/media/gallery') {
       targetPath = '/galleryMedia';
@@ -175,10 +189,24 @@ const handler = {
         targetPath = `/chatGptToolsEndpoint${targetPath}`;
       }
     }
-    const targetUrl = new URL(targetPath + url.search, backendBase);
+    const backendOriginUrl = new URL(backendBase);
+    const targetUrl = new URL(targetPath + url.search, backendOriginUrl);
+    if (targetUrl.origin !== backendOriginUrl.origin) {
+      return new Response(JSON.stringify({
+        error: 'INVALID_ORIGIN',
+        message: 'Destino de encaminhamento não permitido.',
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+      });
+    }
 
     // 4. Clonar e enriquecer cabeçalhos para a origem
     const forwardHeaders = new Headers(request.headers);
+
+    // Nunca confiar em headers internos de proteção de origem enviados pelo cliente
+    forwardHeaders.delete('x-origin-secret');
+    forwardHeaders.delete('x-cf-origin-token');
 
     // Assegurar User-Agent válido caso o cliente MCP envie sem User-Agent
     if (!forwardHeaders.has('User-Agent') || !forwardHeaders.get('User-Agent')) {
@@ -258,9 +286,11 @@ const handler = {
       });
       const originDurationMs = performance.now() - originStartedAt;
 
-      // 6. Retornar resposta ao cliente garantindo cabeçalhos CORS
+      // 6. Retornar resposta ao cliente garantindo cabeçalhos CORS sem sobrescrever restrições da origem
       const responseHeaders = new Headers(originResponse.headers);
-      responseHeaders.set('Access-Control-Allow-Origin', '*');
+      if (!responseHeaders.has('Access-Control-Allow-Origin')) {
+        responseHeaders.set('Access-Control-Allow-Origin', '*');
+      }
       responseHeaders.set('Access-Control-Expose-Headers', 'X-MCP-Trace-Id, X-Edge-Origin-Ms, X-Edge-Elapsed-Ms, Server-Timing');
       responseHeaders.set('X-Proxy-Gateway', 'Luisices-Cloudflare-Worker');
       const elapsedMs = performance.now() - workerStartedAt;

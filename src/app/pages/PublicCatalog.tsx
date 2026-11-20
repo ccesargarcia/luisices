@@ -977,7 +977,7 @@ export function PublicCatalog() {
       const newItemId = `item-${Date.now()}-${secureRandomId()}`;
       return [...prev, { id: newItemId, product, quantity, customName: trimmedCustom || undefined }];
     });
-  }, []);
+  }, [featureFlags.enableOnlineOrders]);
 
   const updateQuantity = useCallback((cartItemId: string, delta: number) => {
     setCart((prev) =>

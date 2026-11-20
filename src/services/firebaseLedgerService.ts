@@ -140,12 +140,20 @@ export const firebaseLedgerService = {
     const snap = await getDoc(saleRef);
     if (!snap.exists()) return;
 
+    const existingData = snap.data();
+    const isExchange = updates.isExchange !== undefined ? Boolean(updates.isExchange) : Boolean(existingData?.isExchange);
     const payload: any = {
       updatedAt: new Date().toISOString(),
     };
 
-    if (updates.price !== undefined) {
-      payload.amount = Math.max(0, updates.price);
+    if (updates.isExchange !== undefined) {
+      payload.isExchange = isExchange;
+      if (isExchange) {
+        payload.amount = 0;
+      }
+    }
+    if (updates.price !== undefined && Number.isFinite(updates.price)) {
+      payload.amount = isExchange ? 0 : Math.max(0, updates.price);
     }
     if (updates.status !== undefined) {
       payload.status = updates.status;

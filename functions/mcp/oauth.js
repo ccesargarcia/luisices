@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { COLLECTIONS, MCP_SCOPES } = require('./constants');
 const { getCallerScope } = require('../ai/authorization');
 const { moduleAllowsMcpScope } = require('./profilePermissions');
+const { getTrustedClientIp } = require('../originProtection');
 let traceMcpStep = (_phase, work) => work();
 try {
   ({ traceMcpStep } = require('./tracing'));
@@ -163,7 +164,7 @@ async function consumeSharedRateLimit(db, key, limit, windowSeconds = 3600) {
 }
 
 async function applyEndpointRateLimit(req, res, db, bucket, limit) {
-  const address = req.ip || req.socket?.remoteAddress || 'unknown';
+  const address = getTrustedClientIp(req);
   if (await consumeSharedRateLimit(db, `${bucket}:${address}`, limit)) return true;
   const secondsIntoWindow = Math.floor(Date.now() / 1000) % 3600;
   res.setHeader('Retry-After', String(3600 - secondsIntoWindow));

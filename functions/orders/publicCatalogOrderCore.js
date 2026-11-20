@@ -88,8 +88,10 @@ async function handleSubmitPublicCatalogOrderCore(data, { getFirestore: getDb, n
     );
   }
 
+  const SAFE_DOC_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
   for (const item of items) {
-    if (!item || typeof item.productId !== 'string' || !item.productId.trim()) {
+    const trimmedPid = typeof item?.productId === 'string' ? item.productId.trim() : '';
+    if (!trimmedPid || !SAFE_DOC_ID_RE.test(trimmedPid)) {
       throw createCoreError('invalid-argument', 'Cada item deve possuir um productId válido.');
     }
   }

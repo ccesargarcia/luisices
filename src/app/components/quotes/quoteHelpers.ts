@@ -32,8 +32,17 @@ export function formatDate(iso: string): string {
   return `${d}/${m}/${y}`;
 }
 
+function formatDateSaoPaulo(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
 export function todayStr(): string {
-  return new Date().toISOString().split('T')[0];
+  return formatDateSaoPaulo(new Date());
 }
 
 export function isQuoteExpired(quote: Pick<Quote, 'status' | 'validUntil'>): boolean {
@@ -44,7 +53,7 @@ export function isQuoteExpired(quote: Pick<Quote, 'status' | 'validUntil'>): boo
 export function defaultDelivery(): string {
   const d = new Date();
   d.setDate(d.getDate() + 7);
-  return d.toISOString().split('T')[0];
+  return formatDateSaoPaulo(d);
 }
 
 export function calcTotal(items: QuoteItem[]): number {

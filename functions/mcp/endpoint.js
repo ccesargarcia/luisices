@@ -46,6 +46,15 @@ try {
 } catch {
   captureApiError = () => {};
 }
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 const { formatToolResultText, publicErrorMessage } = require('./presentation');
 
 const MCP_ASSISTANT_INSTRUCTIONS = [

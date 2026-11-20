@@ -233,17 +233,37 @@ class FirebaseCatalogOrderService {
     catalogOrder = this.mapDoc(snap.id, snap.data());
 
     // Se o pedido não foi verificado pelo servidor (ex: legado),
-    // revalida os preços contra storeProducts para garantir que nenhum subtotal adulterado seja aceito na conversão
-    let trustedSubtotal = catalogOrder.subtotal;
-    if (!catalogOrder.verifiedByServer) {
-      let officialRecalculated = 0;
+    // revalida os preços contra storeProducts para garantir que nenhum subtotal ou preço unitário adulterado seja aceito na conversão
+    let trustedSubtotal = Number((catalogOrder.subtotal || 0).toFixed(2));
+    let verifiedItems = (catalogOrder.items || []).map((i) => {
+      const qty = i.quantity || 1;
+      const unit = Number((i.price || 0).toFixed(2));
+      return {
+        name: i.productName || 'Produto da Lojinha',
+        quantity: qty,
+        unitPrice: unit,
+        price: Number((qty * unit).toFixed(2)),
+      };
+    });
 
-      for (const item of catalogOrder.items) {
+    if (!catalogOrder.verifiedByServer) {
+      const itemsToVerify = catalogOrder.items || [];
+      for (const item of itemsToVerify) {
         if (!item.productId) {
           throw new Error('Não é possível converter pedido: item sem identificador de produto.');
         }
-        const pSnap = await getDoc(doc(db, 'storeProducts', item.productId));
-        if (!pSnap.exists()) {
+      }
+
+      const uniqueProductIds = Array.from(new Set(itemsToVerify.map((item) => item.productId)));
+      const productSnaps = await Promise.all(
+        uniqueProductIds.map((productId) => getDoc(doc(db, 'storeProducts', productId)))
+      );
+      const productById = new Map(uniqueProductIds.map((id, idx) => [id, productSnaps[idx]]));
+
+      let officialRecalculated = 0;
+      verifiedItems = itemsToVerify.map((item) => {
+        const pSnap = productById.get(item.productId);
+        if (!pSnap || !pSnap.exists()) {
           throw new Error(`Não é possível converter pedido: o produto "${item.productName || item.productId}" não existe no catálogo oficial.`);
         }
         const pData = pSnap.data();
@@ -251,8 +271,17 @@ class FirebaseCatalogOrderService {
         if (!Number.isFinite(officialItemPrice) || officialItemPrice <= 0) {
           throw new Error(`Não é possível converter pedido: o produto "${pData.name || item.productId}" possui preço oficial inválido.`);
         }
-        officialRecalculated += officialItemPrice * (item.quantity || 1);
-      }
+        const qty = item.quantity || 1;
+        const unit = Number(officialItemPrice.toFixed(2));
+        const linePrice = Number((qty * unit).toFixed(2));
+        officialRecalculated = Number((officialRecalculated + linePrice).toFixed(2));
+        return {
+          name: item.productName || pData.name || 'Produto da Lojinha',
+          quantity: qty,
+          unitPrice: unit,
+          price: linePrice,
+        };
+      });
 
       if (Math.abs(catalogOrder.subtotal - officialRecalculated) > 0.05) {
         console.warn(
@@ -279,21 +308,16 @@ class FirebaseCatalogOrderService {
       notes += `\n\nObservações do cliente: ${catalogOrder.customerNotes}`;
     }
 
-    // Cria o pedido de produção oficial no Firebase com o valor validado
+    // Cria o pedido de produção oficial no Firebase com o valor e preços unitários validados
     const newOrder = await firebaseOrderService.createOrder({
       customerName: customerName.trim() || 'Cliente da Lojinha',
       customerPhone: customerPhone.trim() || '',
       productName: catalogOrder.items.length === 1 ? firstProductName : `${firstProductName} (+${catalogOrder.items.length - 1} itens)`,
       quantity: totalQuantity,
       price: trustedSubtotal,
-      items: (catalogOrder.items || []).map((i) => ({
-        name: i.productName || 'Produto da Lojinha',
-        quantity: i.quantity || 1,
-        unitPrice: i.price || 0,
-        price: Number(((i.quantity || 1) * (i.price || 0)).toFixed(2)),
-      })),
-      pricingMode: (catalogOrder.items || []).length === 1 ? 'unit' : 'items',
-      unitPrice: (catalogOrder.items || []).length === 1 ? ((catalogOrder.items || [])[0]?.price ?? null) : null,
+      items: verifiedItems,
+      pricingMode: verifiedItems.length === 1 ? 'unit' : 'items',
+      unitPrice: verifiedItems.length === 1 ? (verifiedItems[0]?.unitPrice ?? null) : null,
       deliveryDate,
       status: 'pending',
       notes,
